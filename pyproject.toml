@@ -1,0 +1,22 @@
+[project]
+name = "transoria"
+version = "0.1.0"
+description = "Lightweight desktop workflows for novel translation, glossary extraction, and batch text replacement."
+requires-python = ">=3.11"
+dependencies = [
+  "lxml>=5.0",
+  "httpx>=0.27",
+  "json-repair>=0.30",
+  "openpyxl>=3.1",
+  "chardet>=5.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "opencc-python-reimplemented>=0.1.7",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

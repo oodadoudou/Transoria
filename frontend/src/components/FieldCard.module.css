@@ -1,0 +1,61 @@
+/*
+ * Field row — subtle inset, no heavy box. Cream-soft fill that lifts on
+ * hover. Used for folder pickers and language selectors.
+ */
+.field {
+  background: var(--panel-soft);
+  border: 0;
+  border-radius: var(--radius-inset);
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  color: var(--ink);
+  transition: background 160ms ease;
+}
+
+.field:hover {
+  background: #ebeae3;
+}
+
+.field:active {
+  transform: scale(0.995);
+}
+
+.label {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+.row {
+  font-size: 13px;
+  font-weight: 500;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.trailing {
+  flex-shrink: 0;
+  opacity: 0.55;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

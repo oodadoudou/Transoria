@@ -1,0 +1,42 @@
+/*
+ * Layout overrides for TextField. Shares NumberField.module.css for label,
+ * help button, and base input styles. Overrides target the wider input column
+ * (text values are typically longer than numbers) and the optional mono variant.
+ */
+
+.row {
+  /* Two-column row, but let the input grow to fill the right side. */
+  grid-template-columns: minmax(160px, max-content) minmax(0, 1fr);
+}
+
+.inputWrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.text {
+  width: 100%;
+  text-align: left;
+  font-weight: 500;
+  font-size: 13px;
+  padding: 8px 12px;
+}
+
+.text:focus-visible {
+  border-color: var(--action);
+  background: #fff;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.multi {
+  resize: vertical;
+  line-height: 1.55;
+  min-height: 80px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}

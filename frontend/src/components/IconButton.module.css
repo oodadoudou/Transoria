@@ -1,0 +1,19 @@
+.btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  transition: background 160ms ease;
+}
+
+.btn:hover {
+  background: var(--panel-soft);
+}
+
+.btn:active {
+  transform: scale(0.96);
+}

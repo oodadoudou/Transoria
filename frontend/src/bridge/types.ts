@@ -1,0 +1,355 @@
+// Types mirror docs/active/frontend-backend-bridge-contract.md.
+// Keep wire format snake_case here; component code uses these directly.
+
+export type Language = 'kr' | 'zh' | 'zh-Hant' | 'en' | 'ja';
+
+export type TaskStatus =
+  | 'pending'
+  | 'running'
+  | 'stopping'
+  | 'stopped'
+  | 'completed'
+  | 'failed';
+
+export type SubtaskStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped';
+
+export type ProviderFormat =
+  | 'openai'
+  | 'google'
+  | 'anthropic'
+  | 'sakura'
+  | 'custom';
+
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
+
+export type Platform = 'darwin' | 'win32' | 'linux';
+
+export type ChineseOutputForm = 'simplified' | 'traditional';
+
+export type Theme = 'light' | 'dark' | 'system';
+
+export type SettingsModule =
+  | 'app'
+  | 'translation'
+  | 'glossary'
+  | 'replacement';
+
+export type PromptKind = 'translation' | 'glossary';
+
+// --- App ---------------------------------------------------------------------
+
+export interface AppMetadata {
+  app_version: string;
+  platform: Platform;
+  build_mode: 'dev' | 'packaged';
+  python_version: string;
+  cache_root: string;
+}
+
+// --- Settings ----------------------------------------------------------------
+
+export interface AppSettings {
+  interface_language: 'en' | 'zh';
+  theme: Theme;
+  ui_scale: number;
+  proxy_url: string;
+  active_translation_model_id: string | null;
+  active_glossary_model_id: string | null;
+  active_translation_prompt_id: string | null;
+  active_glossary_prompt_id: string | null;
+}
+
+export interface TranslationSettings {
+  input_folder: string;
+  output_folder: string;
+  source_language: Language;
+  target_language: Language;
+  chinese_output_form: ChineseOutputForm;
+  bilingual_enabled: boolean;
+  bilingual_dedupe_identical: boolean;
+  bilingual_subfolder_name: string;
+  context_lines: number;
+  auto_open_output_folder: boolean;
+}
+
+export interface GlossarySettings {
+  input_folder: string;
+  output_folder: string;
+  source_language: Language;
+  target_language: Language;
+  chinese_output_form: ChineseOutputForm;
+  reference_examples_per_term: number;
+  max_term_display_length: number;
+  minimum_frequency: number;
+  chunk_token_limit: number;
+  merge_folder_glossary: boolean;
+  keep_identical_src_dst: boolean;
+  auto_open_output_folder: boolean;
+}
+
+export interface ReplacementSettings {
+  input_folder: string;
+  output_folder: string;
+  allow_same_folder: boolean;
+  output_naming_suffix: string;
+  overwrite_existing: boolean;
+  apply_to_epub_titles: boolean;
+  stop_on_first_error: boolean;
+}
+
+export interface AllSettings {
+  app: AppSettings;
+  translation: TranslationSettings;
+  glossary: GlossarySettings;
+  replacement: ReplacementSettings;
+}
+
+export type ModuleSettings =
+  | AppSettings
+  | TranslationSettings
+  | GlossarySettings
+  | ReplacementSettings;
+
+// --- Dialogs -----------------------------------------------------------------
+
+export interface DialogPathResult {
+  path: string | null;
+}
+
+export interface GlossaryFileResult extends DialogPathResult {
+  format: 'xlsx' | 'json' | null;
+}
+
+// --- Model profiles ---------------------------------------------------------
+
+export type ApiKeyStatus = 'missing' | 'present' | 'from_env';
+
+export interface ModelProfile {
+  id: string;
+  display_name: string;
+  provider_format: ProviderFormat;
+  base_url: string;
+  model_id: string;
+  api_key_status: ApiKeyStatus;
+  api_key_masked: string;
+  thinking_level: ThinkingLevel;
+  timeout_seconds: number;
+  concurrency_limit: number;
+  rpm_limit: number;
+  tpm_limit: number;
+  rotate_keys: boolean;
+  retry_attempts: number;
+  retry_initial_backoff_seconds: number;
+  retry_max_backoff_seconds: number;
+  max_output_tokens: number;
+  thinking_budget_tokens: number;
+  input_token_limit: number;
+  top_p: number | null;
+  temperature: number | null;
+  presence_penalty: number | null;
+  frequency_penalty: number | null;
+  custom_headers: Array<[string, string]>;
+}
+
+export type ModelProfileDraft = Omit<
+  ModelProfile,
+  'id' | 'api_key_status' | 'api_key_masked'
+> & { api_keys?: string[] };
+
+export interface ModelTestResult {
+  ok: boolean;
+  latency_ms: number;
+  provider_response: {
+    model: string | null;
+    status_code: number | null;
+    detail: string;
+  };
+}
+
+export interface ModelListEntry {
+  id: string;
+  display_name?: string;
+}
+
+// --- Prompt presets ---------------------------------------------------------
+
+export interface PromptPresetSummary {
+  id: string;
+  name: string;
+  kind: PromptKind;
+  description: string;
+  enabled: boolean;
+  is_default: boolean;
+}
+
+export interface PromptPresetBody extends PromptPresetSummary {
+  system_prompt: string;
+  suffix_prompt: string;
+  thinking_prompt: string;
+}
+
+export interface PromptPreviewContext {
+  source_language: string;
+  target_language: string;
+  glossary?: string;
+  context?: string;
+  input?: string;
+}
+
+// --- Tasks (translation, glossary, replacement) -----------------------------
+
+export type TaskKind = 'translation' | 'glossary' | 'replacement';
+
+export interface TaskHeader {
+  id: string;
+  kind: TaskKind;
+  status: TaskStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskProgress {
+  total: number;
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  skipped: number;
+  rate_per_second: number;
+  eta_seconds: number;
+}
+
+export interface TaskUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface TaskSnapshot {
+  header: TaskHeader;
+  progress: TaskProgress;
+  usage: TaskUsage;
+  active_model_id: string | null;
+  active_prompt_id: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface TaskFailure {
+  subtask_id: string;
+  source_file: string;
+  message: string;
+  message_key?: string;
+  attempts: number;
+  last_error_code: string;
+  last_error_at: string;
+}
+
+export interface TaskLogLine {
+  timestamp: string;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  context?: Record<string, unknown>;
+}
+
+export interface TaskOutcome {
+  status: 'completed' | 'stopped' | 'failed';
+  artifacts_path: string;
+  statistics_path: string | null;
+}
+
+export interface TranslationArtifacts {
+  output_folder: string;
+  bilingual_folder: string | null;
+  translated_files: string[];
+  bilingual_files: string[];
+  statistics_json_path: string | null;
+  statistics_text_path: string | null;
+}
+
+export interface GlossaryArtifacts {
+  output_folder: string;
+  per_novel_artifacts: Array<{
+    novel_name: string;
+    xlsx_path: string;
+    json_path: string;
+    references_path: string;
+  }>;
+  combined_artifact: {
+    novel_name: string;
+    xlsx_path: string;
+    json_path: string;
+    references_path: string;
+  } | null;
+  statistics_json_path: string | null;
+  decode_issue_path: string | null;
+}
+
+export interface ReplacementArtifacts {
+  output_folder: string;
+  output_files: string[];
+  statistics_json_path: string | null;
+  total_replacements: number;
+}
+
+// --- Replacement rules ------------------------------------------------------
+
+export interface ReplacementRule {
+  src: string;
+  dst: string;
+  regex: boolean;
+  case_sensitive: boolean;
+  enabled: boolean;
+}
+
+export interface ReplacementRuleParseResult {
+  rules: ReplacementRule[];
+  parse_warnings: Array<{ line_number: number; message: string }>;
+}
+
+export interface ReplacementValidationIssue {
+  rule_index: number;
+  code: 'regex_error' | 'duplicate_src' | 'empty_src' | 'empty_dst';
+  message: string;
+}
+
+// --- Updates ----------------------------------------------------------------
+
+export interface UpdateCheckResult {
+  current_version: string;
+  latest_version: string;
+  is_newer_available: boolean;
+  release_notes_markdown: string;
+  release_url: string;
+  published_at: string;
+  asset:
+    | {
+        name: string;
+        download_url: string;
+        size_bytes: number;
+        platform: Platform;
+      }
+    | null;
+}
+
+// --- Task events (push channel) ---------------------------------------------
+
+export type TaskEvent =
+  | { kind: 'snapshot'; task_id: string; snapshot: TaskSnapshot }
+  | { kind: 'log'; task_id: string; line: TaskLogLine }
+  | { kind: 'completed'; task_id: string; outcome: TaskOutcome }
+  | { kind: 'failed'; task_id: string; error: BridgeErrorPayload };
+
+// --- Errors -----------------------------------------------------------------
+
+export interface BridgeErrorPayload {
+  code: string;
+  message: string;
+  message_key?: string;
+  details?: Record<string, unknown>;
+  retryable: boolean;
+}

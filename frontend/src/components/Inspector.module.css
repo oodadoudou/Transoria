@@ -1,0 +1,143 @@
+/*
+ * Inspector — flat blocks. No card wrappers. Each block is a tracked label
+ * + content stacked on the cream canvas, separated by vertical rhythm only.
+ */
+.inspector {
+  grid-area: inspector;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+  padding: 8px 0 0;
+}
+
+.block {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+.header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  margin-bottom: 10px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.header small {
+  color: var(--ink);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+
+/* Active model + active prompt: avatar swatch + two-line label, no border. */
+.modelCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.av {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+
+.avWarm {
+  background: radial-gradient(120% 120% at 30% 20%, #ffe2c7 0%, #b8a98c 60%, #715f3f 100%);
+}
+
+.avCool {
+  background: radial-gradient(120% 120% at 30% 20%, #d8e6ff 0%, #6f8acc 60%, #2b3e72 100%);
+}
+
+.modelText {
+  min-width: 0;
+}
+
+.modelText b {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelText span {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* Tokens grid — flat label/value cells, no borders. */
+.tokens {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 18px;
+  row-gap: 12px;
+}
+
+.cell {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.cellLabel {
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.cell b {
+  display: block;
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.spacer {
+  height: 14px;
+}
+
+/* Histogram — bare bars on canvas, no wrapper. */
+.histogram {
+  height: 44px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  display: flex;
+  align-items: end;
+  gap: 3px;
+}
+
+.histogram span {
+  flex: 1;
+  background: var(--action);
+  opacity: 0.42;
+  border-radius: 1px;
+  min-height: 4%;
+}

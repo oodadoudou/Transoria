@@ -1,0 +1,85 @@
+/*
+ * Top bar — flat. No border, no fill, no shadow. Sits directly on the cream
+ * canvas. The grid takes care of vertical placement; this component just lays
+ * out brand / breadcrumb / actions horizontally.
+ */
+.bar {
+  grid-area: topbar;
+  height: var(--topbar-height);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: 0 6px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo {
+  width: 24px;
+  height: 24px;
+  background: var(--action);
+  color: #fff;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.wordmark {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.module {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sep {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.page {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.localeLink {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 160ms ease;
+}
+
+.localeLink:hover {
+  color: var(--ink);
+}

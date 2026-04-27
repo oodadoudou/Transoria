@@ -1,0 +1,24 @@
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.field {
+  min-width: 0;
+}
+
+.pickBtn {
+  border: 1px solid var(--hairline-strong, #d8d2c7);
+  background: var(--panel, #fff);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pickBtn:hover {
+  background: var(--panel-soft, #f5f0e9);
+}

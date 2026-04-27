@@ -1,0 +1,80 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--surface-quiet-border, #ece8e2);
+  background: var(--surface-quiet, #faf7f2);
+  font-size: 13px;
+}
+
+.state {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-muted, #7a7166);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted, #c8bfb1);
+}
+
+.dot.saving {
+  background: var(--accent, #c47b3a);
+}
+.dot.saved {
+  background: var(--success, #5a8c43);
+}
+.dot.error {
+  background: var(--warn, #c2502a);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.button {
+  border: 1px solid var(--surface-quiet-border, #d8d2c7);
+  background: var(--surface, #fff);
+  color: var(--text, #2c2620);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.button:hover:not(:disabled) {
+  background: var(--surface-quiet, #f5f0e9);
+}
+
+.button.primary {
+  background: var(--accent, #c47b3a);
+  border-color: var(--accent, #c47b3a);
+  color: #fff;
+}
+
+.button.primary:hover:not(:disabled) {
+  background: var(--accent-hover, #b06d2f);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.errorMessage {
+  color: var(--warn-text, #6b3a1f);
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  margin-left: 4px;
+  word-break: break-word;
+}

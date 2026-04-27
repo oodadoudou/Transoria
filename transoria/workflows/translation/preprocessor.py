@@ -1,0 +1,186 @@
+"""Per-segment preprocessing and postprocessing for translation.
+
+Given a source segment string, the preprocessor produces:
+
+- a ``prompt_text`` ready to send to the LLM (with text-preserve spans masked
+  by sentinels and pre-replacement rules applied), and
+- a ``ProtectionMap`` recording each masked span so the postprocessor can
+  restore the originals after the response comes back.
+
+The postprocessor then takes the LLM's translated text plus the
+``ProtectionMap`` and the original segment metadata, restores protected spans,
+applies post-replacement rules, and re-attaches the leading/trailing
+whitespace that was stripped before sending.
+
+Design notes:
+
+- Sentinels use the form ``\u2061__TPRES_<n>__\u2061`` — invisible function
+  application characters wrap an ASCII-only marker. The model is far less
+  likely to translate, split, or paraphrase them than a bare ``__X__`` token.
+- Text-preserve rules apply to the *current* segment only. If two segments
+  contain the same protected span, each gets its own sentinel. This keeps
+  per-subtask state self-contained.
+- Pre-replacements run *after* protection so a pre-replacement that targets a
+  preserved string never collides with the sentinel.
+- Post-replacements run *after* restoration so a rule that targets a restored
+  literal still fires.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Iterable
+
+from transoria.workflows.translation.rules import (
+    ReplacementRule,
+    TextPreserveRule,
+)
+
+
+_SENTINEL_PREFIX = "\u2061__TPRES_"
+_SENTINEL_SUFFIX = "__\u2061"
+_SENTINEL_PATTERN = re.compile(
+    re.escape(_SENTINEL_PREFIX) + r"(\d+)" + re.escape(_SENTINEL_SUFFIX)
+)
+
+
+@dataclass(frozen=True)
+class ProtectionMap:
+    """Sentinel → original-text mapping for one segment."""
+
+    spans: tuple[str, ...] = field(default_factory=tuple)
+
+    def is_empty(self) -> bool:
+        return not self.spans
+
+
+@dataclass(frozen=True)
+class PreprocessedSegment:
+    """Result of running a single segment through the preprocessor."""
+
+    prompt_text: str
+    protection: ProtectionMap
+    leading_whitespace: str = ""
+    trailing_whitespace: str = ""
+
+
+def preprocess_segment(
+    source_text: str,
+    *,
+    text_preserve_rules: Iterable[TextPreserveRule] = (),
+    pre_replacements: Iterable[ReplacementRule] = (),
+) -> PreprocessedSegment:
+    """Strip whitespace, mask preserved spans, then apply pre-replacements."""
+
+    leading, body, trailing = _split_whitespace(source_text)
+    masked, protection = _mask_protected_spans(body, text_preserve_rules)
+    rewritten = _apply_replacements(masked, pre_replacements)
+    return PreprocessedSegment(
+        prompt_text=rewritten,
+        protection=protection,
+        leading_whitespace=leading,
+        trailing_whitespace=trailing,
+    )
+
+
+def postprocess_segment(
+    translated_text: str,
+    *,
+    protection: ProtectionMap,
+    leading_whitespace: str = "",
+    trailing_whitespace: str = "",
+    post_replacements: Iterable[ReplacementRule] = (),
+) -> str:
+    """Restore protected spans, apply post-replacements, re-attach whitespace."""
+
+    restored = _restore_sentinels(translated_text, protection)
+    rewritten = _apply_replacements(restored, post_replacements)
+    return f"{leading_whitespace}{rewritten}{trailing_whitespace}"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _split_whitespace(text: str) -> tuple[str, str, str]:
+    """Split into ``(leading, body, trailing)`` whitespace-free body."""
+
+    if not text:
+        return "", "", ""
+    leading_match = re.match(r"\s*", text)
+    leading = leading_match.group(0) if leading_match else ""
+    body_with_trailing = text[len(leading):]
+    if not body_with_trailing:
+        return leading, "", ""
+    trailing_match = re.search(r"\s*$", body_with_trailing)
+    trailing = trailing_match.group(0) if trailing_match else ""
+    body = (
+        body_with_trailing[: -len(trailing)] if trailing else body_with_trailing
+    )
+    return leading, body, trailing
+
+
+def _mask_protected_spans(
+    body: str, rules: Iterable[TextPreserveRule]
+) -> tuple[str, ProtectionMap]:
+    spans: list[str] = []
+    masked = body
+    for rule in rules:
+        if not rule.enabled or not rule.pattern:
+            continue
+        try:
+            pattern = re.compile(rule.pattern)
+        except re.error:
+            continue
+        masked = pattern.sub(lambda match: _push_sentinel(match.group(0), spans), masked)
+    return masked, ProtectionMap(spans=tuple(spans))
+
+
+def _push_sentinel(value: str, spans: list[str]) -> str:
+    spans.append(value)
+    return f"{_SENTINEL_PREFIX}{len(spans) - 1}{_SENTINEL_SUFFIX}"
+
+
+def _restore_sentinels(text: str, protection: ProtectionMap) -> str:
+    if protection.is_empty():
+        return text
+
+    def replace(match: re.Match[str]) -> str:
+        index = int(match.group(1))
+        if 0 <= index < len(protection.spans):
+            return protection.spans[index]
+        return match.group(0)
+
+    return _SENTINEL_PATTERN.sub(replace, text)
+
+
+def _apply_replacements(text: str, rules: Iterable[ReplacementRule]) -> str:
+    if not text:
+        return text
+    out = text
+    for rule in rules:
+        if not rule.enabled or not rule.src:
+            continue
+        if rule.regex:
+            flags = 0 if rule.case_sensitive else re.IGNORECASE
+            try:
+                out = re.sub(rule.src, rule.dst, out, flags=flags)
+            except re.error:
+                continue
+            continue
+        if rule.case_sensitive:
+            out = out.replace(rule.src, rule.dst)
+            continue
+        # Case-insensitive plain replacement: use escaped regex with IGNORECASE.
+        out = re.sub(re.escape(rule.src), rule.dst, out, flags=re.IGNORECASE)
+    return out
+
+
+__all__ = [
+    "PreprocessedSegment",
+    "ProtectionMap",
+    "preprocess_segment",
+    "postprocess_segment",
+]

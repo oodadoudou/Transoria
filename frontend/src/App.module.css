@@ -1,0 +1,48 @@
+/*
+ * Desktop shell — flat. Cream canvas spans the whole window with no
+ * card/box wrappers. Three columns when on a Run page (rail / main /
+ * inspector + status pill); two columns elsewhere (rail / main).
+ *
+ * No responsive collapse — packaged app, fixed 1280×800 floor.
+ */
+
+.shell {
+  min-height: 100vh;
+  padding: 18px 24px;
+  background: var(--canvas);
+}
+
+.app {
+  min-height: calc(100vh - 36px);
+  display: grid;
+  column-gap: 28px;
+  row-gap: 18px;
+}
+
+.withInspector {
+  grid-template-columns: 200px minmax(560px, 1fr);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    'topbar topbar'
+    'rail   main'
+    'rail   status';
+}
+
+.minimal {
+  grid-template-columns: 200px minmax(560px, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'topbar topbar'
+    'rail   main';
+}
+
+.main {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  min-width: 0;
+  /* Editorial reading width on big monitors. */
+  max-width: 980px;
+  padding: 8px 0 32px;
+}

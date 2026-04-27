@@ -1,0 +1,100 @@
+"""Seed model profiles.
+
+Frozen at import time. The store seeds these on first run; users may
+edit or delete them like any other profile.
+"""
+
+from __future__ import annotations
+
+from transoria.llm.config import ModelConfig, ProviderFormat
+
+DEEPSEEK_ID = "preset-deepseek"
+ANTHROPIC_ID = "preset-anthropic"
+GOOGLE_ID = "preset-google"
+OPENAI_ID = "preset-openai"
+
+DEFAULT_PROFILE_IDS: tuple[str, ...] = (
+    DEEPSEEK_ID,
+    ANTHROPIC_ID,
+    GOOGLE_ID,
+    OPENAI_ID,
+)
+
+
+def default_profiles() -> tuple[ModelConfig, ...]:
+    """Return the seeded profile list.
+
+    Defaults reflect each provider's recommended request/sampling
+    parameters for translation-style workloads. Users should adjust
+    per-key/concurrency limits to match their plan.
+    """
+
+    return (
+        ModelConfig(
+            id=DEEPSEEK_ID,
+            display_name="DeepSeek",
+            provider_format=ProviderFormat.OPENAI,
+            base_url="https://api.deepseek.com/v1",
+            model_id="deepseek-chat",
+            timeout_seconds=120.0,
+            concurrency_limit=4,
+            rpm_limit=60,
+            tpm_limit=0,
+            retry_attempts=2,
+            max_output_tokens=4096,
+            temperature=0.3,
+        ),
+        ModelConfig(
+            id=ANTHROPIC_ID,
+            display_name="Anthropic",
+            provider_format=ProviderFormat.ANTHROPIC,
+            base_url="https://api.anthropic.com",
+            model_id="claude-sonnet-4-6",
+            timeout_seconds=120.0,
+            concurrency_limit=4,
+            rpm_limit=50,
+            tpm_limit=0,
+            retry_attempts=2,
+            max_output_tokens=8192,
+            temperature=1.0,
+        ),
+        ModelConfig(
+            id=GOOGLE_ID,
+            display_name="Google",
+            provider_format=ProviderFormat.GOOGLE,
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            model_id="gemini-2.5-flash",
+            timeout_seconds=120.0,
+            concurrency_limit=4,
+            rpm_limit=60,
+            tpm_limit=0,
+            retry_attempts=2,
+            max_output_tokens=8192,
+            temperature=0.7,
+            top_p=0.95,
+        ),
+        ModelConfig(
+            id=OPENAI_ID,
+            display_name="OpenAI",
+            provider_format=ProviderFormat.OPENAI,
+            base_url="https://api.openai.com/v1",
+            model_id="gpt-4o-mini",
+            timeout_seconds=120.0,
+            concurrency_limit=4,
+            rpm_limit=60,
+            tpm_limit=0,
+            retry_attempts=2,
+            max_output_tokens=4096,
+            temperature=0.3,
+        ),
+    )
+
+
+__all__ = [
+    "ANTHROPIC_ID",
+    "DEEPSEEK_ID",
+    "DEFAULT_PROFILE_IDS",
+    "GOOGLE_ID",
+    "OPENAI_ID",
+    "default_profiles",
+]

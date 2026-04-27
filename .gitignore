@@ -1,0 +1,99 @@
+# Local reference material
+references/
+docs/
+tasks/
+test/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE state
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.coverage
+coverage.xml
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging and build output
+build/
+dist/
+*.egg-info/
+*.spec
+
+# PyInstaller output
+*.manifest
+*.toc
+*.pkg
+*.pyz
+
+# Node / TypeScript frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite/
+.next/
+out/
+coverage/
+
+# Desktop packaging artifacts
+*.dmg
+*.app/
+*.exe
+*.msi
+*.AppImage
+
+# Application runtime data
+logs/
+log/
+cache/
+.cache/
+tmp/
+temp/
+*.log
+
+# Generated user outputs
+output/
+outputs/
+translated/
+exports/
+
+# Agent instructions
+AGENTS.md
+CLAUDE.md
+.claude/
+

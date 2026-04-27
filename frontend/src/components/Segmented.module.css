@@ -1,0 +1,36 @@
+.segment {
+  display: inline-flex;
+  background: var(--panel-soft);
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  gap: 2px;
+}
+
+.item {
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.item:hover:not(.itemActive) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.itemActive,
+.itemActive:hover {
+  background: var(--action);
+  color: #fff;
+}
+
+.item:active {
+  transform: scale(0.96);
+}

@@ -1,0 +1,110 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.labelWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.help {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.help:hover {
+  color: var(--ink);
+  background: var(--panel-soft);
+}
+
+.help[aria-expanded='true'] {
+  background: var(--action);
+  color: #fff;
+  border-color: var(--action);
+}
+
+.inputWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input {
+  background: var(--panel-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-inset);
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.input:hover:not(:read-only) {
+  background: #ebeae3;
+}
+
+.input:focus-visible {
+  border-color: var(--action);
+  background: #fff;
+  box-shadow: none;
+}
+
+.input::-webkit-inner-spin-button,
+.input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.unit {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.hint {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  line-height: 1.55;
+  background: var(--panel-soft);
+  padding: 10px 14px;
+  border-radius: var(--radius-inset);
+  max-width: 64ch;
+}

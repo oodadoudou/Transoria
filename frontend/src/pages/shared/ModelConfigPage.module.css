@@ -1,0 +1,210 @@
+.sectionSub {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: -8px 0 12px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-style: italic;
+  padding: 6px 0;
+}
+
+.chipGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
+  border: 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 120ms ease;
+  min-width: 130px;
+  justify-content: space-between;
+}
+
+.chip:hover:not(.chipActive) {
+  background: #ebeae3;
+}
+
+.chipActive,
+.chipActive:hover {
+  background: var(--action);
+  color: #fff;
+}
+
+.chip:active {
+  transform: scale(0.98);
+}
+
+.chipName {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.addBtn {
+  background: transparent;
+  border: 1px dashed var(--hairline-strong);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.addBtn:hover {
+  color: var(--ink);
+  border-color: var(--ink-soft);
+  background: var(--panel-soft);
+}
+
+.subsectionLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 4px 0 12px;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.numberGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 36px;
+  margin-top: 6px;
+}
+
+.formatRow {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.formatLabel {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.toggleStack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.chipEditing {
+  outline: 1px dashed var(--hairline-strong);
+}
+
+.errorText {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.apiKeyRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.apiKeyRow > :first-child {
+  flex: 1 1 auto;
+}
+
+.apiKeySave {
+  border: 1px solid var(--hairline-strong);
+  background: var(--panel);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.apiKeySave:hover {
+  background: var(--panel-soft);
+}
+
+.dangerRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.deleteButton {
+  border: 1px solid var(--warn-border, #d8a596);
+  background: transparent;
+  color: var(--warn-text, #6b3a1f);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.deleteButton:hover {
+  background: var(--surface-warn, #fdf2ec);
+}
+
+.chipBadge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+}
+
+.errorRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.errorCode {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.errorMessage {
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+
+.errorDismiss {
+  background: transparent;
+  border: 1px solid var(--hairline-strong, #d8d2c7);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.errorDismiss:hover {
+  background: rgba(0, 0, 0, 0.04);
+}

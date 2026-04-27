@@ -1,0 +1,117 @@
+/*
+ * Transoria design tokens — Paper White · Warm Graphite (flat).
+ *
+ * This is a desktop application, not a marketing site. Typography density,
+ * spacing, and component scale all follow macOS app conventions (~13 px
+ * system text, tight rhythm) — not editorial web (17 px body, 40 px display).
+ *
+ * "Flat" means: no card-with-hairline wrappers around panels / rail / inspector
+ * sections. Visual structure comes from tracked uppercase labels + generous
+ * vertical rhythm + the active item's warm-graphite fill. Hairlines exist
+ * only as horizontal dividers between log rows, never as box outlines.
+ */
+:root {
+  /* === Color: Brand & Surface ============================================== */
+  --canvas: #fafaf6;             /* cream — the page */
+  --panel: #ffffff;              /* white — used sparingly (pop-overs, sticky) */
+  --panel-soft: #f3f2ec;         /* slightly darker cream — subtle hover wash */
+  --ink: #0f0f12;                /* primary text */
+  --ink-soft: #1f1f23;           /* secondary text */
+  --action: #3d3530;             /* warm graphite — every active fill / primary */
+  --action-shadow: rgba(61, 53, 48, 0.28);
+  --muted: #6f6c66;              /* labels / fine print */
+  --accent: #ad9d7a;             /* warm beige — indicator dot, micro-accents */
+  --hairline: rgba(17, 17, 20, 0.09);
+  --hairline-strong: rgba(17, 17, 20, 0.18);
+
+  /* === Status (productivity-app extensions) ================================ */
+  --success: #2f7d57;
+  --warn: #b6541b;
+
+  /* === Typography ========================================================== */
+  /* SF Pro on Apple platforms, Inter elsewhere. */
+  --font-ui: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* === Spacing — 4 px base ================================================= */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 10px;
+  --space-4: 12px;
+  --space-5: 14px;
+  --space-6: 18px;
+  --space-7: 22px;
+  --space-8: 28px;
+  --space-9: 36px;
+
+  /* === Radius ============================================================== */
+  --radius-pill: 999px;
+  --radius-card: 14px;          /* legacy alias for inspector inner widgets */
+  --radius-inset: 10px;
+  --radius-avatar: 8px;
+
+  /* === Elevation =========================================================== */
+  --shadow-pill: 0 4px 14px var(--action-shadow);
+  --shadow-card: none;          /* flat — no card wrappers */
+  --shadow-soft: none;
+
+  /* === Focus =============================================================== */
+  --focus-ring: 0 0 0 2px rgba(61, 53, 48, 0.32);
+
+  /* === Top chrome height =================================================== */
+  --topbar-height: 52px;
+
+  /* ----------------------------------------------------------------------- *
+   * Aliases kept for code that's transitioning from the prior Apple-spec
+   * naming to the Paper White names above. Do not introduce new references
+   * to these — they exist only so components compile during migration.
+   * ----------------------------------------------------------------------- */
+  --primary: var(--action);
+  --primary-focus: var(--action);
+  --primary-on-dark: #d8c8a8;
+  --primary-soft: rgba(61, 53, 48, 0.08);
+  --canvas-parchment: var(--canvas);
+  --surface-pearl: var(--panel);
+  --surface-tile-1: #272729;
+  --surface-tile-2: #2a2a2c;
+  --surface-tile-3: #252527;
+  --surface-black: #000000;
+  --surface-chip-translucent: rgba(210, 210, 215, 0.64);
+  --body: var(--ink);
+  --body-on-dark: #ffffff;
+  --body-muted: #cccccc;
+  --ink-muted-80: #333333;
+  --ink-muted-48: var(--muted);
+  --hairline-soft: var(--hairline);
+  --divider-soft: rgba(0, 0, 0, 0.04);
+  --font-display: var(--font-ui);
+  --font-text: var(--font-ui);
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 17px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 80px;
+  --radius-none: 0;
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+  --radius-inset-sm: 8px;
+  --shadow-product: 3px 5px 30px 0 rgba(0, 0, 0, 0.22);
+  --global-nav-height: 0px;
+  --sub-nav-height: var(--topbar-height);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

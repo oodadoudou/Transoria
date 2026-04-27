@@ -1,0 +1,92 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/*
+ * Packaged desktop application. The OS window enforces a minimum size on the
+ * pywebview host; this CSS clamp mirrors that contract so layout never
+ * collapses to mobile-style stacks. Below the minimum, scrollbars appear
+ * (the desktop convention).
+ */
+body {
+  min-width: 1280px;
+  min-height: 800px;
+}
+
+html {
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * Desktop body density: 13.5 px / 500 — comparable to macOS system text.
+ * Marketing-web 17 px is too large for a tool that surfaces tables, logs,
+ * sliders, and stat grids.
+ */
+body {
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role='button']:focus-visible,
+[role='radio']:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: rgba(61, 53, 48, 0.18);
+}
+
+.tnum {
+  font-feature-settings: 'tnum';
+}
