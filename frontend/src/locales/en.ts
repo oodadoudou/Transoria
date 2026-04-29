@@ -315,6 +315,8 @@ export const en: Messages = {
         preset: "Preset",
       },
       empty: "No glossary entries yet. Click + Add to create one.",
+      importEmpty:
+        "File parsed successfully but contained no importable entries.",
       stats: {
         total: "{n} entries",
         enabled: "{n} enabled",
@@ -505,6 +507,16 @@ export const en: Messages = {
       preset: {
         title: "Preset Models",
         sub: "Built-in entries shipped with the application. Settings are editable; entries cannot be deleted.",
+      },
+      configured: {
+        title: "Configured Models",
+        sub: "Custom models you added. Click 'Set as active' to apply, or edit / delete entries.",
+        empty:
+          "No custom models yet. Use '+ Add Model' in the top right to create one.",
+        applyAction: "Set as active",
+        appliedBadge: "Active",
+        editAction: "Edit",
+        deleteAction: "Delete",
       },
       customOpenai: {
         title: "Custom OpenAI Models",

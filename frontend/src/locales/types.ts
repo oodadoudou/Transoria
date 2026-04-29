@@ -274,6 +274,7 @@ export interface Messages {
         preset: string;
       };
       empty: string;
+      importEmpty: string;
       stats: {
         total: string;
         enabled: string;
@@ -433,6 +434,15 @@ export interface Messages {
     pageSub: string;
     sections: {
       preset: { title: string; sub: string };
+      configured: {
+        title: string;
+        sub: string;
+        empty: string;
+        applyAction: string;
+        appliedBadge: string;
+        editAction: string;
+        deleteAction: string;
+      };
       customOpenai: { title: string; sub: string };
       customGoogle: { title: string; sub: string };
       customAnthropic: { title: string; sub: string };

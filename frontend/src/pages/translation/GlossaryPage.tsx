@@ -1,5 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format, useMessages } from "@/locales";
+import {
+  BridgeError,
+  dialogsBridge,
+  glossaryBridge,
+} from "@/bridge";
 import { useTaskStore, type GlossaryEntry } from "@/store/useTaskStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
@@ -7,7 +12,11 @@ import { Pill } from "@/components/Pill";
 import { TextField } from "@/components/TextField";
 import { Segmented } from "@/components/Segmented";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
-import styles from "./GlossaryPage.module.css";
+import {
+  RuleTable,
+  type RuleTableColumn,
+  ruleTableStyles,
+} from "@/components/RuleTable";
 
 type Toggle = "on" | "off";
 
@@ -59,10 +68,8 @@ export function GlossaryPage() {
   const moduleSettings = useModuleSettings("translation");
   const draft = moduleSettings.draft;
   const isHydrated = moduleSettings.isHydrated;
+  const [importError, setImportError] = useState<string | null>(null);
 
-  // One-time hydration from settings → in-memory store on first load.
-  // The local store is the edit buffer; settings is the persistence
-  // layer threaded into TranslationConfig at run start.
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -78,24 +85,88 @@ export function GlossaryPage() {
     }
   }, [draft, isHydrated, importEntries]);
 
-  // Sync edits from the in-memory store back to settings (debounced
-  // by ``useModuleSettings.update``). Skipped until hydration completes
-  // so we don't blank the persisted entries with the empty initial
-  // store on first mount.
   useEffect(() => {
     if (!hydratedRef.current) return;
     moduleSettings.update(
       "translation_glossary",
       state.entries.map(entryToPersisted),
     );
-    // moduleSettings.update is referentially stable across renders;
-    // the linter wants it in deps but adding it would re-fire the
-    // effect unnecessarily.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.entries]);
 
-  const selected = state.entries.find((e) => e.id === state.selectedId) ?? null;
+  const selectedIndex = state.selectedId
+    ? state.entries.findIndex((e) => e.id === state.selectedId)
+    : -1;
+  const selected = selectedIndex >= 0 ? state.entries[selectedIndex] : null;
   const enabledCount = state.entries.filter((e) => e.enabled).length;
+
+  const handleImport = async () => {
+    setImportError(null);
+    try {
+      const choice = await dialogsBridge.chooseGlossaryFile({
+        allowJson: true,
+        allowXlsx: true,
+      });
+      if (!choice.path) return;
+      const result = await glossaryBridge.importRules(choice.path);
+      const incoming: GlossaryEntry[] = result.entries.map((entry, idx) => ({
+        id: `g-imp-${Date.now()}-${idx}`,
+        source: entry.src,
+        translation: entry.dst,
+        description: entry.info,
+        caseSensitive: entry.case_sensitive,
+        enabled: entry.enabled,
+      }));
+      if (incoming.length === 0) {
+        setImportError(g.importEmpty);
+        return;
+      }
+      importEntries([...state.entries, ...incoming]);
+    } catch (error) {
+      setImportError(
+        BridgeError.isBridgeError(error)
+          ? `${error.code}: ${error.message}`
+          : String(error),
+      );
+    }
+  };
+
+  const columns: RuleTableColumn<GlossaryEntry>[] = [
+    {
+      key: "source",
+      label: g.columns.source,
+      width: "1.4fr",
+      render: (entry) => entry.source,
+    },
+    {
+      key: "translation",
+      label: g.columns.translation,
+      width: "1.4fr",
+      render: (entry) => entry.translation,
+    },
+    {
+      key: "description",
+      label: g.columns.description,
+      width: "1.6fr",
+      render: (entry) => (
+        <span className={ruleTableStyles.cellMuted}>{entry.description}</span>
+      ),
+    },
+    {
+      key: "rule",
+      label: g.columns.rule,
+      width: "56px",
+      align: "right",
+      render: (entry) => (
+        <span
+          className={`${ruleTableStyles.ruleChip} ${entry.caseSensitive ? ruleTableStyles.ruleChipOn : ""}`.trim()}
+          title="Aa"
+        >
+          Aa
+        </span>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -119,69 +190,43 @@ export function GlossaryPage() {
         label={format(g.stats.total, { n: state.entries.length })}
         labelExtra={<span>{format(g.stats.enabled, { n: enabledCount })}</span>}
       >
-        <div className={styles.editorGrid}>
-          <div className={styles.tableWrap}>
-            <div className={styles.tableHeader}>
-              <span className={styles.colIndex}>#</span>
-              <span>{g.columns.source}</span>
-              <span>{g.columns.translation}</span>
-              <span>{g.columns.description}</span>
-              <span className={styles.colRule}>{g.columns.rule}</span>
-            </div>
-            {state.entries.length === 0 ? (
-              <div className={styles.empty}>{g.empty}</div>
-            ) : (
-              state.entries.map((entry, index) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className={`${styles.row} ${
-                    state.selectedId === entry.id ? styles.rowActive : ""
-                  } ${entry.enabled ? "" : styles.rowDisabled}`.trim()}
-                  onClick={() => setSelectedId(entry.id)}
-                >
-                  <span className={`${styles.colIndex} tnum`}>{index + 1}</span>
-                  <span className={styles.cell}>{entry.source}</span>
-                  <span className={styles.cell}>{entry.translation}</span>
-                  <span className={`${styles.cell} ${styles.cellMuted}`}>
-                    {entry.description}
-                  </span>
-                  <span className={styles.colRule}>
-                    <span
-                      className={`${styles.ruleChip} ${
-                        entry.caseSensitive ? styles.ruleChipOn : ""
-                      }`.trim()}
-                      title={entry.caseSensitive ? "Aa" : "Aa (insensitive)"}
-                    >
-                      Aa
-                    </span>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-
-          <aside className={styles.sidebar}>
-            {selected ? (
+        <RuleTable
+          rules={state.entries}
+          selectedIndex={selectedIndex >= 0 ? selectedIndex : null}
+          onSelectIndex={(idx) =>
+            setSelectedId(idx === null ? null : state.entries[idx]?.id ?? null)
+          }
+          isEnabled={(entry) => entry.enabled}
+          columns={columns}
+          emptyMessage={g.empty}
+          editor={
+            selected ? (
               <EntryEditor
                 entry={selected}
                 onChange={(updates) => updateEntry(selected.id, updates)}
                 onDelete={() => deleteEntry(selected.id)}
               />
             ) : (
-              <div className={styles.editorEmpty}>{g.editor.empty}</div>
-            )}
-          </aside>
-        </div>
+              <div className={ruleTableStyles.editorEmpty}>
+                {g.editor.empty}
+              </div>
+            )
+          }
+          toolbar={[
+            { label: g.actions.add, onClick: addEntry, primary: true },
+            { label: g.actions.import, onClick: () => void handleImport() },
+            { label: g.actions.export, onClick: () => undefined },
+            { label: g.actions.search, onClick: () => undefined },
+            { label: g.actions.statistics, onClick: () => undefined },
+            { label: g.actions.preset, onClick: () => undefined },
+          ]}
+        />
 
-        <div className={styles.toolbar}>
-          <ToolbarBtn label={g.actions.add} onClick={addEntry} primary />
-          <ToolbarBtn label={g.actions.import} />
-          <ToolbarBtn label={g.actions.export} />
-          <ToolbarBtn label={g.actions.search} />
-          <ToolbarBtn label={g.actions.statistics} />
-          <ToolbarBtn label={g.actions.preset} />
-        </div>
+        {importError ? (
+          <div style={{ marginTop: 12, fontSize: 12, color: "#b04038" }}>
+            {importError}
+          </div>
+        ) : null}
       </Panel>
     </>
   );
@@ -198,9 +243,8 @@ function EntryEditor({
 }) {
   const messages = useMessages();
   const { glossaryPage: g } = messages.translation;
-
   return (
-    <div className={styles.editor}>
+    <div className={ruleTableStyles.editor}>
       <TextField
         label={g.editor.source}
         value={entry.source}
@@ -230,32 +274,11 @@ function EntryEditor({
         checked={entry.enabled}
         onChange={(next) => onChange({ enabled: next })}
       />
-      <div className={styles.editorActions}>
+      <div className={ruleTableStyles.editorActions}>
         <Pill variant="ghost" onClick={onDelete}>
           {g.actions.delete}
         </Pill>
       </div>
     </div>
-  );
-}
-
-function ToolbarBtn({
-  label,
-  onClick,
-  primary,
-}: {
-  label: string;
-  onClick?: () => void;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={`${styles.toolbarBtn} ${primary ? styles.toolbarBtnPrimary : ""}`.trim()}
-      onClick={onClick}
-    >
-      {primary ? "+ " : ""}
-      {label}
-    </button>
   );
 }

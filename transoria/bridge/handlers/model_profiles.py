@@ -66,6 +66,18 @@ def _build_handlers(
             ]
         }
 
+    def read_full(payload: Mapping[str, object]) -> dict[str, object]:
+        profile_id = expect_string(payload, "id")
+        profiles = profile_store.load()
+        match = next((p for p in profiles if p.id == profile_id), None)
+        if match is None:
+            raise BridgeError.not_found(
+                f"profile not found: {profile_id!r}",
+                details={"id": profile_id},
+            )
+        body = _profile_to_dict(match, profile_store.api_key_status(profile_id))
+        return {"profile": body, "api_keys": list(match.api_keys)}
+
     def create(payload: Mapping[str, object]) -> dict[str, object]:
         body = payload.get("profile")
         if not isinstance(body, Mapping):
@@ -264,6 +276,7 @@ def _build_handlers(
 
     return {
         "model_profiles.list": list_profiles,
+        "model_profiles.read_full": read_full,
         "model_profiles.create": create,
         "model_profiles.update": update,
         "model_profiles.delete": delete,

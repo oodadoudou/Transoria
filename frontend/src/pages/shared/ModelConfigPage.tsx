@@ -79,41 +79,78 @@ export function ModelConfigPage({ owner }: ModelConfigPageProps) {
         </Panel>
       ) : null}
 
-      <Panel
-        label={m.sections.preset.title}
-        labelExtra={
-          <div className={styles.presetActions}>
-            <span>{m.sections.preset.sub}</span>
-            <Pill
-              variant="ghost"
-              onClick={() => setModalState({ mode: "create" })}
+      {(() => {
+        const seeded = store.profiles.filter((p) => p.id.startsWith("preset-"));
+        const configured = store.profiles.filter(
+          (p) => !p.id.startsWith("preset-"),
+        );
+        const cfg = m.sections.configured;
+        return (
+          <>
+            <Panel
+              label={m.sections.preset.title}
+              labelExtra={
+                <div className={styles.presetActions}>
+                  <span>{m.sections.preset.sub}</span>
+                </div>
+              }
             >
-              + {modelExtra.addCustom}
-            </Pill>
-          </div>
-        }
-      >
-        <div className={styles.chipGrid}>
-          {store.profiles.map((profile) => (
-            <ModelChip
-              key={profile.id}
-              profile={profile}
-              active={profile.id === activeId}
-              editing={
-                modalState?.mode === "edit" &&
-                modalState.profileId === profile.id
+              <div className={styles.chipGrid}>
+                {seeded.map((profile) => (
+                  <ModelChip
+                    key={profile.id}
+                    profile={profile}
+                    active={profile.id === activeId}
+                    editing={
+                      modalState?.mode === "edit" &&
+                      modalState.profileId === profile.id
+                    }
+                    activeBadge={modelExtra.activeBadge}
+                    onEdit={() =>
+                      setModalState({ mode: "edit", profileId: profile.id })
+                    }
+                  />
+                ))}
+              </div>
+            </Panel>
+
+            <Panel
+              label={cfg.title}
+              labelExtra={
+                <div className={styles.presetActions}>
+                  <span>{cfg.sub}</span>
+                  <Pill
+                    variant="ghost"
+                    onClick={() => setModalState({ mode: "create" })}
+                  >
+                    + {modelExtra.addCustom}
+                  </Pill>
+                </div>
               }
-              activeBadge={modelExtra.activeBadge}
-              onEdit={() =>
-                setModalState({ mode: "edit", profileId: profile.id })
-              }
-            />
-          ))}
-        </div>
-        {store.profiles.length === 0 ? (
-          <div className={styles.empty}>{m.empty}</div>
-        ) : null}
-      </Panel>
+            >
+              {configured.length === 0 ? (
+                <div className={styles.empty}>{cfg.empty}</div>
+              ) : (
+                <div className={styles.configuredList}>
+                  {configured.map((profile) => (
+                    <ConfiguredModelRow
+                      key={profile.id}
+                      profile={profile}
+                      active={profile.id === activeId}
+                      labels={cfg}
+                      onApply={() => void handleSetActive(profile.id)}
+                      onEdit={() =>
+                        setModalState({ mode: "edit", profileId: profile.id })
+                      }
+                      onDelete={() => void store.deleteProfile(profile.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </Panel>
+          </>
+        );
+      })()}
 
       {modalState ? (
         <ModelProfileModal
@@ -180,5 +217,56 @@ function ModelChip({
         <ChevronDownIcon size={14} />
       )}
     </button>
+  );
+}
+
+interface ConfiguredModelRowProps {
+  profile: ModelProfile;
+  active: boolean;
+  labels: {
+    applyAction: string;
+    appliedBadge: string;
+    editAction: string;
+    deleteAction: string;
+  };
+  onApply: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function ConfiguredModelRow({
+  profile,
+  active,
+  labels,
+  onApply,
+  onEdit,
+  onDelete,
+}: ConfiguredModelRowProps) {
+  return (
+    <div
+      className={`${styles.configuredRow} ${active ? styles.configuredRowActive : ""}`}
+    >
+      <div className={styles.configuredText}>
+        <span className={styles.configuredName}>{profile.display_name}</span>
+        <span className={styles.configuredMeta}>
+          {profile.provider_format} · {profile.model_id}
+        </span>
+      </div>
+      <div className={styles.configuredActions}>
+        {active ? (
+          <span className={styles.configuredBadge}>{labels.appliedBadge}</span>
+        ) : (
+          <Pill variant="ghost" onClick={onApply}>
+            {labels.applyAction}
+          </Pill>
+        )}
+        <Pill variant="ghost" onClick={onEdit}>
+          {labels.editAction}
+        </Pill>
+        <Pill variant="ghost" onClick={onDelete}>
+          {labels.deleteAction}
+        </Pill>
+      </div>
+    </div>
   );
 }

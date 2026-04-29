@@ -304,6 +304,7 @@ export const zh: Messages = {
         preset: "预设",
       },
       empty: "暂无术语条目。点击 + 新增 添加一条。",
+      importEmpty: "文件解析成功,但没有可导入的条目。",
       stats: {
         total: "共 {n} 条",
         enabled: "已启用 {n} 条",
@@ -489,6 +490,15 @@ export const zh: Messages = {
       preset: {
         title: "预设模型",
         sub: "应用内置条目。可改配置,不可删除。",
+      },
+      configured: {
+        title: "已配置模型",
+        sub: "你新增的自定义模型。点击「设为当前」应用,或编辑 / 删除条目。",
+        empty: "暂无自定义模型。点击右上角「+ 新增模型」添加一个。",
+        applyAction: "设为当前",
+        appliedBadge: "当前",
+        editAction: "编辑",
+        deleteAction: "删除",
       },
       customOpenai: {
         title: "自定义 OpenAI 模型",

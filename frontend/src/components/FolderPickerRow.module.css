@@ -51,11 +51,13 @@
 .pickBtn {
   border: 1px solid var(--hairline-strong, #d8d2c7);
   background: var(--panel, #fff);
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
   font: inherit;
+  font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  align-self: center;
 }
 
 .pickBtn:hover {

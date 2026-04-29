@@ -122,6 +122,9 @@ def build_default_router(
     from transoria.bridge.handlers.prompts import (  # noqa: PLC0415
         register as register_prompts,
     )
+    from transoria.bridge.handlers.glossary_imports import (  # noqa: PLC0415
+        register as register_glossary_imports,
+    )
     from transoria.bridge.handlers.replacement import (  # noqa: PLC0415
         register_parsers as register_replacement_parsers,
         register_tasks as register_replacement_tasks,
@@ -179,6 +182,7 @@ def build_default_router(
     register_dialogs(router, provider=dialog_provider or NullDialogProvider())
     register_replacement_parsers(router)
     register_replacement_tasks(router, service=task_service)
+    register_glossary_imports(router)
     register_updates(
         router,
         checker=update_checker or NullUpdateChecker(current_version=current_version),

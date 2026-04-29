@@ -211,12 +211,11 @@ class _PywebviewDialogProvider:
     ) -> str | None:
         import webview  # noqa: PLC0415
 
-        file_types = (
-            tuple(f"All ({' '.join(f'*.{ext}' for ext in extensions)})|"
-                  f"{';'.join(f'*.{ext}' for ext in extensions)}",)
-            if extensions
-            else ()
-        )
+        if extensions:
+            pattern = ";".join(f"*.{ext}" for ext in extensions)
+            file_types = (f"Files ({pattern})", "All files (*.*)")
+        else:
+            file_types = ()
         result = self._w.create_file_dialog(
             webview.OPEN_DIALOG,
             directory=initial_path or "",

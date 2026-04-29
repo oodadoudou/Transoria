@@ -115,6 +115,9 @@ export const modelProfilesBridge = {
   delete(id: string): Promise<Record<string, never>> {
     return call("model_profiles.delete", { id });
   },
+  readFull(id: string): Promise<{ profile: ModelProfile; api_keys: string[] }> {
+    return call("model_profiles.read_full", { id });
+  },
   setApiKey(id: string, apiKeys: string[]): Promise<{ profile: ModelProfile }> {
     return call("model_profiles.set_api_key", { id, api_keys: apiKeys });
   },
@@ -289,6 +292,18 @@ export const glossaryBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("glossary.list_failed_subtasks", { task_id: taskId });
+  },
+  importRules(path: string): Promise<{
+    entries: Array<{
+      src: string;
+      dst: string;
+      info: string;
+      regex: boolean;
+      case_sensitive: boolean;
+      enabled: boolean;
+    }>;
+  }> {
+    return call("glossary.import_rules", { path });
   },
 };
 

@@ -236,6 +236,27 @@ export function ModelProfileModal({
       .catch((err) => setError(asBridgeError(err)));
   }, []);
 
+  // In edit mode, fetch the full profile to populate api_keys (the list
+  // endpoint returns only masked status; the modal needs the actual keys
+  // so the user can see what was saved instead of staring at an empty box).
+  useEffect(() => {
+    if (mode !== "edit" || !profile) return;
+    let cancelled = false;
+    void modelProfilesBridge
+      .readFull(profile.id)
+      .then((r) => {
+        if (cancelled) return;
+        const joined = r.api_keys.join("\n");
+        setDraft((prev) => ({ ...prev, api_keys: joined }));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(asBridgeError(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, profile?.id]);
+
   // For edit-mode hints, look up a matching template by
   // provider_format. Falls back to "custom" (description-only) so the
   // user still gets the generic field explanations.
@@ -572,6 +593,17 @@ function FormStep({
             onChange={(v) => update("model_id", v)}
             mono
           />
+          <Pill
+            variant="ghost"
+            onClick={onFetch}
+            disabled={
+              probeBusy !== null ||
+              draft.provider_format === "anthropic" ||
+              !hintTemplate?.supports_fetch_model_list
+            }
+          >
+            {probeBusy === "fetch" ? me.fetchRunning : me.fetchModels}
+          </Pill>
           {fetchedModels && fetchedModels.length > 0 ? (
             <select
               className={styles.modelPicker}
@@ -614,17 +646,6 @@ function FormStep({
         <div className={styles.actionRow}>
           <Pill onClick={onTest} disabled={probeBusy !== null}>
             {probeBusy === "test" ? me.testRunning : me.testConnection}
-          </Pill>
-          <Pill
-            variant="ghost"
-            onClick={onFetch}
-            disabled={
-              probeBusy !== null ||
-              draft.provider_format === "anthropic" ||
-              !hintTemplate?.supports_fetch_model_list
-            }
-          >
-            {probeBusy === "fetch" ? me.fetchRunning : me.fetchModels}
           </Pill>
         </div>
         {testResult ? (
@@ -685,6 +706,13 @@ function FormStep({
       <details className={styles.details}>
         <summary>{m.samplingLabel}</summary>
         <div className={styles.gridTwo}>
+          <FieldRow hint={renderHint("input_token_limit")}>
+            <NumberField
+              label={model.inputTokenLimit}
+              value={draft.input_token_limit}
+              onChange={(v) => update("input_token_limit", v)}
+            />
+          </FieldRow>
           <FieldRow hint={renderHint("max_output_tokens")}>
             <NumberField
               label={model.outputTokenLimit}
