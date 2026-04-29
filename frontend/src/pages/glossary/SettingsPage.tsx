@@ -4,13 +4,12 @@ import type { Language } from "@/bridge";
 import { Panel } from "@/components/Panel";
 import { NumberField } from "@/components/NumberField";
 import { Segmented } from "@/components/Segmented";
+import { LanguageSelect } from "@/components/LanguageSelect";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import styles from "./SettingsPage.module.css";
 
 type Toggle = "on" | "off";
-
-const LANGUAGE_IDS: Language[] = ["kr", "zh", "zh-Hant", "en", "ja"];
 
 export function SettingsPage() {
   const messages = useMessages();
@@ -21,11 +20,6 @@ export function SettingsPage() {
   if (!draft) {
     return <Panel title={settings.title} subtitle={settings.sub} />;
   }
-
-  const languageOptions = LANGUAGE_IDS.map((id) => ({
-    id,
-    label: messages.language.options[id],
-  }));
 
   return (
     <>
@@ -48,17 +42,15 @@ export function SettingsPage() {
 
       <Panel>
         <ToggleRow label={messages.language.sourceLabel} hint="">
-          <Segmented<Language>
+          <LanguageSelect
             ariaLabel={messages.language.sourceLabel}
-            options={languageOptions}
             value={draft.source_language as Language}
             onChange={(v) => moduleSettings.update("source_language", v)}
           />
         </ToggleRow>
         <ToggleRow label={messages.language.targetLabel} hint="">
-          <Segmented<Language>
+          <LanguageSelect
             ariaLabel={messages.language.targetLabel}
-            options={languageOptions}
             value={draft.target_language as Language}
             onChange={(v) => {
               moduleSettings.update("target_language", v);

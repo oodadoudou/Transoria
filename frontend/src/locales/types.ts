@@ -189,6 +189,19 @@ export interface Messages {
       "zh-Hant": string;
       en: string;
       ja: string;
+      ru: string;
+      ar: string;
+      de: string;
+      fr: string;
+      pl: string;
+      es: string;
+      it: string;
+      pt: string;
+      hu: string;
+      tr: string;
+      th: string;
+      id: string;
+      vi: string;
     };
     chineseFormSimplified: string;
     chineseFormTraditional: string;
@@ -276,6 +289,7 @@ export interface Messages {
       };
       empty: string;
       importEmpty: string;
+      searchPlaceholder: string;
       stats: {
         total: string;
         enabled: string;

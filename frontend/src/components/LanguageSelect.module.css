@@ -1,0 +1,27 @@
+.select {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--panel-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 32px 7px 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  min-width: 140px;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3e%3cpath fill='none' stroke='%237a7166' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M3 4.5L6 7.5L9 4.5'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.select:hover {
+  background-color: #ebeae3;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--hairline-strong);
+}

@@ -89,6 +89,12 @@ export const dialogsBridge = {
   chooseReplacementRulesFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, ["txt"]);
   },
+  chooseSavePath(
+    defaultFilename: string,
+    extensions: string[],
+  ): Promise<DialogPathResult> {
+    return nativeDialogs.chooseSavePath(defaultFilename, extensions);
+  },
   openDirectory(path: string): Promise<Record<string, never>> {
     return nativeDialogs.openDirectory(path);
   },
@@ -304,6 +310,19 @@ export const glossaryBridge = {
     }>;
   }> {
     return call("glossary.import_rules", { path });
+  },
+  exportRules(
+    path: string,
+    entries: Array<{
+      src: string;
+      dst: string;
+      info: string;
+      regex: boolean;
+      case_sensitive: boolean;
+      enabled: boolean;
+    }>,
+  ): Promise<{ path: string; count: number }> {
+    return call("glossary.export_rules", { path, entries });
   },
 };
 

@@ -1,7 +1,25 @@
 // Types mirror docs/active/frontend-backend-bridge-contract.md.
 // Keep wire format snake_case here; component code uses these directly.
 
-export type Language = "kr" | "zh" | "zh-Hant" | "en" | "ja";
+export type Language =
+  | "kr"
+  | "zh"
+  | "zh-Hant"
+  | "en"
+  | "ja"
+  | "ru"
+  | "ar"
+  | "de"
+  | "fr"
+  | "pl"
+  | "es"
+  | "it"
+  | "pt"
+  | "hu"
+  | "tr"
+  | "th"
+  | "id"
+  | "vi";
 
 export type TaskStatus =
   | "pending"

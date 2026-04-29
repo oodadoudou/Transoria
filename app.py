@@ -184,6 +184,16 @@ class _DeferredDialogProvider:
     ) -> str | None:
         return self._inner.choose_file(initial_path=initial_path, extensions=extensions)
 
+    def save_file(
+        self,
+        *,
+        default_filename: str = "",
+        extensions: tuple[str, ...] = (),
+    ) -> str | None:
+        return self._inner.save_file(
+            default_filename=default_filename, extensions=extensions
+        )
+
     def open_directory(self, path: str) -> None:
         self._inner.open_directory(path)
 
@@ -222,6 +232,28 @@ class _PywebviewDialogProvider:
             file_types=file_types,
         )
         return result[0] if result else None
+
+    def save_file(
+        self,
+        *,
+        default_filename: str = "",
+        extensions: tuple[str, ...] = (),
+    ) -> str | None:
+        import webview  # noqa: PLC0415
+
+        if extensions:
+            pattern = ";".join(f"*.{ext}" for ext in extensions)
+            file_types = (f"Files ({pattern})", "All files (*.*)")
+        else:
+            file_types = ()
+        result = self._w.create_file_dialog(
+            webview.SAVE_DIALOG,
+            save_filename=default_filename,
+            file_types=file_types,
+        )
+        if not result:
+            return None
+        return result if isinstance(result, str) else result[0]
 
     def open_directory(self, path: str) -> None:
         if sys.platform == "darwin":
@@ -265,6 +297,25 @@ def _build_native_api(dialog_provider: DialogProvider) -> object:
                 initial_path=body.get("initial_path")
                 if isinstance(body.get("initial_path"), str)
                 else None,
+                extensions=extensions,
+            )
+            return {"path": path}
+
+        def save_file(self, payload: dict | None = None) -> dict:
+            body = payload or {}
+            default_filename = (
+                body.get("default_filename")
+                if isinstance(body.get("default_filename"), str)
+                else ""
+            )
+            raw_extensions = body.get("extensions", ())
+            extensions = (
+                tuple(str(item) for item in raw_extensions)
+                if isinstance(raw_extensions, (list, tuple))
+                else ()
+            )
+            path = dialog_provider.save_file(
+                default_filename=default_filename or "",
                 extensions=extensions,
             )
             return {"path": path}

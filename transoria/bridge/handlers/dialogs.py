@@ -24,6 +24,13 @@ class DialogProvider(Protocol):
         self, *, initial_path: str | None, extensions: tuple[str, ...]
     ) -> str | None: ...
 
+    def save_file(
+        self,
+        *,
+        default_filename: str,
+        extensions: tuple[str, ...],
+    ) -> str | None: ...
+
     def open_directory(self, path: str) -> None: ...
 
     def reveal_file(self, path: str) -> None: ...
@@ -45,6 +52,14 @@ class NullDialogProvider:
         self,
         *,
         initial_path: str | None = None,
+        extensions: tuple[str, ...] = (),
+    ) -> str | None:
+        return None
+
+    def save_file(
+        self,
+        *,
+        default_filename: str = "",
         extensions: tuple[str, ...] = (),
     ) -> str | None:
         return None
@@ -152,6 +167,22 @@ def _build_handlers(provider: DialogProvider) -> dict[str, Callable[[Mapping[str
         )
         return {"path": path}
 
+    def choose_save_path(payload: Mapping[str, object]) -> dict[str, object]:
+        default_filename = (
+            _optional_string(payload, "default_filename") or ""
+        )
+        raw_exts = payload.get("extensions", ())
+        extensions: tuple[str, ...] = (
+            tuple(str(ext) for ext in raw_exts)
+            if isinstance(raw_exts, (list, tuple))
+            else ()
+        )
+        path = provider.save_file(
+            default_filename=default_filename,
+            extensions=extensions,
+        )
+        return {"path": path}
+
     def open_directory(payload: Mapping[str, object]) -> dict[str, object]:
         path = expect_string(payload, "path")
         if not Path(path).exists():
@@ -177,6 +208,7 @@ def _build_handlers(provider: DialogProvider) -> dict[str, Callable[[Mapping[str
         "dialogs.choose_output_directory": choose_output_directory,
         "dialogs.choose_glossary_file": choose_glossary_file,
         "dialogs.choose_replacement_rules_file": choose_replacement_rules_file,
+        "dialogs.choose_save_path": choose_save_path,
         "dialogs.open_directory": open_directory,
         "dialogs.reveal_file": reveal_file,
     }

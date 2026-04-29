@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { format, useMessages } from "@/locales";
-import {
-  BridgeError,
-  dialogsBridge,
-  glossaryBridge,
-} from "@/bridge";
+import { BridgeError, dialogsBridge, glossaryBridge } from "@/bridge";
 import { useTaskStore, type GlossaryEntry } from "@/store/useTaskStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
@@ -94,10 +90,23 @@ export function GlossaryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.entries]);
 
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredEntries = (() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!searchOpen || !query) return state.entries;
+    return state.entries.filter((e) =>
+      [e.source, e.translation, e.description].some((field) =>
+        field.toLowerCase().includes(query),
+      ),
+    );
+  })();
+
   const selectedIndex = state.selectedId
-    ? state.entries.findIndex((e) => e.id === state.selectedId)
+    ? filteredEntries.findIndex((e) => e.id === state.selectedId)
     : -1;
-  const selected = selectedIndex >= 0 ? state.entries[selectedIndex] : null;
+  const selected = selectedIndex >= 0 ? filteredEntries[selectedIndex] : null;
   const enabledCount = state.entries.filter((e) => e.enabled).length;
 
   const handleImport = async () => {
@@ -122,6 +131,34 @@ export function GlossaryPage() {
         return;
       }
       importEntries([...state.entries, ...incoming]);
+    } catch (error) {
+      setImportError(
+        BridgeError.isBridgeError(error)
+          ? `${error.code}: ${error.message}`
+          : String(error),
+      );
+    }
+  };
+
+  const handleExport = async () => {
+    setImportError(null);
+    try {
+      const choice = await dialogsBridge.chooseSavePath("glossary.json", [
+        "json",
+        "xlsx",
+      ]);
+      if (!choice.path) return;
+      await glossaryBridge.exportRules(
+        choice.path,
+        state.entries.map((entry) => ({
+          src: entry.source,
+          dst: entry.translation,
+          info: entry.description,
+          regex: false,
+          case_sensitive: entry.caseSensitive,
+          enabled: entry.enabled,
+        })),
+      );
     } catch (error) {
       setImportError(
         BridgeError.isBridgeError(error)
@@ -190,11 +227,32 @@ export function GlossaryPage() {
         label={format(g.stats.total, { n: state.entries.length })}
         labelExtra={<span>{format(g.stats.enabled, { n: enabledCount })}</span>}
       >
+        {searchOpen ? (
+          <input
+            type="text"
+            placeholder={g.searchPlaceholder}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoFocus
+            style={{
+              width: "100%",
+              marginTop: 8,
+              padding: "8px 12px",
+              border: "1px solid var(--hairline-strong)",
+              borderRadius: 8,
+              font: "inherit",
+              fontSize: 13,
+              background: "var(--panel)",
+            }}
+          />
+        ) : null}
         <RuleTable
-          rules={state.entries}
+          rules={filteredEntries}
           selectedIndex={selectedIndex >= 0 ? selectedIndex : null}
           onSelectIndex={(idx) =>
-            setSelectedId(idx === null ? null : state.entries[idx]?.id ?? null)
+            setSelectedId(
+              idx === null ? null : (filteredEntries[idx]?.id ?? null),
+            )
           }
           isEnabled={(entry) => entry.enabled}
           columns={columns}
@@ -215,8 +273,16 @@ export function GlossaryPage() {
           toolbar={[
             { label: g.actions.add, onClick: addEntry, primary: true },
             { label: g.actions.import, onClick: () => void handleImport() },
-            { label: g.actions.export, onClick: () => undefined },
-            { label: g.actions.search, onClick: () => undefined },
+            { label: g.actions.export, onClick: () => void handleExport() },
+            {
+              label: g.actions.search,
+              onClick: () => {
+                setSearchOpen((prev) => {
+                  if (prev) setSearchQuery("");
+                  return !prev;
+                });
+              },
+            },
             { label: g.actions.statistics, onClick: () => undefined },
             { label: g.actions.preset, onClick: () => undefined },
           ]}

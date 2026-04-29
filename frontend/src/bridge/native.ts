@@ -9,6 +9,10 @@ interface NativeApi {
     initial_path?: string;
     extensions?: string[];
   }) => Promise<DialogPathResult> | DialogPathResult;
+  save_file?: (payload?: {
+    default_filename?: string;
+    extensions?: string[];
+  }) => Promise<DialogPathResult> | DialogPathResult;
   open_directory?: (payload: {
     path: string;
   }) => Promise<Record<string, unknown>> | Record<string, unknown>;
@@ -66,6 +70,17 @@ export const nativeDialogs = {
       path: result.path,
       format: inferGlossaryFormat(result.path),
     };
+  },
+
+  async chooseSavePath(
+    defaultFilename: string,
+    extensions: string[],
+  ): Promise<DialogPathResult> {
+    const handler = nativeApi().save_file;
+    if (!handler) {
+      throw missing("save_file");
+    }
+    return handler({ default_filename: defaultFilename, extensions });
   },
 
   async openDirectory(path: string): Promise<Record<string, never>> {

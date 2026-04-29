@@ -16,6 +16,19 @@ class Language(str, Enum):
     CHINESE_TRADITIONAL = "zh-Hant"
     ENGLISH = "en"
     JAPANESE = "ja"
+    RUSSIAN = "ru"
+    ARABIC = "ar"
+    GERMAN = "de"
+    FRENCH = "fr"
+    POLISH = "pl"
+    SPANISH = "es"
+    ITALIAN = "it"
+    PORTUGUESE = "pt"
+    HUNGARIAN = "hu"
+    TURKISH = "tr"
+    THAI = "th"
+    INDONESIAN = "id"
+    VIETNAMESE = "vi"
 
 
 class TaskStatus(str, Enum):
