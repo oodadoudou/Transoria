@@ -1,16 +1,16 @@
 .activeStrip {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 6px;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 .activeCard {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 8px 12px;
   background: var(--panel-soft);
   border-radius: var(--radius-inset);
 }
@@ -18,12 +18,12 @@
 .activeMeta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .activeLabel {
-  font-size: 10.5px;
+  font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--muted);
@@ -31,7 +31,7 @@
 }
 
 .activePrimary {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--ink);
   letter-spacing: -0.01em;
@@ -41,7 +41,7 @@
 }
 
 .activeSecondary {
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: var(--muted);
   font-family: var(--font-mono);
   overflow: hidden;
@@ -54,9 +54,9 @@
   border: 0;
   color: var(--action);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;

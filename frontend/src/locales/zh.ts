@@ -54,6 +54,7 @@ export const zh: Messages = {
     dedupeLabel: "源语言与目标语言相同时不生成双语文件",
     dedupeHint: "若源/目标语言标签相同，仅输出翻译版本。",
     subfolderLabel: "双语子文件夹名称",
+    subfolderDefault: "双语译文",
   },
   fieldHint: {
     toggleLabel: "显示字段说明",

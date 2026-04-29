@@ -49,6 +49,7 @@ export interface Messages {
     dedupeLabel: string;
     dedupeHint: string;
     subfolderLabel: string;
+    subfolderDefault: string;
   };
   fieldHint: {
     toggleLabel: string;

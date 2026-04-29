@@ -26,8 +26,6 @@ export function SettingsPage() {
     id,
     label: messages.language.options[id],
   }));
-  const targetIsChinese =
-    draft.target_language === "zh" || draft.target_language === "zh-Hant";
 
   return (
     <>
@@ -62,28 +60,15 @@ export function SettingsPage() {
             ariaLabel={messages.language.targetLabel}
             options={languageOptions}
             value={draft.target_language as Language}
-            onChange={(v) => moduleSettings.update("target_language", v)}
+            onChange={(v) => {
+              moduleSettings.update("target_language", v);
+              moduleSettings.update(
+                "chinese_output_form",
+                v === "zh-Hant" ? "traditional" : "simplified",
+              );
+            }}
           />
         </ToggleRow>
-        {targetIsChinese ? (
-          <ToggleRow label="" hint="">
-            <Segmented<"simplified" | "traditional">
-              ariaLabel="Chinese output form"
-              options={[
-                {
-                  id: "simplified",
-                  label: messages.language.chineseFormSimplified,
-                },
-                {
-                  id: "traditional",
-                  label: messages.language.chineseFormTraditional,
-                },
-              ]}
-              value={draft.chinese_output_form}
-              onChange={(v) => moduleSettings.update("chinese_output_form", v)}
-            />
-          </ToggleRow>
-        ) : null}
       </Panel>
 
       <Panel>

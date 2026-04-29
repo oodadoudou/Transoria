@@ -55,6 +55,7 @@ export const en: Messages = {
     dedupeHint:
       "If source and target language tags match, only emit the translated file.",
     subfolderLabel: "Bilingual subfolder name",
+    subfolderDefault: "bilingual outputs",
   },
   fieldHint: {
     toggleLabel: "Show field hint",
