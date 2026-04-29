@@ -466,17 +466,11 @@ export const zh: Messages = {
     active: "当前预设",
     activeHint: "本模块的每一次请求都会使用此预设。",
     available: "可用预设",
-    availableHint:
-      "默认预设来自 LinguaGacha 与 KeywordGacha,不可删除,只能复制为新预设。",
+    availableHint: "默认预设由本项目种子,不可删除,只能复制为新预设后再修改。",
     preview: "预览",
     previewSystem: "系统提示",
     previewSuffix: "后缀",
     previewThinking: "推理补充段",
-    sourceLabel: {
-      linguagacha: "LinguaGacha",
-      keywordgacha: "KeywordGacha",
-      custom: "自定义",
-    },
     badgeDefault: "默认",
     badgeCustom: "自定义",
     actions: {

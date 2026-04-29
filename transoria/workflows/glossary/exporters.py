@@ -9,7 +9,7 @@ All three files share the hyphen-separated naming convention required by
 
 The XLSX columns are ``src``, ``dst``, ``info``, ``regex``, ``frequency``;
 the JSON content matches column-for-column; and the references TXT uses the
-KeywordGacha-style Chinese-labeled blocks shown in the design doc.
+Chinese-labeled block format described in the design doc.
 """
 
 from __future__ import annotations

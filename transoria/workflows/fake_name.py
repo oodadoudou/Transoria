@@ -1,13 +1,13 @@
 """Fake-name protection roster used by Translation and Glossary Extraction.
 
-LinguaGacha and KeywordGacha mask rare CJK characters with safe Latin
-placeholders before sending text to the LLM, then restore the originals on
-the way back. The technique helps when a model would otherwise transliterate
-or "smooth out" unusual proper nouns.
+Rare CJK characters and bracketed control codes are masked with safe Latin
+placeholders before the prompt is sent to the LLM, then restored on the way
+back. This prevents the model from silently transliterating or "smoothing
+out" unusual proper nouns.
 
-This module keeps two compatible entry points: :class:`FakeNameRoster` for
-caller-supplied static mappings, and :class:`FakeNameSession` for per-task
-automatic KG-style masking with serializable state.
+Two entry points: :class:`FakeNameRoster` for caller-supplied static
+mappings, and :class:`FakeNameSession` for per-task automatic masking with
+serializable state.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ DEFAULT_FAKE_NAMES: tuple[str, ...] = (
     "空木凪",
 )
 
-_KG_CODE_RE = re.compile(r"\\n{1,2}\[\d+\]", re.IGNORECASE)
+_BRACKET_CODE_RE = re.compile(r"\\n{1,2}\[\d+\]", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -93,11 +93,11 @@ class FakeNameRoster:
 
 @dataclass
 class FakeNameSession:
-    """Per-task fake-name mapper with KG-style automatic token detection."""
+    """Per-task fake-name mapper with automatic token detection."""
 
     mapping: dict[str, str] = field(default_factory=dict)
     default_names: tuple[str, ...] = DEFAULT_FAKE_NAMES
-    detect_kg_codes: bool = True
+    detect_bracket_codes: bool = True
     detect_rare_cjk: bool = True
 
     def is_empty(self) -> bool:
@@ -129,7 +129,7 @@ class FakeNameSession:
         return {
             "mapping": dict(self.mapping),
             "default_names": list(self.default_names),
-            "detect_kg_codes": self.detect_kg_codes,
+            "detect_bracket_codes": self.detect_bracket_codes,
             "detect_rare_cjk": self.detect_rare_cjk,
         }
 
@@ -150,14 +150,14 @@ class FakeNameSession:
         return cls(
             mapping=mapping,
             default_names=names,
-            detect_kg_codes=bool(data.get("detect_kg_codes", True)),
+            detect_bracket_codes=bool(data.get("detect_bracket_codes", True)),
             detect_rare_cjk=bool(data.get("detect_rare_cjk", True)),
         )
 
     def _detect_tokens(self, text: str) -> tuple[str, ...]:
         seen: dict[str, None] = {}
-        if self.detect_kg_codes:
-            for match in _KG_CODE_RE.finditer(text):
+        if self.detect_bracket_codes:
+            for match in _BRACKET_CODE_RE.finditer(text):
                 seen.setdefault(match.group(0), None)
         if self.detect_rare_cjk:
             for char in text:

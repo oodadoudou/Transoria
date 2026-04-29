@@ -116,10 +116,10 @@ def decode_translation_jsonl(raw: str) -> TranslationDecodeResult:
 def decode_glossary_jsonl(raw: str) -> GlossaryDecodeResult:
     """Parse a JSONL response of the form ``{"src":..,"dst":..,"type":..}``.
 
-    The decoder normalises the KeywordGacha-style ``type`` field to ``info`` so
-    downstream code only ever has to look at one name. Rows missing ``src`` or
-    ``dst`` are reported as issues and skipped; rows missing ``type``/``info``
-    pass through with an empty ``info``.
+    The decoder accepts both ``type`` and ``info`` keys and normalises to
+    ``info`` so downstream code only ever sees one name. Rows missing ``src``
+    or ``dst`` are reported as issues and skipped; rows missing ``type`` /
+    ``info`` pass through with an empty ``info``.
     """
 
     entries: list[GlossaryEntry] = []

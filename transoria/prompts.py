@@ -1,12 +1,12 @@
 """Prompt preset library for Translation and Glossary Extraction.
 
 Translation and Glossary Extraction each have their own preset library, stored
-as ``prompts.translation.json`` and ``prompts.glossary.json``. Default presets
-are seeded from the LinguaGacha and KeywordGacha reference templates and frozen
-into this module so the package is self-contained at runtime.
+as ``prompts.translation.json`` and ``prompts.glossary.json``. The seeded
+defaults are frozen into this module so the package is self-contained at
+runtime.
 
 If the user has not selected a preset (or the selected id is missing/disabled),
-the active preset falls back to the seeded default of the matching kind.
+the active preset falls back to the primary seeded default of the matching kind.
 """
 
 from __future__ import annotations
@@ -101,15 +101,11 @@ def build_prompt(
 ) -> str:
     """Assemble the preset into a single prompt string.
 
-    Order matches LinguaGacha: ``system_prompt`` → ``thinking_prompt`` (only when
-    ``thinking`` is ``True`` and the preset has one) → ``suffix_prompt``. Only
-    the named placeholders in ``_PLACEHOLDER_NAMES`` are substituted, so literal
-    braces in JSONL examples (e.g. ``{"<INDEX>":"<Translated Text>"}``) survive
+    Order: ``system_prompt`` → ``thinking_prompt`` (only when ``thinking`` is
+    ``True`` and the preset has one) → ``suffix_prompt``. Only the named
+    placeholders in ``_PLACEHOLDER_NAMES`` are substituted, so literal braces
+    in JSONL examples (e.g. ``{"<INDEX>":"<Translated Text>"}``) survive
     untouched.
-
-    The caller (typically the LLM client) decides whether ``thinking`` is on
-    based on the configured model's thinking level. If the preset has no
-    thinking text, the LG default behavior is preserved regardless of flag.
     """
 
     parts: list[str] = [preset.system_prompt]
@@ -123,126 +119,247 @@ def build_prompt(
 
 
 # ---------------------------------------------------------------------------
-# Default presets (frozen from references/LinguaGacha-main and references/KeywordGacha-main).
+# Default presets
 # ---------------------------------------------------------------------------
 
-DEFAULT_TRANSLATION_PRESET_ID = "default-translation-en"
-DEFAULT_GLOSSARY_PRESET_ID = "default-glossary-en"
+DEFAULT_TRANSLATION_PRESET_ID = "default-translation-zh"
+DEFAULT_GLOSSARY_PRESET_ID = "default-glossary-zh"
+DEFAULT_TRANSLATION_EN_ID = "default-translation-en"
+DEFAULT_GLOSSARY_EN_ID = "default-glossary-en"
 
 
-_DEFAULT_TRANSLATION_SYSTEM_PROMPT = (
-    "The goal is to translate the content text into {target_language}:\n"
-    "\n"
-    "- Correctly understand the subject-predicate relationship based on context;"
-    " use personal pronouns accurately.\n"
-    "- The line count of the translation must strictly correspond to the original"
-    " text; merging or splitting lines is strictly prohibited.\n"
-    "- The translation should be vivid, natural, and colloquial; avoid overly"
-    " formal phrasing unless the original text is explicitly formal.\n"
-    "- The details and style of the original text must be faithfully reproduced;"
-    " do not evade, dilute, or sanitize descriptions, even if they contain"
-    " explicit, vulgar, or extreme content.\n"
-    "- Translate all readable natural language content completely; preserve"
-    " control characters that do not convey natural language semantics exactly"
-    " as they are.\n"
-    "- If a line contains both natural language and control characters, translate"
-    " only the natural language part.\n"
-    "    - \u2705 Dialogue, narration, onomatopoeia, interjections, proper nouns,"
-    " and specific terms enclosed in punctuation (e.g., book titles, quotes).\n"
-    "    - \u274c Variables/placeholders, escape sequences, tags and style"
-    " markers, code/expressions, IDs/keys/file paths/URLs."
-)
+_TRANSLATION_SYSTEM_ZH = """\
+角色：资深小说翻译家。
+任务：将原文译为 {target_language}，要求精准、流畅、忠实于原文。
 
-_DEFAULT_TRANSLATION_SUFFIX_PROMPT = (
-    "Then use JSONLINE to output translation results, without extra explanation"
-    " or clarification:\n"
-    "```jsonline\n"
-    '{"<INDEX>":"<Translated Text>"}\n'
-    "```"
-)
+# 最高准则：语义绝对忠实
+- 允许：调整语序、替换更精准的近义词、补充逻辑连接词。
+- 禁止：增加原文不存在的内容、删减有效信息、为追求文笔而扭曲原意。
 
-_DEFAULT_GLOSSARY_SYSTEM_PROMPT = (
-    "Task goal is to extract a glossary of specified types from the text snippet"
-    " and translate it into {target_language}.\n"
-    "\n"
-    "Task Requirements:\n"
-    "1. Strictly adhere to the task requirements, do not avoid, downplay, or omit"
-    " any text\n"
-    "2. Ensure the uniqueness of terminology. Common words with established,"
-    " conventional translations do not need to be included in the glossary\n"
-    "3. Ensure correct term boundaries. The term text should not include common"
-    " forms of address, appellations, titles, positions, or ranks\n"
-    "4. Ensure each term is categorized as one of the following types: Male Name,"
-    " Female Name, Name of Unknown Gender, Location, Clan or Family,"
-    " Organization, Special Item, Special Creature, Other"
-)
+# 文笔
+- 克制、精准、连贯。普通物品用客观形容词，避免堆砌大词。
+- 用清爽书面语代替翻译腔；利用连接词将碎句融合为流畅长句。
+- 对话用 {target_language} 自然口语，符合表达习惯。
 
-_DEFAULT_GLOSSARY_SUFFIX_PROMPT = (
-    "Output result in the code block using JSONLINE, without extra explanation"
-    " or clarification:\n"
-    "```jsonline\n"
-    '{"src":"<Source Text>","dst":"<Translated Text>","type":"<Glossary Type>"}\n'
-    "```"
-)
+# 跨语言细节
+- 识别敬语 / 平语切换，按 {target_language} 习惯处理。
+- 称呼按上下文本地化，避免机械直译。
+- 文化术语优先意译；难以直译的，简短解释，保证理解无障碍。
 
-_DEFAULT_TRANSLATION_THINKING_PROMPT = (
-    "Before outputting the results, you must first perform **structured thinking**"
-    " within the <why>...</why> tags according to the following steps:\n"
-    "<why>\n"
-    "[Global Context]: Summarize the context, tone, and emotional undertones of"
-    " the original text in one sentence, and identify potential subtext or"
-    " special expressions.\n"
-    "[Core Constraints]: Reiterate 1-2 \"red line\" rules most essential for"
-    " preventing errors in the current text.\n"
-    "[Edge Cases]: Pick out 3-5 of the most difficult-to-translate terms,"
-    " phrases, or special sentence structures, and briefly outline the logic in"
-    " the format of `Original -> Translation (Reasoning)`.\n"
-    "</why>"
-)
+# 格式
+- 保留原文段落结构。碎句可在句内或行间合并以保证连贯。
+- 拟声词、语气词都要译。
+- 标点按 {target_language} 出版习惯排版。
 
-_DEFAULT_GLOSSARY_THINKING_PROMPT = (
-    "Before outputting the results, you must first perform **structured thinking**"
-    " within the <why>...</why> tags according to the following steps:\n"
-    "<why>\n"
-    "[Global Context]: Summarize the genre, world-building, and narrative setting"
-    " of the original text in one sentence, and identify potential fictional"
-    " settings.\n"
-    "[Core Constraints]: Reiterate 1-2 \"red line\" rules most essential for"
-    " preventing errors in the current text.\n"
-    "[Edge Cases]: Pick out 3-5 of the most difficult-to-judge terms, and briefly"
-    " outline the logic in the format of `Original -> Result (Reason)`.\n"
-    "</why>"
-)
+# 输出要求
+- 行数严格对应原文，禁止合并 / 拆分。
+- 控制字符（变量、占位符、转义、标签、ID、URL、文件路径等）原样保留，不译。
+- 译文要还原原文风格与细节，不评价、不淡化、不回避。"""
+
+_TRANSLATION_SYSTEM_EN = """\
+Role: Senior novel translator.
+Task: Translate the source text into {target_language} — precise, fluent, faithful.
+
+# Prime Directive: Absolute semantic fidelity
+- Allowed: re-ordering, substituting more precise synonyms, inserting logical connectors.
+- Forbidden: adding content not in the original, dropping valid information, distorting meaning for stylistic flourish.
+
+# Style
+- Restrained, precise, coherent. Use objective adjectives for ordinary objects; avoid grandiose phrasing.
+- Replace translationese with clean, idiomatic prose; use connectors to merge fragmented sentences into flowing ones.
+- Render dialogue in natural spoken {target_language}, matching native idiom.
+
+# Cross-language details
+- Detect honorific / plain register switches and render them per {target_language} norms.
+- Localize forms of address by context; do not transliterate mechanically.
+- For culture-specific terms, prefer meaning-based translation; add a brief gloss when literal translation would obscure meaning.
+
+# Format
+- Preserve paragraph structure. Fragmented lines may be merged within a paragraph for coherence.
+- Translate onomatopoeia and interjections.
+- Punctuate per {target_language} publishing conventions.
+
+# Output requirements
+- Line count must exactly match the source. Do not merge or split lines.
+- Preserve control characters (variables, placeholders, escape sequences, tags, IDs, URLs, file paths) verbatim — do not translate them.
+- Faithfully reproduce the source's style and detail; do not editorialize, sanitize, or evade."""
+
+_TRANSLATION_SUFFIX_ZH = """\
+然后用 JSONLINE 格式输出译文，不要任何额外解释或说明：
+```jsonline
+{"<INDEX>":"<译文>"}
+```"""
+
+_TRANSLATION_SUFFIX_EN = """\
+Then use JSONLINE to output translation results, without extra explanation or clarification:
+```jsonline
+{"<INDEX>":"<Translated Text>"}
+```"""
+
+_TRANSLATION_THINKING_ZH = """\
+在输出译文之前，先在 <why>...</why> 标签内进行结构化思考：
+<why>
+[全局语境]：用一句话概括原文的语境、语气与情感基调，识别可能的潜台词或特殊表达。
+[核心约束]：重申当前文本最关键的 1-2 条"红线"规则。
+[难点处理]：挑出 3-5 个最难翻译的术语、短语或句式，用 `原文 -> 译文（理由）` 的格式简述思路。
+</why>"""
+
+_TRANSLATION_THINKING_EN = """\
+Before outputting the results, perform **structured thinking** within <why>...</why> tags:
+<why>
+[Global Context]: Summarize the source's context, tone, and emotional undertones in one sentence; identify potential subtext or special expressions.
+[Core Constraints]: Restate the 1-2 most critical "red line" rules for the current text.
+[Edge Cases]: Pick 3-5 of the hardest terms, phrases, or sentence structures, briefly outlining the logic in `Source -> Translation (Reasoning)` format.
+</why>"""
+
+
+_GLOSSARY_SYSTEM_ZH = """\
+角色：小说世界观架构师。
+任务：从文本中提取并建立"世界观实体数据库"，将每个条目译为 {target_language}。
+要像数据库管理员一样思考，杜绝通用、冗余、模糊的条目。
+
+# 原则一：实体资格测试
+仅提取被命名的、独一无二的实体。
+- "这只是一个 X 吗？"测试：若答案是某个通用职业、物品、概念，则不提取。
+- "可替代性"测试：可用同类替代的不算专有命名。
+
+# 原则二：三层过滤
+1. 结构性：凡是"A 的 B"型属格短语，一律抛弃。
+2. 通用性：现实世界的通用名词、动词、形容词、抽象概念、生物解剖词汇，一律抛弃。
+3. 资格性：通过前两层后，再用原则一做最终审查。
+
+# 原则三：合并 / 拆分
+"专有名称 + 称号"组合（如"某某公爵"），拆成两条：
+- 专有名称归入对应的人物分类。
+- 称号归入"称号 / 职业"分类。
+最终输出每个称号、每个人物只出现一次。
+
+# 分类
+命名实体：男性角色、女性角色、性别未知 / 不适用、神祇 / 传说人物、命名组织、命名地理、命名物品。
+世界观设定：称号 / 职业、能力 / 技能、关键事件 / 时期、核心概念 / 法则。
+
+# 可选项（Omegaverse 世界观）
+ABO 术语统一为：阿尔法 / 欧米伽 / 贝塔；Rut = 易感期；Heat = 发情期；
+Knotting = 成结；Bonding = 刻印；信息素而非荷尔蒙；优性 / 劣性而非显性 / 隐性。"""
+
+_GLOSSARY_SYSTEM_EN = """\
+Role: Novel world-database architect.
+Task: Extract a "worldbuilding entity database" from the text and translate each entry into {target_language}. Think like a strict database admin — reject generic, redundant, or fuzzy entries.
+
+# Principle 1: Entity qualification
+Extract only **named, unique** entities.
+- "Is this just an X?" test: if the answer is a generic profession, item, or concept, do not extract.
+- "Replaceability" test: a term that can be substituted by another instance of the same kind is not a proper name.
+
+# Principle 2: Three-filter gauntlet
+1. Structural: any "A of B" possessive phrase is rejected.
+2. Generic: everyday real-world nouns, verbs, adjectives, abstract concepts, anatomical terms — all rejected.
+3. Qualification: surviving terms get a final pass through Principle 1.
+
+# Principle 3: Merge / split
+For "proper name + title" combos (e.g. "Lord X"), split into two entries:
+- The proper name goes into the appropriate character category.
+- The title goes into the "Title / Profession" category.
+Each title and each character must appear at most once in the output.
+
+# Categories
+Named Entities: Male Character, Female Character, Unknown-Gender Character, Deity / Legend, Named Organization, Named Geography, Named Item.
+World Settings: Title / Profession, Ability / Skill, Key Event / Era, Core Concept / Law.
+
+# Optional (Omegaverse universe)
+ABO terms are standardized: Alpha / Omega / Beta; Rut (susceptibility); Heat (estrus); Knotting; Bonding; pheromone (not hormone); render dominant / recessive only when faithful to source semantics."""
+
+_GLOSSARY_SUFFIX_ZH = """\
+仅在代码块中以 JSONLINE 格式输出，不要任何额外解释或说明：
+```jsonline
+{"src":"<原文>","dst":"<译文>","type":"<分类>"}
+```"""
+
+_GLOSSARY_SUFFIX_EN = """\
+Output the result in a code block using JSONLINE, without extra explanation or clarification:
+```jsonline
+{"src":"<Source Text>","dst":"<Translated Text>","type":"<Category>"}
+```"""
+
+_GLOSSARY_THINKING_ZH = """\
+在输出结果之前，先在 <why>...</why> 标签内进行结构化思考：
+<why>
+[全局语境]：用一句话概括原文的题材、世界观与叙事设定，识别潜在的虚构设定。
+[核心约束]：重申当前文本最关键的 1-2 条"红线"规则（如三层过滤、合并 / 拆分协议）。
+[边界判断]：挑出 3-5 个最难判定的候选词，用 `原文 -> 结果（理由）` 的格式简述判断逻辑。
+</why>"""
+
+_GLOSSARY_THINKING_EN = """\
+Before outputting the results, perform **structured thinking** within <why>...</why> tags:
+<why>
+[Global Context]: Summarize the source's genre, worldbuilding, and narrative setting in one sentence; identify potential fictional settings.
+[Core Constraints]: Restate the 1-2 most critical "red line" rules for the current text (e.g. three-filter gauntlet, merge/split protocol).
+[Edge Cases]: Pick 3-5 of the hardest-to-judge candidates, briefly outlining the logic in `Source -> Result (Reason)` format.
+</why>"""
+
+
+def _seeded_translation_zh() -> PromptPreset:
+    return PromptPreset(
+        id=DEFAULT_TRANSLATION_PRESET_ID,
+        name="Default (Chinese)",
+        kind=PromptKind.TRANSLATION,
+        system_prompt=_TRANSLATION_SYSTEM_ZH,
+        suffix_prompt=_TRANSLATION_SUFFIX_ZH,
+        thinking_prompt=_TRANSLATION_THINKING_ZH,
+        description="默认翻译预设（中文指令版）。语言无关化，可在任意 source/target 语言对上使用。",
+        enabled=True,
+    )
+
+
+def _seeded_translation_en() -> PromptPreset:
+    return PromptPreset(
+        id=DEFAULT_TRANSLATION_EN_ID,
+        name="Default (English)",
+        kind=PromptKind.TRANSLATION,
+        system_prompt=_TRANSLATION_SYSTEM_EN,
+        suffix_prompt=_TRANSLATION_SUFFIX_EN,
+        thinking_prompt=_TRANSLATION_THINKING_EN,
+        description="Default translation preset (English instructions). Language-agnostic; works for any source/target language pair.",
+        enabled=True,
+    )
+
+
+def _seeded_glossary_zh() -> PromptPreset:
+    return PromptPreset(
+        id=DEFAULT_GLOSSARY_PRESET_ID,
+        name="Default (Chinese)",
+        kind=PromptKind.GLOSSARY,
+        system_prompt=_GLOSSARY_SYSTEM_ZH,
+        suffix_prompt=_GLOSSARY_SUFFIX_ZH,
+        thinking_prompt=_GLOSSARY_THINKING_ZH,
+        description="默认术语提取预设（中文指令版）。聚焦命名实体提取与三层过滤，与原文语言无关。",
+        enabled=True,
+    )
+
+
+def _seeded_glossary_en() -> PromptPreset:
+    return PromptPreset(
+        id=DEFAULT_GLOSSARY_EN_ID,
+        name="Default (English)",
+        kind=PromptKind.GLOSSARY,
+        system_prompt=_GLOSSARY_SYSTEM_EN,
+        suffix_prompt=_GLOSSARY_SUFFIX_EN,
+        thinking_prompt=_GLOSSARY_THINKING_EN,
+        description="Default glossary extraction preset (English instructions). Focused on named-entity extraction with a three-filter qualification gauntlet.",
+        enabled=True,
+    )
+
+
+def seeded_presets(kind: PromptKind) -> tuple[PromptPreset, ...]:
+    """Return all presets seeded into a fresh prompts.<kind>.json."""
+    if kind is PromptKind.TRANSLATION:
+        return (_seeded_translation_zh(), _seeded_translation_en())
+    return (_seeded_glossary_zh(), _seeded_glossary_en())
 
 
 def default_preset(kind: PromptKind) -> PromptPreset:
-    if kind is PromptKind.TRANSLATION:
-        return PromptPreset(
-            id=DEFAULT_TRANSLATION_PRESET_ID,
-            name="Default (LinguaGacha EN)",
-            kind=PromptKind.TRANSLATION,
-            system_prompt=_DEFAULT_TRANSLATION_SYSTEM_PROMPT,
-            suffix_prompt=_DEFAULT_TRANSLATION_SUFFIX_PROMPT,
-            thinking_prompt=_DEFAULT_TRANSLATION_THINKING_PROMPT,
-            description=(
-                "Default translation prompt seeded from the LinguaGacha EN"
-                " reference template."
-            ),
-            enabled=True,
-        )
-    return PromptPreset(
-        id=DEFAULT_GLOSSARY_PRESET_ID,
-        name="Default (KeywordGacha EN)",
-        kind=PromptKind.GLOSSARY,
-        system_prompt=_DEFAULT_GLOSSARY_SYSTEM_PROMPT,
-        suffix_prompt=_DEFAULT_GLOSSARY_SUFFIX_PROMPT,
-        thinking_prompt=_DEFAULT_GLOSSARY_THINKING_PROMPT,
-        description=(
-            "Default glossary extraction prompt seeded from the KeywordGacha EN"
-            " reference template."
-        ),
-        enabled=True,
-    )
+    """Return the primary default preset (used when nothing is selected)."""
+    return seeded_presets(kind)[0]
 
 
 def _default_preset_id(kind: PromptKind) -> str:
@@ -262,9 +379,11 @@ def _default_preset_id(kind: PromptKind) -> str:
 class PromptPresetStore:
     """JSON-backed library of presets for one prompt kind.
 
-    The store ensures a default preset is always present. Loading an empty or
-    missing file returns ``[default_preset(kind)]`` without writing the file;
-    callers that need persistence call :meth:`save`.
+    On a missing or empty file the store returns the full seeded library
+    (currently a Chinese-instruction primary plus an English-instruction
+    sibling). Once a file exists, only the primary default is re-injected
+    if the user explicitly removed it; other seeded variants are left as
+    the user shaped them.
     """
 
     path: Path
@@ -272,13 +391,13 @@ class PromptPresetStore:
 
     def load(self) -> tuple[PromptPreset, ...]:
         if not self.path.exists():
-            return (default_preset(self.kind),)
+            return seeded_presets(self.kind)
         try:
             raw = self.path.read_text(encoding="utf-8")
         except OSError as exc:
             raise OSError(f"Cannot read prompt preset file: {self.path}") from exc
         if not raw.strip():
-            return (default_preset(self.kind),)
+            return seeded_presets(self.kind)
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -307,9 +426,6 @@ class PromptPresetStore:
             )
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = [preset.to_dict() for preset in presets]
-        # Atomic write: temp file in the same directory, then os.replace.
-        # Mirrors the TaskCache._atomic_write_text pattern so a crash mid-
-        # write cannot corrupt the prompts file.
         import os
 
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
@@ -323,7 +439,7 @@ class PromptPresetStore:
         """Resolve the active preset.
 
         The selected preset is used if it exists in the store and is enabled.
-        Otherwise the seeded default for this kind is returned.
+        Otherwise the primary seeded default for this kind is returned.
         """
 
         presets = self.load()
@@ -344,6 +460,9 @@ __all__ = [
     "PromptPresetStore",
     "build_prompt",
     "default_preset",
+    "seeded_presets",
     "DEFAULT_TRANSLATION_PRESET_ID",
     "DEFAULT_GLOSSARY_PRESET_ID",
+    "DEFAULT_TRANSLATION_EN_ID",
+    "DEFAULT_GLOSSARY_EN_ID",
 ]

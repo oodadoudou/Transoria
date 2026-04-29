@@ -481,16 +481,11 @@ export const en: Messages = {
     activeHint: "Used by every request this module sends.",
     available: "Available presets",
     availableHint:
-      "Default presets are seeded from LinguaGacha and KeywordGacha and cannot be deleted, only duplicated.",
+      "Default presets are seeded with the project; they cannot be deleted, only duplicated and edited.",
     preview: "Preview",
     previewSystem: "System prompt",
     previewSuffix: "Suffix",
     previewThinking: "Reasoning addendum",
-    sourceLabel: {
-      linguagacha: "LinguaGacha",
-      keywordgacha: "KeywordGacha",
-      custom: "Custom",
-    },
     badgeDefault: "Default",
     badgeCustom: "Custom",
     actions: {

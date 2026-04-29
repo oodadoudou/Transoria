@@ -423,11 +423,6 @@ export interface Messages {
     previewSystem: string;
     previewSuffix: string;
     previewThinking: string;
-    sourceLabel: {
-      linguagacha: string;
-      keywordgacha: string;
-      custom: string;
-    };
     badgeDefault: string;
     badgeCustom: string;
     actions: { add: string; edit: string; duplicate: string; delete: string };
