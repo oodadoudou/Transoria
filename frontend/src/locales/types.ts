@@ -48,7 +48,6 @@ export interface Messages {
     hint: string;
     dedupeLabel: string;
     dedupeHint: string;
-    subfolderLabel: string;
     subfolderDefault: string;
   };
   fieldHint: {
@@ -293,6 +292,13 @@ export interface Messages {
       stats: {
         total: string;
         enabled: string;
+      };
+      presets: {
+        title: string;
+        empty: string;
+        directoryHint: string;
+        importAction: string;
+        close: string;
       };
     };
     run: {
@@ -558,6 +564,19 @@ export interface Messages {
     activePrompt: string;
     activePromptSubtitle: string;
     noActivePrompt: string;
+  };
+  glossaryStats: {
+    title: string;
+    close: string;
+    total: string;
+    enabled: string;
+    disabled: string;
+    uniqueSrc: string;
+    caseSensitive: string;
+    avgLen: string;
+    topInfo: string;
+    uncategorized: string;
+    empty: string;
   };
   common: { placeholder: string };
 }

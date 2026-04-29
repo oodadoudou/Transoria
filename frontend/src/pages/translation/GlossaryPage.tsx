@@ -13,6 +13,8 @@ import {
   type RuleTableColumn,
   ruleTableStyles,
 } from "@/components/RuleTable";
+import { GlossaryStatsModal } from "@/components/GlossaryStatsModal";
+import { GlossaryPresetModal } from "@/components/GlossaryPresetModal";
 
 type Toggle = "on" | "off";
 
@@ -92,6 +94,8 @@ export function GlossaryPage() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [presetOpen, setPresetOpen] = useState(false);
 
   const filteredEntries = (() => {
     const query = searchQuery.trim().toLowerCase();
@@ -283,8 +287,14 @@ export function GlossaryPage() {
                 });
               },
             },
-            { label: g.actions.statistics, onClick: () => undefined },
-            { label: g.actions.preset, onClick: () => undefined },
+            {
+              label: g.actions.statistics,
+              onClick: () => setStatsOpen(true),
+            },
+            {
+              label: g.actions.preset,
+              onClick: () => setPresetOpen(true),
+            },
           ]}
         />
 
@@ -294,6 +304,29 @@ export function GlossaryPage() {
           </div>
         ) : null}
       </Panel>
+
+      {statsOpen ? (
+        <GlossaryStatsModal
+          entries={state.entries}
+          onClose={() => setStatsOpen(false)}
+        />
+      ) : null}
+      {presetOpen ? (
+        <GlossaryPresetModal
+          onPick={(rawEntries) => {
+            const incoming: GlossaryEntry[] = rawEntries.map((entry, idx) => ({
+              id: `g-pre-${Date.now()}-${idx}`,
+              source: entry.src,
+              translation: entry.dst,
+              description: entry.info,
+              caseSensitive: entry.case_sensitive,
+              enabled: entry.enabled,
+            }));
+            importEntries([...state.entries, ...incoming]);
+          }}
+          onClose={() => setPresetOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

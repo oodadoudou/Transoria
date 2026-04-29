@@ -182,7 +182,7 @@ def build_default_router(
     register_dialogs(router, provider=dialog_provider or NullDialogProvider())
     register_replacement_parsers(router)
     register_replacement_tasks(router, service=task_service)
-    register_glossary_imports(router)
+    register_glossary_imports(router, cache_root=cache_root)
     register_updates(
         router,
         checker=update_checker or NullUpdateChecker(current_version=current_version),

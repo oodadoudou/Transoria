@@ -54,7 +54,6 @@ export const en: Messages = {
     dedupeLabel: "Skip bilingual when source equals target",
     dedupeHint:
       "If source and target language tags match, only emit the translated file.",
-    subfolderLabel: "Bilingual subfolder name",
     subfolderDefault: "bilingual outputs",
   },
   fieldHint: {
@@ -335,6 +334,13 @@ export const en: Messages = {
       stats: {
         total: "{n} entries",
         enabled: "{n} enabled",
+      },
+      presets: {
+        title: "Glossary Presets",
+        empty: "No presets available.",
+        directoryHint: "Drop JSON files into this directory to add presets",
+        importAction: "Import into current glossary",
+        close: "Close",
       },
     },
     run: {
@@ -641,6 +647,19 @@ export const en: Messages = {
     customHeadersPlaceholder: '{"Authorization": "Bearer xxx"}',
     apiFormatLabel: "API format",
     apiFormat: { openai: "OpenAI", anthropic: "Anthropic", google: "Google" },
+  },
+  glossaryStats: {
+    title: "Glossary Statistics",
+    close: "Close",
+    total: "Total entries",
+    enabled: "Enabled",
+    disabled: "Disabled",
+    uniqueSrc: "Unique source",
+    caseSensitive: "Case sensitive",
+    avgLen: "Avg length (src/dst)",
+    topInfo: "Top categories",
+    uncategorized: "Uncategorized",
+    empty: "No category data yet.",
   },
   common: {
     placeholder:

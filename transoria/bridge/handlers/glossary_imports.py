@@ -198,9 +198,43 @@ def export_rules(payload: Mapping[str, object]) -> dict[str, object]:
     return {"path": str(path), "count": len(entries)}
 
 
-def register(router: BridgeRouter) -> None:
+def _presets_dir(cache_root: Path) -> Path:
+    return cache_root / "glossary_presets"
+
+
+def list_presets_factory(cache_root: Path):
+    def list_presets(_payload: Mapping[str, object]) -> dict[str, object]:
+        directory = _presets_dir(cache_root)
+        out: list[dict[str, object]] = []
+        if directory.exists() and directory.is_dir():
+            for entry_path in sorted(directory.iterdir()):
+                if not entry_path.is_file():
+                    continue
+                if entry_path.suffix.lower() != ".json":
+                    continue
+                try:
+                    entries = _parse_json(entry_path)
+                except (BridgeError, OSError, json.JSONDecodeError):
+                    continue
+                out.append(
+                    {
+                        "id": entry_path.stem,
+                        "name": entry_path.stem.replace("-", " ").replace(
+                            "_", " "
+                        ),
+                        "entry_count": len(entries),
+                        "entries": entries,
+                    }
+                )
+        return {"directory": str(directory), "presets": out}
+
+    return list_presets
+
+
+def register(router: BridgeRouter, *, cache_root: Path) -> None:
     router.register("glossary.import_rules", import_rules)
     router.register("glossary.export_rules", export_rules)
+    router.register("glossary.list_presets", list_presets_factory(cache_root))
 
 
-__all__ = ["register", "import_rules", "export_rules"]
+__all__ = ["register", "import_rules", "export_rules", "list_presets_factory"]

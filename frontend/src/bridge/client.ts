@@ -324,6 +324,24 @@ export const glossaryBridge = {
   ): Promise<{ path: string; count: number }> {
     return call("glossary.export_rules", { path, entries });
   },
+  listPresets(): Promise<{
+    directory: string;
+    presets: Array<{
+      id: string;
+      name: string;
+      entry_count: number;
+      entries: Array<{
+        src: string;
+        dst: string;
+        info: string;
+        regex: boolean;
+        case_sensitive: boolean;
+        enabled: boolean;
+      }>;
+    }>;
+  }> {
+    return call("glossary.list_presets", {});
+  },
 };
 
 // --- Replacement ------------------------------------------------------------

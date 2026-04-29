@@ -53,7 +53,6 @@ export const zh: Messages = {
     hint: "在翻译文件之外另外生成对照双语文件。",
     dedupeLabel: "源语言与目标语言相同时不生成双语文件",
     dedupeHint: "若源/目标语言标签相同，仅输出翻译版本。",
-    subfolderLabel: "双语子文件夹名称",
     subfolderDefault: "双语译文",
   },
   fieldHint: {
@@ -323,6 +322,13 @@ export const zh: Messages = {
       stats: {
         total: "共 {n} 条",
         enabled: "已启用 {n} 条",
+      },
+      presets: {
+        title: "术语表预设",
+        empty: "暂无可用预设。",
+        directoryHint: "向以下目录放入 JSON 文件即可成为预设",
+        importAction: "导入到当前术语表",
+        close: "关闭",
       },
     },
     run: {
@@ -618,6 +624,19 @@ export const zh: Messages = {
     customHeadersPlaceholder: '{"Authorization": "Bearer xxx"}',
     apiFormatLabel: "API 格式",
     apiFormat: { openai: "OpenAI", anthropic: "Anthropic", google: "Google" },
+  },
+  glossaryStats: {
+    title: "术语表统计",
+    close: "关闭",
+    total: "总条目",
+    enabled: "已启用",
+    disabled: "已禁用",
+    uniqueSrc: "去重原文",
+    caseSensitive: "区分大小写",
+    avgLen: "平均长度(原/译)",
+    topInfo: "类别分布",
+    uncategorized: "未分类",
+    empty: "暂无类别数据。",
   },
   common: {
     placeholder:
