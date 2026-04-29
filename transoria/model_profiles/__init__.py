@@ -24,11 +24,23 @@ from transoria.model_profiles.store import (
     ModelProfileStore,
     mask_api_keys,
 )
+from transoria.model_profiles.templates import (
+    FieldHint,
+    ProviderTemplate,
+    RecommendedDefaults,
+    get_template,
+    list_templates,
+)
 
 __all__ = [
     "ApiKeyStatus",
     "DEFAULT_PROFILE_IDS",
+    "FieldHint",
     "ModelProfileStore",
+    "ProviderTemplate",
+    "RecommendedDefaults",
     "default_profiles",
+    "get_template",
+    "list_templates",
     "mask_api_keys",
 ]

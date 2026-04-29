@@ -5,7 +5,11 @@ import { create } from "zustand";
  *
  * Route state lives client-side because it does not affect the backend
  * task graph. Runtime data (progress, tokens, status) lives in
- * `useRuntimeStore`, which is bridge-backed.
+ * `useRuntimeStore`. Settings, model profiles, prompt presets, and the
+ * configuration libraries each live behind the bridge in their own
+ * dedicated stores. Translation glossary entries are still in-memory
+ * here pending the Step F.P0.1 redesign that threads them into
+ * `TranslationConfig`.
  * ------------------------------------------------------------------ */
 
 export type ModuleId =
@@ -56,85 +60,12 @@ export function defaultPageFor(module: ModuleId): Route {
 }
 
 /* ------------------------------------------------------------------ *
- * Per-module model library — mirrors the backend `ModelConfig` shape,
- * extended to match what the LinguaGacha-style edit panels expose.
- * Step 5 will replace this with bridge-backed model profiles.
- * ------------------------------------------------------------------ */
-
-export type ProviderFormat =
-  | "openai"
-  | "anthropic"
-  | "google"
-  | "sakura"
-  | "custom";
-export type ThinkingLevel = "off" | "low" | "medium" | "high";
-
-export type ModelCategory =
-  | "preset"
-  | "custom-openai"
-  | "custom-google"
-  | "custom-anthropic";
-
-export interface SamplingOverride {
-  enabled: boolean;
-  value: number;
-}
-
-export interface ModelEntry {
-  id: string;
-  category: ModelCategory;
-  vendor: string;
-  apiFormat: ProviderFormat;
-  displayName: string;
-  baseUrl: string;
-  apiKeys: string;
-  modelId: string;
-  inputTokenLimit: number;
-  outputTokenLimit: number;
-  concurrency: number;
-  rpm: number;
-  tpm: number;
-  retryAttempts: number;
-  thinkingLevel: ThinkingLevel;
-  topP: SamplingOverride;
-  temperature: SamplingOverride;
-  presencePenalty: SamplingOverride;
-  frequencyPenalty: SamplingOverride;
-  customHeaders: { enabled: boolean; value: string };
-}
-
-export type ModelOwner = "translation" | "glossary";
-
-export interface ModuleModelLibrary {
-  selectedId: string;
-  entries: ModelEntry[];
-}
-
-/* ------------------------------------------------------------------ *
- * Prompt presets — Step 5 will replace this with bridge-backed presets.
- * ------------------------------------------------------------------ */
-
-export type PromptSource = "linguagacha" | "keywordgacha" | "custom";
-
-export interface PromptPresetInfo {
-  id: string;
-  name: string;
-  source: PromptSource;
-  isDefault: boolean;
-  systemPrompt: string;
-  suffixPrompt: string;
-  thinkingPrompt: string | null;
-}
-
-export interface ModulePrompts {
-  activeId: string;
-  presets: PromptPresetInfo[];
-}
-
-/* ------------------------------------------------------------------ *
- * Translation glossary entries (used while translating, not during
- * extraction). Mirrors the backend `Glossary` shape from
- * `transoria/workflows/translation/rules.py`.
+ * Translation glossary edit buffer. Mirrors the backend `Glossary`
+ * shape from `transoria/workflows/translation/rules.py`. Persistence
+ * + threading into `TranslationConfig` happens through
+ * `useModuleSettings('translation').translation_glossary`; this
+ * store is the per-page edit buffer that syncs to settings on
+ * change (see GlossaryPage.tsx).
  * ------------------------------------------------------------------ */
 
 export interface GlossaryEntry {
@@ -156,15 +87,6 @@ interface TaskState {
   route: Route;
   navigate: (route: Route) => void;
   translationGlossary: ModuleGlossaryRules;
-  modelLibraries: Record<ModelOwner, ModuleModelLibrary>;
-  prompts: Record<ModelOwner, ModulePrompts>;
-  setSelectedModelId: (owner: ModelOwner, id: string) => void;
-  updateModelEntry: (
-    owner: ModelOwner,
-    id: string,
-    updates: Partial<ModelEntry>,
-  ) => void;
-  setActivePromptId: (owner: ModelOwner, id: string) => void;
   setTranslationGlossaryEnabled: (enabled: boolean) => void;
   setTranslationGlossarySelectedId: (id: string | null) => void;
   addTranslationGlossaryEntry: () => void;
@@ -176,183 +98,16 @@ interface TaskState {
   importTranslationGlossaryEntries: (entries: GlossaryEntry[]) => void;
 }
 
-/* ------------------------------------------------------------------ *
- * Initial state
- * ------------------------------------------------------------------ */
-
 const initialTranslationGlossary: ModuleGlossaryRules = {
   enabled: false,
   selectedId: null,
   entries: [],
 };
 
-function defaultEntry(
-  id: string,
-  category: ModelCategory,
-  vendor: string,
-  apiFormat: ProviderFormat,
-  displayName: string,
-  baseUrl: string,
-  modelId: string,
-  overrides: Partial<ModelEntry> = {},
-): ModelEntry {
-  return {
-    id,
-    category,
-    vendor,
-    apiFormat,
-    displayName,
-    baseUrl,
-    apiKeys: "",
-    modelId,
-    inputTokenLimit: 0,
-    outputTokenLimit: 0,
-    concurrency: 0,
-    rpm: 0,
-    tpm: 0,
-    retryAttempts: 2,
-    thinkingLevel: "off",
-    topP: { enabled: false, value: 1 },
-    temperature: { enabled: false, value: 0.6 },
-    presencePenalty: { enabled: false, value: 0 },
-    frequencyPenalty: { enabled: false, value: 0 },
-    customHeaders: { enabled: false, value: "" },
-    ...overrides,
-  };
-}
-
-function makeLibrary(selectedId: string): ModuleModelLibrary {
-  return {
-    selectedId,
-    entries: [
-      defaultEntry(
-        "preset-deepseek",
-        "preset",
-        "DeepSeek",
-        "openai",
-        "DeepSeek",
-        "https://api.deepseek.com/v1",
-        "deepseek-chat",
-      ),
-      defaultEntry(
-        "preset-anthropic",
-        "preset",
-        "Anthropic",
-        "anthropic",
-        "Anthropic",
-        "https://api.anthropic.com",
-        "claude-3-5-sonnet-20241022",
-      ),
-      defaultEntry(
-        "preset-google",
-        "preset",
-        "Google",
-        "google",
-        "Google",
-        "https://generativelanguage.googleapis.com/v1beta",
-        "gemini-2.0-flash",
-      ),
-      defaultEntry(
-        "preset-openai",
-        "preset",
-        "OpenAI",
-        "openai",
-        "OpenAI",
-        "https://api.openai.com/v1",
-        "gpt-4o-mini",
-      ),
-    ],
-  };
-}
-
-const initialModelLibraries: Record<ModelOwner, ModuleModelLibrary> = {
-  translation: makeLibrary("preset-openai"),
-  glossary: makeLibrary("preset-openai"),
-};
-
-const LG_SYSTEM_PROMPT = `You are a professional Korean→Simplified Chinese novel translator.
-
-The text follows JSONL format. Each line is one segment to translate.
-- Preserve emphasis, dialog markers, and proper nouns from the supplied glossary.
-- Match the source register; do not paraphrase.
-- Never translate filenames, sentinel tokens, or numeric indices.
-- Output one JSONL line per input line, indices preserved.`;
-
-const KG_SYSTEM_PROMPT = `You are a glossary extraction assistant for novel translation.
-
-Read the source segments and emit a JSONL list of \`{"src","dst","type"}\` entries:
-- src: original term (proper noun, place, item, recurring phrase)
-- dst: target-language rendering
-- type: short tag (Male Name, Female Name, Place, Item, etc.)
-
-Skip common words and grammatical particles. Aim for terms that recur or
-require a fixed translation across chapters.`;
-
-const LG_THINKING = `Before answering, briefly state which terms in the source require glossary lookup, and any honorifics or speech-level cues that should be preserved. Then produce the JSONL.`;
-
-const initialPrompts: Record<ModelOwner, ModulePrompts> = {
-  translation: {
-    activeId: "tr-default",
-    presets: [
-      {
-        id: "tr-default",
-        name: "Default Translation",
-        source: "linguagacha",
-        isDefault: true,
-        systemPrompt: LG_SYSTEM_PROMPT,
-        suffixPrompt: "Output JSONL only. No commentary.",
-        thinkingPrompt: LG_THINKING,
-      },
-    ],
-  },
-  glossary: {
-    activeId: "gl-default",
-    presets: [
-      {
-        id: "gl-default",
-        name: "Default Glossary",
-        source: "keywordgacha",
-        isDefault: true,
-        systemPrompt: KG_SYSTEM_PROMPT,
-        suffixPrompt: "Output JSONL only. No commentary.",
-        thinkingPrompt: null,
-      },
-    ],
-  },
-};
-
 export const useTaskStore = create<TaskState>((set) => ({
   route: { module: "translation", page: "run" },
   navigate: (route) => set({ route }),
   translationGlossary: initialTranslationGlossary,
-  modelLibraries: initialModelLibraries,
-  prompts: initialPrompts,
-  setSelectedModelId: (owner, id) =>
-    set((state) => ({
-      modelLibraries: {
-        ...state.modelLibraries,
-        [owner]: { ...state.modelLibraries[owner], selectedId: id },
-      },
-    })),
-  updateModelEntry: (owner, id, updates) =>
-    set((state) => ({
-      modelLibraries: {
-        ...state.modelLibraries,
-        [owner]: {
-          ...state.modelLibraries[owner],
-          entries: state.modelLibraries[owner].entries.map((entry) =>
-            entry.id === id ? { ...entry, ...updates } : entry,
-          ),
-        },
-      },
-    })),
-  setActivePromptId: (owner, id) =>
-    set((state) => ({
-      prompts: {
-        ...state.prompts,
-        [owner]: { ...state.prompts[owner], activeId: id },
-      },
-    })),
   setTranslationGlossaryEnabled: (enabled) =>
     set((state) => ({
       translationGlossary: { ...state.translationGlossary, enabled },

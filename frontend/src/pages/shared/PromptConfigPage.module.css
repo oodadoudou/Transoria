@@ -48,18 +48,11 @@
 }
 
 .row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 6px 12px 6px 4px;
   border-radius: var(--radius-inset);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  width: 100%;
   transition: background 160ms ease;
 }
 
@@ -70,6 +63,29 @@
 .rowActive,
 .rowActive:hover {
   background: var(--panel-soft);
+}
+
+.radioBtn {
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: var(--radius-inset);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  min-width: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .radio {

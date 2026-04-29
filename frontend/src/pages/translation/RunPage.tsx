@@ -1,11 +1,22 @@
+import { useState } from "react";
 import { useMessages } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useRunSnapshot, usePollRunSnapshot } from "@/store/useRuntimeStore";
+import {
+  useModelProfiles,
+  useModelProfilesStore,
+} from "@/store/useModelProfilesStore";
+import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { ProgressRing } from "@/components/ProgressRing";
 import { RunErrorBanner } from "@/components/RunErrorBanner";
 import { FailedSubtaskList } from "@/components/FailedSubtaskList";
 import { RunControls } from "@/components/RunControls";
+import {
+  QuickSwitchModal,
+  type QuickSwitchItem,
+} from "@/components/QuickSwitchModal";
 import styles from "./RunPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -20,13 +31,40 @@ export function RunPage() {
   const messages = useMessages();
   const { run } = messages.translation;
   const navigate = useTaskStore((state) => state.navigate);
-  const library = useTaskStore((state) => state.modelLibraries.translation);
-  const prompts = useTaskStore((state) => state.prompts.translation);
+  const profiles = useModelProfiles();
+  const prompts = usePromptPresets("translation");
+  const appSettings = useModuleSettings("app");
   const snapshot = useRunSnapshot("translation");
   usePollRunSnapshot("translation");
 
-  const activeModel = library.entries.find((e) => e.id === library.selectedId);
-  const activePrompt = prompts.presets.find((p) => p.id === prompts.activeId);
+  const activeModelId = appSettings.draft?.active_translation_model_id ?? null;
+  const activeModel = activeModelId
+    ? profiles.profiles.find((p) => p.id === activeModelId)
+    : undefined;
+  const activePrompt = prompts.activeId
+    ? prompts.presets.find((p) => p.id === prompts.activeId)
+    : undefined;
+
+  const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
+
+  const modelItems: QuickSwitchItem[] = profiles.profiles.map((p) => ({
+    id: p.id,
+    name: p.display_name,
+    description: p.model_id,
+  }));
+  const promptItems: QuickSwitchItem[] = prompts.presets.map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+    description: preset.description,
+  }));
+
+  const handleSelectModel = async (id: string) => {
+    await useModelProfilesStore.getState().selectActive("translation", id);
+    void useSettingsStore.getState().hydrate();
+  };
+  const handleSelectPrompt = async (id: string) => {
+    await prompts.selectActive("translation", id);
+  };
 
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
@@ -47,24 +85,44 @@ export function RunPage() {
         <div className={styles.activeStrip}>
           <ActiveCard
             label={run.activeModel}
-            primary={activeModel?.displayName ?? "—"}
-            secondary={activeModel?.modelId ?? ""}
-            onSwitch={() => navigate({ module: "translation", page: "model" })}
+            primary={activeModel?.display_name ?? "—"}
+            secondary={activeModel?.model_id ?? ""}
+            onSwitch={() => setSwitchOpen("model")}
             switchLabel={run.switch}
           />
           <ActiveCard
             label={run.activePrompt}
             primary={activePrompt?.name ?? "—"}
-            secondary={
-              activePrompt
-                ? messages.prompt.sourceLabel[activePrompt.source]
-                : ""
-            }
-            onSwitch={() => navigate({ module: "translation", page: "prompt" })}
+            secondary={activePrompt?.description ?? ""}
+            onSwitch={() => setSwitchOpen("prompt")}
             switchLabel={run.switch}
           />
         </div>
       </Panel>
+
+      {switchOpen === "model" ? (
+        <QuickSwitchModal
+          title={messages.quickSwitch.titleModel}
+          items={modelItems}
+          activeId={activeModelId}
+          emptyMessage={messages.quickSwitch.emptyModel}
+          onSelect={handleSelectModel}
+          onClose={() => setSwitchOpen(null)}
+          onManage={() => navigate({ module: "translation", page: "model" })}
+        />
+      ) : null}
+
+      {switchOpen === "prompt" ? (
+        <QuickSwitchModal
+          title={messages.quickSwitch.titlePrompt}
+          items={promptItems}
+          activeId={prompts.activeId}
+          emptyMessage={messages.quickSwitch.emptyPrompt}
+          onSelect={handleSelectPrompt}
+          onClose={() => setSwitchOpen(null)}
+          onManage={() => navigate({ module: "translation", page: "prompt" })}
+        />
+      ) : null}
 
       {snapshot.failures.length > 0 ? (
         <Panel label="Failed subtasks">

@@ -9,6 +9,7 @@ import {
   type PromptPresetBody,
   type PromptPresetSummary,
   type PromptPreviewContext,
+  type PromptPreviewResult,
 } from "@/bridge";
 
 interface KindSlice {
@@ -48,7 +49,7 @@ interface PromptPresetsState {
     presetId: string,
     context: PromptPreviewContext,
     thinking?: boolean,
-  ) => Promise<string | null>;
+  ) => Promise<PromptPreviewResult | null>;
   resetToDefault: (id: string) => Promise<PromptPresetBody | null>;
   clearMutationError: () => void;
 }
@@ -193,12 +194,7 @@ export const usePromptPresetsStore = create<PromptPresetsState>((set, get) => {
 
     preview: async (presetId, context, thinking = false) => {
       try {
-        const { prompt } = await promptsBridge.preview(
-          presetId,
-          context,
-          thinking,
-        );
-        return prompt;
+        return await promptsBridge.preview(presetId, context, thinking);
       } catch (error) {
         set({ mutationError: asBridgeError(error) });
         return null;

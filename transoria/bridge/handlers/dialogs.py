@@ -66,6 +66,37 @@ class NullDialogProvider:
         )
 
 
+def _detect_glossary_format(path: Path) -> str | None:
+    """Return ``"xlsx"`` / ``"json"`` based on file content, not extension.
+
+    XLSX files are zip archives starting with ``PK\\x03\\x04`` (or
+    ``PK\\x05\\x06`` for empty zips, ``PK\\x07\\x08`` for spanned zips
+    — both rare for Excel files). JSON files start with ``{`` or ``[``
+    after optional UTF-8 BOM and whitespace. Anything else returns
+    ``None`` so the caller can reject the file with a typed error.
+
+    Falls back to suffix detection if the file cannot be read (e.g.
+    permission error) — tests and dev runs that mock the dialog
+    provider may pass paths to files that don't exist on disk.
+    """
+
+    suffix = path.suffix.lower().lstrip(".")
+    if suffix not in {"xlsx", "json"}:
+        return None
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(8)
+    except OSError:
+        return suffix if suffix in {"xlsx", "json"} else None
+    if head.startswith(b"PK\x03\x04") or head.startswith(b"PK\x05\x06"):
+        return "xlsx"
+    # Strip BOM + leading whitespace for JSON detection.
+    stripped = head.lstrip(b"\xef\xbb\xbf").lstrip()
+    if stripped.startswith(b"{") or stripped.startswith(b"["):
+        return "json"
+    return None
+
+
 def _optional_string(payload: Mapping[str, object], key: str) -> str | None:
     value = payload.get(key)
     if value is None:
@@ -105,8 +136,11 @@ def _build_handlers(provider: DialogProvider) -> dict[str, Callable[[Mapping[str
         )
         if path is None:
             return {"path": None, "format": None}
-        suffix = Path(path).suffix.lower().lstrip(".")
-        fmt = suffix if suffix in {"xlsx", "json"} else None
+        # Detect format by reading the leading bytes — a renamed CSV
+        # masquerading as ``data.xlsx`` is rejected as ``None`` so the
+        # caller can show a typed error instead of failing later in
+        # the import path.
+        fmt = _detect_glossary_format(Path(path))
         return {"path": path, "format": fmt}
 
     def choose_replacement_rules_file(

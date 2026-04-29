@@ -1,8 +1,10 @@
+import { useCallback, useEffect, useState } from 'react';
 import { useMessages } from '@/locales';
 import {
   BridgeError,
   glossaryBridge,
   translationBridge,
+  type ProbeContinuable,
 } from '@/bridge';
 import {
   useRunSnapshot,
@@ -18,91 +20,175 @@ interface RunControlsProps {
 const ICON_PLAY = '▶';
 const ICON_PAUSE = '❚❚';
 const ICON_STOP = '■';
-const ICON_RESUME = '↻';
+const ICON_CONTINUE = '↻';
+
+const NEEDS_CONFIRM: ReadonlySet<string> = new Set([
+  'running',
+  'paused',
+  'pausing',
+  'stopping',
+  'stopped',
+]);
+
+const EMPTY_PROBE: ProbeContinuable = {
+  continuable: false,
+  task_id: null,
+  status: null,
+  pending: 0,
+  failed: 0,
+};
 
 export function RunControls({ kind }: RunControlsProps) {
   const messages = useMessages();
   const labels = messages.runControls;
   const snapshot = useRunSnapshot(kind);
   const setLastError = useRuntimeStore((state) => state.setLastError);
-  const refreshActiveTask = useRuntimeStore((state) => state.refreshActiveTask);
+  const refreshActiveTask = useRuntimeStore(
+    (state) => state.refreshActiveTask,
+  );
 
   const status = snapshot.status;
   const idle = snapshot.isIdle;
-  const isRunning = status === 'running';
-  const isStopping = status === 'stopping';
-  const isStopped = status === 'stopped' && !idle;
 
   const bridge = kind === 'translation' ? translationBridge : glossaryBridge;
 
-  const dispatch = async (
-    action: () => Promise<unknown>,
-  ): Promise<void> => {
-    setLastError(kind, null);
-    try {
-      await action();
-      await refreshActiveTask(kind);
-    } catch (error) {
-      if (BridgeError.isBridgeError(error)) {
-        setLastError(kind, error);
-        return;
+  const [probe, setProbe] = useState<ProbeContinuable>(EMPTY_PROBE);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Refresh `probe_continuable` on mount and whenever the live status
+  // crosses a boundary that could change continuability (RUNNING ↔
+  // PAUSED ↔ STOPPED ↔ COMPLETED). Cheap: one bridge call per
+  // transition.
+  useEffect(() => {
+    let cancelled = false;
+    void bridge
+      .probeContinuable()
+      .then((next) => {
+        if (!cancelled) setProbe(next);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (BridgeError.isBridgeError(error)) {
+          // Probe failures don't surface to the user; the Continue
+          // button just stays disabled. Reset to empty so stale data
+          // doesn't lie.
+          setProbe(EMPTY_PROBE);
+        } else {
+          throw error;
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, status, idle]);
+
+  const dispatch = useCallback(
+    async (action: () => Promise<unknown>): Promise<void> => {
+      setLastError(kind, null);
+      try {
+        await action();
+        await refreshActiveTask(kind);
+        const next = await bridge.probeContinuable();
+        setProbe(next);
+      } catch (error) {
+        if (BridgeError.isBridgeError(error)) {
+          setLastError(kind, error);
+          return;
+        }
+        throw error;
       }
-      throw error;
+    },
+    [bridge, kind, refreshActiveTask, setLastError],
+  );
+
+  const performStart = useCallback(
+    () => dispatch(() => bridge.startTask(`start-${Date.now().toString(36)}`)),
+    [bridge, dispatch],
+  );
+
+  const handleStartClick = useCallback(() => {
+    const hasPriorState = probe.task_id !== null || NEEDS_CONFIRM.has(status);
+    if (hasPriorState) {
+      setConfirmOpen(true);
+      return;
     }
-  };
+    void performStart();
+  }, [probe.task_id, status, performStart]);
 
-  const handleStart = () =>
-    dispatch(() => bridge.startTask(`start-${Date.now().toString(36)}`));
+  const handleConfirmStart = useCallback(() => {
+    setConfirmOpen(false);
+    void performStart();
+  }, [performStart]);
 
-  const handlePause = () => {
+  const handlePause = useCallback(() => {
     const taskId = useRuntimeStore.getState()[kind].activeTaskId;
     if (!taskId) return;
-    return dispatch(() => bridge.pauseTask(taskId));
-  };
+    void dispatch(() => bridge.pauseTask(taskId));
+  }, [bridge, kind, dispatch]);
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     const taskId = useRuntimeStore.getState()[kind].activeTaskId;
     if (!taskId) return;
-    return dispatch(() => bridge.stopTask(taskId));
-  };
+    void dispatch(() => bridge.stopTask(taskId));
+  }, [bridge, kind, dispatch]);
 
-  const handleResume = () => {
-    const taskId = useRuntimeStore.getState()[kind].activeTaskId;
+  const handleContinue = useCallback(() => {
+    const taskId = probe.task_id;
     if (!taskId) return;
-    return dispatch(() => bridge.resumeTask(taskId));
-  };
+    void dispatch(() => bridge.continueTask(taskId));
+  }, [bridge, dispatch, probe.task_id]);
+
+  const canPause = status === 'running';
+  const canStop =
+    status === 'running' || status === 'paused' || status === 'pausing';
+  const canContinue = probe.continuable;
+
+  const pauseLabel = status === 'pausing' ? labels.pausing : labels.pause;
+  const stopLabel = status === 'stopping' ? labels.stopping : labels.stop;
 
   return (
-    <div className={styles.bar} role="group" aria-label="task controls">
-      <Button
-        kind="primary"
-        icon={ICON_PLAY}
-        label={labels.start}
-        disabled={isRunning || isStopping}
-        onClick={handleStart}
-      />
-      <Button
-        kind="ghost"
-        icon={ICON_PAUSE}
-        label={labels.pause}
-        disabled={!isRunning}
-        onClick={handlePause}
-      />
-      <Button
-        kind="ghost"
-        icon={ICON_RESUME}
-        label={labels.resume}
-        disabled={!isStopped}
-        onClick={handleResume}
-      />
-      <Button
-        kind="warn"
-        icon={ICON_STOP}
-        label={labels.stop}
-        disabled={!isRunning && !isStopping}
-        onClick={handleStop}
-      />
-    </div>
+    <>
+      <div className={styles.bar} role="group" aria-label="task controls">
+        <Button
+          kind="primary"
+          icon={ICON_PLAY}
+          label={labels.start}
+          disabled={false}
+          onClick={handleStartClick}
+        />
+        <Button
+          kind="ghost"
+          icon={ICON_PAUSE}
+          label={pauseLabel}
+          disabled={!canPause}
+          onClick={handlePause}
+        />
+        <Button
+          kind="ghost"
+          icon={ICON_CONTINUE}
+          label={labels.continue}
+          disabled={!canContinue}
+          onClick={handleContinue}
+        />
+        <Button
+          kind="warn"
+          icon={ICON_STOP}
+          label={stopLabel}
+          disabled={!canStop}
+          onClick={handleStop}
+        />
+      </div>
+      {confirmOpen ? (
+        <ConfirmStartDialog
+          title={labels.confirmStartTitle}
+          body={labels.confirmStartBody}
+          confirm={labels.confirmStartConfirm}
+          cancel={labels.confirmStartCancel}
+          onConfirm={handleConfirmStart}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -128,5 +214,56 @@ function Button({ kind, icon, label, disabled, onClick }: ButtonProps) {
       </span>
       <span className={styles.label}>{label}</span>
     </button>
+  );
+}
+
+interface ConfirmStartDialogProps {
+  title: string;
+  body: string;
+  confirm: string;
+  cancel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function ConfirmStartDialog({
+  title,
+  body,
+  confirm,
+  cancel,
+  onConfirm,
+  onCancel,
+}: ConfirmStartDialogProps) {
+  return (
+    <div
+      className={styles.dialogOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="run-controls-confirm-title"
+      onClick={onCancel}
+    >
+      <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
+        <h2 id="run-controls-confirm-title" className={styles.dialogTitle}>
+          {title}
+        </h2>
+        <p className={styles.dialogBody}>{body}</p>
+        <div className={styles.dialogActions}>
+          <button
+            type="button"
+            className={`${styles.button} ${styles.ghost}`}
+            onClick={onCancel}
+          >
+            <span className={styles.label}>{cancel}</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.button} ${styles.warn}`}
+            onClick={onConfirm}
+          >
+            <span className={styles.label}>{confirm}</span>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

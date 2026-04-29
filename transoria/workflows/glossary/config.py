@@ -43,6 +43,7 @@ class GlossaryConfig:
     info_blacklist: tuple[str, ...] = DEFAULT_INFO_BLACKLIST
     allow_src_eq_dst: bool = False
     combine_folder_glossary: bool = False
+    normalize_widths: bool = True
 
     stream: bool = False
     debug_log_dir: Path | None = None

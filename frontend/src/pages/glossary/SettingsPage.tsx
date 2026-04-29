@@ -1,21 +1,21 @@
-import { useMessages } from '@/locales';
-import { useModuleSettings } from '@/store/useSettingsStore';
-import type { Language } from '@/bridge';
-import { Panel } from '@/components/Panel';
-import { NumberField } from '@/components/NumberField';
-import { Segmented } from '@/components/Segmented';
-import { SettingsToolbar } from '@/components/SettingsToolbar';
-import { FolderPickerRow } from '@/components/FolderPickerRow';
-import styles from './SettingsPage.module.css';
+import { useMessages } from "@/locales";
+import { useModuleSettings } from "@/store/useSettingsStore";
+import type { Language } from "@/bridge";
+import { Panel } from "@/components/Panel";
+import { NumberField } from "@/components/NumberField";
+import { Segmented } from "@/components/Segmented";
+import { SettingsToolbar } from "@/components/SettingsToolbar";
+import { FolderPickerRow } from "@/components/FolderPickerRow";
+import styles from "./SettingsPage.module.css";
 
-type Toggle = 'on' | 'off';
+type Toggle = "on" | "off";
 
-const LANGUAGE_IDS: Language[] = ['kr', 'zh', 'zh-Hant', 'en', 'ja'];
+const LANGUAGE_IDS: Language[] = ["kr", "zh", "zh-Hant", "en", "ja"];
 
 export function SettingsPage() {
   const messages = useMessages();
   const { settings } = messages.glossary;
-  const moduleSettings = useModuleSettings('glossary');
+  const moduleSettings = useModuleSettings("glossary");
   const draft = moduleSettings.draft;
 
   if (!draft) {
@@ -27,7 +27,7 @@ export function SettingsPage() {
     label: messages.language.options[id],
   }));
   const targetIsChinese =
-    draft.target_language === 'zh' || draft.target_language === 'zh-Hant';
+    draft.target_language === "zh" || draft.target_language === "zh-Hant";
 
   return (
     <>
@@ -37,27 +37,24 @@ export function SettingsPage() {
             label={settings.inputFolder}
             value={draft.input_folder}
             variant="input"
-            onChange={(path) => moduleSettings.update('input_folder', path)}
+            onChange={(path) => moduleSettings.update("input_folder", path)}
           />
           <FolderPickerRow
             label={settings.outputFolder}
             value={draft.output_folder}
             variant="output"
-            onChange={(path) => moduleSettings.update('output_folder', path)}
+            onChange={(path) => moduleSettings.update("output_folder", path)}
           />
         </div>
       </Panel>
 
       <Panel>
-        <ToggleRow
-          label={messages.language.sourceLabel}
-          hint=""
-        >
+        <ToggleRow label={messages.language.sourceLabel} hint="">
           <Segmented<Language>
             ariaLabel={messages.language.sourceLabel}
             options={languageOptions}
             value={draft.source_language as Language}
-            onChange={(v) => moduleSettings.update('source_language', v)}
+            onChange={(v) => moduleSettings.update("source_language", v)}
           />
         </ToggleRow>
         <ToggleRow label={messages.language.targetLabel} hint="">
@@ -65,25 +62,25 @@ export function SettingsPage() {
             ariaLabel={messages.language.targetLabel}
             options={languageOptions}
             value={draft.target_language as Language}
-            onChange={(v) => moduleSettings.update('target_language', v)}
+            onChange={(v) => moduleSettings.update("target_language", v)}
           />
         </ToggleRow>
         {targetIsChinese ? (
           <ToggleRow label="" hint="">
-            <Segmented<'simplified' | 'traditional'>
+            <Segmented<"simplified" | "traditional">
               ariaLabel="Chinese output form"
               options={[
                 {
-                  id: 'simplified',
+                  id: "simplified",
                   label: messages.language.chineseFormSimplified,
                 },
                 {
-                  id: 'traditional',
+                  id: "traditional",
                   label: messages.language.chineseFormTraditional,
                 },
               ]}
               value={draft.chinese_output_form}
-              onChange={(v) => moduleSettings.update('chinese_output_form', v)}
+              onChange={(v) => moduleSettings.update("chinese_output_form", v)}
             />
           </ToggleRow>
         ) : null}
@@ -97,12 +94,12 @@ export function SettingsPage() {
           <Segmented<Toggle>
             ariaLabel={settings.combineFolderGlossary}
             options={[
-              { id: 'on', label: settings.on },
-              { id: 'off', label: settings.off },
+              { id: "on", label: settings.on },
+              { id: "off", label: settings.off },
             ]}
-            value={draft.merge_folder_glossary ? 'on' : 'off'}
+            value={draft.merge_folder_glossary ? "on" : "off"}
             onChange={(v) =>
-              moduleSettings.update('merge_folder_glossary', v === 'on')
+              moduleSettings.update("merge_folder_glossary", v === "on")
             }
           />
         </ToggleRow>
@@ -113,12 +110,28 @@ export function SettingsPage() {
           <Segmented<Toggle>
             ariaLabel={settings.allowSrcEqDst}
             options={[
-              { id: 'on', label: settings.on },
-              { id: 'off', label: settings.off },
+              { id: "on", label: settings.on },
+              { id: "off", label: settings.off },
             ]}
-            value={draft.keep_identical_src_dst ? 'on' : 'off'}
+            value={draft.keep_identical_src_dst ? "on" : "off"}
             onChange={(v) =>
-              moduleSettings.update('keep_identical_src_dst', v === 'on')
+              moduleSettings.update("keep_identical_src_dst", v === "on")
+            }
+          />
+        </ToggleRow>
+        <ToggleRow
+          label={settings.normalizeWidths}
+          hint={settings.normalizeWidthsHint}
+        >
+          <Segmented<Toggle>
+            ariaLabel={settings.normalizeWidths}
+            options={[
+              { id: "on", label: settings.on },
+              { id: "off", label: settings.off },
+            ]}
+            value={draft.normalize_widths ? "on" : "off"}
+            onChange={(v) =>
+              moduleSettings.update("normalize_widths", v === "on")
             }
           />
         </ToggleRow>
@@ -127,7 +140,7 @@ export function SettingsPage() {
             label="Reference examples per term"
             value={draft.reference_examples_per_term}
             onChange={(v) =>
-              moduleSettings.update('reference_examples_per_term', v)
+              moduleSettings.update("reference_examples_per_term", v)
             }
             min={0}
             max={200}
@@ -137,7 +150,7 @@ export function SettingsPage() {
           <NumberField
             label="Minimum frequency"
             value={draft.minimum_frequency}
-            onChange={(v) => moduleSettings.update('minimum_frequency', v)}
+            onChange={(v) => moduleSettings.update("minimum_frequency", v)}
             min={1}
           />
         </ToggleRow>
@@ -146,7 +159,7 @@ export function SettingsPage() {
             label="Max term display length"
             value={draft.max_term_display_length}
             onChange={(v) =>
-              moduleSettings.update('max_term_display_length', v)
+              moduleSettings.update("max_term_display_length", v)
             }
             min={4}
             max={128}
@@ -156,7 +169,7 @@ export function SettingsPage() {
           <NumberField
             label="Chunk token limit"
             value={draft.chunk_token_limit}
-            onChange={(v) => moduleSettings.update('chunk_token_limit', v)}
+            onChange={(v) => moduleSettings.update("chunk_token_limit", v)}
             min={500}
             max={32000}
           />
@@ -185,7 +198,7 @@ interface ToggleRowProps {
 
 function ToggleRow({ label, hint, children }: ToggleRowProps) {
   if (!label && !hint) {
-    return <div className={styles.fieldRow ?? ''}>{children}</div>;
+    return <div className={styles.fieldRow ?? ""}>{children}</div>;
   }
   return (
     <div className={styles.row}>

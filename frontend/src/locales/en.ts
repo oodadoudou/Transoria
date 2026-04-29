@@ -31,13 +31,22 @@ export const en: Messages = {
   },
   errors: {
     runFailureTitle: "Last action failed",
+    loadFailureTitle: "Failed to load",
     dismiss: "Dismiss",
+    retry: "Retry",
   },
   runControls: {
     start: "Start",
     pause: "Pause",
     stop: "Stop",
-    resume: "Resume",
+    continue: "Continue",
+    pausing: "Pausing…",
+    stopping: "Stopping…",
+    confirmStartTitle: "Discard previous run?",
+    confirmStartBody:
+      "Starting will stop the current run and delete its progress cache. Translated and bilingual files in the output folder are preserved and will be overwritten as the new run produces them.",
+    confirmStartConfirm: "Start fresh",
+    confirmStartCancel: "Cancel",
   },
   bilingual: {
     label: "Bilingual output",
@@ -47,11 +56,103 @@ export const en: Messages = {
       "If source and target language tags match, only emit the translated file.",
     subfolderLabel: "Bilingual subfolder name",
   },
+  fieldHint: {
+    toggleLabel: "Show field hint",
+    recommendedFor: "Recommended for {provider}",
+    fallbackProvider: "this provider",
+    source: "Source",
+  },
+  modelHints: {
+    timeout:
+      "Per-request HTTP timeout in seconds. Slower networks or large reasoning chunks may need higher values.",
+    concurrency:
+      "How many requests run in parallel for this profile. Higher = faster but may hit per-key rate limits.",
+    rpm: "Soft cap on requests per minute. The backend pre-throttles before each call to stay under this.",
+    tpm: "Soft cap on tokens per minute. 0 disables the cap (use only when the provider exposes a TPM quota).",
+    retry:
+      "Maximum retry attempts on transient failures (5xx, timeouts, rate-limit). Backoff is exponential.",
+    maxOutputTokens:
+      "Upper bound on tokens emitted per request. Lower = cheaper, higher = more headroom for reasoning.",
+    temperature:
+      "Sampling temperature 0–2. Lower (0–0.5) is more deterministic; higher introduces variance.",
+  },
+  modelModal: {
+    titleAdd: "Add API profile",
+    titleEdit: "Edit API profile",
+    step1Title: "Pick a provider",
+    step1Sub:
+      "Templates prefill the form with the provider's recommended runtime values. Pick Custom to fill everything yourself.",
+    step2Title: "Configure profile",
+    customTemplateName: "Custom",
+    pickerBack: "← Back",
+    saveAction: "Save",
+    cancelAction: "Cancel",
+    rotateKeysLabel: "Rotate API keys on transient failures",
+    rotateKeysHelp:
+      "When more than one API key is set, cycle through them on rate-limit / 5xx errors before giving up.",
+    runtimeTuningLabel: "Runtime tuning",
+    samplingLabel: "Sampling",
+  },
+  quickSwitch: {
+    titleModel: "Switch active model",
+    titlePrompt: "Switch active prompt",
+    closeAction: "Close",
+    activeBadge: "Active",
+    emptyModel: "No API profiles configured. Add one on the Model page.",
+    emptyPrompt: "No prompt presets configured.",
+    manageLink: "Manage…",
+  },
+  promptModal: {
+    titleAdd: "Add prompt preset",
+    titleEdit: "Edit prompt preset",
+    nameLabel: "Name",
+    namePlaceholder: "e.g. Korean → 简体中文 (formal)",
+    descriptionLabel: "Description",
+    descriptionPlaceholder:
+      "Short note for the picker — what this preset is for",
+    enabledLabel: "Enabled",
+    systemTab: "System prompt",
+    suffixTab: "Suffix prompt",
+    thinkingTab: "Thinking prompt",
+    saveAction: "Save",
+    cancelAction: "Cancel",
+    resetAction: "Reset to default",
+    deleteAction: "Delete",
+    duplicateAction: "Duplicate",
+    previewAction: "Preview",
+    previewRunning: "Rendering…",
+    previewLabel: "Preview output",
+    previewClampedNotice:
+      "Active model has thinking_level=off, so the thinking suffix was clamped.",
+    previewSampleContext: "Sample context",
+    sampleSourceLanguage: "Korean",
+    sampleTargetLanguage: "Simplified Chinese",
+    sampleInput: "안녕하세요, 세상.",
+  },
   modelExtra: {
     deleteProfile: "Delete profile",
     timeoutSeconds: "Timeout (s)",
     setActive: "Set as active",
     activeBadge: "Active",
+    testConnection: "Test connection",
+    testConnectionHint:
+      "Send a minimal request to verify base URL, API key, and provider format.",
+    testRunning: "Testing…",
+    testOk: "Connection OK",
+    testFailed: "Connection failed",
+    testLatency: "Latency",
+    fetchModels: "Fetch model list",
+    fetchModelsHint:
+      "Call the provider's /models endpoint to list available model IDs.",
+    fetchRunning: "Fetching…",
+    fetchSuccess: "Fetched",
+    fetchFailed: "Fetch failed",
+    fetchUnsupportedAnthropic:
+      "Anthropic doesn't expose a /models endpoint — type the model ID manually (e.g. claude-3-5-sonnet-20241022).",
+    pickModel: "Pick a model",
+    addCustom: "New profile",
+    addCustomHint:
+      "Duplicate the current profile as a new entry for another model.",
   },
   batchReplacementHeaders: {
     src: "src",
@@ -95,6 +196,7 @@ export const en: Messages = {
   folderPicker: {
     choose: "Choose folder",
     open: "Open",
+    placeholder: "Type or paste a folder path…",
   },
   language: {
     sourceLabel: "Source language",
@@ -119,6 +221,16 @@ export const en: Messages = {
     noRules:
       "No rules imported. Import a TXT file with `source->target` lines.",
     execute: "Execute",
+    stop: "Stop",
+    progressLabel: "Progress",
+    statusLabel: "Status",
+    processedFiles: "Processed files",
+    failedFiles: "Failed files",
+    totalReplacements: "Total replacements",
+    artifactsLabel: "Artifacts",
+    noArtifacts: "No artifacts yet — run a replacement to populate this list.",
+    outputFiles: "Output files",
+    statisticsFile: "Statistics file",
   },
   pages: {
     translation: {
@@ -157,6 +269,9 @@ export const en: Messages = {
       precedingLines: "Preceding lines threshold",
       precedingLinesHelp:
         "Maximum number of preceding source lines included as context for each translation task. More context = better consistency, slightly higher token cost.",
+      lowConfidenceMaxRetries: "Low-confidence retry attempts",
+      lowConfidenceMaxRetriesHelp:
+        "When a translated segment looks suspicious (length far off, source-language characters left over, etc.), retry that segment up to this many times. Set to 0 to disable retries.",
       on: "On",
       off: "Off",
     },
@@ -238,6 +353,42 @@ export const en: Messages = {
           "Per-request timeout in seconds. Slower networks or large reasoning chunks may need higher values.",
       },
     },
+    textPreservePage: {
+      title: "Text Preserve",
+      sub: "Patterns whose matches are protected from translation. Useful for code blocks, formula tokens, proper-noun markers.",
+      addRule: "+ Add rule",
+      empty:
+        "No preserve rules — translation reaches the model with no protection.",
+      patternLabel: "Pattern (regex)",
+      patternPlaceholder: "e.g. \\{\\{[^}]+\\}\\}",
+      noteLabel: "Note",
+      notePlaceholder: "What this pattern is for",
+      enabledLabel: "Enabled",
+      deleteAction: "Delete",
+      stats: {
+        total: "{n} rules",
+        enabled: "{n} active",
+      },
+    },
+    replacementPage: {
+      title: "Translation Replacement",
+      sub: "Pre-replacements run on the source before the model sees it. Post-replacements run on the model's output before writeback.",
+      preLabel: "Pre-translation",
+      preHint: "Applied to source text before LLM",
+      postLabel: "Post-translation",
+      postHint: "Applied to model output before writeback",
+      addRule: "+ Add rule",
+      empty: "No rules in this group.",
+      srcLabel: "Find",
+      srcPlaceholder: "Text or regex to match",
+      dstLabel: "Replace with",
+      dstPlaceholder: "Replacement text",
+      regexLabel: "Regex",
+      caseSensitiveLabel: "Case sensitive",
+      noteLabel: "Note",
+      enabledLabel: "Enabled",
+      deleteAction: "Delete",
+    },
   },
   glossary: {
     crumb: "Glossary Extraction",
@@ -254,6 +405,9 @@ export const en: Messages = {
       allowSrcEqDst: "Allow src == dst entries",
       allowSrcEqDstHint:
         "Keep candidates whose source and target spelling are identical. Useful when names are spelled the same in both languages; off by default.",
+      normalizeWidths: "Normalize term widths",
+      normalizeWidthsHint:
+        "Fold full-width Latin/digits/katakana to half-width (NFKC) and strip leading/trailing punctuation from extracted terms. Reduces near-duplicate entries; on by default.",
       on: "On",
       off: "Off",
     },
@@ -262,6 +416,10 @@ export const en: Messages = {
       sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references TXT alongside the source folder.",
       progress: "Progress",
       runtimeTuning: "Runtime tuning",
+      activeConfig: "Active configuration",
+      activeModel: "Model",
+      activePrompt: "Prompt",
+      switch: "Switch",
       stats: {
         completed: "Completed",
         failed: "Failed",

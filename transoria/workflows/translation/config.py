@@ -44,10 +44,11 @@ class TranslationConfig:
     chunk_token_limit: int = 0
     token_counter: Callable[[str], int] | None = None
 
-    enable_confidence_check: bool = False
+    enable_confidence_check: bool = True
     min_length_ratio: float = 0.3
     max_length_ratio: float = 3.0
     max_punctuation_delta: int = 4
+    low_confidence_max_retries: int = 3
 
     stream: bool = False
     debug_log_dir: Path | None = None

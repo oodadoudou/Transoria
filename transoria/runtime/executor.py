@@ -60,6 +60,14 @@ class TaskExecutor:
     clock: Callable[[], str] = _utc_now_iso
 
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
+    _pause_request: asyncio.Event = field(
+        default_factory=asyncio.Event, init=False, repr=False
+    )
+    _pause_gate: asyncio.Event = field(
+        default_factory=asyncio.Event, init=False, repr=False
+    )
+    _active_runners: int = field(default=0, init=False, repr=False)
+    _pause_observed: bool = field(default=False, init=False, repr=False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -69,10 +77,37 @@ class TaskExecutor:
         """Signal cooperative shutdown. Safe to call from any thread/coroutine."""
 
         self._stop_event.set()
+        # If we are paused, wake the gate so workers can exit cleanly.
+        self._pause_gate.set()
+
+    def request_pause(self) -> None:
+        """Signal cooperative pause.
+
+        Workers waiting at the pause gate stay there. In-flight subtasks
+        (already past the gate, currently issuing the LLM call) finish
+        naturally — the user-facing latency is bounded by the longest
+        in-flight subtask. Once ``_active_runners`` settles to 0, the
+        ``_handle_pause`` task flips status to ``PAUSED`` and signals
+        ``run()`` to return.
+        """
+
+        self._pause_request.set()
+        self._pause_gate.clear()
+
+    def release_pause(self) -> None:
+        """Re-open the pause gate. Used by tests; production resumes via
+        a fresh ``run()`` call after the executor exits."""
+
+        self._pause_request.clear()
+        self._pause_gate.set()
 
     @property
     def is_stopping(self) -> bool:
         return self._stop_event.is_set()
+
+    @property
+    def is_pausing(self) -> bool:
+        return self._pause_request.is_set()
 
     async def run(self, task_id: str) -> TaskSnapshot:
         """Execute all PENDING subtasks of ``task_id`` and return the final snapshot.
@@ -86,14 +121,21 @@ class TaskExecutor:
         snapshot = self.cache.load(task_id)
         pending = [s for s in snapshot.subtasks if s.status is SubtaskStatus.PENDING]
         if not pending:
-            return self._finalize(task_id, stopped=False)
+            return self._finalize(task_id, stopped=False, paused=False)
 
         self._stop_event = asyncio.Event()
+        self._pause_request = asyncio.Event()
+        self._pause_gate = asyncio.Event()
+        self._pause_gate.set()  # gate open by default
+        self._active_runners = 0
+        self._pause_observed = False
         self._update_record_status(task_id, TaskStatus.RUNNING)
 
         await self._drive(task_id, pending)
 
-        return self._finalize(task_id, stopped=self._stop_event.is_set())
+        return self._finalize(
+            task_id, stopped=self._stop_event.is_set(), paused=self._pause_observed
+        )
 
     async def rerun_failed(self, task_id: str) -> TaskSnapshot:
         """Reset every FAILED subtask to PENDING, then :meth:`run`."""
@@ -122,21 +164,53 @@ class TaskExecutor:
             for subtask in pending
         ]
         stop_handler = asyncio.create_task(self._handle_stop(task_id, workers))
+        pause_handler = asyncio.create_task(self._handle_pause(task_id, workers))
 
         try:
             await asyncio.gather(*workers, return_exceptions=True)
         finally:
-            stop_handler.cancel()
-            try:
-                await stop_handler
-            except asyncio.CancelledError:
-                pass
+            for handler in (stop_handler, pause_handler):
+                handler.cancel()
+                try:
+                    await handler
+                except asyncio.CancelledError:
+                    pass
 
     async def _handle_stop(
         self, task_id: str, workers: list[asyncio.Task[None]]
     ) -> None:
         await self._stop_event.wait()
         self._update_record_status(task_id, TaskStatus.STOPPING)
+        for worker in workers:
+            if not worker.done():
+                worker.cancel()
+
+    async def _handle_pause(
+        self, task_id: str, workers: list[asyncio.Task[None]]
+    ) -> None:
+        """When pause is requested, wait for in-flight runners to settle,
+        flip status to ``PAUSED``, and cancel queued workers.
+
+        Workers waiting at the pause gate are cancelled so the executor
+        can exit cleanly; their subtasks remain in ``PENDING`` because
+        no ``RUNNING`` write happened yet. Workers that already
+        increment ``_active_runners`` finish their LLM call naturally
+        (they are past the gate).
+        """
+
+        await self._pause_request.wait()
+        if self._stop_event.is_set():
+            return  # stop wins; let _handle_stop drive the shutdown.
+        self._update_record_status(task_id, TaskStatus.PAUSING)
+        # Wait for in-flight runners to drain.
+        while self._active_runners > 0:
+            await asyncio.sleep(0.05)
+            if self._stop_event.is_set():
+                return
+        self._update_record_status(task_id, TaskStatus.PAUSED)
+        self._pause_observed = True
+        # Cancel workers still queued at the pause gate so the gather
+        # can complete and ``run()`` returns.
         for worker in workers:
             if not worker.done():
                 worker.cancel()
@@ -151,6 +225,14 @@ class TaskExecutor:
         async with semaphore:
             if self._stop_event.is_set():
                 return
+            # Pause gate: workers waiting here have NOT started the LLM
+            # call yet, so cancelling them rolls back nothing.
+            try:
+                await self._pause_gate.wait()
+            except asyncio.CancelledError:
+                return
+            if self._stop_event.is_set():
+                return
             try:
                 await limiter.acquire()
             except asyncio.CancelledError:
@@ -163,50 +245,57 @@ class TaskExecutor:
                 status=SubtaskStatus.RUNNING,
                 attempt_count=subtask.attempt_count + 1,
                 last_error="",
+                last_error_at="",
             )
             self.cache.save_subtask(running)
             self._fire_progress(task_id, running.id)
 
+            self._active_runners += 1
             try:
-                result = await self.runner.run(running)
-            except asyncio.CancelledError:
-                # Stop requested while in-flight: leave the subtask in PENDING
-                # so the next run picks it up. Re-raise so the executor knows
-                # this worker did not complete naturally.
-                rolled_back = replace(
-                    running,
-                    status=SubtaskStatus.PENDING,
-                )
-                self.cache.save_subtask(rolled_back)
-                self._fire_progress(task_id, rolled_back.id)
-                raise
-            except Exception as exc:
-                # Prefix the structured ``code`` (set by LlmRequestError and
-                # subclasses) when present so the frontend can localise
-                # without parsing the human-readable message.
-                code_prefix = ""
-                code = getattr(exc, "code", None)
-                if isinstance(code, str) and code:
-                    code_prefix = f"[{code}] "
-                failed = replace(
-                    running,
-                    status=SubtaskStatus.FAILED,
-                    last_error=f"{code_prefix}{type(exc).__name__}: {exc}",
-                )
-                self.cache.save_subtask(failed)
-                self._fire_progress(task_id, failed.id)
-                return
+                try:
+                    result = await self.runner.run(running)
+                except asyncio.CancelledError:
+                    # Stop requested while in-flight: leave the subtask in
+                    # PENDING so the next run picks it up. Re-raise so the
+                    # executor knows this worker did not complete naturally.
+                    rolled_back = replace(
+                        running,
+                        status=SubtaskStatus.PENDING,
+                    )
+                    self.cache.save_subtask(rolled_back)
+                    self._fire_progress(task_id, rolled_back.id)
+                    raise
+                except Exception as exc:
+                    # Prefix the structured ``code`` (set by
+                    # LlmRequestError and subclasses) when present so the
+                    # frontend can localise without parsing the
+                    # human-readable message.
+                    code_prefix = ""
+                    code = getattr(exc, "code", None)
+                    if isinstance(code, str) and code:
+                        code_prefix = f"[{code}] "
+                    failed = replace(
+                        running,
+                        status=SubtaskStatus.FAILED,
+                        last_error=f"{code_prefix}{type(exc).__name__}: {exc}",
+                        last_error_at=self.clock(),
+                    )
+                    self.cache.save_subtask(failed)
+                    self._fire_progress(task_id, failed.id)
+                    return
 
-            completed = replace(
-                running,
-                status=SubtaskStatus.COMPLETED,
-                response_content=result.response_content,
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
-                last_error="",
-            )
-            self.cache.save_subtask(completed)
-            self._fire_progress(task_id, completed.id)
+                completed = replace(
+                    running,
+                    status=SubtaskStatus.COMPLETED,
+                    response_content=result.response_content,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    last_error="",
+                )
+                self.cache.save_subtask(completed)
+                self._fire_progress(task_id, completed.id)
+            finally:
+                self._active_runners -= 1
 
     # ------------------------------------------------------------------
     # Helpers
@@ -218,11 +307,16 @@ class TaskExecutor:
             return
         self.cache.save_task(record.with_status(status).with_updated_at(self.clock()))
 
-    def _finalize(self, task_id: str, *, stopped: bool) -> TaskSnapshot:
+    def _finalize(
+        self, task_id: str, *, stopped: bool, paused: bool
+    ) -> TaskSnapshot:
         snapshot = self.cache.load(task_id)
         progress = snapshot.progress()
+        # Stop wins over pause if both fired.
         if stopped:
             final = TaskStatus.STOPPED
+        elif paused:
+            final = TaskStatus.PAUSED
         elif progress.failed > 0 and progress.pending == 0 and progress.running == 0:
             final = TaskStatus.FAILED
         elif progress.pending == 0 and progress.running == 0 and progress.failed == 0:

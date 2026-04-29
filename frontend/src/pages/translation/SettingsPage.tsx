@@ -159,6 +159,18 @@ export function SettingsPage() {
             max={200}
           />
         </Row>
+        <Row label="" hint="">
+          <NumberField
+            label={settings.lowConfidenceMaxRetries}
+            value={draft.low_confidence_max_retries}
+            onChange={(v) =>
+              moduleSettings.update("low_confidence_max_retries", v)
+            }
+            help={settings.lowConfidenceMaxRetriesHelp}
+            min={0}
+            max={10}
+          />
+        </Row>
       </Panel>
 
       <SettingsToolbar

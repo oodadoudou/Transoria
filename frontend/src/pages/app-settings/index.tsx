@@ -30,7 +30,6 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
   const draft = moduleSettings.draft;
 
   const [meta, setMeta] = useState<AppMetadata | null>(null);
-  const [metaError, setMetaError] = useState<BridgeError | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,9 +38,8 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
       .then((result) => {
         if (!cancelled) setMeta(result);
       })
-      .catch((error) => {
-        if (cancelled) return;
-        if (BridgeError.isBridgeError(error)) setMetaError(error);
+      .catch(() => {
+        // Silently ignore — About panel only renders when connected
       });
     return () => {
       cancelled = true;
@@ -157,10 +155,6 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
             <span className={styles.metaPath}>{meta.cache_root}</span>
           </SettingRow>
         </Panel>
-      ) : metaError ? (
-        <Panel label={appSettingsExtra.aboutLabel}>
-          <pre className={styles.error}>{metaError.message}</pre>
-        </Panel>
       ) : null}
 
       <UpdatesPanel />
@@ -237,7 +231,9 @@ function UpdatesPanel() {
       label={appSettingsExtra.updatesLabel}
       labelExtra={
         <Pill variant="ghost" onClick={handleCheck} disabled={checking}>
-          {checking ? appSettingsExtra.checking : appSettingsExtra.checkForUpdates}
+          {checking
+            ? appSettingsExtra.checking
+            : appSettingsExtra.checkForUpdates}
         </Pill>
       }
     >

@@ -29,6 +29,7 @@ class Subtask:
     output_tokens: int = 0
     attempt_count: int = 0
     last_error: str = ""
+    last_error_at: str = ""
 
     @property
     def total_tokens(self) -> int:
@@ -45,6 +46,7 @@ class Subtask:
             "output_tokens": self.output_tokens,
             "attempt_count": self.attempt_count,
             "last_error": self.last_error,
+            "last_error_at": self.last_error_at,
         }
 
     def to_json(self) -> str:
@@ -69,6 +71,7 @@ class Subtask:
             output_tokens=int(data.get("output_tokens", 0)),
             attempt_count=int(data.get("attempt_count", 0)),
             last_error=str(data.get("last_error", "")),
+            last_error_at=str(data.get("last_error_at", "")),
         )
 
     @classmethod

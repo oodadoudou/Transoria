@@ -36,6 +36,7 @@ from transoria.workflows.translation.chunker import (
     assemble_user_prompt,
 )
 from transoria.workflows.translation.confidence import (
+    ConfidenceVerdict,
     evaluate_segment_confidence,
 )
 from transoria.workflows.translation.preprocessor import (
@@ -195,6 +196,7 @@ class TranslationSubtaskRunner:
     min_length_ratio: float = 0.3
     max_length_ratio: float = 3.0
     max_punctuation_delta: int = 4
+    low_confidence_max_retries: int = 0
     tpm_limiter: TpmLimiter | None = None
     stream: bool = False
     debug_log_dir: Path | None = None
@@ -218,92 +220,77 @@ class TranslationSubtaskRunner:
             ),
             thinking=self.model.thinking_enabled,
         )
-        user_prompt = assemble_user_prompt(chunk)
-        roster = self.fake_name_roster
-        if roster is not None and not roster.is_empty():
-            user_prompt = roster.apply(user_prompt)
 
-        reservation = -1
-        if self.tpm_limiter is not None:
-            estimated = estimate_tokens_from_text(system_prompt) + estimate_tokens_from_text(
-                user_prompt
-            )
-            reservation = await self.tpm_limiter.reserve(estimated)
+        initial_user_prompt = self._apply_roster(assemble_user_prompt(chunk))
+        response = await self._one_llm_call(system_prompt, initial_user_prompt)
+        total_input = response.usage.input_tokens
+        total_output = response.usage.output_tokens
 
-        response = None
-        try:
-            response = await self.client.chat(
-                ChatRequest(
-                    model=self.model,
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    stream=self.stream,
-                )
-            )
-        finally:
-            if self.tpm_limiter is not None and reservation >= 0:
-                # Reconcile against the *combined* input + output count when
-                # available. If the request failed before usage came back we
-                # settle with 0 so the budget refunds and the next caller
-                # isn't blocked by a charge that never reached the wire.
-                actual = (
-                    response.usage.total_tokens if response is not None else 0
-                )
-                self.tpm_limiter.settle(reservation, actual)
-        assert response is not None
-
-        raw_content = response.content
-        if roster is not None and not roster.is_empty():
-            raw_content = restore_fake_name_text(roster, raw_content)
-        decoded = decode_translation_jsonl(raw_content)
-        translations_by_chunk_index = {line.index: line.text for line in decoded.lines}
-        expected_indices = {meta.chunk_index for meta in metadata}
-        missing = expected_indices - translations_by_chunk_index.keys()
-        extra = translations_by_chunk_index.keys() - expected_indices
-
-        if missing or extra:
-            issue_summary = ""
-            if decoded.issues:
-                issue_summary = "; decode_issues=" + " | ".join(
-                    issue.reason for issue in decoded.issues
-                )
-            raise LlmRequestError(
-                "Translation line count mismatch — "
-                f"expected {sorted(expected_indices)}, "
-                f"got {sorted(translations_by_chunk_index.keys())}; "
-                f"missing={sorted(missing)} extra={sorted(extra)}"
-                + issue_summary,
-                code="llm.line_count_mismatch",
-            )
+        raw_content = self._restore_roster(response.content)
+        translations_by_index = self._decode_or_raise(raw_content, metadata)
 
         finalized: dict[str, str] = {}
         low_confidence: list[dict[str, object]] = []
+        pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
+
         for meta in metadata:
-            translated = translations_by_chunk_index[meta.chunk_index]
-            final_text = postprocess_segment(
-                translated,
-                protection=ProtectionMap(spans=meta.protection_spans),
-                leading_whitespace=meta.leading_whitespace,
-                trailing_whitespace=meta.trailing_whitespace,
-                post_replacements=self.post_replacements,
-            )
+            final_text = self._postprocess(meta, translations_by_index[meta.chunk_index])
+            verdict = self._evaluate_confidence(meta.original_text, final_text)
+            if verdict.is_low_confidence and self.low_confidence_max_retries > 0:
+                pending.append((meta, final_text, verdict.reasons))
+                continue
             finalized[meta.segment_id] = final_text
-            if self.enable_confidence_check:
-                verdict = evaluate_segment_confidence(
-                    meta.original_text,
-                    final_text,
-                    min_length_ratio=self.min_length_ratio,
-                    max_length_ratio=self.max_length_ratio,
-                    max_punctuation_delta=self.max_punctuation_delta,
-                    source_language=self.source_language,
+            if verdict.is_low_confidence:
+                low_confidence.append(
+                    {"segment_id": meta.segment_id, "reasons": list(verdict.reasons)}
                 )
-                if verdict.is_low_confidence:
-                    low_confidence.append(
-                        {
-                            "segment_id": meta.segment_id,
-                            "reasons": list(verdict.reasons),
-                        }
+
+        retry_round = 0
+        while pending and retry_round < self.low_confidence_max_retries:
+            retry_round += 1
+            retry_chunk = TranslationChunk(
+                segments=tuple(
+                    ChunkSegment(
+                        segment_id=meta.segment_id,
+                        chunk_index=meta.chunk_index,
+                        prompt_text=meta.prompt_text,
                     )
+                    for meta, _, _ in pending
+                ),
+                context_lines=chunk.context_lines,
+                glossary_entries=chunk.glossary_entries,
+            )
+            retry_user_prompt = self._apply_roster(assemble_user_prompt(retry_chunk))
+            retry_response = await self._one_llm_call(system_prompt, retry_user_prompt)
+            total_input += retry_response.usage.input_tokens
+            total_output += retry_response.usage.output_tokens
+
+            retry_raw = self._restore_roster(retry_response.content)
+            retry_decoded = decode_translation_jsonl(retry_raw)
+            retry_by_index = {line.index: line.text for line in retry_decoded.lines}
+
+            next_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
+            for meta, last_text, last_reasons in pending:
+                retry_text = retry_by_index.get(meta.chunk_index)
+                if retry_text is None:
+                    next_pending.append((meta, last_text, last_reasons))
+                    continue
+                retry_final = self._postprocess(meta, retry_text)
+                verdict = self._evaluate_confidence(meta.original_text, retry_final)
+                if verdict.is_low_confidence:
+                    next_pending.append((meta, retry_final, verdict.reasons))
+                    continue
+                finalized[meta.segment_id] = retry_final
+            pending = next_pending
+
+        for meta, last_text, last_reasons in pending:
+            finalized[meta.segment_id] = last_text
+            low_confidence.append(
+                {
+                    "segment_id": meta.segment_id,
+                    "reasons": list(last_reasons) + ["force_accepted_after_max_retries"],
+                }
+            )
 
         payload: dict[str, object] = {
             "version": SUBTASK_RESPONSE_VERSION,
@@ -317,17 +304,105 @@ class TranslationSubtaskRunner:
                 {
                     "kind": "translation",
                     "system_prompt": system_prompt,
-                    "user_prompt": user_prompt,
-                    "raw_response": response.content,
+                    "user_prompt": initial_user_prompt,
+                    "raw_response": raw_content,
                     "translations": finalized,
                     "low_confidence": low_confidence,
-                    "usage": response.usage.to_dict(),
+                    "retry_rounds": retry_round,
+                    "usage": {
+                        "input_tokens": total_input,
+                        "output_tokens": total_output,
+                        "total_tokens": total_input + total_output,
+                    },
                 },
             )
         return SubtaskResult(
             response_content=json.dumps(payload, ensure_ascii=False),
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
+            input_tokens=total_input,
+            output_tokens=total_output,
+        )
+
+    def _apply_roster(self, prompt: str) -> str:
+        roster = self.fake_name_roster
+        if roster is None or roster.is_empty():
+            return prompt
+        return roster.apply(prompt)
+
+    def _restore_roster(self, content: str) -> str:
+        roster = self.fake_name_roster
+        if roster is None or roster.is_empty():
+            return content
+        return restore_fake_name_text(roster, content)
+
+    async def _one_llm_call(self, system_prompt: str, user_prompt: str):
+        reservation = -1
+        if self.tpm_limiter is not None:
+            estimated = estimate_tokens_from_text(
+                system_prompt
+            ) + estimate_tokens_from_text(user_prompt)
+            reservation = await self.tpm_limiter.reserve(estimated)
+        response = None
+        try:
+            response = await self.client.chat(
+                ChatRequest(
+                    model=self.model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    stream=self.stream,
+                )
+            )
+        finally:
+            if self.tpm_limiter is not None and reservation >= 0:
+                actual = response.usage.total_tokens if response is not None else 0
+                self.tpm_limiter.settle(reservation, actual)
+        assert response is not None
+        return response
+
+    def _decode_or_raise(
+        self, raw_content: str, metadata: tuple[_SegmentPayload, ...]
+    ) -> dict[int, str]:
+        decoded = decode_translation_jsonl(raw_content)
+        translations_by_index = {line.index: line.text for line in decoded.lines}
+        expected = {meta.chunk_index for meta in metadata}
+        missing = expected - translations_by_index.keys()
+        extra = translations_by_index.keys() - expected
+        if missing or extra:
+            issue_summary = ""
+            if decoded.issues:
+                issue_summary = "; decode_issues=" + " | ".join(
+                    issue.reason for issue in decoded.issues
+                )
+            raise LlmRequestError(
+                "Translation line count mismatch — "
+                f"expected {sorted(expected)}, "
+                f"got {sorted(translations_by_index.keys())}; "
+                f"missing={sorted(missing)} extra={sorted(extra)}"
+                + issue_summary,
+                code="llm.line_count_mismatch",
+            )
+        return translations_by_index
+
+    def _postprocess(self, meta: _SegmentPayload, translated: str) -> str:
+        return postprocess_segment(
+            translated,
+            protection=ProtectionMap(spans=meta.protection_spans),
+            leading_whitespace=meta.leading_whitespace,
+            trailing_whitespace=meta.trailing_whitespace,
+            post_replacements=self.post_replacements,
+        )
+
+    def _evaluate_confidence(
+        self, source_text: str, translated_text: str
+    ) -> ConfidenceVerdict:
+        if not self.enable_confidence_check:
+            return ConfidenceVerdict(is_low_confidence=False)
+        return evaluate_segment_confidence(
+            source_text,
+            translated_text,
+            min_length_ratio=self.min_length_ratio,
+            max_length_ratio=self.max_length_ratio,
+            max_punctuation_delta=self.max_punctuation_delta,
+            source_language=self.source_language,
         )
 
 

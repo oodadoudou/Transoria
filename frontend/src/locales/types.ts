@@ -27,13 +27,21 @@ export interface Messages {
   };
   errors: {
     runFailureTitle: string;
+    loadFailureTitle: string;
     dismiss: string;
+    retry: string;
   };
   runControls: {
     start: string;
     pause: string;
     stop: string;
-    resume: string;
+    continue: string;
+    pausing: string;
+    stopping: string;
+    confirmStartTitle: string;
+    confirmStartBody: string;
+    confirmStartConfirm: string;
+    confirmStartCancel: string;
   };
   bilingual: {
     label: string;
@@ -42,11 +50,90 @@ export interface Messages {
     dedupeHint: string;
     subfolderLabel: string;
   };
+  fieldHint: {
+    toggleLabel: string;
+    recommendedFor: string;
+    fallbackProvider: string;
+    source: string;
+  };
+  modelHints: {
+    timeout: string;
+    concurrency: string;
+    rpm: string;
+    tpm: string;
+    retry: string;
+    maxOutputTokens: string;
+    temperature: string;
+  };
+  modelModal: {
+    titleAdd: string;
+    titleEdit: string;
+    step1Title: string;
+    step1Sub: string;
+    step2Title: string;
+    customTemplateName: string;
+    pickerBack: string;
+    saveAction: string;
+    cancelAction: string;
+    rotateKeysLabel: string;
+    rotateKeysHelp: string;
+    runtimeTuningLabel: string;
+    samplingLabel: string;
+  };
+  quickSwitch: {
+    titleModel: string;
+    titlePrompt: string;
+    closeAction: string;
+    activeBadge: string;
+    emptyModel: string;
+    emptyPrompt: string;
+    manageLink: string;
+  };
+  promptModal: {
+    titleAdd: string;
+    titleEdit: string;
+    nameLabel: string;
+    namePlaceholder: string;
+    descriptionLabel: string;
+    descriptionPlaceholder: string;
+    enabledLabel: string;
+    systemTab: string;
+    suffixTab: string;
+    thinkingTab: string;
+    saveAction: string;
+    cancelAction: string;
+    resetAction: string;
+    deleteAction: string;
+    duplicateAction: string;
+    previewAction: string;
+    previewRunning: string;
+    previewLabel: string;
+    previewClampedNotice: string;
+    previewSampleContext: string;
+    sampleSourceLanguage: string;
+    sampleTargetLanguage: string;
+    sampleInput: string;
+  };
   modelExtra: {
     deleteProfile: string;
     timeoutSeconds: string;
     setActive: string;
     activeBadge: string;
+    testConnection: string;
+    testConnectionHint: string;
+    testRunning: string;
+    testOk: string;
+    testFailed: string;
+    testLatency: string;
+    fetchModels: string;
+    fetchModelsHint: string;
+    fetchRunning: string;
+    fetchSuccess: string;
+    fetchFailed: string;
+    fetchUnsupportedAnthropic: string;
+    pickModel: string;
+    addCustom: string;
+    addCustomHint: string;
   };
   batchReplacementHeaders: {
     src: string;
@@ -90,6 +177,7 @@ export interface Messages {
   folderPicker: {
     choose: string;
     open: string;
+    placeholder: string;
   };
   language: {
     sourceLabel: string;
@@ -143,6 +231,8 @@ export interface Messages {
       requestTimeoutHelp: string;
       precedingLines: string;
       precedingLinesHelp: string;
+      lowConfidenceMaxRetries: string;
+      lowConfidenceMaxRetriesHelp: string;
       on: string;
       off: string;
     };
@@ -219,6 +309,38 @@ export interface Messages {
         timeout: string;
       };
     };
+    textPreservePage: {
+      title: string;
+      sub: string;
+      addRule: string;
+      empty: string;
+      patternLabel: string;
+      patternPlaceholder: string;
+      noteLabel: string;
+      notePlaceholder: string;
+      enabledLabel: string;
+      deleteAction: string;
+      stats: { total: string; enabled: string };
+    };
+    replacementPage: {
+      title: string;
+      sub: string;
+      preLabel: string;
+      preHint: string;
+      postLabel: string;
+      postHint: string;
+      addRule: string;
+      empty: string;
+      srcLabel: string;
+      srcPlaceholder: string;
+      dstLabel: string;
+      dstPlaceholder: string;
+      regexLabel: string;
+      caseSensitiveLabel: string;
+      noteLabel: string;
+      enabledLabel: string;
+      deleteAction: string;
+    };
   };
   glossary: {
     crumb: string;
@@ -233,6 +355,8 @@ export interface Messages {
       combineFolderGlossaryHint: string;
       allowSrcEqDst: string;
       allowSrcEqDstHint: string;
+      normalizeWidths: string;
+      normalizeWidthsHint: string;
       on: string;
       off: string;
     };
@@ -241,6 +365,10 @@ export interface Messages {
       sub: string;
       progress: string;
       runtimeTuning: string;
+      activeConfig: string;
+      activeModel: string;
+      activePrompt: string;
+      switch: string;
       stats: {
         completed: string;
         failed: string;
@@ -273,6 +401,16 @@ export interface Messages {
     importRules: string;
     noRules: string;
     execute: string;
+    stop: string;
+    progressLabel: string;
+    statusLabel: string;
+    processedFiles: string;
+    failedFiles: string;
+    totalReplacements: string;
+    artifactsLabel: string;
+    noArtifacts: string;
+    outputFiles: string;
+    statisticsFile: string;
   };
   prompt: {
     pageTitle: string;

@@ -1,52 +1,50 @@
 // Types mirror docs/active/frontend-backend-bridge-contract.md.
 // Keep wire format snake_case here; component code uses these directly.
 
-export type Language = 'kr' | 'zh' | 'zh-Hant' | 'en' | 'ja';
+export type Language = "kr" | "zh" | "zh-Hant" | "en" | "ja";
 
 export type TaskStatus =
-  | 'pending'
-  | 'running'
-  | 'stopping'
-  | 'stopped'
-  | 'completed'
-  | 'failed';
+  | "pending"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "pausing"
+  | "paused"
+  | "completed"
+  | "failed";
 
 export type SubtaskStatus =
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'skipped';
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
 
 export type ProviderFormat =
-  | 'openai'
-  | 'google'
-  | 'anthropic'
-  | 'sakura'
-  | 'custom';
+  | "openai"
+  | "google"
+  | "anthropic"
+  | "sakura"
+  | "custom";
 
-export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
+export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
-export type Platform = 'darwin' | 'win32' | 'linux';
+export type Platform = "darwin" | "win32" | "linux";
 
-export type ChineseOutputForm = 'simplified' | 'traditional';
+export type ChineseOutputForm = "simplified" | "traditional";
 
-export type Theme = 'light' | 'dark' | 'system';
+export type Theme = "light" | "dark" | "system";
 
-export type SettingsModule =
-  | 'app'
-  | 'translation'
-  | 'glossary'
-  | 'replacement';
+export type SettingsModule = "app" | "translation" | "glossary" | "replacement";
 
-export type PromptKind = 'translation' | 'glossary';
+export type PromptKind = "translation" | "glossary";
 
 // --- App ---------------------------------------------------------------------
 
 export interface AppMetadata {
   app_version: string;
   platform: Platform;
-  build_mode: 'dev' | 'packaged';
+  build_mode: "dev" | "packaged";
   python_version: string;
   cache_root: string;
 }
@@ -54,7 +52,7 @@ export interface AppMetadata {
 // --- Settings ----------------------------------------------------------------
 
 export interface AppSettings {
-  interface_language: 'en' | 'zh';
+  interface_language: "en" | "zh";
   theme: Theme;
   ui_scale: number;
   proxy_url: string;
@@ -62,6 +60,30 @@ export interface AppSettings {
   active_glossary_model_id: string | null;
   active_translation_prompt_id: string | null;
   active_glossary_prompt_id: string | null;
+}
+
+export interface PersistedGlossaryEntry {
+  src: string;
+  dst: string;
+  info: string;
+  regex: boolean;
+  case_sensitive: boolean;
+  enabled: boolean;
+}
+
+export interface PersistedTextPreserveRule {
+  pattern: string;
+  note: string;
+  enabled: boolean;
+}
+
+export interface PersistedTranslationReplacementRule {
+  src: string;
+  dst: string;
+  regex: boolean;
+  case_sensitive: boolean;
+  note: string;
+  enabled: boolean;
 }
 
 export interface TranslationSettings {
@@ -74,7 +96,12 @@ export interface TranslationSettings {
   bilingual_dedupe_identical: boolean;
   bilingual_subfolder_name: string;
   context_lines: number;
+  low_confidence_max_retries: number;
   auto_open_output_folder: boolean;
+  translation_glossary: PersistedGlossaryEntry[];
+  text_preserve_rules: PersistedTextPreserveRule[];
+  pre_replacements: PersistedTranslationReplacementRule[];
+  post_replacements: PersistedTranslationReplacementRule[];
 }
 
 export interface GlossarySettings {
@@ -89,6 +116,7 @@ export interface GlossarySettings {
   chunk_token_limit: number;
   merge_folder_glossary: boolean;
   keep_identical_src_dst: boolean;
+  normalize_widths: boolean;
   auto_open_output_folder: boolean;
 }
 
@@ -122,12 +150,12 @@ export interface DialogPathResult {
 }
 
 export interface GlossaryFileResult extends DialogPathResult {
-  format: 'xlsx' | 'json' | null;
+  format: "xlsx" | "json" | null;
 }
 
 // --- Model profiles ---------------------------------------------------------
 
-export type ApiKeyStatus = 'missing' | 'present' | 'from_env';
+export type ApiKeyStatus = "missing" | "present" | "from_env";
 
 export interface ModelProfile {
   id: string;
@@ -158,10 +186,11 @@ export interface ModelProfile {
 
 export type ModelProfileDraft = Omit<
   ModelProfile,
-  'id' | 'api_key_status' | 'api_key_masked'
+  "id" | "api_key_status" | "api_key_masked"
 > & { api_keys?: string[] };
 
 export interface ModelTestResult {
+  request_id: string;
   ok: boolean;
   latency_ms: number;
   provider_response: {
@@ -174,6 +203,11 @@ export interface ModelTestResult {
 export interface ModelListEntry {
   id: string;
   display_name?: string;
+}
+
+export interface ModelListResult {
+  request_id: string;
+  models: ModelListEntry[];
 }
 
 // --- Prompt presets ---------------------------------------------------------
@@ -201,9 +235,74 @@ export interface PromptPreviewContext {
   input?: string;
 }
 
+export interface PromptPreviewResult {
+  prompt: string;
+  /** Whether the rendered prompt actually included the thinking suffix.
+   * Differs from the requested ``thinking`` flag when the active model
+   * profile has ``thinking_level=off`` and the bridge clamped it. */
+  thinking: boolean;
+  /** True when the requested ``thinking=true`` was overridden because
+   * the active model has ``thinking_level=off``. UI should warn. */
+  clamped: boolean;
+  /** The active model profile's thinking_level for the preset's kind,
+   * or null when no model is selected / the saved profile is gone. */
+  active_thinking_level: "off" | "low" | "medium" | "high" | null;
+}
+
 // --- Tasks (translation, glossary, replacement) -----------------------------
 
-export type TaskKind = 'translation' | 'glossary' | 'replacement';
+export type TaskKind = "translation" | "glossary" | "replacement";
+
+/** Inline-credential payload used by the Add API Profile modal to
+ *  test_connection / fetch_model_list before persisting the profile.
+ *  Architecture § 3.4 G.2 — keys travel localhost only and are not
+ *  written to disk. */
+export interface InlineProbeCredentials {
+  provider_format: ProviderFormat;
+  base_url: string;
+  api_key: string;
+  /** Required for testConnectionInline (LLM call needs a model id);
+   *  optional for fetchModelListInline (only base_url + key matter). */
+  model_id?: string;
+  custom_headers?: Array<[string, string]>;
+}
+
+export interface ProviderTemplateFieldHint {
+  description_key: string;
+  recommended_value: string;
+  source_url: string | null;
+}
+
+export interface ProviderTemplateRecommendedDefaults {
+  timeout_seconds: number;
+  concurrency_limit: number;
+  rpm_limit: number;
+  tpm_limit: number;
+  retry_attempts: number;
+  max_output_tokens: number;
+  temperature: number;
+  top_p: number;
+  thinking_level: "off" | "low" | "medium" | "high";
+}
+
+export interface ProviderTemplate {
+  id: string;
+  display_name: string;
+  provider_format: ProviderFormat;
+  default_base_url: string;
+  hint_models: string[];
+  supports_fetch_model_list: boolean;
+  recommended_defaults: ProviderTemplateRecommendedDefaults;
+  field_hints: Record<string, ProviderTemplateFieldHint>;
+}
+
+export interface ProbeContinuable {
+  continuable: boolean;
+  task_id: string | null;
+  status: TaskStatus | null;
+  pending: number;
+  failed: number;
+}
 
 export interface TaskHeader {
   id: string;
@@ -251,27 +350,32 @@ export interface TaskFailure {
 
 export interface TaskLogLine {
   timestamp: string;
-  level: 'info' | 'warn' | 'error';
+  level: "info" | "warn" | "error";
   message: string;
   context?: Record<string, unknown>;
 }
 
 export interface TaskOutcome {
-  status: 'completed' | 'stopped' | 'failed';
+  status: "completed" | "stopped" | "failed";
   artifacts_path: string;
   statistics_path: string | null;
 }
 
 export interface TranslationArtifacts {
+  kind: "translation";
   output_folder: string;
   bilingual_folder: string | null;
   translated_files: string[];
   bilingual_files: string[];
   statistics_json_path: string | null;
   statistics_text_path: string | null;
+  processed_files?: string[];
+  completed_segments?: number;
+  total_segments?: number;
 }
 
 export interface GlossaryArtifacts {
+  kind: "glossary";
   output_folder: string;
   per_novel_artifacts: Array<{
     novel_name: string;
@@ -290,6 +394,7 @@ export interface GlossaryArtifacts {
 }
 
 export interface ReplacementArtifacts {
+  kind: "replacement";
   output_folder: string;
   output_files: string[];
   statistics_json_path: string | null;
@@ -313,7 +418,7 @@ export interface ReplacementRuleParseResult {
 
 export interface ReplacementValidationIssue {
   rule_index: number;
-  code: 'regex_error' | 'duplicate_src' | 'empty_src' | 'empty_dst';
+  code: "regex_error" | "duplicate_src" | "empty_src" | "empty_dst";
   message: string;
 }
 
@@ -326,23 +431,21 @@ export interface UpdateCheckResult {
   release_notes_markdown: string;
   release_url: string;
   published_at: string;
-  asset:
-    | {
-        name: string;
-        download_url: string;
-        size_bytes: number;
-        platform: Platform;
-      }
-    | null;
+  asset: {
+    name: string;
+    download_url: string;
+    size_bytes: number;
+    platform: Platform;
+  } | null;
 }
 
 // --- Task events (push channel) ---------------------------------------------
 
 export type TaskEvent =
-  | { kind: 'snapshot'; task_id: string; snapshot: TaskSnapshot }
-  | { kind: 'log'; task_id: string; line: TaskLogLine }
-  | { kind: 'completed'; task_id: string; outcome: TaskOutcome }
-  | { kind: 'failed'; task_id: string; error: BridgeErrorPayload };
+  | { kind: "snapshot"; task_id: string; snapshot: TaskSnapshot }
+  | { kind: "log"; task_id: string; line: TaskLogLine }
+  | { kind: "completed"; task_id: string; outcome: TaskOutcome }
+  | { kind: "failed"; task_id: string; error: BridgeErrorPayload };
 
 // --- Errors -----------------------------------------------------------------
 

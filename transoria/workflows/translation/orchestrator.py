@@ -72,6 +72,7 @@ class TranslationRunResult:
     task_id: str
     statistics: TranslationStatistics
     statistics_path: Path
+    statistics_text_path: Path | None
     translated_outputs: tuple[Path, ...]
     bilingual_outputs: tuple[Path, ...]
     final_status: TaskStatus
@@ -103,6 +104,8 @@ class TranslationOrchestrator:
     progress: ProgressListener | None = None
     clock: "ClockFn" = _utc_now_iso
     id_factory: "IdFactory" = field(default_factory=lambda: _default_id_factory)
+    on_executor_created: "Callable[[TaskExecutor], None] | None" = None
+    on_result_finalized: "Callable[[TranslationRunResult], None] | None" = None
 
     async def run(self, config: TranslationConfig) -> TranslationRunResult:
         started_at = self.clock()
@@ -124,39 +127,64 @@ class TranslationOrchestrator:
         )
 
         task_id = self.id_factory()
-        record = TaskRecord(
-            id=task_id,
-            kind=TaskKind.TRANSLATION,
-            status=TaskStatus.PENDING,
-            created_at=started_at,
-            updated_at=started_at,
-            metadata={
-                "input_dir": str(config.input_dir),
-                "output_dir": str(config.output_dir),
-                "source_language": config.source_language.value,
-                "target_language": config.target_language.value,
-                "model_id": config.model.id,
-                "prompt_preset_id": config.prompt_preset.id,
-            },
+        # "Continue path" means subtasks were already seeded — i.e. the
+        # orchestrator ran for this task_id at least once. A bare
+        # TaskRecord without subtasks (e.g. a placeholder seeded by
+        # TaskService for early read_snapshot reads) is treated as
+        # "fresh start".
+        existing_subtasks = (
+            self.cache.load_subtasks(task_id) if self.cache.has_task(task_id) else ()
         )
-
-        subtasks: list[Subtask] = []
-        per_file_lookup = {item.segment_id: item for item in prepared}
-        for chunk_index, chunk in enumerate(chunks):
-            metadata = [
-                _segment_metadata(per_file_lookup[segment.segment_id])
-                for segment in chunk.segments
-            ]
-            payload = encode_subtask_payload(chunk, segment_metadata=metadata)
-            subtasks.append(
-                Subtask(
-                    id=f"chunk-{chunk_index:05d}",
-                    task_id=task_id,
-                    request_payload=payload,
-                )
+        if existing_subtasks:
+            # Continue path: reuse the prior cache record + subtasks.
+            # Reset FAILED subtasks to PENDING so the executor reruns
+            # them; COMPLETED subtasks stay completed and are skipped.
+            # Re-chunking is intentionally avoided so subtask ids stay
+            # stable across stop → continue cycles.
+            for stored in existing_subtasks:
+                if stored.status is SubtaskStatus.FAILED:
+                    self.cache.save_subtask(
+                        replace(
+                            stored,
+                            status=SubtaskStatus.PENDING,
+                            last_error="",
+                            last_error_at="",
+                        )
+                    )
+        else:
+            record = TaskRecord(
+                id=task_id,
+                kind=TaskKind.TRANSLATION,
+                status=TaskStatus.PENDING,
+                created_at=started_at,
+                updated_at=started_at,
+                metadata={
+                    "input_dir": str(config.input_dir),
+                    "output_dir": str(config.output_dir),
+                    "source_language": config.source_language.value,
+                    "target_language": config.target_language.value,
+                    "model_id": config.model.id,
+                    "prompt_preset_id": config.prompt_preset.id,
+                },
             )
 
-        self.cache.write_seed(record, subtasks)
+            subtasks: list[Subtask] = []
+            per_file_lookup = {item.segment_id: item for item in prepared}
+            for chunk_index, chunk in enumerate(chunks):
+                metadata = [
+                    _segment_metadata(per_file_lookup[segment.segment_id])
+                    for segment in chunk.segments
+                ]
+                payload = encode_subtask_payload(chunk, segment_metadata=metadata)
+                subtasks.append(
+                    Subtask(
+                        id=f"chunk-{chunk_index:05d}",
+                        task_id=task_id,
+                        request_payload=payload,
+                    )
+                )
+
+            self.cache.write_seed(record, subtasks)
 
         runner = self.runner_factory(self.client, config)
         executor = TaskExecutor(
@@ -167,6 +195,8 @@ class TranslationOrchestrator:
             progress=self.progress,
             clock=self.clock,
         )
+        if self.on_executor_created is not None:
+            self.on_executor_created(executor)
 
         snapshot = await executor.run(task_id)
         while self._split_failed_subtasks(task_id, snapshot.subtasks, config):
@@ -212,20 +242,24 @@ class TranslationOrchestrator:
             for s in snapshot.subtasks
             if s.status is SubtaskStatus.FAILED and s.last_error
         )
-        statistics_path, _ = write_translation_statistics(
+        statistics_path, statistics_text_path = write_translation_statistics(
             statistics,
             config.output_dir,
             failed_subtask_details=failed_subtask_details,
         )
 
-        return TranslationRunResult(
+        result = TranslationRunResult(
             task_id=task_id,
             statistics=statistics,
             statistics_path=statistics_path,
+            statistics_text_path=statistics_text_path,
             translated_outputs=tuple(translated_outputs),
             bilingual_outputs=tuple(bilingual_outputs),
             final_status=snapshot.record.status,
         )
+        if self.on_result_finalized is not None:
+            self.on_result_finalized(result)
+        return result
 
     def _finalize_empty(
         self, config: TranslationConfig, started_at: str
@@ -234,15 +268,21 @@ class TranslationOrchestrator:
             started_at=started_at,
             ended_at=self.clock(),
         )
-        statistics_path, _ = write_translation_statistics(statistics, config.output_dir)
-        return TranslationRunResult(
+        statistics_path, statistics_text_path = write_translation_statistics(
+            statistics, config.output_dir
+        )
+        result = TranslationRunResult(
             task_id="",
             statistics=statistics,
             statistics_path=statistics_path,
+            statistics_text_path=statistics_text_path,
             translated_outputs=(),
             bilingual_outputs=(),
             final_status=TaskStatus.COMPLETED,
         )
+        if self.on_result_finalized is not None:
+            self.on_result_finalized(result)
+        return result
 
     def _split_failed_subtasks(
         self,
@@ -573,6 +613,7 @@ def _default_runner_factory(
         min_length_ratio=config.min_length_ratio,
         max_length_ratio=config.max_length_ratio,
         max_punctuation_delta=config.max_punctuation_delta,
+        low_confidence_max_retries=config.low_confidence_max_retries,
         tpm_limiter=tpm_limiter,
         stream=config.stream,
         debug_log_dir=config.debug_log_dir,

@@ -1,0 +1,43 @@
+.empty {
+  color: var(--muted, #7a7166);
+  font-size: 12.5px;
+  font-style: italic;
+  padding: 6px 0 14px;
+}
+
+.ruleList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ruleCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--panel-soft, #f5f0e9);
+  border-radius: var(--radius-inset, 10px);
+}
+
+.ruleHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.ruleIndex {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #7a7166);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}

@@ -1,20 +1,20 @@
-export * from './types';
-export { BridgeError } from './errors';
+export * from "./types";
+export { BridgeError } from "./errors";
 export {
   appBridge,
   settingsBridge,
   dialogsBridge,
   modelProfilesBridge,
+  modelTemplatesBridge,
   promptsBridge,
   translationBridge,
   glossaryBridge,
   replacementBridge,
   updatesBridge,
-  bridgeControl,
-} from './client';
+} from "./client";
 export {
   getTransport,
   setTransport,
   resetTransport,
   type BridgeTransport,
-} from './transport';
+} from "./transport";

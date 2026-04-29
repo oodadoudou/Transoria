@@ -21,7 +21,7 @@ surface it.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
@@ -71,12 +71,29 @@ from transoria.workflows.glossary.statistics import (
 
 
 @dataclass(frozen=True)
+class GlossaryArtifactSet:
+    novel_name: str
+    xlsx_path: Path
+    json_path: Path
+    references_path: Path
+    source_path: Path | None = None
+    decode_issue_path: Path | None = None
+    is_combined: bool = False
+
+    def __iter__(self):
+        yield self.xlsx_path
+        yield self.json_path
+        yield self.references_path
+
+
+@dataclass(frozen=True)
 class GlossaryExtractionResult:
     task_id: str
     statistics: GlossaryStatistics
     statistics_path: Path
-    glossary_outputs_per_file: tuple[tuple[Path, Path, Path], ...]
+    glossary_outputs_per_file: tuple[GlossaryArtifactSet, ...]
     final_status: TaskStatus
+    combined_output: GlossaryArtifactSet | None = None
 
 
 def _utc_now_iso() -> str:
@@ -122,6 +139,8 @@ class GlossaryOrchestrator:
     progress: ProgressListener | None = None
     clock: ClockFn = _utc_now_iso
     id_factory: IdFactory = field(default_factory=lambda: _default_id_factory)
+    on_executor_created: "Callable[[TaskExecutor], None] | None" = None
+    on_result_finalized: "Callable[[GlossaryExtractionResult], None] | None" = None
 
     async def run(self, config: GlossaryConfig) -> GlossaryExtractionResult:
         started_at = self.clock()
@@ -141,31 +160,51 @@ class GlossaryOrchestrator:
             return self._finalize_empty(config, started_at)
 
         task_id = self.id_factory()
-        record = TaskRecord(
-            id=task_id,
-            kind=TaskKind.GLOSSARY,
-            status=TaskStatus.PENDING,
-            created_at=started_at,
-            updated_at=started_at,
-            metadata={
-                "input_dir": str(config.input_dir),
-                "output_dir": str(config.output_dir),
-                "source_language": config.source_language.value,
-                "target_language": config.target_language.value,
-                "model_id": config.model.id,
-                "prompt_preset_id": config.prompt_preset.id,
-            },
+        # "Continue path" means subtasks were already seeded. A bare
+        # TaskRecord without subtasks (e.g. a placeholder seeded by
+        # TaskService for early read_snapshot reads) is "fresh start".
+        existing_subtasks = (
+            self.cache.load_subtasks(task_id) if self.cache.has_task(task_id) else ()
         )
-
-        subtasks = [
-            Subtask(
-                id=chunk.chunk_id,
-                task_id=task_id,
-                request_payload=encode_glossary_payload(chunk),
+        if existing_subtasks:
+            # Continue path: reset FAILED → PENDING; preserve subtask
+            # ids so chunk_id matches the original parse.
+            for stored in existing_subtasks:
+                if stored.status is SubtaskStatus.FAILED:
+                    self.cache.save_subtask(
+                        replace(
+                            stored,
+                            status=SubtaskStatus.PENDING,
+                            last_error="",
+                            last_error_at="",
+                        )
+                    )
+        else:
+            record = TaskRecord(
+                id=task_id,
+                kind=TaskKind.GLOSSARY,
+                status=TaskStatus.PENDING,
+                created_at=started_at,
+                updated_at=started_at,
+                metadata={
+                    "input_dir": str(config.input_dir),
+                    "output_dir": str(config.output_dir),
+                    "source_language": config.source_language.value,
+                    "target_language": config.target_language.value,
+                    "model_id": config.model.id,
+                    "prompt_preset_id": config.prompt_preset.id,
+                },
             )
-            for chunk in chunks
-        ]
-        self.cache.write_seed(record, subtasks)
+
+            subtasks = [
+                Subtask(
+                    id=chunk.chunk_id,
+                    task_id=task_id,
+                    request_payload=encode_glossary_payload(chunk),
+                )
+                for chunk in chunks
+            ]
+            self.cache.write_seed(record, subtasks)
 
         runner = self.runner_factory(self.client, config)
         executor = TaskExecutor(
@@ -176,6 +215,8 @@ class GlossaryOrchestrator:
             progress=self.progress,
             clock=self.clock,
         )
+        if self.on_executor_created is not None:
+            self.on_executor_created(executor)
 
         snapshot = await executor.run(task_id)
 
@@ -183,7 +224,7 @@ class GlossaryOrchestrator:
             snapshot.subtasks, chunks
         )
 
-        glossary_outputs_per_file: list[tuple[Path, Path, Path]] = []
+        glossary_outputs_per_file: list[GlossaryArtifactSet] = []
         failed_files: list[GlossaryFailedFile] = []
         all_records: list[GlossaryRecord] = []
         per_file_record_groups: list[tuple[GlossaryRecord, ...]] = []
@@ -205,6 +246,7 @@ class GlossaryOrchestrator:
                 info_blacklist=config.info_blacklist,
                 allow_src_eq_dst=config.allow_src_eq_dst,
                 target_language=config.target_language,
+                normalize_widths=config.normalize_widths,
             )
             records = count_frequencies_and_references(
                 normalized,
@@ -225,20 +267,30 @@ class GlossaryOrchestrator:
                 config.output_dir,
                 source_path=source_file,
             )
-            glossary_outputs_per_file.append((xlsx_path, json_path, references_path))
 
             file_issues = issues_by_file.get(source_file, ())
+            decode_issue_path = None
             if file_issues:
-                write_glossary_decode_issues(
+                decode_issue_path = write_glossary_decode_issues(
                     file_issues,
                     config.output_dir,
                     basename=glossary_basename(source_file),
                 )
+            glossary_outputs_per_file.append(
+                GlossaryArtifactSet(
+                    novel_name=source_file.stem,
+                    xlsx_path=xlsx_path,
+                    json_path=json_path,
+                    references_path=references_path,
+                    source_path=source_file,
+                    decode_issue_path=decode_issue_path,
+                )
+            )
             all_records.extend(records)
             per_file_record_groups.append(records)
             per_file_record_count += len(records)
 
-        combined_outputs: tuple[Path, Path, Path] | None = None
+        combined_output: GlossaryArtifactSet | None = None
         if config.combine_folder_glossary and len(per_file_record_groups) > 1:
             combined = combine_glossary_records(
                 per_file_record_groups,
@@ -249,12 +301,20 @@ class GlossaryOrchestrator:
                 # artifact set. Falls back to "Combined" when the input dir
                 # has no descriptive name (e.g. ``/`` or ``.``).
                 folder_name = config.input_dir.resolve().name or "Combined"
-                combined_outputs = write_glossary_artifacts(
+                xlsx_path, json_path, references_path = write_glossary_artifacts(
                     combined,
                     config.output_dir,
                     basename=folder_name,
                 )
-                glossary_outputs_per_file.append(combined_outputs)
+                combined_output = GlossaryArtifactSet(
+                    novel_name=folder_name,
+                    xlsx_path=xlsx_path,
+                    json_path=json_path,
+                    references_path=references_path,
+                    source_path=None,
+                    decode_issue_path=None,
+                    is_combined=True,
+                )
 
         candidate_count = sum(len(items) for items in candidates_by_file.values())
         decode_issue_count = sum(len(items) for items in issues_by_file.values())
@@ -267,8 +327,11 @@ class GlossaryOrchestrator:
             ),
             glossary_outputs=tuple(
                 str(path)
-                for triple in glossary_outputs_per_file
-                for path in triple
+                for artifact in (
+                    *glossary_outputs_per_file,
+                    *(() if combined_output is None else (combined_output,)),
+                )
+                for path in artifact
             ),
             candidate_count=candidate_count,
             final_entry_count=per_file_record_count,
@@ -290,13 +353,17 @@ class GlossaryOrchestrator:
             failed_subtask_details=failed_subtask_details,
         )
 
-        return GlossaryExtractionResult(
+        result = GlossaryExtractionResult(
             task_id=task_id,
             statistics=statistics,
             statistics_path=statistics_path,
             glossary_outputs_per_file=tuple(glossary_outputs_per_file),
+            combined_output=combined_output,
             final_status=snapshot.record.status,
         )
+        if self.on_result_finalized is not None:
+            self.on_result_finalized(result)
+        return result
 
     def _finalize_empty(
         self, config: GlossaryConfig, started_at: str
@@ -305,13 +372,17 @@ class GlossaryOrchestrator:
             started_at=started_at, ended_at=self.clock()
         )
         statistics_path, _ = write_glossary_statistics(statistics, config.output_dir)
-        return GlossaryExtractionResult(
+        result = GlossaryExtractionResult(
             task_id="",
             statistics=statistics,
             statistics_path=statistics_path,
             glossary_outputs_per_file=(),
+            combined_output=None,
             final_status=TaskStatus.COMPLETED,
         )
+        if self.on_result_finalized is not None:
+            self.on_result_finalized(result)
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -376,4 +447,4 @@ def _aggregate_candidates(
     )
 
 
-__all__ = ["GlossaryExtractionResult", "GlossaryOrchestrator"]
+__all__ = ["GlossaryArtifactSet", "GlossaryExtractionResult", "GlossaryOrchestrator"]

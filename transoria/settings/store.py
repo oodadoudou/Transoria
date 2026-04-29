@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Mapping
 
 from transoria.settings.defaults import (
+    _TRANSLATION_LIST_OF_MAPPING_FIELDS,
     AllSettings,
     AppSettings,
     GlossarySettings,
@@ -129,7 +130,20 @@ def _hydrate(
     init_kwargs = {**asdict(fallback)}
     for key, value in raw.items():
         if key in valid_keys:
-            init_kwargs[key] = value
+            # JSON deserializes tuples as lists. Re-freeze list-of-dict
+            # fields on TranslationSettings so frozen dataclass
+            # invariants hold across save → load round-trips.
+            if (
+                cls is TranslationSettings
+                and key in _TRANSLATION_LIST_OF_MAPPING_FIELDS
+                and isinstance(value, list)
+            ):
+                init_kwargs[key] = tuple(
+                    dict(item) if isinstance(item, Mapping) else item
+                    for item in value
+                )
+            else:
+                init_kwargs[key] = value
     return cls(**init_kwargs)
 
 

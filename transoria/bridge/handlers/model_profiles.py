@@ -2,21 +2,36 @@
 
 Profiles persist via :class:`ModelProfileStore`. API keys live in a
 separate file and never appear in the profile body returned to the
-frontend — only ``api_key_status`` and a masked tail. ``test_connection``
-and ``fetch_model_list`` are reserved for the LLM client integration in
-a follow-up; for v1 they return ``bridge.invalid_argument`` with
-``details.reason = "unsupported"`` so the UI can render a clear "not
-yet wired" state instead of a runtime crash.
+frontend — only ``api_key_status`` and a masked tail.
+
+``test_connection`` issues a minimal LLM call (max 1 output token) using
+the configured profile and returns latency + status, so users can verify
+their API key + base URL + provider format are correct without leaving
+the Model page.
+
+``fetch_model_list`` queries the provider's ``/models`` endpoint where
+supported (OpenAI-compatible, Google) so users can pick a model_id from a
+live dropdown instead of typing it.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+import asyncio
+import time
 from typing import Mapping
+
+import httpx
 
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
+from transoria.llm.client import (
+    ChatRequest,
+    ChatTransport,
+    HttpxChatTransport,
+    LlmClient,
+    LlmRequestError,
+)
 from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.model_profiles import ModelProfileStore, mask_api_keys
 from transoria.settings import SettingsStore
@@ -38,6 +53,9 @@ def _profile_to_dict(profile: ModelConfig, status: str) -> dict[str, object]:
 def _build_handlers(
     profile_store: ModelProfileStore,
     settings_store: SettingsStore,
+    *,
+    chat_transport_factory,
+    http_client_factory,
 ) -> dict[str, object]:
     def list_profiles(_payload: Mapping[str, object]) -> dict[str, object]:
         profiles = profile_store.load()
@@ -161,17 +179,88 @@ def _build_handlers(
         updated = settings_store.save_partial("app", {field: profile_id})
         return {"app": _app_settings_dict(updated.app)}
 
-    def test_connection(_payload: Mapping[str, object]) -> dict[str, object]:
-        raise BridgeError.invalid_argument(
-            "test_connection is not yet implemented in this build.",
-            details={"reason": "unsupported"},
+    def test_connection(payload: Mapping[str, object]) -> dict[str, object]:
+        request_id = expect_string(payload, "request_id")
+        profile = _resolve_profile_for_probe(
+            payload,
+            profile_store=profile_store,
+            require_model_id=True,
+            usage="testing",
         )
+        client = LlmClient(transport=chat_transport_factory())
+        request = ChatRequest(
+            model=profile,
+            system_prompt="",
+            user_prompt="ping",
+            temperature=0.0,
+            stream=False,
+        )
+        start = time.monotonic()
+        try:
+            response = asyncio.run(client.chat(request))
+        except LlmRequestError as exc:
+            elapsed = int((time.monotonic() - start) * 1000)
+            return {
+                "request_id": request_id,
+                "ok": False,
+                "latency_ms": elapsed,
+                "provider_response": {
+                    "model": profile.model_id,
+                    "status_code": _status_code_from_error(exc),
+                    "detail": f"[{exc.code}] {exc}",
+                },
+            }
+        except Exception as exc:  # noqa: BLE001 — surface unexpected failures
+            elapsed = int((time.monotonic() - start) * 1000)
+            return {
+                "request_id": request_id,
+                "ok": False,
+                "latency_ms": elapsed,
+                "provider_response": {
+                    "model": profile.model_id,
+                    "status_code": None,
+                    "detail": f"{type(exc).__name__}: {exc}",
+                },
+            }
+        elapsed = int((time.monotonic() - start) * 1000)
+        return {
+            "request_id": request_id,
+            "ok": True,
+            "latency_ms": elapsed,
+            "provider_response": {
+                "model": profile.model_id,
+                "status_code": 200,
+                "detail": (
+                    f"received {len(response.content)} chars; "
+                    f"in={response.usage.input_tokens} out={response.usage.output_tokens}"
+                ),
+            },
+        }
 
-    def fetch_model_list(_payload: Mapping[str, object]) -> dict[str, object]:
-        raise BridgeError.invalid_argument(
-            "fetch_model_list is not yet implemented in this build.",
-            details={"reason": "unsupported"},
+    def fetch_model_list(payload: Mapping[str, object]) -> dict[str, object]:
+        request_id = expect_string(payload, "request_id")
+        profile = _resolve_profile_for_probe(
+            payload,
+            profile_store=profile_store,
+            require_model_id=False,
+            usage="fetching",
         )
+        if profile.provider_format is ProviderFormat.ANTHROPIC:
+            raise BridgeError.invalid_argument(
+                "Anthropic does not expose a /models endpoint.",
+                details={"reason": "unsupported", "provider": "anthropic"},
+            )
+
+        try:
+            entries = _do_fetch_models(profile, http_client_factory)
+        except LlmRequestError as exc:
+            raise BridgeError(
+                "llm.request_failed",
+                str(exc),
+                retryable=False,
+                details={"cause": exc.code},
+            ) from exc
+        return {"request_id": request_id, "models": entries}
 
     return {
         "model_profiles.list": list_profiles,
@@ -183,6 +272,212 @@ def _build_handlers(
         "model_profiles.test_connection": test_connection,
         "model_profiles.fetch_model_list": fetch_model_list,
     }
+
+
+_INLINE_PROFILE_FIELDS: frozenset[str] = frozenset(
+    {"provider_format", "base_url", "api_key"}
+)
+
+
+def _resolve_profile_for_probe(
+    payload: Mapping[str, object],
+    *,
+    profile_store: ModelProfileStore,
+    require_model_id: bool,
+    usage: str,
+) -> ModelConfig:
+    """Resolve the payload into a runnable ``ModelConfig`` for the
+    test_connection / fetch_model_list probe handlers.
+
+    Two payload shapes are accepted (architecture § 3.4 G.2):
+
+    1. **Stored profile**: ``{ id: <profile_id> }`` — load the saved
+       profile. Profile must exist and carry an API key.
+    2. **Inline credentials**: ``{ provider_format, base_url,
+       api_key, model_id? }`` — build an ephemeral profile in
+       memory, never persisted. Lets the modal validate before the
+       user clicks Save.
+
+    Mixing the two (``{ id, base_url }``) is ambiguous and raises
+    ``bridge.invalid_argument``.
+    """
+
+    has_id = isinstance(payload.get("id"), str) and payload.get("id")
+    inline_keys_present = _INLINE_PROFILE_FIELDS & set(payload.keys())
+    has_inline = bool(inline_keys_present)
+
+    if has_id and has_inline:
+        raise BridgeError.invalid_argument(
+            "Pass either { id } OR inline credentials, not both.",
+            field="id",
+            details={
+                "reason": "ambiguous_payload",
+                "inline_keys": sorted(inline_keys_present),
+            },
+        )
+    if not has_id and not has_inline:
+        raise BridgeError.invalid_argument(
+            "Either { id } or { provider_format, base_url, api_key } "
+            "is required.",
+            field="id",
+        )
+
+    if has_id:
+        profile_id = expect_string(payload, "id")
+        profile = profile_store.get(profile_id)
+        if profile is None:
+            raise BridgeError.not_found(
+                f"profile {profile_id!r} does not exist.",
+                details={"profile_id": profile_id},
+            )
+        if not profile.api_keys:
+            raise BridgeError.invalid_argument(
+                f"profile has no API key configured; set one before {usage}.",
+                field="api_keys",
+                details={"reason": "missing_api_key"},
+            )
+        return profile
+
+    # Inline path: build a transient ModelConfig.
+    provider_raw = expect_string(payload, "provider_format")
+    base_url = expect_string(payload, "base_url")
+    api_key = expect_string(payload, "api_key", allow_empty=False)
+    try:
+        provider_format = ProviderFormat(provider_raw)
+    except ValueError as exc:
+        raise BridgeError.invalid_argument(
+            f"unsupported provider_format: {provider_raw!r}",
+            field="provider_format",
+        ) from exc
+
+    model_id_raw = payload.get("model_id")
+    if require_model_id:
+        if not isinstance(model_id_raw, str) or not model_id_raw.strip():
+            raise BridgeError.invalid_argument(
+                "model_id is required for inline test_connection.",
+                field="model_id",
+            )
+        model_id = model_id_raw.strip()
+    else:
+        model_id = (
+            model_id_raw.strip()
+            if isinstance(model_id_raw, str) and model_id_raw.strip()
+            else "probe"
+        )
+
+    custom_headers_raw = payload.get("custom_headers")
+    custom_headers: tuple[tuple[str, str], ...] = ()
+    if isinstance(custom_headers_raw, list):
+        custom_headers = tuple(
+            (str(item[0]), str(item[1]))
+            for item in custom_headers_raw
+            if isinstance(item, (list, tuple)) and len(item) == 2
+        )
+
+    return ModelConfig(
+        id="inline-probe",
+        display_name="inline probe",
+        provider_format=provider_format,
+        base_url=base_url,
+        model_id=model_id,
+        api_keys=(api_key,),
+        custom_headers=custom_headers,
+    )
+
+
+def _status_code_from_error(exc: LlmRequestError) -> int | None:
+    """Best-effort: extract HTTP status from the error message.
+
+    LlmRequestError messages contain ``HTTP <code>`` for http_error /
+    rotatable failures. Returning ``None`` is acceptable for transport
+    errors where no response was received.
+    """
+
+    text = str(exc)
+    marker = "HTTP "
+    if marker in text:
+        tail = text.split(marker, 1)[1]
+        digits = tail.split(":", 1)[0].split(" ", 1)[0].strip()
+        try:
+            return int(digits)
+        except ValueError:
+            return None
+    return None
+
+
+def _do_fetch_models(
+    profile: ModelConfig, http_client_factory
+) -> list[dict[str, object]]:
+    """Hit the provider's ``/models`` endpoint and return ``[{id, display_name?}]``.
+
+    OpenAI/Sakura/Custom: ``GET <base_url>/models`` with bearer auth.
+    Google: ``GET <base_url>/v1beta/models?key=<api_key>``.
+    Anthropic is rejected upstream — no list endpoint.
+    """
+
+    api_key = profile.api_keys[0]
+    headers = profile.custom_headers_dict()
+    timeout = max(5.0, min(profile.timeout_seconds, 30.0))
+    if profile.provider_format is ProviderFormat.GOOGLE:
+        url = f"{profile.base_url.rstrip('/')}/v1beta/models?key={api_key}"
+        request_headers = {**headers}
+    else:
+        url = f"{profile.base_url.rstrip('/')}/models"
+        request_headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            **headers,
+        }
+    with http_client_factory(timeout=timeout) as client:
+        try:
+            response = client.get(url, headers=request_headers)
+        except httpx.HTTPError as exc:
+            raise LlmRequestError(
+                f"transport failed: {exc}", code="llm.transport_error"
+            ) from exc
+    if response.status_code >= 400:
+        raise LlmRequestError(
+            f"HTTP {response.status_code}: {response.text[:200]}",
+            code="llm.http_error",
+        )
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise LlmRequestError(
+            f"invalid JSON response: {exc}", code="llm.malformed_response"
+        ) from exc
+
+    entries: list[dict[str, object]] = []
+    if profile.provider_format is ProviderFormat.GOOGLE:
+        models = body.get("models") if isinstance(body, dict) else None
+        if isinstance(models, list):
+            for item in models:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", ""))
+                model_id = name.split("/")[-1] if "/" in name else name
+                if not model_id:
+                    continue
+                entries.append(
+                    {
+                        "id": model_id,
+                        "display_name": str(item.get("displayName", model_id)),
+                    }
+                )
+    else:
+        items = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(items, list) and isinstance(body, list):
+            items = body
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    model_id = str(item.get("id", ""))
+                    if not model_id:
+                        continue
+                    entries.append({"id": model_id})
+                elif isinstance(item, str):
+                    entries.append({"id": item})
+    return entries
 
 
 def _profile_from_payload(body: Mapping[str, object]) -> ModelConfig:
@@ -252,13 +547,29 @@ def _app_settings_dict(value: object) -> dict[str, object]:
     return asdict(value)  # type: ignore[arg-type]
 
 
+def _default_chat_transport() -> ChatTransport:
+    return HttpxChatTransport()
+
+
+def _default_http_client_factory(timeout: float):
+    return httpx.Client(timeout=timeout)
+
+
 def register(
     router: BridgeRouter,
     *,
     profile_store: ModelProfileStore,
     settings_store: SettingsStore,
+    chat_transport_factory=_default_chat_transport,
+    http_client_factory=_default_http_client_factory,
 ) -> None:
-    for method, handler in _build_handlers(profile_store, settings_store).items():
+    handlers = _build_handlers(
+        profile_store,
+        settings_store,
+        chat_transport_factory=chat_transport_factory,
+        http_client_factory=http_client_factory,
+    )
+    for method, handler in handlers.items():
         router.register(method, handler)  # type: ignore[arg-type]
 
 

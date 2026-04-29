@@ -1,18 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMessages } from "@/locales";
 import {
   BridgeError,
   dialogsBridge,
   replacementBridge,
+  type ReplacementArtifacts,
   type ReplacementRule,
   type ReplacementValidationIssue,
 } from "@/bridge";
 import { useModuleSettings } from "@/store/useSettingsStore";
+import {
+  useRunSnapshot,
+  usePollRunSnapshot,
+  useRuntimeStore,
+} from "@/store/useRuntimeStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
+import { FailedSubtaskList } from "@/components/FailedSubtaskList";
 import styles from "./BatchReplacementPage.module.css";
+
+const NUM = new Intl.NumberFormat("en");
+
+const TERMINAL: ReadonlySet<string> = new Set([
+  "completed",
+  "failed",
+  "stopped",
+]);
 
 export function BatchReplacementPage() {
   const messages = useMessages();
@@ -24,7 +39,37 @@ export function BatchReplacementPage() {
   >([]);
   const [issues, setIssues] = useState<ReplacementValidationIssue[]>([]);
   const [actionError, setActionError] = useState<BridgeError | null>(null);
-  const [running, setRunning] = useState(false);
+  const [artifacts, setArtifacts] = useState<ReplacementArtifacts | null>(null);
+
+  const snapshot = useRunSnapshot("replacement");
+  usePollRunSnapshot("replacement");
+  const setActiveTaskId = useRuntimeStore((state) => state.setActiveTaskId);
+  const activeTaskId = useRuntimeStore(
+    (state) => state.replacement.activeTaskId,
+  );
+
+  // Pull artifacts as soon as the task settles into a terminal state.
+  useEffect(() => {
+    if (!activeTaskId) {
+      setArtifacts(null);
+      return;
+    }
+    if (!TERMINAL.has(snapshot.status)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await replacementBridge.readArtifacts(activeTaskId);
+        if (!cancelled) setArtifacts(result);
+      } catch (error) {
+        if (BridgeError.isBridgeError(error) && error.code !== "bridge.not_found") {
+          if (!cancelled) setActionError(error);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, snapshot.status]);
 
   if (!draft) {
     return (
@@ -56,20 +101,40 @@ export function BatchReplacementPage() {
 
   const handleExecute = async () => {
     setActionError(null);
-    setRunning(true);
+    setArtifacts(null);
     try {
       const requestId = `replace-${Date.now().toString(36)}`;
-      await replacementBridge.startTask(requestId, rules);
+      const { task_id } = await replacementBridge.startTask(requestId, rules);
+      setActiveTaskId("replacement", task_id);
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {
         setActionError(error);
       } else {
         throw error;
       }
-    } finally {
-      setRunning(false);
     }
   };
+
+  const handleStop = async () => {
+    if (!activeTaskId) return;
+    setActionError(null);
+    try {
+      await replacementBridge.stopTask(activeTaskId);
+    } catch (error) {
+      if (BridgeError.isBridgeError(error)) {
+        setActionError(error);
+      } else {
+        throw error;
+      }
+    }
+  };
+
+  const isRunning =
+    snapshot.status === "running" || snapshot.status === "pending";
+  const total = snapshot.progress.total;
+  const completed = snapshot.progress.completed;
+  const failed = snapshot.progress.failed;
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
     <>
@@ -153,13 +218,20 @@ export function BatchReplacementPage() {
           <Pill
             onClick={handleExecute}
             disabled={
-              running ||
+              isRunning ||
               rules.length === 0 ||
               !draft.input_folder ||
               !draft.output_folder
             }
           >
             {messages.batchReplacement.execute}
+          </Pill>
+          <Pill
+            variant="ghost"
+            onClick={handleStop}
+            disabled={!isRunning || !activeTaskId}
+          >
+            {messages.batchReplacement.stop}
           </Pill>
           {actionError ? (
             <span className={styles.actionError}>
@@ -168,6 +240,64 @@ export function BatchReplacementPage() {
           ) : null}
         </div>
       </Panel>
+
+      {activeTaskId ? (
+        <Panel label={messages.batchReplacement.progressLabel}>
+          <div className={styles.progressGrid}>
+            <Stat
+              label={messages.batchReplacement.statusLabel}
+              value={snapshot.status}
+            />
+            <Stat
+              label={messages.batchReplacement.processedFiles}
+              value={`${NUM.format(completed)} / ${NUM.format(total)} (${percent}%)`}
+            />
+            <Stat
+              label={messages.batchReplacement.failedFiles}
+              value={NUM.format(failed)}
+            />
+          </div>
+          {snapshot.failures.length > 0 ? (
+            <div className={styles.failures}>
+              <FailedSubtaskList failures={snapshot.failures} />
+            </div>
+          ) : null}
+        </Panel>
+      ) : null}
+
+      {artifacts ? (
+        <Panel label={messages.batchReplacement.artifactsLabel}>
+          <div className={styles.artifactSummary}>
+            <Stat
+              label={messages.batchReplacement.totalReplacements}
+              value={NUM.format(artifacts.total_replacements)}
+            />
+            <Stat
+              label={messages.batchReplacement.outputFiles}
+              value={NUM.format(artifacts.output_files.length)}
+            />
+          </div>
+          {artifacts.output_files.length > 0 ? (
+            <ul className={styles.artifactList}>
+              {artifacts.output_files.map((path) => (
+                <li key={path}>
+                  <code>{path}</code>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className={styles.empty}>
+              {messages.batchReplacement.noArtifacts}
+            </div>
+          )}
+          {artifacts.statistics_json_path ? (
+            <div className={styles.statsLine}>
+              <span>{messages.batchReplacement.statisticsFile}:</span>{" "}
+              <code>{artifacts.statistics_json_path}</code>
+            </div>
+          ) : null}
+        </Panel>
+      ) : null}
 
       <SettingsToolbar
         saveState={moduleSettings.saveState}
@@ -180,5 +310,19 @@ export function BatchReplacementPage() {
         }}
       />
     </>
+  );
+}
+
+interface StatProps {
+  label: string;
+  value: string;
+}
+
+function Stat({ label, value }: StatProps) {
+  return (
+    <div className={styles.stat}>
+      <span className={styles.statLabel}>{label}</span>
+      <span className={styles.statValue}>{value}</span>
+    </div>
   );
 }

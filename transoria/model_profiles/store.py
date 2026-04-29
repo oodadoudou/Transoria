@@ -18,10 +18,7 @@ from pathlib import Path
 from typing import Literal, Mapping, Sequence
 
 from transoria.llm.config import ModelConfig
-from transoria.model_profiles.defaults import (
-    DEFAULT_PROFILE_IDS,
-    default_profiles,
-)
+from transoria.model_profiles.defaults import DEFAULT_PROFILE_IDS
 
 ApiKeyStatus = Literal["missing", "present", "from_env"]
 
@@ -131,10 +128,13 @@ class ModelProfileStore:
         raise KeyError(profile_id)
 
     def _load_bodies(self) -> tuple[ModelConfig, ...]:
+        # Architecture § 3.4 — Step G: fresh installs produce no
+        # seeded profiles. Users walk through the ``+ Add API
+        # Profile`` modal to create their first profile from a
+        # template. Existing user files (with or without the legacy
+        # seeded ids) are preserved on upgrade.
         if not self.profiles_path.exists():
-            seeded = default_profiles()
-            self._save_bodies(seeded)
-            return seeded
+            return ()
         try:
             raw = self.profiles_path.read_text(encoding="utf-8")
         except OSError as exc:

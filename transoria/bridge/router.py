@@ -85,13 +85,24 @@ class BridgeRouter:
         return dict(response)
 
 
-def build_default_router(*, cache_root: "Path | None" = None) -> BridgeRouter:
+def build_default_router(
+    *,
+    cache_root: "Path | None" = None,
+    dialog_provider: "object | None" = None,
+    update_checker: "object | None" = None,
+    llm_client_factory: "Callable[[], object] | None" = None,
+) -> BridgeRouter:
     """Wire the production handler set.
 
     New domains register themselves here so a fresh router instance always
     matches the contract surface. ``cache_root`` lets tests inject a tmp
     path; production callers omit it and the default project-relative
-    ``.transoria-cache`` directory is used.
+    ``.transoria-cache`` directory is used. ``dialog_provider`` overrides
+    the default :class:`NullDialogProvider` (pass the pywebview adapter from
+    ``app.py``). ``update_checker`` lets app launchers choose a real network
+    checker while tests/dev harnesses can stay deterministic. ``llm_client_factory``
+    overrides the production httpx-backed LLM client; tests inject a fake
+    transport here.
     """
 
     from pathlib import Path  # noqa: PLC0415 — local to keep top-level small
@@ -105,11 +116,15 @@ def build_default_router(*, cache_root: "Path | None" = None) -> BridgeRouter:
     from transoria.bridge.handlers.model_profiles import (  # noqa: PLC0415
         register as register_model_profiles,
     )
+    from transoria.bridge.handlers.model_templates import (  # noqa: PLC0415
+        register as register_model_templates,
+    )
     from transoria.bridge.handlers.prompts import (  # noqa: PLC0415
         register as register_prompts,
     )
     from transoria.bridge.handlers.replacement import (  # noqa: PLC0415
-        register as register_replacement,
+        register_parsers as register_replacement_parsers,
+        register_tasks as register_replacement_tasks,
     )
     from transoria.bridge.handlers.settings import (  # noqa: PLC0415
         default_store,
@@ -120,37 +135,62 @@ def build_default_router(*, cache_root: "Path | None" = None) -> BridgeRouter:
         NullUpdateChecker,
         register as register_updates,
     )
+    from transoria.bridge.task_registry import TaskRegistry  # noqa: PLC0415
+    from transoria.bridge.task_service import (  # noqa: PLC0415
+        TaskService,
+        default_llm_client_factory,
+    )
     from transoria.model_profiles import ModelProfileStore  # noqa: PLC0415
+    from transoria.runtime.cache import TaskCache  # noqa: PLC0415
 
     if cache_root is None:
         cache_root = Path(__file__).resolve().parents[2] / ".transoria-cache"
 
     settings_store = default_store(cache_root)
     profile_store = ModelProfileStore.from_cache_root(cache_root)
+    task_cache = TaskCache(root=cache_root / "tasks")
+    task_registry = TaskRegistry()
+    task_service = TaskService(
+        cache=task_cache,
+        registry=task_registry,
+        settings_store=settings_store,
+        profile_store=profile_store,
+        prompts_cache_root=cache_root,
+        llm_client_factory=llm_client_factory or default_llm_client_factory,
+    )
     current_version = _read_app_version()
 
     router = BridgeRouter()
     register_app(router)
-    register_tasks(router)
+    register_tasks(router, service=task_service)
     register_settings(router, store=settings_store)
     register_model_profiles(
         router,
         profile_store=profile_store,
         settings_store=settings_store,
     )
+    register_model_templates(router)
     register_prompts(
         router,
         cache_root=cache_root,
         settings_store=settings_store,
+        profile_store=profile_store,
     )
-    register_dialogs(router, provider=NullDialogProvider())
-    register_replacement(router)
+    register_dialogs(router, provider=dialog_provider or NullDialogProvider())
+    register_replacement_parsers(router)
+    register_replacement_tasks(router, service=task_service)
     register_updates(
         router,
-        checker=NullUpdateChecker(current_version=current_version),
+        checker=update_checker or NullUpdateChecker(current_version=current_version),
         current_version=current_version,
     )
     return router
 
 
-__all__ = ["BridgeError", "BridgeErrorPayload", "BridgeHandler", "BridgeRouter", "build_default_router"]
+__all__ = [
+    "BridgeError",
+    "BridgeErrorPayload",
+    "BridgeHandler",
+    "BridgeRouter",
+    "build_default_router",
+]

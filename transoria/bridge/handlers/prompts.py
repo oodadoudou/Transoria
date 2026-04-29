@@ -15,6 +15,8 @@ from typing import Mapping
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
+from transoria.llm.config import ThinkingLevel
+from transoria.model_profiles import ModelProfileStore
 from transoria.prompts import (
     DEFAULT_GLOSSARY_PRESET_ID,
     DEFAULT_TRANSLATION_PRESET_ID,
@@ -30,6 +32,11 @@ from transoria.settings import SettingsStore
 ACTIVE_FIELD_BY_KIND = {
     "translation": "active_translation_prompt_id",
     "glossary": "active_glossary_prompt_id",
+}
+
+ACTIVE_MODEL_FIELD_BY_KIND = {
+    PromptKind.TRANSLATION: "active_translation_model_id",
+    PromptKind.GLOSSARY: "active_glossary_model_id",
 }
 
 
@@ -82,8 +89,32 @@ def _store_for(cache_root: Path, kind: PromptKind) -> PromptPresetStore:
     return PromptPresetStore(path=cache_root / filename, kind=kind)
 
 
+def _resolve_active_thinking_level(
+    *,
+    settings_store: SettingsStore,
+    profile_store: ModelProfileStore,
+    kind: PromptKind,
+) -> ThinkingLevel | None:
+    """Return the active model profile's thinking_level for ``kind``,
+    or ``None`` when no model is selected or the saved profile is
+    gone. The caller treats ``None`` as 'no clamp; honor the
+    requested flag'."""
+
+    field = ACTIVE_MODEL_FIELD_BY_KIND[kind]
+    settings = settings_store.load_all()
+    profile_id = getattr(settings.app, field)
+    if not isinstance(profile_id, str) or not profile_id:
+        return None
+    profile = profile_store.get(profile_id)
+    if profile is None:
+        return None
+    return profile.thinking_level
+
+
 def _build_handlers(
-    cache_root: Path, settings_store: SettingsStore
+    cache_root: Path,
+    settings_store: SettingsStore,
+    profile_store: ModelProfileStore,
 ) -> dict[str, object]:
     def list_presets(payload: Mapping[str, object]) -> dict[str, object]:
         kind = _expect_kind(payload)
@@ -249,12 +280,31 @@ def _build_handlers(
                 "context must be a JSON object.",
                 field="context",
             )
-        thinking = bool(payload.get("thinking", False))
+        requested_thinking = bool(payload.get("thinking", False))
         for kind in (PromptKind.TRANSLATION, PromptKind.GLOSSARY):
             store = _store_for(cache_root, kind)
             for preset in store.load():
                 if preset.id != preset_id:
                     continue
+                # Clamp the requested ``thinking`` flag against the
+                # active model profile's ``thinking_level``. If the
+                # active profile is set to ``OFF``, preview must not
+                # render the thinking suffix — that would lie about
+                # what the runner actually sends.
+                active_level = _resolve_active_thinking_level(
+                    settings_store=settings_store,
+                    profile_store=profile_store,
+                    kind=kind,
+                )
+                effective_thinking = requested_thinking
+                clamped = False
+                if (
+                    requested_thinking
+                    and active_level is not None
+                    and active_level is ThinkingLevel.OFF
+                ):
+                    effective_thinking = False
+                    clamped = True
                 ctx = PromptContext(
                     source_language=str(context_raw.get("source_language", "")),
                     target_language=str(context_raw.get("target_language", "")),
@@ -262,8 +312,15 @@ def _build_handlers(
                     context=str(context_raw.get("context", "")),
                     input=str(context_raw.get("input", "")),
                 )
-                rendered = build_prompt(preset, ctx, thinking=thinking)
-                return {"prompt": rendered}
+                rendered = build_prompt(preset, ctx, thinking=effective_thinking)
+                return {
+                    "prompt": rendered,
+                    "thinking": effective_thinking,
+                    "clamped": clamped,
+                    "active_thinking_level": (
+                        active_level.value if active_level is not None else None
+                    ),
+                }
         raise BridgeError.not_found(
             f"prompt preset {preset_id!r} does not exist."
         )
@@ -348,8 +405,10 @@ def register(
     *,
     cache_root: Path,
     settings_store: SettingsStore,
+    profile_store: ModelProfileStore,
 ) -> None:
-    for method, handler in _build_handlers(cache_root, settings_store).items():
+    handlers = _build_handlers(cache_root, settings_store, profile_store)
+    for method, handler in handlers.items():
         router.register(method, handler)  # type: ignore[arg-type]
 
 

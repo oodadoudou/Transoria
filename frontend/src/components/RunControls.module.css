@@ -75,3 +75,43 @@
 .warn:hover:not(:disabled) {
   background: var(--surface-warn, #fdf2ec);
 }
+
+.dialogOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 100;
+}
+
+.dialog {
+  background: var(--panel, #fff);
+  border-radius: 14px;
+  border: 1px solid var(--hairline, #ece8e2);
+  padding: 24px;
+  max-width: 420px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.dialogTitle {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink, #2c2620);
+}
+
+.dialogBody {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: var(--muted, #7a7166);
+  line-height: 1.55;
+}
+
+.dialogActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}

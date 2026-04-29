@@ -6,10 +6,24 @@ import {
   modelProfilesBridge,
   settingsBridge,
   type AppSettings,
+  type ModelListEntry,
   type ModelProfile,
   type ModelProfileDraft,
+  type ModelTestResult,
 } from "@/bridge";
 import { useSettingsStore } from "@/store/useSettingsStore";
+
+interface TestConnectionState {
+  running: boolean;
+  result: ModelTestResult | null;
+  error: BridgeError | null;
+}
+
+interface FetchModelListState {
+  running: boolean;
+  models: ModelListEntry[];
+  error: BridgeError | null;
+}
 
 interface ModelProfilesState {
   profiles: ModelProfile[];
@@ -17,6 +31,10 @@ interface ModelProfilesState {
   loading: boolean;
   loadError: BridgeError | null;
   mutationError: BridgeError | null;
+
+  /** Per-profile transient state for the test/fetch buttons. */
+  testStates: Record<string, TestConnectionState>;
+  fetchStates: Record<string, FetchModelListState>;
 
   hydrate: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -31,6 +49,10 @@ interface ModelProfilesState {
     module: "translation" | "glossary",
     profileId: string | null,
   ) => Promise<AppSettings | null>;
+  testConnection: (id: string) => Promise<void>;
+  fetchModelList: (id: string) => Promise<void>;
+  clearTestState: (id: string) => void;
+  clearFetchState: (id: string) => void;
   clearMutationError: () => void;
 }
 
@@ -54,9 +76,20 @@ export const useModelProfilesStore = create<ModelProfilesState>((set, get) => {
         hydrated: true,
       });
     } catch (error) {
+      const bridgeError = asBridgeError(error);
+      // Surface the failure on the Console so DevTools shows it without
+      // the user having to dig into Zustand state. This is the line you
+      // want to read when "the model page is empty" surprises you.
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[modelProfilesStore] model_profiles.list failed:",
+        bridgeError.code,
+        bridgeError.message,
+        bridgeError.details,
+      );
       set({
         loading: false,
-        loadError: asBridgeError(error),
+        loadError: bridgeError,
       });
     }
   };
@@ -67,6 +100,8 @@ export const useModelProfilesStore = create<ModelProfilesState>((set, get) => {
     loading: false,
     loadError: null,
     mutationError: null,
+    testStates: {},
+    fetchStates: {},
 
     hydrate: async () => {
       if (get().hydrated || get().loading) return;
@@ -156,6 +191,83 @@ export const useModelProfilesStore = create<ModelProfilesState>((set, get) => {
         return null;
       }
     },
+
+    testConnection: async (id) => {
+      const requestId = `test-${id}-${Date.now()}`;
+      set((state) => ({
+        testStates: {
+          ...state.testStates,
+          [id]: { running: true, result: null, error: null },
+        },
+      }));
+      try {
+        const result = await modelProfilesBridge.testConnection(id, requestId);
+        set((state) => ({
+          testStates: {
+            ...state.testStates,
+            [id]: { running: false, result, error: null },
+          },
+        }));
+      } catch (error) {
+        set((state) => ({
+          testStates: {
+            ...state.testStates,
+            [id]: { running: false, result: null, error: asBridgeError(error) },
+          },
+        }));
+      }
+    },
+
+    fetchModelList: async (id) => {
+      const requestId = `fetch-${id}-${Date.now()}`;
+      set((state) => ({
+        fetchStates: {
+          ...state.fetchStates,
+          [id]: {
+            running: true,
+            models: state.fetchStates[id]?.models ?? [],
+            error: null,
+          },
+        },
+      }));
+      try {
+        const { models } = await modelProfilesBridge.fetchModelList(
+          id,
+          requestId,
+        );
+        set((state) => ({
+          fetchStates: {
+            ...state.fetchStates,
+            [id]: { running: false, models, error: null },
+          },
+        }));
+      } catch (error) {
+        set((state) => ({
+          fetchStates: {
+            ...state.fetchStates,
+            [id]: {
+              running: false,
+              models: state.fetchStates[id]?.models ?? [],
+              error: asBridgeError(error),
+            },
+          },
+        }));
+      }
+    },
+
+    clearTestState: (id) =>
+      set((state) => {
+        const next = { ...state.testStates };
+        delete next[id];
+        return { testStates: next };
+      }),
+
+    clearFetchState: (id) =>
+      set((state) => {
+        const next = { ...state.fetchStates };
+        delete next[id];
+        return { fetchStates: next };
+      }),
 
     clearMutationError: () => set({ mutationError: null }),
   };

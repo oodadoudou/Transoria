@@ -35,6 +35,7 @@ from transoria.workflows.glossary.frequency import (
 )
 from transoria.workflows.glossary.normalize import normalize_candidates
 from transoria.workflows.glossary.orchestrator import (
+    GlossaryArtifactSet,
     GlossaryExtractionResult,
     GlossaryOrchestrator,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "GLOSSARY_STATISTICS_FILENAME_TEXT",
     "GlossaryChunk",
     "GlossaryConfig",
+    "GlossaryArtifactSet",
     "GlossaryExtractionResult",
     "GlossaryFailedFile",
     "GlossaryOrchestrator",

@@ -101,6 +101,17 @@ class TaskCache:
             records.append(TaskRecord.from_json(task_file.read_text(encoding="utf-8")))
         return tuple(records)
 
+    def has_task(self, task_id: str) -> bool:
+        """Return True iff a task record exists for ``task_id``.
+
+        Cheaper than :meth:`load_record`: only checks for the task
+        directory and ``task.json`` presence; does not parse the
+        record or its subtasks.
+        """
+
+        directory = self.task_dir(task_id)
+        return (directory / "task.json").exists()
+
     def delete(self, task_id: str) -> None:
         directory = self.task_dir(task_id)
         if not directory.exists():

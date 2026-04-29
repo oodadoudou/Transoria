@@ -19,10 +19,21 @@ class Language(str, Enum):
 
 
 class TaskStatus(str, Enum):
+    """Task state machine.
+
+    Transient states ``STOPPING`` / ``PAUSING`` are surfaced on the
+    snapshot so the UI can render "Stopping…" / "Pausing…" while
+    in-flight subtasks settle. ``PAUSED`` is a continuable state;
+    ``STOPPED`` is also continuable. ``COMPLETED`` and ``FAILED``
+    are terminal.
+    """
+
     PENDING = "pending"
     RUNNING = "running"
     STOPPING = "stopping"
     STOPPED = "stopped"
+    PAUSING = "pausing"
+    PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
 

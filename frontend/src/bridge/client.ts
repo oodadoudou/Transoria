@@ -1,4 +1,5 @@
 import { getTransport } from "./transport";
+import { nativeDialogs } from "./native";
 import type {
   AllSettings,
   AppMetadata,
@@ -6,15 +7,19 @@ import type {
   DialogPathResult,
   GlossaryArtifacts,
   GlossaryFileResult,
-  ModelListEntry,
+  ModelListResult,
   ModelProfile,
   ModelProfileDraft,
   ModelTestResult,
+  InlineProbeCredentials,
   ModuleSettings,
+  ProviderTemplate,
+  ProbeContinuable,
   PromptKind,
   PromptPresetBody,
   PromptPresetSummary,
   PromptPreviewContext,
+  PromptPreviewResult,
   ReplacementArtifacts,
   ReplacementRule,
   ReplacementRuleParseResult,
@@ -63,14 +68,10 @@ export const settingsBridge = {
 
 export const dialogsBridge = {
   chooseInputDirectory(initialPath?: string): Promise<DialogPathResult> {
-    return call("dialogs.choose_input_directory", {
-      initial_path: initialPath,
-    });
+    return nativeDialogs.chooseDirectory(initialPath);
   },
   chooseOutputDirectory(initialPath?: string): Promise<DialogPathResult> {
-    return call("dialogs.choose_output_directory", {
-      initial_path: initialPath,
-    });
+    return nativeDialogs.chooseDirectory(initialPath);
   },
   chooseGlossaryFile(
     opts: {
@@ -79,22 +80,20 @@ export const dialogsBridge = {
       allowJson?: boolean;
     } = {},
   ): Promise<GlossaryFileResult> {
-    return call("dialogs.choose_glossary_file", {
-      initial_path: opts.initialPath,
-      allow_xlsx: opts.allowXlsx,
-      allow_json: opts.allowJson,
-    });
+    const extensions = [
+      opts.allowXlsx === false ? null : "xlsx",
+      opts.allowJson === false ? null : "json",
+    ].filter((value): value is string => value !== null);
+    return nativeDialogs.chooseGlossaryFile(opts.initialPath, extensions);
   },
   chooseReplacementRulesFile(initialPath?: string): Promise<DialogPathResult> {
-    return call("dialogs.choose_replacement_rules_file", {
-      initial_path: initialPath,
-    });
+    return nativeDialogs.chooseFile(initialPath, ["txt"]);
   },
   openDirectory(path: string): Promise<Record<string, never>> {
-    return call("dialogs.open_directory", { path });
+    return nativeDialogs.openDirectory(path);
   },
   revealFile(path: string): Promise<Record<string, never>> {
-    return call("dialogs.reveal_file", { path });
+    return nativeDialogs.revealFile(path);
   },
 };
 
@@ -125,12 +124,29 @@ export const modelProfilesBridge = {
       request_id: requestId,
     });
   },
-  fetchModelList(
-    id: string,
+  /** Inline-credential variant: validate a draft profile before save.
+   *  Architecture § 3.4 G.2 — used by the Add API Profile modal. */
+  testConnectionInline(
+    creds: InlineProbeCredentials,
     requestId: string,
-  ): Promise<{ models: ModelListEntry[] }> {
+  ): Promise<ModelTestResult> {
+    return call("model_profiles.test_connection", {
+      ...creds,
+      request_id: requestId,
+    });
+  },
+  fetchModelList(id: string, requestId: string): Promise<ModelListResult> {
     return call("model_profiles.fetch_model_list", {
       id,
+      request_id: requestId,
+    });
+  },
+  fetchModelListInline(
+    creds: InlineProbeCredentials,
+    requestId: string,
+  ): Promise<ModelListResult> {
+    return call("model_profiles.fetch_model_list", {
+      ...creds,
       request_id: requestId,
     });
   },
@@ -142,6 +158,15 @@ export const modelProfilesBridge = {
       module,
       profile_id: profileId,
     });
+  },
+};
+
+// --- Model templates --------------------------------------------------------
+
+export const modelTemplatesBridge = {
+  /** Read-only catalog of provider templates (architecture § 3.4). */
+  list(): Promise<{ templates: ProviderTemplate[] }> {
+    return call("model_templates.list");
   },
 };
 
@@ -187,7 +212,7 @@ export const promptsBridge = {
     presetId: string,
     context: PromptPreviewContext,
     thinking = false,
-  ): Promise<{ prompt: string }> {
+  ): Promise<PromptPreviewResult> {
     return call("prompts.preview", { preset_id: presetId, context, thinking });
   },
   resetToDefault(id: string): Promise<{ preset: PromptPresetBody }> {
@@ -209,8 +234,13 @@ export const translationBridge = {
   stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("translation.stop_task", { task_id: taskId });
   },
-  resumeTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
-    return call("translation.resume_task", { task_id: taskId });
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("translation.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("translation.probe_continuable", {});
   },
   readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("translation.read_snapshot", { task_id: taskId });
@@ -240,8 +270,13 @@ export const glossaryBridge = {
   stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("glossary.stop_task", { task_id: taskId });
   },
-  resumeTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
-    return call("glossary.resume_task", { task_id: taskId });
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("glossary.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("glossary.probe_continuable", {});
   },
   readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("glossary.read_snapshot", { task_id: taskId });
@@ -281,8 +316,22 @@ export const replacementBridge = {
   stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("replacement.stop_task", { task_id: taskId });
   },
+  pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("replacement.pause_task", { task_id: taskId });
+  },
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("replacement.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("replacement.probe_continuable", {});
+  },
   readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("replacement.read_snapshot", { task_id: taskId });
+  },
+  listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
+    return call("replacement.list_recent_tasks", { limit });
   },
   readArtifacts(taskId: string): Promise<ReplacementArtifacts> {
     return call("replacement.read_artifacts", { task_id: taskId });
@@ -314,13 +363,5 @@ export const updatesBridge = {
       asset_url: assetUrl,
       suggested_filename: suggestedFilename,
     });
-  },
-};
-
-// --- Cancellation -----------------------------------------------------------
-
-export const bridgeControl = {
-  cancel(requestId: string): Promise<Record<string, never>> {
-    return call("bridge.cancel", { request_id: requestId });
   },
 };

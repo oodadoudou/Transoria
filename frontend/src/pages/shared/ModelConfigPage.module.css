@@ -208,3 +208,140 @@
 .errorDismiss:hover {
   background: rgba(0, 0, 0, 0.04);
 }
+
+.presetActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.actionRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.providerHint {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--surface-quiet, #faf7f2);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--muted, #7a7166);
+  line-height: 1.5;
+}
+
+.primaryButton {
+  border: 1px solid var(--ink, #1a1a1a);
+  background: var(--ink, #1a1a1a);
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.primaryButton:disabled {
+  background: var(--panel-soft);
+  color: var(--muted);
+  border-color: var(--hairline-strong, #d8d2c7);
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  border: 1px solid var(--hairline-strong, #d8d2c7);
+  background: var(--panel);
+  padding: 8px 18px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--panel-soft);
+}
+
+.secondaryButton:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.statusBox {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 12.5px;
+}
+
+.statusOk {
+  background: rgba(64, 132, 96, 0.07);
+  border-color: rgba(64, 132, 96, 0.32);
+  color: #2c5840;
+}
+
+.statusFail {
+  background: rgba(176, 64, 56, 0.06);
+  border-color: rgba(176, 64, 56, 0.28);
+  color: #6b3a1f;
+}
+
+.statusHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.statusMeta {
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.statusDetail {
+  margin-top: 6px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.modelPicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.modelPickerLabel {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.modelPickerSelect {
+  flex: 1 1 auto;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline-strong, #d8d2c7);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.modelPickerCount {
+  font-size: 11.5px;
+  color: var(--muted);
+}

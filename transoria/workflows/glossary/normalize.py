@@ -13,6 +13,7 @@ no-op so users without it still get a usable glossary.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from typing import Iterable
 
@@ -24,6 +25,13 @@ from transoria.workflows.glossary.candidate import Candidate
 _MULTI_SPACE = re.compile(r"\s+")
 _SPLIT_DELIMITERS = re.compile(r"\s*[/／、,，;；]\s*")
 _DEFAULT_INFO_BLACKLIST = ("其它", "其他", "other", "others")
+_BOUNDARY_PUNCT_STRIP = (
+    "\"'"
+    "「」『』《》〈〉()（）[]【】"
+    ",.;:!?"
+    "，。、；：！？"
+    "…—–·"
+)
 
 
 def normalize_candidates(
@@ -33,6 +41,7 @@ def normalize_candidates(
     info_blacklist: Iterable[str] = _DEFAULT_INFO_BLACKLIST,
     allow_src_eq_dst: bool = False,
     target_language: Language | None = None,
+    normalize_widths: bool = True,
 ) -> tuple[Candidate, ...]:
     """Run the full normalization pipeline over the raw model outputs.
 
@@ -46,11 +55,15 @@ def normalize_candidates(
     for entry in raw_entries:
         expanded.extend(_split_compound_term(entry))
 
-    # Steps 1, 5–8: trim, drop empty / src==dst / over-long / blacklisted.
     cleaned: list[GlossaryEntry] = []
     for entry in expanded:
-        src = _collapse_whitespace(entry.src)
-        dst = _collapse_whitespace(entry.dst)
+        src = entry.src
+        dst = entry.dst
+        if normalize_widths:
+            src = unicodedata.normalize("NFKC", src)
+            dst = unicodedata.normalize("NFKC", dst)
+        src = _strip_boundary_punct(_collapse_whitespace(src))
+        dst = _strip_boundary_punct(_collapse_whitespace(dst))
         info = entry.info.strip()
         if not src or not dst:
             continue
@@ -106,6 +119,10 @@ def _split_compound_term(entry: GlossaryEntry) -> list[GlossaryEntry]:
 
 def _collapse_whitespace(text: str) -> str:
     return _MULTI_SPACE.sub(" ", text or "").strip()
+
+
+def _strip_boundary_punct(text: str) -> str:
+    return text.strip(_BOUNDARY_PUNCT_STRIP).strip()
 
 
 def _group_key(src: str) -> str:

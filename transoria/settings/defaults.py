@@ -42,7 +42,25 @@ class TranslationSettings:
     bilingual_dedupe_identical: bool = True
     bilingual_subfolder_name: str = "bilingual outputs"
     context_lines: int = 25
+    low_confidence_max_retries: int = 3
     auto_open_output_folder: bool = False
+    # Glossary entries threaded into TranslationConfig.glossary at run
+    # start. Each entry mirrors the backend `GlossaryEntry` shape:
+    # ``{src, dst, info, regex, case_sensitive, enabled}``. JSON lists
+    # round-trip as Python lists; the field is stored as-is and
+    # converted via ``Glossary.from_records`` at task-start time.
+    translation_glossary: tuple[dict[str, object], ...] = ()
+    # Text-preserve rules: regex/literal patterns whose matches are
+    # protected from translation (sent to the model as opaque tokens).
+    # Each entry: ``{pattern, note, enabled}``.
+    text_preserve_rules: tuple[dict[str, object], ...] = ()
+    # Pre-translation replacements: applied to the source text before
+    # the LLM sees it. Each entry mirrors ReplacementRule:
+    # ``{src, dst, regex, case_sensitive, note, enabled}``.
+    pre_replacements: tuple[dict[str, object], ...] = ()
+    # Post-translation replacements: applied to the model's output
+    # before writeback. Same shape as pre_replacements.
+    post_replacements: tuple[dict[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -58,6 +76,7 @@ class GlossarySettings:
     chunk_token_limit: int = 4000
     merge_folder_glossary: bool = True
     keep_identical_src_dst: bool = False
+    normalize_widths: bool = True
     auto_open_output_folder: bool = False
 
 
@@ -121,6 +140,18 @@ _MODULE_TYPES: dict[SettingsModule, type] = {
     "replacement": ReplacementSettings,
 }
 
+# TranslationSettings fields that hold a tuple of mappings on disk
+# but accept a list of mappings on the wire. ``_coerce`` and
+# ``_hydrate`` use this set to round-trip them safely.
+_TRANSLATION_LIST_OF_MAPPING_FIELDS: frozenset[str] = frozenset(
+    {
+        "translation_glossary",
+        "text_preserve_rules",
+        "pre_replacements",
+        "post_replacements",
+    }
+)
+
 
 def default_module_settings(
     module: SettingsModule,
@@ -167,6 +198,29 @@ def _coerce(
     through untouched and the dataclass replace will surface mismatches.
     """
 
+    # Special-case: list-of-mapping fields on TranslationSettings
+    # (glossary, preserve, pre/post replacements). Validate the
+    # shape and freeze to a tuple of dicts so the dataclass stays
+    # immutable.
+    if (
+        key in _TRANSLATION_LIST_OF_MAPPING_FIELDS
+        and isinstance(current, TranslationSettings)
+    ):
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(
+                f"Field {key!r} expects a list of objects, "
+                f"got {type(value).__name__}"
+            )
+        normalized: list[dict[str, object]] = []
+        for index, entry in enumerate(value):
+            if not isinstance(entry, Mapping):
+                raise ValueError(
+                    f"Field {key!r} entry {index} must be an object, "
+                    f"got {type(entry).__name__}"
+                )
+            normalized.append(dict(entry))
+        return tuple(normalized)
+
     field_type = current.__dataclass_fields__[key].type  # type: ignore[attr-defined]
     annotation = field_type if isinstance(field_type, str) else field_type.__name__
 
@@ -199,6 +253,7 @@ __all__ = [
     "SettingsModule",
     "Theme",
     "TranslationSettings",
+    "_TRANSLATION_LIST_OF_MAPPING_FIELDS",
     "default_module_settings",
     "default_settings",
     "merge_module",
