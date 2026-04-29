@@ -737,7 +737,152 @@ function FormStep({
             />
           </div>
         </div>
+
+        <OptionalNumberRow
+          label={model.topP}
+          help={model.topPHelp}
+          value={draft.top_p}
+          onChange={(v) => update("top_p", v)}
+          step={0.05}
+          defaultValue={0.95}
+        />
+        <OptionalNumberRow
+          label={model.presencePenalty}
+          help={model.presencePenaltyHelp}
+          value={draft.presence_penalty}
+          onChange={(v) => update("presence_penalty", v)}
+          step={0.1}
+          defaultValue={0}
+        />
+        <OptionalNumberRow
+          label={model.frequencyPenalty}
+          help={model.frequencyPenaltyHelp}
+          value={draft.frequency_penalty}
+          onChange={(v) => update("frequency_penalty", v)}
+          step={0.1}
+          defaultValue={0}
+        />
       </details>
+
+      <details className={styles.details}>
+        <summary>{model.customHeaders}</summary>
+        <CustomHeadersEditor
+          value={draft.custom_headers}
+          onChange={(v) => update("custom_headers", v)}
+          placeholder={model.customHeadersPlaceholder}
+          help={model.customHeadersHelp}
+        />
+      </details>
+    </div>
+  );
+}
+
+interface OptionalNumberRowProps {
+  label: string;
+  help: string;
+  value: number | null;
+  onChange: (next: number | null) => void;
+  step: number;
+  defaultValue: number;
+}
+
+function OptionalNumberRow({
+  label,
+  help,
+  value,
+  onChange,
+  step,
+  defaultValue,
+}: OptionalNumberRowProps) {
+  const enabled = value !== null;
+  return (
+    <div className={styles.optionalRow}>
+      <div className={styles.optionalText}>
+        <div className={styles.optionalLabel}>{label}</div>
+        <div className={styles.optionalHelp}>{help}</div>
+      </div>
+      <div className={styles.optionalControls}>
+        <ToggleSwitch
+          label=""
+          checked={enabled}
+          onChange={(next) => onChange(next ? defaultValue : null)}
+        />
+        {enabled ? (
+          <input
+            type="number"
+            className={styles.optionalInput}
+            value={value ?? 0}
+            step={step}
+            onChange={(e) => {
+              const parsed = Number(e.target.value);
+              onChange(Number.isFinite(parsed) ? parsed : 0);
+            }}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+interface CustomHeadersEditorProps {
+  value: Array<[string, string]>;
+  onChange: (next: Array<[string, string]>) => void;
+  placeholder: string;
+  help: string;
+}
+
+function CustomHeadersEditor({
+  value,
+  onChange,
+  placeholder,
+  help,
+}: CustomHeadersEditorProps) {
+  const headersObj = Object.fromEntries(value);
+  const initialText = value.length > 0 ? JSON.stringify(headersObj) : "";
+  const [text, setText] = useState(initialText);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  const apply = (raw: string) => {
+    setText(raw);
+    if (raw.trim() === "") {
+      setParseError(null);
+      onChange([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
+        setParseError("expected a JSON object");
+        return;
+      }
+      const pairs: Array<[string, string]> = Object.entries(parsed)
+        .filter(([k]) => typeof k === "string" && k.length > 0)
+        .map(([k, v]) => [k, String(v)]);
+      setParseError(null);
+      onChange(pairs);
+    } catch (error) {
+      setParseError(error instanceof Error ? error.message : "invalid JSON");
+    }
+  };
+
+  return (
+    <div className={styles.customHeadersBlock}>
+      <div className={styles.customHeadersHelp}>{help}</div>
+      <textarea
+        className={styles.customHeadersInput}
+        value={text}
+        onChange={(e) => apply(e.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        spellCheck={false}
+      />
+      {parseError ? (
+        <div className={styles.customHeadersError}>{parseError}</div>
+      ) : null}
     </div>
   );
 }
