@@ -33,6 +33,7 @@ export function RunPage() {
   const navigate = useTaskStore((state) => state.navigate);
   const profiles = useModelProfiles();
   const prompts = usePromptPresets("translation");
+  const promptSlice = prompts.translation;
   const appSettings = useModuleSettings("app");
   const snapshot = useRunSnapshot("translation");
   usePollRunSnapshot("translation");
@@ -41,8 +42,8 @@ export function RunPage() {
   const activeModel = activeModelId
     ? profiles.profiles.find((p) => p.id === activeModelId)
     : undefined;
-  const activePrompt = prompts.activeId
-    ? prompts.presets.find((p) => p.id === prompts.activeId)
+  const activePrompt = promptSlice.activeId
+    ? promptSlice.presets.find((p) => p.id === promptSlice.activeId)
     : undefined;
 
   const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
@@ -52,7 +53,7 @@ export function RunPage() {
     name: p.display_name,
     description: p.model_id,
   }));
-  const promptItems: QuickSwitchItem[] = prompts.presets.map((preset) => ({
+  const promptItems: QuickSwitchItem[] = promptSlice.presets.map((preset) => ({
     id: preset.id,
     name: preset.name,
     description: preset.description,
@@ -116,7 +117,7 @@ export function RunPage() {
         <QuickSwitchModal
           title={messages.quickSwitch.titlePrompt}
           items={promptItems}
-          activeId={prompts.activeId}
+          activeId={promptSlice.activeId}
           emptyMessage={messages.quickSwitch.emptyPrompt}
           onSelect={handleSelectPrompt}
           onClose={() => setSwitchOpen(null)}
