@@ -1,15 +1,19 @@
-import { useCallback } from "react";
-import { useMessages } from "@/locales";
+import { useCallback, useState } from "react";
+import { format, useMessages } from "@/locales";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import type { PersistedTranslationReplacementRule } from "@/bridge";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { Segmented } from "@/components/Segmented";
 import { TextField } from "@/components/TextField";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
-import { SettingsToolbar } from "@/components/SettingsToolbar";
-import styles from "./TranslationReplacementPage.module.css";
+import {
+  RuleTable,
+  type RuleTableColumn,
+  ruleTableStyles,
+} from "@/components/RuleTable";
 
-type RuleField = "pre_replacements" | "post_replacements";
+type Group = "pre" | "post";
 
 const EMPTY_RULES: PersistedTranslationReplacementRule[] = [];
 
@@ -29,137 +33,214 @@ export function TranslationReplacementPage() {
   const m = messages.translation.replacementPage;
   const moduleSettings = useModuleSettings("translation");
   const draft = moduleSettings.draft;
+  const [group, setGroup] = useState<Group>("pre");
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
-  const updateGroup = useCallback(
-    (
-      field: RuleField,
-      next: PersistedTranslationReplacementRule[],
-    ) => {
-      moduleSettings.update(field, next);
+  const fieldName: "pre_replacements" | "post_replacements" =
+    group === "pre" ? "pre_replacements" : "post_replacements";
+  const rules = (draft?.[fieldName] ?? EMPTY_RULES) as PersistedTranslationReplacementRule[];
+
+  const setRules = useCallback(
+    (next: PersistedTranslationReplacementRule[]) => {
+      moduleSettings.update(fieldName, next);
     },
-    [moduleSettings],
+    [moduleSettings, fieldName],
   );
+
+  const addRule = () => {
+    const next = [...rules, emptyRule()];
+    setRules(next);
+    setSelectedIndex(next.length - 1);
+  };
+  const updateRule = (
+    index: number,
+    patch: Partial<PersistedTranslationReplacementRule>,
+  ) =>
+    setRules(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)));
+  const deleteRule = (index: number) => {
+    setRules(rules.filter((_, i) => i !== index));
+    if (selectedIndex !== null && selectedIndex >= index) {
+      setSelectedIndex(null);
+    }
+  };
+
+  const enabledCount = rules.filter((r) => r.enabled).length;
 
   if (!draft) {
     return <Panel title={m.title} subtitle={m.sub} />;
   }
 
+  const columns: RuleTableColumn<PersistedTranslationReplacementRule>[] = [
+    {
+      key: "src",
+      label: m.columns.src,
+      width: "1.4fr",
+      render: (rule) => (
+        <span style={{ fontFamily: "var(--font-mono)" }}>{rule.src}</span>
+      ),
+    },
+    {
+      key: "dst",
+      label: m.columns.dst,
+      width: "1.4fr",
+      render: (rule) => (
+        <span style={{ fontFamily: "var(--font-mono)" }}>{rule.dst}</span>
+      ),
+    },
+    {
+      key: "rule",
+      label: m.columns.rule,
+      width: "84px",
+      align: "right",
+      render: (rule) => (
+        <span className={ruleTableStyles.ruleChipGroup}>
+          <span
+            className={`${ruleTableStyles.ruleChip} ${rule.regex ? ruleTableStyles.ruleChipOn : ""}`.trim()}
+            title={m.regexLabel}
+          >
+            .*
+          </span>
+          <span
+            className={`${ruleTableStyles.ruleChip} ${rule.case_sensitive ? ruleTableStyles.ruleChipOn : ""}`.trim()}
+            title={m.caseSensitiveLabel}
+          >
+            Aa
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      label: m.columns.status,
+      width: "48px",
+      align: "right",
+      render: (rule) => (
+        <span
+          className={`${ruleTableStyles.statusDot} ${rule.enabled ? ruleTableStyles.statusDotOn : ""}`.trim()}
+        />
+      ),
+    },
+  ];
+
+  const selected = selectedIndex !== null ? rules[selectedIndex] : null;
+
   return (
     <>
-      <Panel title={m.title} subtitle={m.sub} />
+      <Panel
+        title={m.title}
+        subtitle={m.sub}
+        labelExtra={
+          <Segmented<Group>
+            ariaLabel={`${m.preLabel} / ${m.postLabel}`}
+            options={[
+              { id: "pre", label: m.preLabel },
+              { id: "post", label: m.postLabel },
+            ]}
+            value={group}
+            onChange={(v) => {
+              setGroup(v);
+              setSelectedIndex(null);
+            }}
+          />
+        }
+      />
 
-      <RuleGroup
-        labels={m}
-        groupLabel={m.preLabel}
-        groupHint={m.preHint}
-        rules={draft.pre_replacements ?? EMPTY_RULES}
-        onChange={(next) => updateGroup("pre_replacements", next)}
-      />
-      <RuleGroup
-        labels={m}
-        groupLabel={m.postLabel}
-        groupHint={m.postHint}
-        rules={draft.post_replacements ?? EMPTY_RULES}
-        onChange={(next) => updateGroup("post_replacements", next)}
-      />
-
-      <SettingsToolbar
-        saveState={moduleSettings.saveState}
-        lastError={moduleSettings.lastError}
-        onSave={() => {
-          void moduleSettings.saveNow();
-        }}
-        onReset={() => {
-          void moduleSettings.reset();
-        }}
-      />
+      <Panel
+        label={format(m.stats.total, { n: rules.length })}
+        labelExtra={
+          <span>
+            {group === "pre" ? m.preHint : m.postHint} ·{" "}
+            {format(m.stats.enabled, { n: enabledCount })}
+          </span>
+        }
+      >
+        <RuleTable
+          rules={rules}
+          selectedIndex={selectedIndex}
+          onSelectIndex={setSelectedIndex}
+          isEnabled={(rule) => rule.enabled}
+          columns={columns}
+          emptyMessage={m.empty}
+          editor={
+            selected !== null && selectedIndex !== null ? (
+              <RuleEditor
+                rule={selected}
+                labels={m}
+                onChange={(patch) => updateRule(selectedIndex, patch)}
+                onDelete={() => deleteRule(selectedIndex)}
+              />
+            ) : (
+              <div className={ruleTableStyles.editorEmpty}>
+                {m.editorEmpty}
+              </div>
+            )
+          }
+          toolbar={[
+            { label: m.actions.add, onClick: addRule, primary: true },
+            { label: m.actions.import, onClick: () => undefined },
+            { label: m.actions.export, onClick: () => undefined },
+            { label: m.actions.search, onClick: () => undefined },
+            { label: m.actions.statistics, onClick: () => undefined },
+            { label: m.actions.preset, onClick: () => undefined },
+          ]}
+        />
+      </Panel>
     </>
   );
 }
 
-interface RuleGroupProps {
-  labels: ReturnType<typeof useMessages>["translation"]["replacementPage"];
-  groupLabel: string;
-  groupHint: string;
-  rules: PersistedTranslationReplacementRule[];
-  onChange: (next: PersistedTranslationReplacementRule[]) => void;
-}
-
-function RuleGroup({
+function RuleEditor({
+  rule,
   labels,
-  groupLabel,
-  groupHint,
-  rules,
   onChange,
-}: RuleGroupProps) {
-  const addRule = () => onChange([...rules, emptyRule()]);
-  const updateRule = (
-    index: number,
-    patch: Partial<PersistedTranslationReplacementRule>,
-  ) =>
-    onChange(
-      rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
-    );
-  const deleteRule = (index: number) =>
-    onChange(rules.filter((_, i) => i !== index));
-
+  onDelete,
+}: {
+  rule: PersistedTranslationReplacementRule;
+  labels: ReturnType<typeof useMessages>["translation"]["replacementPage"];
+  onChange: (patch: Partial<PersistedTranslationReplacementRule>) => void;
+  onDelete: () => void;
+}) {
   return (
-    <Panel label={groupLabel} labelExtra={<span>{groupHint}</span>}>
-      {rules.length === 0 ? (
-        <div className={styles.empty}>{labels.empty}</div>
-      ) : (
-        <div className={styles.ruleList}>
-          {rules.map((rule, index) => (
-            <div key={index} className={styles.ruleCard}>
-              <div className={styles.ruleHeader}>
-                <span className={styles.ruleIndex}>#{index + 1}</span>
-                <ToggleSwitch
-                  label={labels.regexLabel}
-                  checked={rule.regex}
-                  onChange={(next) => updateRule(index, { regex: next })}
-                />
-                <ToggleSwitch
-                  label={labels.caseSensitiveLabel}
-                  checked={rule.case_sensitive}
-                  onChange={(next) =>
-                    updateRule(index, { case_sensitive: next })
-                  }
-                />
-                <ToggleSwitch
-                  label={labels.enabledLabel}
-                  checked={rule.enabled}
-                  onChange={(next) => updateRule(index, { enabled: next })}
-                />
-                <Pill variant="ghost" onClick={() => deleteRule(index)}>
-                  {labels.deleteAction}
-                </Pill>
-              </div>
-              <TextField
-                label={labels.srcLabel}
-                value={rule.src}
-                onChange={(v) => updateRule(index, { src: v })}
-                placeholder={labels.srcPlaceholder}
-                mono
-              />
-              <TextField
-                label={labels.dstLabel}
-                value={rule.dst}
-                onChange={(v) => updateRule(index, { dst: v })}
-                placeholder={labels.dstPlaceholder}
-                mono
-              />
-              <TextField
-                label={labels.noteLabel}
-                value={rule.note}
-                onChange={(v) => updateRule(index, { note: v })}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-      <div className={styles.toolbar}>
-        <Pill onClick={addRule}>{labels.addRule}</Pill>
+    <div className={ruleTableStyles.editor}>
+      <TextField
+        label={labels.srcLabel}
+        value={rule.src}
+        onChange={(v) => onChange({ src: v })}
+        placeholder={labels.srcPlaceholder}
+        mono
+      />
+      <TextField
+        label={labels.dstLabel}
+        value={rule.dst}
+        onChange={(v) => onChange({ dst: v })}
+        placeholder={labels.dstPlaceholder}
+        mono
+      />
+      <ToggleSwitch
+        label={labels.regexLabel}
+        checked={rule.regex}
+        onChange={(next) => onChange({ regex: next })}
+      />
+      <ToggleSwitch
+        label={labels.caseSensitiveLabel}
+        checked={rule.case_sensitive}
+        onChange={(next) => onChange({ case_sensitive: next })}
+      />
+      <TextField
+        label={labels.noteLabel}
+        value={rule.note}
+        onChange={(v) => onChange({ note: v })}
+      />
+      <ToggleSwitch
+        label={labels.enabledLabel}
+        checked={rule.enabled}
+        onChange={(next) => onChange({ enabled: next })}
+      />
+      <div className={ruleTableStyles.editorActions}>
+        <Pill variant="ghost" onClick={onDelete}>
+          {labels.deleteAction}
+        </Pill>
       </div>
-    </Panel>
+    </div>
   );
 }

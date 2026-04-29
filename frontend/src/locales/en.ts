@@ -368,6 +368,16 @@ export const en: Messages = {
       notePlaceholder: "What this pattern is for",
       enabledLabel: "Enabled",
       deleteAction: "Delete",
+      columns: { pattern: "Pattern", note: "Note", status: "Status" },
+      editorEmpty: "Pick a row on the left, or click + Add to create one.",
+      actions: {
+        add: "Add",
+        import: "Import",
+        export: "Export",
+        search: "Search",
+        statistics: "Stats",
+        preset: "Preset",
+      },
       stats: {
         total: "{n} rules",
         enabled: "{n} active",
@@ -391,6 +401,25 @@ export const en: Messages = {
       noteLabel: "Note",
       enabledLabel: "Enabled",
       deleteAction: "Delete",
+      columns: {
+        src: "Source",
+        dst: "Replace",
+        rule: "Rule",
+        status: "Status",
+      },
+      editorEmpty: "Pick a row on the left, or click + Add to create one.",
+      actions: {
+        add: "Add",
+        import: "Import",
+        export: "Export",
+        search: "Search",
+        statistics: "Stats",
+        preset: "Preset",
+      },
+      stats: {
+        total: "{n} rules",
+        enabled: "{n} active",
+      },
     },
   },
   glossary: {

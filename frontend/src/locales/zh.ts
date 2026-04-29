@@ -354,6 +354,16 @@ export const zh: Messages = {
       notePlaceholder: "用于描述此模式的用途",
       enabledLabel: "启用",
       deleteAction: "删除",
+      columns: { pattern: "规则", note: "备注", status: "状态" },
+      editorEmpty: "在左侧表格点选条目,或点击 + 新增 创建一条。",
+      actions: {
+        add: "新增",
+        import: "导入",
+        export: "导出",
+        search: "搜索",
+        statistics: "统计",
+        preset: "预设",
+      },
       stats: {
         total: "{n} 条规则",
         enabled: "{n} 条启用",
@@ -377,6 +387,25 @@ export const zh: Messages = {
       noteLabel: "备注",
       enabledLabel: "启用",
       deleteAction: "删除",
+      columns: {
+        src: "原文",
+        dst: "替换",
+        rule: "规则",
+        status: "状态",
+      },
+      editorEmpty: "在左侧表格点选条目,或点击 + 新增 创建一条。",
+      actions: {
+        add: "新增",
+        import: "导入",
+        export: "导出",
+        search: "搜索",
+        statistics: "统计",
+        preset: "预设",
+      },
+      stats: {
+        total: "{n} 条规则",
+        enabled: "{n} 条启用",
+      },
     },
   },
   glossary: {

@@ -322,6 +322,16 @@ export interface Messages {
       notePlaceholder: string;
       enabledLabel: string;
       deleteAction: string;
+      columns: { pattern: string; note: string; status: string };
+      editorEmpty: string;
+      actions: {
+        add: string;
+        import: string;
+        export: string;
+        search: string;
+        statistics: string;
+        preset: string;
+      };
       stats: { total: string; enabled: string };
     };
     replacementPage: {
@@ -342,6 +352,22 @@ export interface Messages {
       noteLabel: string;
       enabledLabel: string;
       deleteAction: string;
+      columns: {
+        src: string;
+        dst: string;
+        rule: string;
+        status: string;
+      };
+      editorEmpty: string;
+      actions: {
+        add: string;
+        import: string;
+        export: string;
+        search: string;
+        statistics: string;
+        preset: string;
+      };
+      stats: { total: string; enabled: string };
     };
   };
   glossary: {
