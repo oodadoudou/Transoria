@@ -18,7 +18,28 @@ from transoria.domain import Language
 from transoria.llm.client import ChatRequest, LlmClient
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import GlossaryEntry, decode_glossary_jsonl
-from transoria.llm.retry import retry_async
+from transoria.llm.retry import is_transient_llm_error, retry_async
+
+
+class _GlossaryFormatRetry(Exception):
+    """Raised when the LLM produced a substantial response but the
+    decoder (JSONL + header-aware salvage) extracted zero entries.
+
+    Triggers retry: a fresh sampling pass often complies with the
+    JSONL contract because temperature > 0 makes each call vary.
+    """
+
+
+# Threshold for "the LLM said real things but in the wrong format".
+# Below this, an empty response is more plausibly a chunk that legitimately
+# has no extractable terms — retrying would just waste tokens.
+_FORMAT_RETRY_MIN_ISSUES = 3
+
+
+def _should_retry_glossary(exc: BaseException) -> bool:
+    if isinstance(exc, _GlossaryFormatRetry):
+        return True
+    return is_transient_llm_error(exc)
 from transoria.llm.usage import estimate_tokens_from_text
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
@@ -65,10 +86,23 @@ class GlossarySubtaskRunner:
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
-        return await retry_async(
-            lambda: self._attempt(chunk_id, source_file, text),
-            model=self.model,
-        )
+        try:
+            return await retry_async(
+                lambda: self._attempt(chunk_id, source_file, text),
+                model=self.model,
+                should_retry=_should_retry_glossary,
+            )
+        except _GlossaryFormatRetry as exc:
+            # Retries exhausted on format-only failure: surface the last
+            # attempt's zero-entry payload rather than failing the chunk.
+            # The user keeps the option to continue/restart for that chunk.
+            return exc.args[0] if exc.args else SubtaskResult(
+                response_content=json.dumps(
+                    {"entries": [], "issues": []}, ensure_ascii=False
+                ),
+                input_tokens=0,
+                output_tokens=0,
+            )
 
     async def _attempt(self, chunk_id: str, source_file: str, text: str) -> SubtaskResult:
         system_prompt = build_prompt(
@@ -144,11 +178,21 @@ class GlossarySubtaskRunner:
                     "usage": response.usage.to_dict(),
                 },
             )
-        return SubtaskResult(
+        result = SubtaskResult(
             response_content=json.dumps(result_payload, ensure_ascii=False),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )
+        # Decoder produced nothing usable from a non-trivial response —
+        # signal retry. ``result`` is attached so the run() outer handler
+        # can return it if all attempts fail (instead of silently losing
+        # the token usage record).
+        if (
+            len(decoded.entries) == 0
+            and len(decoded.issues) >= _FORMAT_RETRY_MIN_ISSUES
+        ):
+            raise _GlossaryFormatRetry(result)
+        return result
 
 
 def decode_glossary_subtask_response(
