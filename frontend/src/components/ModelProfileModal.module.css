@@ -187,11 +187,6 @@
   font-size: 12.5px;
 }
 
-:global(:root[data-theme="dark"]) .modelPicker {
-  border-color: var(--hairline-strong);
-  background: var(--panel);
-  color: var(--ink);
-}
 
 .actionRow {
   display: flex;

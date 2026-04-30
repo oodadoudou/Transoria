@@ -37,10 +37,6 @@
   cursor: not-allowed;
 }
 
-:global(:root[data-theme="dark"]) .button:disabled {
-  opacity: 0.62;
-}
-
 .icon {
   font-size: 12px;
   line-height: 1;

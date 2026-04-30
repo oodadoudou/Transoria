@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMessages, useI18n } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
-import { useRunSnapshot, usePollRunSnapshot } from "@/store/useRuntimeStore";
+import {
+  useRunSnapshot,
+  usePollRunSnapshot,
+  useRuntimeStore,
+} from "@/store/useRuntimeStore";
 import {
   useModelProfiles,
   useModelProfilesStore,
@@ -37,6 +41,13 @@ export function RunPage() {
   const appSettings = useModuleSettings("app");
   const snapshot = useRunSnapshot("translation");
   usePollRunSnapshot("translation");
+
+  // Refresh active-task state on mount so re-entering the page after
+  // navigating away picks up the live backend status without waiting
+  // for the next 2-second poll tick.
+  useEffect(() => {
+    void useRuntimeStore.getState().refreshActiveTask("translation");
+  }, []);
 
   const activeModelId = appSettings.draft?.active_translation_model_id ?? null;
   const activeModel = activeModelId

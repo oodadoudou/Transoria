@@ -73,7 +73,6 @@ class TranslationRunResult:
     task_id: str
     statistics: TranslationStatistics
     statistics_path: Path
-    statistics_text_path: Path | None
     translated_outputs: tuple[Path, ...]
     bilingual_outputs: tuple[Path, ...]
     final_status: TaskStatus
@@ -243,7 +242,7 @@ class TranslationOrchestrator:
             for s in snapshot.subtasks
             if s.status is SubtaskStatus.FAILED and s.last_error
         )
-        statistics_path, statistics_text_path = write_translation_statistics(
+        statistics_path = write_translation_statistics(
             statistics,
             config.output_dir,
             failed_subtask_details=failed_subtask_details,
@@ -253,7 +252,6 @@ class TranslationOrchestrator:
             task_id=task_id,
             statistics=statistics,
             statistics_path=statistics_path,
-            statistics_text_path=statistics_text_path,
             translated_outputs=tuple(translated_outputs),
             bilingual_outputs=tuple(bilingual_outputs),
             final_status=snapshot.record.status,
@@ -269,14 +267,13 @@ class TranslationOrchestrator:
             started_at=started_at,
             ended_at=self.clock(),
         )
-        statistics_path, statistics_text_path = write_translation_statistics(
+        statistics_path = write_translation_statistics(
             statistics, config.output_dir
         )
         result = TranslationRunResult(
             task_id="",
             statistics=statistics,
             statistics_path=statistics_path,
-            statistics_text_path=statistics_text_path,
             translated_outputs=(),
             bilingual_outputs=(),
             final_status=TaskStatus.COMPLETED,

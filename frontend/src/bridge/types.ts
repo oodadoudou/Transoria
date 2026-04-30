@@ -51,8 +51,6 @@ export type Platform = "darwin" | "win32" | "linux";
 
 export type ChineseOutputForm = "simplified" | "traditional";
 
-export type Theme = "light" | "dark" | "system";
-
 export type SettingsModule = "app" | "translation" | "glossary" | "replacement";
 
 export type PromptKind = "translation" | "glossary";
@@ -71,7 +69,6 @@ export interface AppMetadata {
 
 export interface AppSettings {
   interface_language: "en" | "zh";
-  theme: Theme;
   ui_scale: number;
   proxy_url: string;
   active_translation_model_id: string | null;

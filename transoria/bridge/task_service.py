@@ -303,9 +303,6 @@ def _translation_result_payload(
         "statistics_json_path": str(result.statistics_path)
         if result.statistics_path
         else None,
-        "statistics_text_path": str(result.statistics_text_path)
-        if result.statistics_text_path
-        else None,
         "processed_files": list(statistics.processed_files),
         "completed_segments": statistics.completed_segments,
         "total_segments": statistics.total_segments,
@@ -365,7 +362,6 @@ def _partial_translation_payload(
         bilingual = _scan_bilingual_files(output_dir)
     progress = snapshot.progress()
     stats_path = output_dir / STATISTICS_FILENAME_JSON
-    text_path = output_dir / "translation-statistics.txt"
     bilingual_folder = str(Path(bilingual[0]).parent) if bilingual else None
     return {
         "kind": "translation",
@@ -375,7 +371,6 @@ def _partial_translation_payload(
         "translated_files": translated,
         "bilingual_files": bilingual,
         "statistics_json_path": str(stats_path) if stats_path.exists() else None,
-        "statistics_text_path": str(text_path) if text_path.exists() else None,
         "processed_files": _string_list(stats.get("processed_files"))
         if stats
         else [],

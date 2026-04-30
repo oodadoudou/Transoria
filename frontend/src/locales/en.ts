@@ -55,6 +55,8 @@ export const en: Messages = {
   },
   runControls: {
     start: "Start",
+    starting: "Starting…",
+    running: "Running",
     pause: "Pause",
     stop: "Stop",
     continue: "Continue",
@@ -185,11 +187,6 @@ export const en: Messages = {
     caseSensitive: "case",
   },
   appSettingsExtra: {
-    theme: "Theme",
-    themeHint: "Light, dark, or follow system.",
-    themeSystem: "System",
-    themeLight: "Light",
-    themeDark: "Dark",
     uiScale: "UI scale",
     uiScaleHint: "Visual density (0.85–1.5).",
     proxyUrl: "Proxy URL",
@@ -527,7 +524,7 @@ export const en: Messages = {
   appSettings: {
     crumb: "App Settings",
     title: "App Settings",
-    sub: "Interface language, UI scale, theme, proxy, and packaging-time preferences.",
+    sub: "Interface language, UI scale, proxy, and packaging-time preferences.",
     interfaceLanguage: "Interface language",
     interfaceLanguageHint:
       "Switches every label, button, and message in the UI. The translation source/target languages are separate and live under each module.",

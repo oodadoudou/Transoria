@@ -1,33 +1,33 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useMessages } from '@/locales';
+import { useCallback, useEffect, useState } from "react";
+import { useMessages } from "@/locales";
 import {
   BridgeError,
   glossaryBridge,
   translationBridge,
   type ProbeContinuable,
-} from '@/bridge';
+} from "@/bridge";
 import {
   useRunSnapshot,
   useRuntimeStore,
   type RunKind,
-} from '@/store/useRuntimeStore';
-import styles from './RunControls.module.css';
+} from "@/store/useRuntimeStore";
+import styles from "./RunControls.module.css";
 
 interface RunControlsProps {
   kind: RunKind;
 }
 
-const ICON_PLAY = '▶';
-const ICON_PAUSE = '❚❚';
-const ICON_STOP = '■';
-const ICON_CONTINUE = '↻';
+const ICON_PLAY = "▶";
+const ICON_PAUSE = "❚❚";
+const ICON_STOP = "■";
+const ICON_CONTINUE = "↻";
 
 const NEEDS_CONFIRM: ReadonlySet<string> = new Set([
-  'running',
-  'paused',
-  'pausing',
-  'stopping',
-  'stopped',
+  "running",
+  "paused",
+  "pausing",
+  "stopping",
+  "stopped",
 ]);
 
 const EMPTY_PROBE: ProbeContinuable = {
@@ -43,14 +43,12 @@ export function RunControls({ kind }: RunControlsProps) {
   const labels = messages.runControls;
   const snapshot = useRunSnapshot(kind);
   const setLastError = useRuntimeStore((state) => state.setLastError);
-  const refreshActiveTask = useRuntimeStore(
-    (state) => state.refreshActiveTask,
-  );
+  const refreshActiveTask = useRuntimeStore((state) => state.refreshActiveTask);
 
   const status = snapshot.status;
   const idle = snapshot.isIdle;
 
-  const bridge = kind === 'translation' ? translationBridge : glossaryBridge;
+  const bridge = kind === "translation" ? translationBridge : glossaryBridge;
 
   const [probe, setProbe] = useState<ProbeContinuable>(EMPTY_PROBE);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -138,13 +136,25 @@ export function RunControls({ kind }: RunControlsProps) {
     void dispatch(() => bridge.continueTask(taskId));
   }, [bridge, dispatch, probe.task_id]);
 
-  const canPause = status === 'running';
+  const canPause = status === "running";
   const canStop =
-    status === 'running' || status === 'paused' || status === 'pausing';
-  const canContinue = probe.continuable;
+    status === "running" || status === "paused" || status === "pausing";
+  const canContinue = probe.continuable && status !== "running";
+  // Start is locked while a task is active so the UI reflects that the
+  // run is in flight; user must Stop first to launch a fresh one.
+  const startActive =
+    status === "running" ||
+    status === "pausing" ||
+    status === "paused" ||
+    status === "stopping";
 
-  const pauseLabel = status === 'pausing' ? labels.pausing : labels.pause;
-  const stopLabel = status === 'stopping' ? labels.stopping : labels.stop;
+  const pauseLabel = status === "pausing" ? labels.pausing : labels.pause;
+  const stopLabel = status === "stopping" ? labels.stopping : labels.stop;
+  const startLabel = startActive
+    ? status === "running"
+      ? labels.running
+      : labels.starting
+    : labels.start;
 
   return (
     <>
@@ -152,8 +162,8 @@ export function RunControls({ kind }: RunControlsProps) {
         <Button
           kind="primary"
           icon={ICON_PLAY}
-          label={labels.start}
-          disabled={false}
+          label={startLabel}
+          disabled={startActive}
           onClick={handleStartClick}
         />
         <Button
@@ -193,7 +203,7 @@ export function RunControls({ kind }: RunControlsProps) {
 }
 
 interface ButtonProps {
-  kind: 'primary' | 'ghost' | 'warn';
+  kind: "primary" | "ghost" | "warn";
   icon: string;
   label: string;
   disabled: boolean;

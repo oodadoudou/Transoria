@@ -91,21 +91,6 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
         {draft ? (
           <>
             <SettingRow
-              label={appSettingsExtra.theme}
-              hint={appSettingsExtra.themeHint}
-            >
-              <Segmented<"light" | "dark" | "system">
-                ariaLabel={appSettingsExtra.theme}
-                options={[
-                  { id: "system", label: appSettingsExtra.themeSystem },
-                  { id: "light", label: appSettingsExtra.themeLight },
-                  { id: "dark", label: appSettingsExtra.themeDark },
-                ]}
-                value={draft.theme}
-                onChange={(v) => moduleSettings.update("theme", v)}
-              />
-            </SettingRow>
-            <SettingRow
               label={appSettingsExtra.uiScale}
               hint={appSettingsExtra.uiScaleHint}
             >

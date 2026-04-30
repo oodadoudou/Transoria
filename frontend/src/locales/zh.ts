@@ -55,6 +55,8 @@ export const zh: Messages = {
   },
   runControls: {
     start: "开始",
+    starting: "启动中…",
+    running: "运行中",
     pause: "暂停",
     stop: "停止",
     continue: "继续",
@@ -176,11 +178,6 @@ export const zh: Messages = {
     caseSensitive: "区分大小写",
   },
   appSettingsExtra: {
-    theme: "主题",
-    themeHint: "亮色、暗色或跟随系统。",
-    themeSystem: "跟随系统",
-    themeLight: "亮色",
-    themeDark: "暗色",
     uiScale: "界面缩放",
     uiScaleHint: "界面密度 (0.85–1.5)。",
     proxyUrl: "代理 URL",
@@ -512,7 +509,7 @@ export const zh: Messages = {
   appSettings: {
     crumb: "应用设置",
     title: "应用设置",
-    sub: "界面语言、UI 缩放、主题、代理与打包偏好。",
+    sub: "界面语言、UI 缩放、代理与打包偏好。",
     interfaceLanguage: "界面语言",
     interfaceLanguageHint:
       "切换 UI 中所有标签、按钮和提示文案。翻译的源/目标语言是独立的,在各自模块内配置。",

@@ -15,14 +15,12 @@ from transoria.domain import Language
 SettingsModule = Literal["app", "translation", "glossary", "replacement"]
 
 ChineseOutputForm = Literal["simplified", "traditional"]
-Theme = Literal["light", "dark", "system"]
 InterfaceLanguage = Literal["en", "zh"]
 
 
 @dataclass(frozen=True)
 class AppSettings:
     interface_language: InterfaceLanguage = "en"
-    theme: Theme = "system"
     ui_scale: float = 1.0
     proxy_url: str = ""
     active_translation_model_id: str | None = None
@@ -253,7 +251,6 @@ __all__ = [
     "InterfaceLanguage",
     "ReplacementSettings",
     "SettingsModule",
-    "Theme",
     "TranslationSettings",
     "_TRANSLATION_LIST_OF_MAPPING_FIELDS",
     "default_module_settings",

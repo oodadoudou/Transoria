@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMessages, useI18n } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
-import { useRunSnapshot, usePollRunSnapshot } from "@/store/useRuntimeStore";
+import {
+  useRunSnapshot,
+  usePollRunSnapshot,
+  useRuntimeStore,
+} from "@/store/useRuntimeStore";
 import {
   useModelProfiles,
   useModelProfilesStore,
@@ -37,6 +41,13 @@ export function RunPage() {
   const appSettings = useModuleSettings("app");
   const snapshot = useRunSnapshot("glossary");
   usePollRunSnapshot("glossary");
+
+  // Refresh active-task state on mount so re-entering the page after
+  // navigating away picks up the live backend status (poll only ticks
+  // every 2s, and snapshot in store can be stale right after remount).
+  useEffect(() => {
+    void useRuntimeStore.getState().refreshActiveTask("glossary");
+  }, []);
 
   const activeModelId = appSettings.draft?.active_glossary_model_id ?? null;
   const activeModel = activeModelId

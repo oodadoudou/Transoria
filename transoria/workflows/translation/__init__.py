@@ -47,7 +47,6 @@ from transoria.workflows.translation.confidence import (
 )
 from transoria.workflows.translation.statistics import (
     STATISTICS_FILENAME_JSON,
-    STATISTICS_FILENAME_TEXT,
     FailedFile,
     LowConfidenceSegment,
     TranslationStatistics,
@@ -68,7 +67,6 @@ __all__ = [
     "ProtectionMap",
     "ReplacementRule",
     "STATISTICS_FILENAME_JSON",
-    "STATISTICS_FILENAME_TEXT",
     "SUBTASK_PAYLOAD_VERSION",
     "TextPreserveRule",
     "TranslationChunk",

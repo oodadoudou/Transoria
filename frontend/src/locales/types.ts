@@ -51,6 +51,8 @@ export interface Messages {
   };
   runControls: {
     start: string;
+    starting: string;
+    running: string;
     pause: string;
     stop: string;
     continue: string;
@@ -164,11 +166,6 @@ export interface Messages {
     caseSensitive: string;
   };
   appSettingsExtra: {
-    theme: string;
-    themeHint: string;
-    themeSystem: string;
-    themeLight: string;
-    themeDark: string;
     uiScale: string;
     uiScaleHint: string;
     proxyUrl: string;
