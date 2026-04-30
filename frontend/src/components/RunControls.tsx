@@ -18,7 +18,6 @@ interface RunControlsProps {
 }
 
 const ICON_PLAY = "▶";
-const ICON_PAUSE = "❚❚";
 const ICON_STOP = "■";
 const ICON_CONTINUE = "↻";
 
@@ -118,12 +117,6 @@ export function RunControls({ kind }: RunControlsProps) {
     void performStart();
   }, [performStart]);
 
-  const handlePause = useCallback(() => {
-    const taskId = useRuntimeStore.getState()[kind].activeTaskId;
-    if (!taskId) return;
-    void dispatch(() => bridge.pauseTask(taskId));
-  }, [bridge, kind, dispatch]);
-
   const handleStop = useCallback(() => {
     const taskId = useRuntimeStore.getState()[kind].activeTaskId;
     if (!taskId) return;
@@ -136,19 +129,15 @@ export function RunControls({ kind }: RunControlsProps) {
     void dispatch(() => bridge.continueTask(taskId));
   }, [bridge, dispatch, probe.task_id]);
 
-  const canPause = status === "running";
-  const canStop =
-    status === "running" || status === "paused" || status === "pausing";
+  // Pause is intentionally fused into Stop — the pause path was racy
+  // and crash-prone. Stop is the only way to pause-then-resume now;
+  // the user picks up via Continue (cache survives stop).
+  const canStop = status === "running";
   const canContinue = probe.continuable && status !== "running";
   // Start is locked while a task is active so the UI reflects that the
   // run is in flight; user must Stop first to launch a fresh one.
-  const startActive =
-    status === "running" ||
-    status === "pausing" ||
-    status === "paused" ||
-    status === "stopping";
+  const startActive = status === "running" || status === "stopping";
 
-  const pauseLabel = status === "pausing" ? labels.pausing : labels.pause;
   const stopLabel = status === "stopping" ? labels.stopping : labels.stop;
   const startLabel = startActive
     ? status === "running"
@@ -165,13 +154,6 @@ export function RunControls({ kind }: RunControlsProps) {
           label={startLabel}
           disabled={startActive}
           onClick={handleStartClick}
-        />
-        <Button
-          kind="ghost"
-          icon={ICON_PAUSE}
-          label={pauseLabel}
-          disabled={!canPause}
-          onClick={handlePause}
         />
         <Button
           kind="ghost"
