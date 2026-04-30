@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMessages } from "@/locales";
 import {
   BridgeError,
@@ -51,6 +51,12 @@ export function RunControls({ kind }: RunControlsProps) {
 
   const [probe, setProbe] = useState<ProbeContinuable>(EMPTY_PROBE);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Triple-click escape hatch: while a task is active the start button
+  // looks inactive but stays clickable so a misconfigured run can be
+  // force-restarted without first hitting Stop. Counter resets after 5s
+  // of inactivity, or when status leaves the active set.
+  const [restartClicks, setRestartClicks] = useState(0);
+  const restartResetTimer = useRef<number | null>(null);
 
   // Refresh `probe_continuable` on mount and whenever the live status
   // crosses a boundary that could change continuability (RUNNING ↔
@@ -103,19 +109,54 @@ export function RunControls({ kind }: RunControlsProps) {
     [bridge, dispatch],
   );
 
+  const clearRestartTimer = useCallback(() => {
+    if (restartResetTimer.current !== null) {
+      window.clearTimeout(restartResetTimer.current);
+      restartResetTimer.current = null;
+    }
+  }, []);
+
   const handleStartClick = useCallback(() => {
+    // While a task is in flight ("running" / "stopping") the click acts
+    // as a vote toward force-restart; show the dialog only after 3 hits.
+    if (status === "running" || status === "stopping") {
+      clearRestartTimer();
+      const next = restartClicks + 1;
+      if (next >= 3) {
+        setRestartClicks(0);
+        setConfirmOpen(true);
+        return;
+      }
+      setRestartClicks(next);
+      restartResetTimer.current = window.setTimeout(() => {
+        setRestartClicks(0);
+        restartResetTimer.current = null;
+      }, 5000);
+      return;
+    }
     const hasPriorState = probe.task_id !== null || NEEDS_CONFIRM.has(status);
     if (hasPriorState) {
       setConfirmOpen(true);
       return;
     }
     void performStart();
-  }, [probe.task_id, status, performStart]);
+  }, [clearRestartTimer, probe.task_id, restartClicks, status, performStart]);
 
   const handleConfirmStart = useCallback(() => {
     setConfirmOpen(false);
     void performStart();
   }, [performStart]);
+
+  // Reset the click counter when the task leaves the active set so the
+  // hint disappears as soon as Stop / Continue / a fresh start lands.
+  useEffect(() => {
+    if (status !== "running" && status !== "stopping") {
+      clearRestartTimer();
+      setRestartClicks(0);
+    }
+  }, [clearRestartTimer, status]);
+
+  useEffect(() => clearRestartTimer, [clearRestartTimer]);
 
   const handleStop = useCallback(() => {
     const taskId = useRuntimeStore.getState()[kind].activeTaskId;
@@ -134,9 +175,10 @@ export function RunControls({ kind }: RunControlsProps) {
   // the user picks up via Continue (cache survives stop).
   const canStop = status === "running";
   const canContinue = probe.continuable && status !== "running";
-  // Start is locked while a task is active so the UI reflects that the
-  // run is in flight; user must Stop first to launch a fresh one.
+  // Start looks inactive while a task is in flight, but stays clickable
+  // so a triple-click can force-restart (see handleStartClick).
   const startActive = status === "running" || status === "stopping";
+  const restartRemaining = startActive ? Math.max(0, 3 - restartClicks) : 0;
 
   const stopLabel = status === "stopping" ? labels.stopping : labels.stop;
   const startLabel = startActive
@@ -152,7 +194,8 @@ export function RunControls({ kind }: RunControlsProps) {
           kind="primary"
           icon={ICON_PLAY}
           label={startLabel}
-          disabled={startActive}
+          disabled={false}
+          inactive={startActive}
           onClick={handleStartClick}
         />
         <Button
@@ -170,6 +213,11 @@ export function RunControls({ kind }: RunControlsProps) {
           onClick={handleStop}
         />
       </div>
+      {restartClicks > 0 && restartRemaining > 0 ? (
+        <p className={styles.hint} role="status" aria-live="polite">
+          {labels.restartHint.replace("{count}", String(restartRemaining))}
+        </p>
+      ) : null}
       {confirmOpen ? (
         <ConfirmStartDialog
           title={labels.confirmStartTitle}
@@ -189,11 +237,25 @@ interface ButtonProps {
   icon: string;
   label: string;
   disabled: boolean;
+  inactive?: boolean;
   onClick: () => void;
 }
 
-function Button({ kind, icon, label, disabled, onClick }: ButtonProps) {
-  const className = `${styles.button} ${styles[kind]}`.trim();
+function Button({
+  kind,
+  icon,
+  label,
+  disabled,
+  inactive,
+  onClick,
+}: ButtonProps) {
+  const className = [
+    styles.button,
+    styles[kind],
+    inactive ? styles.inactive : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
     <button
       type="button"

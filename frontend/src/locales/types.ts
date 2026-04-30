@@ -62,6 +62,7 @@ export interface Messages {
     confirmStartBody: string;
     confirmStartConfirm: string;
     confirmStartCancel: string;
+    restartHint: string;
   };
   bilingual: {
     label: string;

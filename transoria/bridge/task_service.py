@@ -90,6 +90,12 @@ _KIND_TO_TASKKIND: dict[str, TaskKind] = {
     "replacement": TaskKind.REPLACEMENT,
 }
 
+# Persisted statuses that imply a live executor must exist; if the
+# in-memory registry is empty for one of these, the host crashed mid-run.
+_ZOMBIE_TASK_STATES: frozenset[TaskStatus] = frozenset(
+    {TaskStatus.RUNNING, TaskStatus.STOPPING, TaskStatus.PAUSING}
+)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1263,8 +1269,9 @@ class TaskService:
 
     def read_snapshot(self, *, kind: str, task_id: str) -> dict[str, object]:
         record_kind = self._kind(kind)
+        cache = self._cache_for_task(task_id)
         try:
-            snapshot = self._cache_for_task(task_id).load(task_id)
+            snapshot = cache.load(task_id)
         except TaskNotFoundError as exc:
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
@@ -1275,6 +1282,7 @@ class TaskService:
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
             )
+        snapshot = self._reconcile_zombie(snapshot, cache)
         return {"snapshot": _format_snapshot(snapshot)}
 
     def list_recent_tasks(
@@ -1459,6 +1467,33 @@ class TaskService:
         cache.save_task(
             record.with_status(status).with_updated_at(_utc_now_iso())
         )
+
+    def _reconcile_zombie(
+        self, snapshot: TaskSnapshot, cache: TaskCache
+    ) -> TaskSnapshot:
+        # After a host-process crash (e.g. macOS WebKit setCursorFromBundle
+        # SIGBUS, OOM, kill -9) the runtime never writes a terminal state,
+        # so the cache stays at RUNNING/STOPPING/PAUSING while the in-memory
+        # executor is gone. Flip it to STOPPED here so the UI surfaces a
+        # continuable task instead of a zombie.
+        record = snapshot.record
+        if record.status not in _ZOMBIE_TASK_STATES:
+            return snapshot
+        if self.registry.get(record.id) is not None:
+            return snapshot
+        healed = record.with_status(TaskStatus.STOPPED).with_updated_at(
+            _utc_now_iso()
+        )
+        cache.save_task(healed)
+        healed_subtasks: list[Subtask] = []
+        for subtask in snapshot.subtasks:
+            if subtask.status is SubtaskStatus.RUNNING:
+                pending = replace(subtask, status=SubtaskStatus.PENDING)
+                cache.save_subtask(pending)
+                healed_subtasks.append(pending)
+            else:
+                healed_subtasks.append(subtask)
+        return TaskSnapshot(record=healed, subtasks=tuple(healed_subtasks))
 
     def _on_task_failure(self, task_id: str, exc: BaseException) -> None:
         cache = self._cache_for_task(task_id)

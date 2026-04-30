@@ -67,6 +67,7 @@ export const zh: Messages = {
       "开始新任务会停止当前运行并清除进度缓存。已生成的翻译文件与双语文件保留在输出文件夹中，新任务运行时会按需覆盖。",
     confirmStartConfirm: "重新开始",
     confirmStartCancel: "取消",
+    restartHint: "再点 {count} 次以重跑",
   },
   bilingual: {
     label: "双语输出",

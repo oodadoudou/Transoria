@@ -67,6 +67,7 @@ export const en: Messages = {
       "Starting will stop the current run and delete its progress cache. Translated and bilingual files in the output folder are preserved and will be overwritten as the new run produces them.",
     confirmStartConfirm: "Start fresh",
     confirmStartCancel: "Cancel",
+    restartHint: "Click {count} more time(s) to re-run",
   },
   bilingual: {
     label: "Bilingual output",
