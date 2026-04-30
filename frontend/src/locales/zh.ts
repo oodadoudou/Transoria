@@ -164,8 +164,7 @@ export const zh: Messages = {
     fetchRunning: "拉取中…",
     fetchSuccess: "已拉取",
     fetchFailed: "拉取失败",
-    fetchUnsupportedAnthropic:
-      "Anthropic 不提供 /models 接口——请手动填入模型 ID（例如 claude-3-5-sonnet-20241022）。",
+    fetchUnsupported: "不支持拉取模型列表",
     pickModel: "选择模型",
     addCustom: "新增模型",
     addCustomHint: "复制当前 profile 为新条目，便于配置另一个模型。",

@@ -151,7 +151,7 @@ export interface Messages {
     fetchRunning: string;
     fetchSuccess: string;
     fetchFailed: string;
-    fetchUnsupportedAnthropic: string;
+    fetchUnsupported: string;
     pickModel: string;
     addCustom: string;
     addCustomHint: string;

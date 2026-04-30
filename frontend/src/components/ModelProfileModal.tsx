@@ -593,17 +593,24 @@ function FormStep({
             onChange={(v) => update("model_id", v)}
             mono
           />
-          <Pill
-            variant="ghost"
-            onClick={onFetch}
-            disabled={
-              probeBusy !== null ||
+          {(() => {
+            const fetchUnsupported =
               draft.provider_format === "anthropic" ||
-              !hintTemplate?.supports_fetch_model_list
-            }
-          >
-            {probeBusy === "fetch" ? me.fetchRunning : me.fetchModels}
-          </Pill>
+              !hintTemplate?.supports_fetch_model_list;
+            const fetchLabel = fetchUnsupported
+              ? me.fetchUnsupported
+              : probeBusy === "fetch"
+                ? me.fetchRunning
+                : me.fetchModels;
+            return (
+              <Pill
+                onClick={onFetch}
+                disabled={probeBusy !== null || fetchUnsupported}
+              >
+                {fetchLabel}
+              </Pill>
+            );
+          })()}
           {fetchedModels && fetchedModels.length > 0 ? (
             <select
               className={styles.modelPicker}
@@ -653,11 +660,6 @@ function FormStep({
             <strong>{testResult.ok ? me.testOk : me.testFailed}</strong> ·{" "}
             {me.testLatency}: {testResult.latency_ms}ms ·{" "}
             {testResult.provider_response.detail}
-          </div>
-        ) : null}
-        {draft.provider_format === "anthropic" ? (
-          <div className={styles.providerHint}>
-            {me.fetchUnsupportedAnthropic}
           </div>
         ) : null}
       </section>

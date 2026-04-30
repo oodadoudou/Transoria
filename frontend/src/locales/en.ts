@@ -172,8 +172,7 @@ export const en: Messages = {
     fetchRunning: "Fetching…",
     fetchSuccess: "Fetched",
     fetchFailed: "Fetch failed",
-    fetchUnsupportedAnthropic:
-      "Anthropic doesn't expose a /models endpoint — type the model ID manually (e.g. claude-3-5-sonnet-20241022).",
+    fetchUnsupported: "Fetch model list not supported",
     pickModel: "Pick a model",
     addCustom: "New profile",
     addCustomHint:
