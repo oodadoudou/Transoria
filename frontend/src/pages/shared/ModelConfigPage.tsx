@@ -5,6 +5,7 @@ import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { ChevronDownIcon } from "@/components/Icon";
 import { ModelProfileModal } from "@/components/ModelProfileModal";
+import { OverflowMenu } from "@/components/OverflowMenu";
 import type { ModelProfile } from "@/bridge";
 import styles from "./ModelConfigPage.module.css";
 
@@ -119,7 +120,7 @@ export function ModelConfigPage() {
                     <ConfiguredModelRow
                       key={profile.id}
                       profile={profile}
-                      labels={cfg}
+                      menu={messages.rowMenu}
                       onEdit={() =>
                         setModalState({ mode: "edit", profileId: profile.id })
                       }
@@ -176,9 +177,10 @@ function ModelChip({ profile, editing, onEdit }: ModelChipProps) {
 
 interface ConfiguredModelRowProps {
   profile: ModelProfile;
-  labels: {
-    editAction: string;
-    deleteAction: string;
+  menu: {
+    triggerLabel: string;
+    edit: string;
+    delete: string;
   };
   onEdit: () => void;
   onDelete: () => void;
@@ -186,7 +188,7 @@ interface ConfiguredModelRowProps {
 
 function ConfiguredModelRow({
   profile,
-  labels,
+  menu,
   onEdit,
   onDelete,
 }: ConfiguredModelRowProps) {
@@ -199,12 +201,18 @@ function ConfiguredModelRow({
         </span>
       </div>
       <div className={styles.configuredActions}>
-        <Pill variant="ghost" onClick={onEdit}>
-          {labels.editAction}
-        </Pill>
-        <Pill variant="ghost" onClick={onDelete}>
-          {labels.deleteAction}
-        </Pill>
+        <OverflowMenu
+          ariaLabel={menu.triggerLabel}
+          items={[
+            { key: "edit", label: menu.edit, onSelect: onEdit },
+            {
+              key: "delete",
+              label: menu.delete,
+              onSelect: onDelete,
+              variant: "danger",
+            },
+          ]}
+        />
       </div>
     </div>
   );

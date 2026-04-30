@@ -36,6 +36,14 @@ export const zh: Messages = {
     dismiss: "关闭",
     openModelConfig: "打开模型配置",
   },
+  rowMenu: {
+    triggerLabel: "更多操作",
+    view: "查看",
+    edit: "编辑",
+    duplicate: "复制",
+    delete: "删除",
+    systemBadge: "系统",
+  },
   errors: {
     runFailureTitle: "最近一次操作失败",
     loadFailureTitle: "加载失败",
@@ -106,6 +114,10 @@ export const zh: Messages = {
   promptModal: {
     titleAdd: "添加 Prompt 预设",
     titleEdit: "编辑 Prompt 预设",
+    titleView: "查看 Prompt 预设",
+    closeAction: "关闭",
+    systemReadOnlyNotice:
+      "这是内置系统预设，仅供查看。可以直接使用，或复制后再编辑。",
     nameLabel: "名称",
     namePlaceholder: "例如「韩 → 简体中文（正式）」",
     descriptionLabel: "描述",

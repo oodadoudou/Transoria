@@ -34,6 +34,10 @@ class PromptPreset:
     thinking_prompt: str = ""
     description: str = ""
     enabled: bool = True
+    # Seeded presets (the built-in language-agnostic defaults) carry
+    # ``is_system=True`` and are immutable: the bridge rejects updates
+    # and deletes, and the UI shows them in view-only mode.
+    is_system: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -45,6 +49,7 @@ class PromptPreset:
             "thinking_prompt": self.thinking_prompt,
             "description": self.description,
             "enabled": self.enabled,
+            "is_system": self.is_system,
         }
 
     @classmethod
@@ -62,6 +67,7 @@ class PromptPreset:
             thinking_prompt=str(data.get("thinking_prompt", "")),
             description=str(data.get("description", "")),
             enabled=bool(data.get("enabled", True)),
+            is_system=bool(data.get("is_system", False)),
         )
 
 
@@ -303,6 +309,7 @@ def _seeded_translation_zh() -> PromptPreset:
         thinking_prompt=_TRANSLATION_THINKING_ZH,
         description="默认翻译预设（中文指令版）。语言无关化，可在任意 source/target 语言对上使用。",
         enabled=True,
+        is_system=True,
     )
 
 
@@ -316,6 +323,7 @@ def _seeded_translation_en() -> PromptPreset:
         thinking_prompt=_TRANSLATION_THINKING_EN,
         description="Default translation preset (English instructions). Language-agnostic; works for any source/target language pair.",
         enabled=True,
+        is_system=True,
     )
 
 
@@ -329,6 +337,7 @@ def _seeded_glossary_zh() -> PromptPreset:
         thinking_prompt=_GLOSSARY_THINKING_ZH,
         description="默认术语提取预设（中文指令版）。聚焦命名实体提取与三层过滤，与原文语言无关。",
         enabled=True,
+        is_system=True,
     )
 
 
@@ -342,6 +351,7 @@ def _seeded_glossary_en() -> PromptPreset:
         thinking_prompt=_GLOSSARY_THINKING_EN,
         description="Default glossary extraction preset (English instructions). Focused on named-entity extraction with a three-filter qualification gauntlet.",
         enabled=True,
+        is_system=True,
     )
 
 
@@ -403,15 +413,35 @@ class PromptPresetStore:
             raise ValueError(
                 f"Prompt preset file must contain a JSON array: {self.path}"
             )
-        presets = [PromptPreset.from_dict(item) for item in payload]
-        wrong_kind = [p.id for p in presets if p.kind is not self.kind]
+        stored = [PromptPreset.from_dict(item) for item in payload]
+        wrong_kind = [p.id for p in stored if p.kind is not self.kind]
         if wrong_kind:
             raise ValueError(
                 f"Preset kind mismatch in {self.path}: {wrong_kind!r} != {self.kind.value}"
             )
-        if not any(p.id == _default_preset_id(self.kind) for p in presets):
-            presets = [default_preset(self.kind), *presets]
-        return tuple(presets)
+        # System presets (the seeded ZH/EN defaults) are sourced from
+        # code, not disk: any time the source-tree prompts are edited
+        # we want users to see the new copy immediately. The on-disk
+        # version is fully ignored for system ids — including
+        # ``enabled`` — so users can neither break a system preset by
+        # toggling it off nor freeze its content at an old revision.
+        # Custom presets pass through unchanged.
+        seeded_by_id = {preset.id: preset for preset in seeded_presets(self.kind)}
+        merged: list[PromptPreset] = []
+        seen_seeded: set[str] = set()
+        for preset in stored:
+            if preset.id in seeded_by_id:
+                merged.append(seeded_by_id[preset.id])
+                seen_seeded.add(preset.id)
+            else:
+                merged.append(preset)
+        # Re-inject any seeded presets that the user removed (or that
+        # never made it into the on-disk store), preserving their
+        # canonical order at the front.
+        missing = [sp for sid, sp in seeded_by_id.items() if sid not in seen_seeded]
+        if missing:
+            merged = [*missing, *merged]
+        return tuple(merged)
 
     def save(self, presets: Sequence[PromptPreset]) -> None:
         wrong_kind = [p.id for p in presets if p.kind is not self.kind]

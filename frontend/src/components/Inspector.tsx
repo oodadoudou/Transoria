@@ -1,4 +1,4 @@
-import { useMessages } from "@/locales";
+import { useMessages, useI18n } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useRunSnapshot, type RunKind } from "@/store/useRuntimeStore";
 import { useModelProfiles } from "@/store/useModelProfilesStore";
@@ -31,6 +31,8 @@ export function Inspector() {
     (p) => p.id === activeModelId,
   );
 
+  const locale = useI18n((state) => state.locale);
+  const localeDefaultPromptId = `default-${kind}-${locale}`;
   const activePresetId =
     promptPresets[kind].activeId ??
     appSettings.draft?.[
@@ -38,7 +40,9 @@ export function Inspector() {
         ? "active_translation_prompt_id"
         : "active_glossary_prompt_id"
     ] ??
-    null;
+    (promptPresets[kind].presets.some((p) => p.id === localeDefaultPromptId)
+      ? localeDefaultPromptId
+      : null);
   const activePreset =
     promptPresets[kind].presets.find((p) => p.id === activePresetId) ?? null;
 

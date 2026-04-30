@@ -101,6 +101,8 @@ export function PromptPresetModal({
   };
 
   const isDefault = mode === "edit" && seed?.is_default === true;
+  const isSystem = mode === "edit" && seed?.is_system === true;
+  const readOnly = isSystem;
 
   const handleSave = async () => {
     if (!draft.name.trim()) {
@@ -139,7 +141,9 @@ export function PromptPresetModal({
         });
         if (created) onSaved(created.id);
         else
-          setError(store.mutationError ?? makeUnknownError("create returned null"));
+          setError(
+            store.mutationError ?? makeUnknownError("create returned null"),
+          );
       }
     } catch (err) {
       setError(asBridgeError(err));
@@ -225,13 +229,17 @@ export function PromptPresetModal({
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <h2 className={styles.title}>
-            {mode === "edit" ? m.titleEdit : m.titleAdd}
+            {readOnly
+              ? m.titleView
+              : mode === "edit"
+                ? m.titleEdit
+                : m.titleAdd}
           </h2>
           <button
             type="button"
             className={styles.closeButton}
             onClick={onCancel}
-            aria-label={m.cancelAction}
+            aria-label={readOnly ? m.closeAction : m.cancelAction}
           >
             ×
           </button>
@@ -244,30 +252,42 @@ export function PromptPresetModal({
           </div>
         ) : null}
 
+        {readOnly ? (
+          <div className={styles.systemNotice}>{m.systemReadOnlyNotice}</div>
+        ) : null}
+
         <div className={styles.body}>
           <TextField
             label={m.nameLabel}
             value={draft.name}
-            onChange={(v) => update("name", v)}
+            onChange={readOnly ? undefined : (v) => update("name", v)}
             placeholder={m.namePlaceholder}
           />
           <TextField
             label={m.descriptionLabel}
             value={draft.description}
-            onChange={(v) => update("description", v)}
+            onChange={readOnly ? undefined : (v) => update("description", v)}
             placeholder={m.descriptionPlaceholder}
           />
-          <ToggleSwitch
-            label={m.enabledLabel}
-            checked={draft.enabled}
-            onChange={(v) => update("enabled", v)}
-          />
+          {readOnly ? null : (
+            <ToggleSwitch
+              label={m.enabledLabel}
+              checked={draft.enabled}
+              onChange={(v) => update("enabled", v)}
+            />
+          )}
 
           <div className={styles.tabs} role="tablist">
-            <TabButton active={tab === "system"} onClick={() => setTab("system")}>
+            <TabButton
+              active={tab === "system"}
+              onClick={() => setTab("system")}
+            >
               {m.systemTab}
             </TabButton>
-            <TabButton active={tab === "suffix"} onClick={() => setTab("suffix")}>
+            <TabButton
+              active={tab === "suffix"}
+              onClick={() => setTab("suffix")}
+            >
               {m.suffixTab}
             </TabButton>
             <TabButton
@@ -280,7 +300,7 @@ export function PromptPresetModal({
           <TextField
             label=""
             value={tabValue}
-            onChange={setTabValue}
+            onChange={readOnly ? undefined : setTabValue}
             multiline
             rows={10}
             mono
@@ -316,23 +336,29 @@ export function PromptPresetModal({
         </div>
 
         <div className={styles.footer}>
-          {mode === "edit" && isDefault ? (
-            <Pill variant="ghost" onClick={() => void handleReset()}>
-              {m.resetAction}
-            </Pill>
-          ) : null}
-          {mode === "edit" && !isDefault && seed ? (
-            <Pill variant="ghost" onClick={() => void handleDelete()}>
-              {m.deleteAction}
-            </Pill>
-          ) : null}
+          {readOnly ? null : (
+            <>
+              {mode === "edit" && isDefault ? (
+                <Pill variant="ghost" onClick={() => void handleReset()}>
+                  {m.resetAction}
+                </Pill>
+              ) : null}
+              {mode === "edit" && !isDefault && seed ? (
+                <Pill variant="ghost" onClick={() => void handleDelete()}>
+                  {m.deleteAction}
+                </Pill>
+              ) : null}
+            </>
+          )}
           <div className={styles.footerRight}>
             <Pill variant="ghost" onClick={onCancel}>
-              {m.cancelAction}
+              {readOnly ? m.closeAction : m.cancelAction}
             </Pill>
-            <Pill onClick={() => void handleSave()} disabled={saving}>
-              {m.saveAction}
-            </Pill>
+            {readOnly ? null : (
+              <Pill onClick={() => void handleSave()} disabled={saving}>
+                {m.saveAction}
+              </Pill>
+            )}
           </div>
         </div>
       </div>

@@ -68,6 +68,7 @@ def _summary(preset: PromptPreset) -> dict[str, object]:
         "description": preset.description,
         "enabled": preset.enabled,
         "is_default": preset.id == _default_id(preset.kind),
+        "is_system": preset.is_system,
     }
 
 
@@ -190,12 +191,11 @@ def _build_handlers(
             for index, preset in enumerate(presets):
                 if preset.id != preset_id:
                     continue
-                if preset.id == _default_id(kind):
-                    forbidden = {"id", "kind"}
-                    if forbidden & patch.keys():
-                        raise BridgeError.invalid_argument(
-                            "id/kind of the default preset cannot change.",
-                        )
+                if preset.is_system:
+                    raise BridgeError.invalid_argument(
+                        "system prompt presets are read-only; duplicate to edit.",
+                        details={"reason": "is_system"},
+                    )
                 updates = _validate_preset_patch(patch)
                 merged = replace(preset, **updates)
                 presets[index] = merged
@@ -236,9 +236,10 @@ def _build_handlers(
             for preset in presets:
                 if preset.id != preset_id:
                     continue
-                if preset.id == _default_id(kind):
+                if preset.is_system:
                     raise BridgeError.invalid_argument(
-                        "default preset cannot be deleted.",
+                        "system prompt presets cannot be deleted.",
+                        details={"reason": "is_system"},
                     )
                 remaining = [p for p in presets if p.id != preset_id]
                 store.save(remaining)

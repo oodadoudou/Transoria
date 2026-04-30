@@ -1,0 +1,73 @@
+.wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.trigger {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted, #7a7166);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  background: var(--panel-soft, #f5f0e9);
+  border-color: var(--hairline, #ece8e2);
+  color: var(--ink, #2c2620);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--panel, #fff);
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+}
+
+.item {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink, #2c2620);
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.item:hover:not(:disabled) {
+  background: var(--panel-soft, #f5f0e9);
+}
+
+.item:disabled {
+  color: var(--muted, #7a7166);
+  cursor: not-allowed;
+}
+
+.itemDanger {
+  color: var(--accent-danger, #b14b3f);
+}
+
+.itemDanger:hover:not(:disabled) {
+  background: rgba(177, 75, 63, 0.08);
+}

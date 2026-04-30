@@ -70,6 +70,17 @@
   border-radius: 4px;
 }
 
+.systemNotice {
+  margin: 12px 22px 0;
+  padding: 10px 12px;
+  background: var(--panel-soft, #f5f0e9);
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  color: var(--muted, #7a7166);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
 .body {
   padding: 18px 22px;
   overflow-y: auto;

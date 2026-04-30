@@ -237,6 +237,9 @@ export interface PromptPresetSummary {
   description: string;
   enabled: boolean;
   is_default: boolean;
+  /** Seeded read-only preset shipped with the app. UI must show
+   *  view-only and forbid edit / delete. */
+  is_system: boolean;
 }
 
 export interface PromptPresetBody extends PromptPresetSummary {

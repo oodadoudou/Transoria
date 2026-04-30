@@ -36,6 +36,14 @@ export const en: Messages = {
     dismiss: "Dismiss",
     retry: "Retry",
   },
+  rowMenu: {
+    triggerLabel: "More actions",
+    view: "View",
+    edit: "Edit",
+    duplicate: "Duplicate",
+    delete: "Delete",
+    systemBadge: "System",
+  },
   allKeysFailed: {
     title: "All API keys failed",
     body: "Every API key configured for the active model has been rejected by the provider. The task has been stopped. Open the Model page to refresh or replace the keys, then start the task again.",
@@ -112,6 +120,10 @@ export const en: Messages = {
   promptModal: {
     titleAdd: "Add prompt preset",
     titleEdit: "Edit prompt preset",
+    titleView: "View prompt preset",
+    closeAction: "Close",
+    systemReadOnlyNotice:
+      "This is a built-in system preset and cannot be edited. Use it as-is, or duplicate to make your own.",
     nameLabel: "Name",
     namePlaceholder: "e.g. Korean → 简体中文 (formal)",
     descriptionLabel: "Description",

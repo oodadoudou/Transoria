@@ -32,6 +32,14 @@ export interface Messages {
     dismiss: string;
     retry: string;
   };
+  rowMenu: {
+    triggerLabel: string;
+    view: string;
+    edit: string;
+    duplicate: string;
+    delete: string;
+    systemBadge: string;
+  };
   allKeysFailed: {
     title: string;
     body: string;
@@ -99,6 +107,9 @@ export interface Messages {
   promptModal: {
     titleAdd: string;
     titleEdit: string;
+    titleView: string;
+    closeAction: string;
+    systemReadOnlyNotice: string;
     nameLabel: string;
     namePlaceholder: string;
     descriptionLabel: string;

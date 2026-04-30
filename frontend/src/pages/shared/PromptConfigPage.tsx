@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
-import { useMessages } from "@/locales";
-import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { useMessages, useI18n } from "@/locales";
+import {
+  usePromptPresets,
+  usePromptPresetsStore,
+} from "@/store/usePromptPresetsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { OverflowMenu } from "@/components/OverflowMenu";
 import { PromptPresetModal } from "@/components/PromptPresetModal";
 import type { PromptKind, PromptPresetBody } from "@/bridge";
 import styles from "./PromptConfigPage.module.css";
@@ -29,24 +33,46 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
   const [modalState, setModalState] = useState<ModalState>(null);
   const [editBody, setEditBody] = useState<PromptPresetBody | null>(null);
 
+  const locale = useI18n((state) => state.locale);
+  const localeDefaultId = `default-${kind}-${locale}`;
+  // Only the locale-matching system preset is shown — users picked
+  // their UI language, so we surface the system prompt phrased in
+  // that language. The non-matching system preset is still resolved
+  // by id behind the scenes (e.g. if the user selected it before
+  // switching locale).
+  const visiblePresets = slice.presets.filter((preset) => {
+    if (!preset.is_system) return true;
+    return preset.id === localeDefaultId;
+  });
+  const fallbackSummary =
+    visiblePresets.find((preset) => preset.id === localeDefaultId) ??
+    visiblePresets[0];
+  const displayedActiveId = slice.activeId ?? fallbackSummary?.id ?? null;
   const activeSummary =
-    slice.presets.find((preset) => preset.id === slice.activeId) ??
-    slice.presets[0];
+    slice.presets.find((preset) => preset.id === displayedActiveId) ??
+    fallbackSummary;
 
-  // Load the preset body when the modal opens in edit mode.
+  // Load the preset body when the modal opens in edit mode. Use the
+  // raw store getter so the effect identity does not depend on the
+  // ``usePromptPresets`` snapshot (which mutates on every store
+  // change and would otherwise reset ``editBody`` to null on each
+  // render, defeating the load).
   useEffect(() => {
     if (modalState?.mode !== "edit") {
       setEditBody(null);
       return;
     }
     let cancelled = false;
-    void store.read(modalState.presetId).then((preset) => {
-      if (!cancelled) setEditBody(preset);
-    });
+    void usePromptPresetsStore
+      .getState()
+      .read(modalState.presetId)
+      .then((preset) => {
+        if (!cancelled) setEditBody(preset);
+      });
     return () => {
       cancelled = true;
     };
-  }, [modalState, store]);
+  }, [modalState]);
 
   const handleAdd = () => {
     setModalState({ mode: "create", seed: null });
@@ -96,7 +122,10 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
               {p.actions.add}
             </Pill>
             {activeSummary ? (
-              <Pill variant="ghost" onClick={() => void handleDuplicateActive()}>
+              <Pill
+                variant="ghost"
+                onClick={() => void handleDuplicateActive()}
+              >
                 {p.actions.duplicate}
               </Pill>
             ) : null}
@@ -104,42 +133,79 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
         }
       >
         <div className={styles.list}>
-          {slice.presets.map((preset) => (
-            <div
-              key={preset.id}
-              className={`${styles.row} ${preset.id === slice.activeId ? styles.rowActive : ""}`.trim()}
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={preset.id === slice.activeId}
-                className={styles.radioBtn}
-                onClick={() => {
-                  void store.selectActive(kind, preset.id);
-                }}
+          {visiblePresets.map((preset) => {
+            const open = () =>
+              setModalState({ mode: "edit", presetId: preset.id });
+            const duplicate = async () => {
+              const body = await store.read(preset.id);
+              if (body) setModalState({ mode: "create", seed: body });
+            };
+            const items = preset.is_system
+              ? [
+                  {
+                    key: "view",
+                    label: messages.rowMenu.view,
+                    onSelect: open,
+                  },
+                  {
+                    key: "duplicate",
+                    label: messages.rowMenu.duplicate,
+                    onSelect: () => void duplicate(),
+                  },
+                ]
+              : [
+                  {
+                    key: "edit",
+                    label: messages.rowMenu.edit,
+                    onSelect: open,
+                  },
+                  {
+                    key: "duplicate",
+                    label: messages.rowMenu.duplicate,
+                    onSelect: () => void duplicate(),
+                  },
+                  {
+                    key: "delete",
+                    label: messages.rowMenu.delete,
+                    onSelect: () => void store.deletePreset(preset.id),
+                    variant: "danger" as const,
+                  },
+                ];
+            return (
+              <div
+                key={preset.id}
+                className={`${styles.row} ${preset.id === displayedActiveId ? styles.rowActive : ""}`.trim()}
               >
-                <span
-                  className={`${styles.radio} ${preset.id === slice.activeId ? styles.radioActive : ""}`.trim()}
-                  aria-hidden
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={preset.id === displayedActiveId}
+                  className={styles.radioBtn}
+                  onClick={() => {
+                    void store.selectActive(kind, preset.id);
+                  }}
+                >
+                  <span
+                    className={`${styles.radio} ${preset.id === displayedActiveId ? styles.radioActive : ""}`.trim()}
+                    aria-hidden
+                  />
+                  <span className={styles.rowText}>
+                    <span className={styles.rowName}>{preset.name}</span>
+                    <span className={styles.rowMeta}>{preset.description}</span>
+                  </span>
+                  <span className={styles.rowBadge}>
+                    {preset.is_system
+                      ? messages.rowMenu.systemBadge
+                      : p.badgeCustom}
+                  </span>
+                </button>
+                <OverflowMenu
+                  ariaLabel={messages.rowMenu.triggerLabel}
+                  items={items}
                 />
-                <span className={styles.rowText}>
-                  <span className={styles.rowName}>{preset.name}</span>
-                  <span className={styles.rowMeta}>{preset.description}</span>
-                </span>
-                <span className={styles.rowBadge}>
-                  {preset.is_default ? p.badgeDefault : p.badgeCustom}
-                </span>
-              </button>
-              <Pill
-                variant="ghost"
-                onClick={() =>
-                  setModalState({ mode: "edit", presetId: preset.id })
-                }
-              >
-                {messages.promptModal.titleEdit}
-              </Pill>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </Panel>
 
@@ -147,11 +213,7 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
         <PromptPresetModal
           mode={modalState.mode}
           kind={kind}
-          seed={
-            modalState.mode === "edit"
-              ? editBody
-              : modalState.seed
-          }
+          seed={modalState.mode === "edit" ? editBody : modalState.seed}
           onSaved={async () => {
             await store.refresh(kind);
             setModalState(null);

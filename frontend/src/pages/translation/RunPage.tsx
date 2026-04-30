@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMessages } from "@/locales";
+import { useMessages, useI18n } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useRunSnapshot, usePollRunSnapshot } from "@/store/useRuntimeStore";
 import {
@@ -42,8 +42,15 @@ export function RunPage() {
   const activeModel = activeModelId
     ? profiles.profiles.find((p) => p.id === activeModelId)
     : undefined;
-  const activePrompt = promptSlice.activeId
-    ? promptSlice.presets.find((p) => p.id === promptSlice.activeId)
+  const locale = useI18n((state) => state.locale);
+  const localeDefaultPromptId = `default-translation-${locale}`;
+  const displayedPromptId =
+    promptSlice.activeId ??
+    (promptSlice.presets.some((p) => p.id === localeDefaultPromptId)
+      ? localeDefaultPromptId
+      : null);
+  const activePrompt = displayedPromptId
+    ? promptSlice.presets.find((p) => p.id === displayedPromptId)
     : undefined;
 
   const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
@@ -53,11 +60,15 @@ export function RunPage() {
     name: p.display_name,
     description: p.model_id,
   }));
-  const promptItems: QuickSwitchItem[] = promptSlice.presets.map((preset) => ({
-    id: preset.id,
-    name: preset.name,
-    description: preset.description,
-  }));
+  const promptItems: QuickSwitchItem[] = promptSlice.presets
+    .filter(
+      (preset) => !preset.is_system || preset.id === localeDefaultPromptId,
+    )
+    .map((preset) => ({
+      id: preset.id,
+      name: preset.name,
+      description: preset.description,
+    }));
 
   const handleSelectModel = async (id: string) => {
     await useModelProfilesStore.getState().selectActive("translation", id);
@@ -117,7 +128,7 @@ export function RunPage() {
         <QuickSwitchModal
           title={messages.quickSwitch.titlePrompt}
           items={promptItems}
-          activeId={promptSlice.activeId}
+          activeId={displayedPromptId}
           emptyMessage={messages.quickSwitch.emptyPrompt}
           onSelect={handleSelectPrompt}
           onClose={() => setSwitchOpen(null)}
