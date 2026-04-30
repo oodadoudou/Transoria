@@ -222,34 +222,14 @@ Before outputting the results, perform **structured thinking** within <why>...</
 
 
 _GLOSSARY_SYSTEM_ZH = """\
-任务目标：从 {source_language} 小说片段中提取会影响后续翻译一致性的术语表，并译为 {target_language}。
-
-提取范围：
-1. 人物姓名、昵称、宠物名、组织、店名、地点、家族、作品内物品、事件、能力、设定概念。
-2. 会反复影响称呼或叙事理解的称号、职业、身份词。
-3. 只出现一次但明显是角色、物品、地点、事件或设定名称的词也要保留。
-
-过滤规则：
-1. 不提取普通动词、形容词、完整句子、泛泛描述、无边界的长短语。
-2. 不为了严格过滤而丢失重要角色、物品、地点、事件或设定信息。
-3. 术语边界要短而准；人名和称号可以拆成独立条目。
-
-分类只能使用：男性角色、女性角色、性别未知/不适用、命名组织、命名地理、命名物品、称号/职业、能力/技能、关键事件/时期、核心概念/法则、其他重要术语。"""
+任务目标：从 {source_language} 文本片段中提取术语表，并译为 {target_language}。
+请按当前提示词要求判断哪些词应提取、如何命名分类、分类粒度多细。
+如果用户没有额外指定分类体系，`type` 使用简短、稳定、可供人工审阅的分类名。"""
 
 _GLOSSARY_SYSTEM_EN = """\
-Goal: extract a glossary from {source_language} novel snippets for later translation consistency, and translate each term into {target_language}.
-
-Extract:
-1. Character names, nicknames, pet names, organizations, shops, places, families, named items, events, abilities, and setting concepts.
-2. Titles, jobs, or identity terms that affect recurring address or story understanding.
-3. Terms that appear only once but are clearly character, item, place, event, or setting names.
-
-Filter:
-1. Do not extract ordinary verbs, adjectives, full sentences, vague descriptions, or unbounded long phrases.
-2. Do not lose important character, item, place, event, or setting information for the sake of strict filtering.
-3. Keep term boundaries short and precise; names and titles may be separate entries.
-
-Use only these categories: Male Character, Female Character, Unknown/Not Applicable, Named Organization, Named Geography, Named Item, Title/Profession, Ability/Skill, Key Event/Era, Core Concept/Law, Other Important Term."""
+Goal: extract a glossary from {source_language} text snippets and translate each term into {target_language}.
+Use the active prompt to decide which terms to extract, how to categorize them, and how granular the categories should be.
+If the user has not specified a taxonomy, use concise, stable category names suitable for human review."""
 
 _GLOSSARY_SUFFIX_ZH = """\
 只输出 JSONLINE，每行一个独立 JSON 对象。

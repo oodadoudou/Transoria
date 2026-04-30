@@ -17,7 +17,7 @@ from typing import Mapping
 from transoria.domain import Language
 from transoria.llm.client import ChatRequest, LlmClient
 from transoria.llm.config import ModelConfig
-from transoria.llm.decoders import GlossaryEntry, decode_glossary_jsonl
+from transoria.llm.decoders import DecodeIssue, GlossaryEntry, decode_glossary_jsonl
 from transoria.llm.retry import is_transient_llm_error, retry_async
 
 
@@ -36,8 +36,15 @@ class _GlossaryFormatRetry(Exception):
 _FORMAT_RETRY_MIN_ISSUES = 3
 _FORMAT_RETRY_REMINDER = (
     "FORMAT RETRY: the previous answer was rejected because it contained "
-    "prose, headings, Markdown, or non-JSON text. Output JSONLINE only. "
-    'The first non-whitespace character must be "{".'
+    "prose, headings, Markdown, non-JSON text, or empty type values. "
+    "Output JSONLINE only. The first non-whitespace character must be \"{\". "
+    'Each object must include non-empty "src", "dst", and "type" values.'
+)
+_OUTPUT_CONTRACT_REMINDER = (
+    "FINAL OUTPUT CONTRACT: output JSONLINE only. Each line must be one JSON "
+    'object with exactly these keys: "src", "dst", "type". The "type" value '
+    "must be non-empty and follow the active prompt's taxonomy. "
+    "No prose, no Markdown, no code fence."
 )
 
 
@@ -92,13 +99,29 @@ class GlossarySubtaskRunner:
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
         attempt_index = -1
+        best_result: SubtaskResult | None = None
+        best_score: tuple[int, int, int] | None = None
 
         async def operation() -> SubtaskResult:
-            nonlocal attempt_index
+            nonlocal attempt_index, best_result, best_score
             attempt_index += 1
-            return await self._attempt(
-                chunk_id, source_file, text, attempt_index=attempt_index
-            )
+            try:
+                result = await self._attempt(
+                    chunk_id, source_file, text, attempt_index=attempt_index
+                )
+            except _GlossaryFormatRetry as exc:
+                if exc.args and isinstance(exc.args[0], SubtaskResult):
+                    result = exc.args[0]
+                    score = _score_glossary_result(result)
+                    if best_score is None or score > best_score:
+                        best_result = result
+                        best_score = score
+                raise
+            score = _score_glossary_result(result)
+            if best_score is None or score > best_score:
+                best_result = result
+                best_score = score
+            return result
 
         try:
             return await retry_async(
@@ -107,9 +130,8 @@ class GlossarySubtaskRunner:
                 should_retry=_should_retry_glossary,
             )
         except _GlossaryFormatRetry as exc:
-            # Retries exhausted on format-only failure: surface the last
-            # attempt's zero-entry payload rather than failing the chunk.
-            # The user keeps the option to continue/restart for that chunk.
+            if best_result is not None:
+                return best_result
             return exc.args[0] if exc.args else SubtaskResult(
                 response_content=json.dumps(
                     {"entries": [], "issues": []}, ensure_ascii=False
@@ -168,6 +190,8 @@ class GlossarySubtaskRunner:
         if session is not None:
             raw_content, _ = session.restore(raw_content)
         decoded = decode_glossary_jsonl(raw_content)
+        quality_issues = _glossary_quality_issues(decoded.entries)
+        issues = (*decoded.issues, *quality_issues)
         result_payload = {
             "entries": [
                 {"src": entry.src, "dst": entry.dst, "info": entry.info}
@@ -175,7 +199,7 @@ class GlossarySubtaskRunner:
             ],
             "issues": [
                 {"line": issue.line, "reason": issue.reason}
-                for issue in decoded.issues
+                for issue in issues
             ],
         }
 
@@ -206,7 +230,10 @@ class GlossarySubtaskRunner:
         # the token usage record).
         if (
             len(decoded.entries) == 0
-            and len(decoded.issues) >= _FORMAT_RETRY_MIN_ISSUES
+            and len(issues) >= _FORMAT_RETRY_MIN_ISSUES
+        ) or (
+            len(decoded.entries) > 0
+            and len(issues) > 0
         ):
             raise _GlossaryFormatRetry(result)
         return result
@@ -279,7 +306,29 @@ def _build_glossary_user_prompt(
         parts.append(_FORMAT_RETRY_REMINDER)
     parts.append(instruction_prompt)
     parts.append("[Source Text]\n" + source_text)
+    parts.append(_OUTPUT_CONTRACT_REMINDER)
     return "\n\n".join(part for part in parts if part)
+
+
+def _glossary_quality_issues(
+    entries: tuple[GlossaryEntry, ...]
+) -> tuple[DecodeIssue, ...]:
+    issues: list[DecodeIssue] = []
+    for entry in entries:
+        info = entry.info.strip()
+        if not info:
+            issues.append(
+                DecodeIssue(line=entry.src, reason="missing or empty 'type/info'")
+            )
+    return tuple(issues)
+
+
+def _score_glossary_result(result: SubtaskResult) -> tuple[int, int, int]:
+    entries, issues = decode_glossary_subtask_response(result.response_content)
+    complete_entries = sum(
+        1 for entry in entries if entry.src and entry.dst and entry.info
+    )
+    return (complete_entries, len(entries), -len(issues))
 
 
 __all__ = [
