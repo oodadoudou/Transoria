@@ -102,6 +102,21 @@ _ZOMBIE_TASK_STATES: frozenset[TaskStatus] = frozenset(
 # ---------------------------------------------------------------------------
 
 
+def _is_os_metadata_file(path: Path) -> bool:
+    """OS-level metadata that should not block ``transoria-cache/``
+    cleanup. macOS Finder writes ``.DS_Store`` whenever the user
+    opens the folder; Windows Explorer writes ``Thumbs.db`` /
+    ``desktop.ini``; macOS network shares emit ``._*`` resource forks.
+    None of these are user data — if they're the only things left
+    after a clean COMPLETED run, the cache root should still be
+    removed."""
+
+    name = path.name
+    if name in {".DS_Store", "Thumbs.db", "desktop.ini"}:
+        return True
+    return name.startswith("._")
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
@@ -746,7 +761,12 @@ class TaskService:
             self._completed_results[task_id] = result_payload
 
         # Wipe this task's directory under the cache root, then prune
-        # the cache root itself if no other task is parked there.
+        # the cache root itself if no other task is parked there. OS
+        # metadata files (Finder's ``.DS_Store``, Windows' ``Thumbs.db``,
+        # macOS resource forks ``._*``) are ignored so the cache root
+        # gets removed even after the user has opened the folder in
+        # Finder once — those artifacts are not user data and don't
+        # justify keeping the working dir visible.
         task_dir = cache.task_dir(task_id)
         if task_dir.exists():
             try:
@@ -755,8 +775,13 @@ class TaskService:
                 return
         if cache.root.exists():
             try:
-                if not any(cache.root.iterdir()):
-                    cache.root.rmdir()
+                non_meta = [
+                    entry
+                    for entry in cache.root.iterdir()
+                    if not _is_os_metadata_file(entry)
+                ]
+                if not non_meta:
+                    shutil.rmtree(cache.root, ignore_errors=True)
             except OSError:
                 return
 
@@ -1475,11 +1500,26 @@ class TaskService:
     ) -> dict[str, object]:
         record_kind = self._kind(kind)
         cache = self._cache_for_kind(kind)
-        records = [r for r in cache.list_tasks() if r.kind is record_kind]
-        records.sort(key=lambda r: r.created_at, reverse=True)
+        # Pull from disk first.
+        on_disk: list[TaskRecord] = [
+            r for r in cache.list_tasks() if r.kind is record_kind
+        ]
+        seen_ids = {r.id for r in on_disk}
+        # Then merge in any completed tasks that have already had their
+        # disk cache wiped — without this, the frontend's ``refreshActiveTask``
+        # (which calls listRecentTasks(1) and uses the result to set
+        # ``activeTaskId``) would lose track of the completed task and
+        # zero out the Run page UI seconds after a clean COMPLETED run.
+        for tid, snap in self._completed_snapshots.items():
+            if snap.record.kind is not record_kind:
+                continue
+            if tid in seen_ids:
+                continue
+            on_disk.append(snap.record)
+        on_disk.sort(key=lambda r: r.created_at, reverse=True)
         if limit is not None and limit >= 0:
-            records = records[:limit]
-        return {"tasks": [_format_header(r) for r in records]}
+            on_disk = on_disk[:limit]
+        return {"tasks": [_format_header(r) for r in on_disk]}
 
     def list_failed_subtasks(
         self, *, kind: str, task_id: str
