@@ -37,6 +37,10 @@
   cursor: not-allowed;
 }
 
+:global(:root[data-theme="dark"]) .button:disabled {
+  opacity: 0.62;
+}
+
 .icon {
   font-size: 12px;
   line-height: 1;
@@ -47,13 +51,14 @@
 }
 
 .primary {
-  background: var(--ink, #2c2620);
-  color: #fff;
-  border-color: var(--ink, #2c2620);
+  background: var(--action);
+  color: var(--action-fg);
+  border-color: var(--action);
 }
 
 .primary:hover:not(:disabled) {
-  background: #1d1812;
+  background: var(--action-hover);
+  border-color: var(--action-hover);
 }
 
 .ghost {

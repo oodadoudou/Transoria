@@ -18,12 +18,12 @@
 
 .primary {
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
   box-shadow: var(--shadow-pill);
 }
 
 .primary:hover:not(:disabled) {
-  background: #463c37;
+  background: var(--action-hover);
 }
 
 .primary:disabled {

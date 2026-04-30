@@ -52,6 +52,7 @@ from transoria.workflows.glossary.combine import combine_glossary_records
 from transoria.workflows.glossary.config import GlossaryConfig
 from transoria.workflows.glossary.exporters import (
     glossary_basename,
+    purge_glossary_artifacts,
     write_glossary_artifacts,
     write_glossary_decode_issues,
 )
@@ -155,6 +156,19 @@ class GlossaryOrchestrator:
 
         if not source_segments_by_file:
             return self._finalize_empty(config, started_at)
+
+        # Sweep stale artifacts so the new run's outputs aren't sitting
+        # next to first-run files with mismatched timestamps.
+        combined_basename = (
+            (config.input_dir.resolve().name or "Combined")
+            if config.combine_folder_glossary
+            else None
+        )
+        purge_glossary_artifacts(
+            config.output_dir,
+            source_paths=tuple(source_segments_by_file.keys()),
+            combined_basename=combined_basename,
+        )
 
         chunks = build_glossary_chunks(
             source_segments_by_file,

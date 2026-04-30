@@ -18,6 +18,8 @@
   --ink: #0f0f12;                /* primary text */
   --ink-soft: #1f1f23;           /* secondary text */
   --action: #3d3530;             /* warm graphite — every active fill / primary */
+  --action-fg: #ffffff;          /* foreground on top of --action */
+  --action-hover: #463c37;       /* slightly lighter graphite on hover */
   --action-shadow: rgba(61, 53, 48, 0.28);
   --muted: #6f6c66;              /* labels / fine print */
   --accent: #ad9d7a;             /* warm beige — indicator dot, micro-accents */
@@ -111,20 +113,25 @@
   --canvas: #1a1a1d;
   --panel: #232327;
   --panel-soft: #2a2a2e;
-  --ink: #f1efe9;
-  --ink-soft: #d6d3cb;
+  --ink: #f5f3ec;
+  --ink-soft: #e0ddd4;
   --action: #d8c8a8;
+  --action-fg: #1a1a1d;
+  --action-hover: #c8b890;
   --action-shadow: rgba(216, 200, 168, 0.32);
-  --muted: #8b867d;
-  --hairline: rgba(241, 239, 233, 0.10);
-  --hairline-strong: rgba(241, 239, 233, 0.22);
-  --primary-soft: rgba(216, 200, 168, 0.12);
+  --muted: #b3aea3;
+  --hairline: rgba(241, 239, 233, 0.14);
+  --hairline-strong: rgba(241, 239, 233, 0.32);
+  --primary-soft: rgba(216, 200, 168, 0.18);
   --surface-pearl: var(--panel);
   --body: var(--ink);
   --body-on-dark: var(--canvas);
   --body-muted: var(--muted);
   --ink-muted-80: var(--ink-soft);
-  --divider-soft: rgba(255, 255, 255, 0.04);
+  --divider-soft: rgba(255, 255, 255, 0.06);
+  --text-warn: #f0a070;
+  --surface-warn: rgba(240, 160, 112, 0.12);
+  --surface-warn-border: rgba(240, 160, 112, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {

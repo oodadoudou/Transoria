@@ -145,6 +145,39 @@ def write_glossary_artifacts(
     return xlsx_path, json_path, references_path
 
 
+def purge_glossary_artifacts(
+    output_dir: Path,
+    *,
+    source_paths: Sequence[Path],
+    combined_basename: str | None = None,
+) -> None:
+    """Remove stale glossary artifacts before a fresh run writes new ones.
+
+    Stops users from seeing first-run xlsx/json/refs sitting next to a
+    second-run statistics file when the second run produced 0 entries.
+    """
+
+    if not output_dir.exists():
+        return
+    suffixes = (
+        GLOSSARY_FILENAME_XLSX_SUFFIX,
+        GLOSSARY_FILENAME_JSON_SUFFIX,
+        GLOSSARY_FILENAME_REFERENCES_SUFFIX,
+        GLOSSARY_FILENAME_DECODE_ISSUES_SUFFIX,
+    )
+    basenames: list[str] = [glossary_basename(p) for p in source_paths]
+    if combined_basename is not None:
+        basenames.append(combined_basename)
+    for basename in basenames:
+        for suffix in suffixes:
+            target = output_dir / f"{basename}{suffix}"
+            if target.exists():
+                try:
+                    target.unlink()
+                except OSError:
+                    continue
+
+
 def write_glossary_decode_issues(
     issues: Sequence[Mapping[str, str]],
     output_dir: Path,
@@ -176,6 +209,7 @@ __all__ = [
     "GLOSSARY_FILENAME_JSON",
     "GLOSSARY_FILENAME_REFERENCES",
     "GLOSSARY_FILENAME_XLSX",
+    "purge_glossary_artifacts",
     "XLSX_COLUMNS",
     "glossary_basename",
     "write_glossary_artifacts",
