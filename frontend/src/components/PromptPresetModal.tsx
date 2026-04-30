@@ -297,6 +297,13 @@ export function PromptPresetModal({
               {m.thinkingTab}
             </TabButton>
           </div>
+          <div className={styles.tabHelp}>
+            {tab === "system"
+              ? m.systemTabHelp
+              : tab === "suffix"
+                ? m.suffixTabHelp
+                : m.thinkingTabHelp}
+          </div>
           <TextField
             label=""
             value={tabValue}

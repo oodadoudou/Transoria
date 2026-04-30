@@ -69,6 +69,10 @@ def _summary(preset: PromptPreset) -> dict[str, object]:
         "enabled": preset.enabled,
         "is_default": preset.id == _default_id(preset.kind),
         "is_system": preset.is_system,
+        # Surface the full system prompt so the list view can show a
+        # content preview without having to do a follow-up read per
+        # row. The frontend truncates with CSS line-clamp for display.
+        "system_prompt": preset.system_prompt,
     }
 
 

@@ -191,7 +191,12 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
                   />
                   <span className={styles.rowText}>
                     <span className={styles.rowName}>{preset.name}</span>
-                    <span className={styles.rowMeta}>{preset.description}</span>
+                    <span
+                      className={styles.rowMeta}
+                      title={preset.system_prompt}
+                    >
+                      {preset.system_prompt.replace(/\s+/g, " ").trim()}
+                    </span>
                   </span>
                   <span className={styles.rowBadge}>
                     {preset.is_system

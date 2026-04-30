@@ -131,8 +131,14 @@ export const en: Messages = {
       "Short note for the picker — what this preset is for",
     enabledLabel: "Enabled",
     systemTab: "System prompt",
-    suffixTab: "Suffix prompt",
+    suffixTab: "Output format",
     thinkingTab: "Thinking prompt",
+    systemTabHelp:
+      "Primary instructions: role, core rules, style baseline. Sent on every call — this is the bedrock of translation quality.",
+    suffixTabHelp:
+      "Output format contract. Forces the model to emit JSONLINE so the runner can decode line-by-line. Editing this can break translation decoding.",
+    thinkingTabHelp:
+      "Reasoning guidance. Active only when the model supports thinking mode — steers it through structured reasoning before producing the translation, improving fidelity on complex sentences.",
     saveAction: "Save",
     cancelAction: "Cancel",
     resetAction: "Reset to default",

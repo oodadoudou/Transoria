@@ -123,9 +123,15 @@ export const zh: Messages = {
     descriptionLabel: "描述",
     descriptionPlaceholder: "选择列表中的简短说明——本预设的用途",
     enabledLabel: "启用",
-    systemTab: "System prompt",
-    suffixTab: "Suffix prompt",
-    thinkingTab: "Thinking prompt",
+    systemTab: "系统提示词",
+    suffixTab: "输出格式",
+    thinkingTab: "思考引导",
+    systemTabHelp:
+      "主提示词。设定模型的角色、核心规则、文风基线。每次调用都会发送，是翻译质量的根本依据。",
+    suffixTabHelp:
+      "输出格式约束。强制模型按 JSONLINE 格式返回，便于程序逐行解析。改动这里可能会让译文解码失败。",
+    thinkingTabHelp:
+      "思考引导。仅当模型支持「思考模式」时生效，引导其先做结构化推理再产出译文，可提升复杂句的还原度。",
     saveAction: "保存",
     cancelAction: "取消",
     resetAction: "恢复默认",

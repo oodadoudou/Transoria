@@ -240,6 +240,9 @@ export interface PromptPresetSummary {
   /** Seeded read-only preset shipped with the app. UI must show
    *  view-only and forbid edit / delete. */
   is_system: boolean;
+  /** Full system prompt; the list row renders a truncated preview
+   *  so users see what they will actually send to the model. */
+  system_prompt: string;
 }
 
 export interface PromptPresetBody extends PromptPresetSummary {

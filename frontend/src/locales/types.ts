@@ -118,6 +118,9 @@ export interface Messages {
     systemTab: string;
     suffixTab: string;
     thinkingTab: string;
+    systemTabHelp: string;
+    suffixTabHelp: string;
+    thinkingTabHelp: string;
     saveAction: string;
     cancelAction: string;
     resetAction: string;
