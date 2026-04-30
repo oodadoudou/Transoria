@@ -1,11 +1,9 @@
 """In-process HTTP server that hosts the bridge under ``/api/`` and the
 built frontend at ``/``.
 
-The shape mirrors the reference project's Flask + pywebview architecture
-(``references/Korean_glossary_AI_review_UI-main/``): one same-origin HTTP
-server provides both the API and the static SPA, so the page can call
-``fetch('/api/<method>')`` without CORS, port juggling, or a JS bridge
-race.
+One same-origin HTTP server provides both the API and the static SPA,
+so the page can call ``fetch('/api/<method>')`` without CORS, port
+juggling, or a JS bridge race.
 
 Routes (stdlib ``http.server``, threaded so concurrent calls don't block):
 

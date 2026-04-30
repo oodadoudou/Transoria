@@ -493,7 +493,7 @@ export const en: Messages = {
         "Candidates seen fewer than this many times in the source are dropped. Set to 2 to filter one-off names/terms; default 1 keeps everything.",
       maxTermDisplayLength: "Max term display length",
       maxTermDisplayLengthHelp:
-        "Drop candidates whose display width exceeds this — guards against the LLM returning a whole sentence as a term. Default 32 (matches KeywordGacha).",
+        "Drop candidates whose display width exceeds this — guards against the LLM returning a whole sentence as a term. Default 32.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 120.",
