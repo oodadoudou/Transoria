@@ -67,10 +67,30 @@ class ModelConfig:
     presence_penalty: float | None = None
     frequency_penalty: float | None = None
     custom_headers: tuple[tuple[str, str], ...] = ()
+    # Opt-in: when ``True`` and the model itself doesn't expose a
+    # native thinking mode (``thinking_level == OFF``), the runner
+    # still injects the preset's ``thinking_prompt`` into the user
+    # message so the model is steered through structured reasoning
+    # before producing the final answer. We never send a provider-
+    # specific thinking API field for forced-thinking calls — those
+    # would 4xx on non-thinking models.
+    force_thinking_enable: bool = False
 
     @property
     def thinking_enabled(self) -> bool:
+        """True when the provider supports a native thinking mode and
+        the user has switched it on. Drives the wire-level thinking
+        payload (``_thinking_payload``, Anthropic ``thinking={...}``,
+        Google ``thinkingConfig={...}``)."""
         return self.thinking_level is not ThinkingLevel.OFF
+
+    @property
+    def thinking_prompt_enabled(self) -> bool:
+        """True when the runner should inject the preset's
+        ``thinking_prompt`` into the user message — either because the
+        model has a native thinking mode, or because the user opted
+        into forced fake-thinking on a non-thinking model."""
+        return self.thinking_enabled or self.force_thinking_enable
 
     def with_api_keys(self, keys: tuple[str, ...]) -> ModelConfig:
         return replace(self, api_keys=tuple(keys))
@@ -104,6 +124,7 @@ class ModelConfig:
             "presence_penalty": self.presence_penalty,
             "frequency_penalty": self.frequency_penalty,
             "custom_headers": [list(pair) for pair in self.custom_headers],
+            "force_thinking_enable": self.force_thinking_enable,
         }
 
     @classmethod
@@ -157,6 +178,7 @@ class ModelConfig:
             presence_penalty=_optional_float(data.get("presence_penalty")),
             frequency_penalty=_optional_float(data.get("frequency_penalty")),
             custom_headers=custom_headers,
+            force_thinking_enable=bool(data.get("force_thinking_enable", False)),
         )
 
 

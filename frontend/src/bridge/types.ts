@@ -199,6 +199,12 @@ export interface ModelProfile {
   presence_penalty: number | null;
   frequency_penalty: number | null;
   custom_headers: Array<[string, string]>;
+  /** Opt-in: when true and ``thinking_level === "off"``, the runner
+   * still injects the active preset's ``thinking_prompt`` into the
+   * user message so non-thinking models get a CoT-style prefix.
+   * Never sends a wire-level thinking field — that would 4xx on
+   * models that don't support native thinking. */
+  force_thinking_enable: boolean;
 }
 
 export type ModelProfileDraft = Omit<

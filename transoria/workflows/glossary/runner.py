@@ -149,7 +149,7 @@ class GlossarySubtaskRunner:
                 source_language=self.source_language.value,
                 target_language=self.target_language.value,
             ),
-            thinking=self.model.thinking_enabled,
+            thinking=self.model.thinking_prompt_enabled,
         )
         prompt_text = _inject_first_name(
             text, (self.name_injections or {}).get(source_file, "")

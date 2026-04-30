@@ -98,6 +98,8 @@ export interface Messages {
     cancelAction: string;
     rotateKeysLabel: string;
     rotateKeysHelp: string;
+    forceThinkingLabel: string;
+    forceThinkingHelp: string;
     runtimeTuningLabel: string;
     samplingLabel: string;
   };

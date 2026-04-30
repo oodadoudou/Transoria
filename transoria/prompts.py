@@ -224,12 +224,14 @@ Before outputting the results, perform **structured thinking** within <why>...</
 _GLOSSARY_SYSTEM_ZH = """\
 任务目标：从 {source_language} 文本片段中提取术语表，并译为 {target_language}。
 请按当前提示词要求判断哪些词应提取、如何命名分类、分类粒度多细。
-如果用户没有额外指定分类体系，`type` 使用简短、稳定、可供人工审阅的分类名。"""
+如果用户没有额外指定分类体系，`type` 使用简短、稳定、可供人工审阅的分类名。
+`type` 字段必须始终使用 {target_language}，不允许中英混合或英文分类名。"""
 
 _GLOSSARY_SYSTEM_EN = """\
 Goal: extract a glossary from {source_language} text snippets and translate each term into {target_language}.
 Use the active prompt to decide which terms to extract, how to categorize them, and how granular the categories should be.
-If the user has not specified a taxonomy, use concise, stable category names suitable for human review."""
+If the user has not specified a taxonomy, use concise, stable category names suitable for human review.
+The `type` field must always be written in {target_language}; do not mix languages or fall back to English category names."""
 
 _GLOSSARY_SUFFIX_ZH = """\
 只输出 JSONLINE，每行一个独立 JSON 对象。

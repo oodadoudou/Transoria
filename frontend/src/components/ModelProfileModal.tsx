@@ -82,6 +82,7 @@ interface Draft {
   presence_penalty: number | null;
   frequency_penalty: number | null;
   custom_headers: Array<[string, string]>;
+  force_thinking_enable: boolean;
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -107,6 +108,7 @@ const EMPTY_DRAFT: Draft = {
   presence_penalty: null,
   frequency_penalty: null,
   custom_headers: [],
+  force_thinking_enable: false,
 };
 
 function templateToDraft(t: ProviderTemplate): Draft {
@@ -155,6 +157,7 @@ function profileToDraft(p: ModelProfile): Draft {
     presence_penalty: p.presence_penalty,
     frequency_penalty: p.frequency_penalty,
     custom_headers: p.custom_headers,
+    force_thinking_enable: p.force_thinking_enable,
   };
 }
 
@@ -181,6 +184,7 @@ function draftToCreatePayload(d: Draft): ModelProfileDraft {
     presence_penalty: d.presence_penalty,
     frequency_penalty: d.frequency_penalty,
     custom_headers: d.custom_headers,
+    force_thinking_enable: d.force_thinking_enable,
     api_keys: parseApiKeys(d.api_keys),
   };
 }
@@ -730,6 +734,14 @@ function FormStep({
               onChange={(v) => update("thinking_level", v)}
             />
           </div>
+          {draft.thinking_level === "off" ? (
+            <ToggleSwitch
+              label={m.forceThinkingLabel}
+              checked={draft.force_thinking_enable}
+              onChange={(v) => update("force_thinking_enable", v)}
+              help={m.forceThinkingHelp}
+            />
+          ) : null}
         </div>
 
         <OptionalNumberRow

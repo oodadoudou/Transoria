@@ -111,6 +111,9 @@ export const en: Messages = {
     rotateKeysLabel: "Round-robin API keys per call",
     rotateKeysHelp:
       "When more than one API key is set, every call rotates to the next key (spreads load to bypass per-key rate limits). Auth-rejected keys (HTTP 401/403) are dropped from the rotation for the rest of the task; 429 transient rate limits skip to the next key without dropping. When all keys fail, the task stops and you get an alert.",
+    forceThinkingLabel: "Force-inject thinking guidance on non-thinking models",
+    forceThinkingHelp:
+      "Only shown while thinking_level=off. When enabled, the active prompt preset's reasoning prefix is prepended to every user message so models without a native thinking mode still go through a structured reasoning pass. No provider-specific thinking API field is sent (those would 4xx on non-thinking models) — this is a prompt-level fake-thinking.",
     runtimeTuningLabel: "Runtime tuning",
     samplingLabel: "Sampling",
   },

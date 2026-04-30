@@ -105,6 +105,9 @@ export const zh: Messages = {
     rotateKeysLabel: "多 key 调用间轮询",
     rotateKeysHelp:
       "配置多个 API key 时，每次调用自动轮询到下一个 key（摊薄单 key 的速率限制）。返回 HTTP 401/403 的 key 立即从本次任务的轮询池剔除；429 限流则不剔除、跳到下一 key 重试。所有 key 都失败时任务自动停止并弹窗提醒。",
+    forceThinkingLabel: "为非思考模型强制注入思考引导",
+    forceThinkingHelp:
+      "仅当 thinking_level=off 时显示。开启后，每次调用会把当前 prompt 预设里的「思考引导」段拼到用户消息前面，让不支持原生思考的模型也走一遍结构化推理。注意：不会向 provider 发送任何思考相关 API 字段（避免 4xx），只是 prompt 层面的伪思考。",
     runtimeTuningLabel: "运行参数",
     samplingLabel: "采样",
   },

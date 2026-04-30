@@ -224,7 +224,7 @@ class TranslationSubtaskRunner:
                 source_language=self.source_language.value,
                 target_language=self.target_language.value,
             ),
-            thinking=self.model.thinking_enabled,
+            thinking=self.model.thinking_prompt_enabled,
         )
 
         initial_user_prompt = self._apply_roster(assemble_user_prompt(chunk))

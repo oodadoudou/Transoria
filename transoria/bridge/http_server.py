@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock
@@ -57,7 +58,17 @@ def _make_handler(
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:  # noqa: A002
-            print(f"[http] {self.address_string()} - {format % args}", flush=True)
+            # Log on stderr (stdlib's default for ``BaseHTTPRequestHandler``)
+            # rather than stdout. Putting it on stderr means request paths
+            # containing CJK characters never compete with response data
+            # for the same stream, and Windows console UTF-8 reconfigure
+            # (see ``app.py:_reconfigure_stdio_utf8``) keeps non-ASCII
+            # paths from raising UnicodeEncodeError when running standalone.
+            print(
+                f"[http] {self.address_string()} - {format % args}",
+                file=sys.stderr,
+                flush=True,
+            )
 
         # ------------------------------------------------------------------
         # CORS + JSON helpers
@@ -283,7 +294,23 @@ def serve(
     return server
 
 
+def _reconfigure_stdio_utf8() -> None:
+    # Mirror the launcher's reconfigure so running this module
+    # standalone (``python -m transoria.bridge.http_server``) doesn't
+    # crash on non-ASCII access-log lines under a non-UTF-8 console
+    # codepage on Windows.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
+
+
 def main() -> None:
+    _reconfigure_stdio_utf8()
     parser = argparse.ArgumentParser(description="Transoria HTTP bridge server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5000)
@@ -317,6 +344,7 @@ def main() -> None:
             print(
                 f"[http] note: static root {args.static_root} not found; "
                 "serving /api only. Run `cd frontend && npm run build` first.",
+                file=sys.stderr,
                 flush=True,
             )
 
@@ -328,17 +356,22 @@ def main() -> None:
     )
     print(
         f"[http] Transoria server on http://{args.host}:{args.port}",
+        file=sys.stderr,
         flush=True,
     )
-    print("[http] GET  /api/health      → liveness", flush=True)
-    print("[http] GET  /api/_methods    → list methods", flush=True)
-    print("[http] POST /api/<method>    → call method", flush=True)
+    print("[http] GET  /api/health      → liveness", file=sys.stderr, flush=True)
+    print("[http] GET  /api/_methods    → list methods", file=sys.stderr, flush=True)
+    print("[http] POST /api/<method>    → call method", file=sys.stderr, flush=True)
     if static_root is not None:
-        print(f"[http] GET  /                → {static_root}/", flush=True)
+        print(
+            f"[http] GET  /                → {static_root}/",
+            file=sys.stderr,
+            flush=True,
+        )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n[http] shutting down", flush=True)
+        print("\n[http] shutting down", file=sys.stderr, flush=True)
     finally:
         server.server_close()
 

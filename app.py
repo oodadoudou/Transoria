@@ -39,6 +39,34 @@ from transoria.bridge.handlers.dialogs import DialogProvider, NullDialogProvider
 from transoria.bridge.handlers.updates import GithubReleaseChecker
 from transoria.bridge.router import build_default_router
 
+
+def _reconfigure_stdio_utf8() -> None:
+    """Force stdout / stderr to UTF-8 with errors='replace'.
+
+    Without this, ``print()`` of any non-ASCII character (Korean
+    filenames, Vite's status emoji, HTTP access logs touching CJK
+    paths) raises ``UnicodeEncodeError`` on Windows because the
+    console codepage defaults to cp1252 / cp936 / cp949 depending on
+    locale. ``errors='replace'`` keeps a single bad byte from killing
+    the launcher; the user sees ``?`` instead of a crash. Best-effort:
+    some bundled environments hand back a stream that doesn't expose
+    ``reconfigure``; in that case we silently skip and rely on the
+    process-wide default.
+    """
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
+
+
+_reconfigure_stdio_utf8()
+
+
 ROOT = Path(__file__).resolve().parent
 FRONTEND_DIR = ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
@@ -131,6 +159,13 @@ def _start_vite(port: int, *, bridge_port: int) -> subprocess.Popen:
     env = os.environ.copy()
     env.setdefault("BROWSER", "none")  # don't auto-open Vite's default browser
     env["TRANSORIA_BRIDGE_PORT"] = str(bridge_port)
+    # Force UTF-8 in the Vite child process and on the pipe we read
+    # back. Without explicit ``encoding`` Python uses the platform
+    # locale (cp1252 on en-US Windows, cp936 on zh-CN), which crashes
+    # the vite-pump thread the first time Vite emits an emoji or path
+    # char outside that codepage. ``errors='replace'`` keeps a single
+    # rogue byte from killing the launcher.
+    env["PYTHONIOENCODING"] = "utf-8"
     proc = subprocess.Popen(
         [NPM_CMD, "run", "dev", "--", "--port", str(port), "--strictPort"],
         cwd=FRONTEND_DIR,
@@ -138,6 +173,8 @@ def _start_vite(port: int, *, bridge_port: int) -> subprocess.Popen:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     )
 
