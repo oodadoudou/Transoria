@@ -319,6 +319,21 @@ def decode_glossary_jsonl(raw: str) -> GlossaryDecodeResult:
         salvaged = _salvage_glossary_table(preprocessed)
         if salvaged:
             entries.extend(salvaged)
+            # Salvage succeeded — every "not a JSON object" issue that
+            # came from a table row (data) or table separator is now
+            # accounted for in ``entries``. Suppress those from issues
+            # so the report reflects genuine format failures only
+            # (prose, blank narration). Without this, a chunk that
+            # happily produced 5 salvaged entries still reads as "5
+            # decode issues" purely from the table shape.
+            issues = [
+                issue
+                for issue in issues
+                if not (
+                    _TABLE_ROW_PATTERN.match(issue.line)
+                    or _TABLE_SEPARATOR_PATTERN.match(issue.line)
+                )
+            ]
 
     return GlossaryDecodeResult(entries=tuple(entries), issues=tuple(issues))
 

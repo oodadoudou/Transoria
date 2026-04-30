@@ -195,6 +195,24 @@ def _require_directory(value: str, *, field: str) -> Path:
     return path
 
 
+def _require_input_with_supported_files(path: Path, *, field: str) -> None:
+    """Reject empty / unsupported-only input folders before a task starts.
+
+    Translation and glossary cannot do useful work on a folder that
+    contains no ``.epub`` / ``.txt`` files; without this check the task
+    seeds, runs zero subtasks, and reports COMPLETED with no output —
+    which looks like a silent failure to the user. Raise a typed bridge
+    error so the frontend's existing error banner surfaces a clear
+    message instead.
+    """
+
+    if not scan_input_directory(path):
+        raise BridgeError.invalid_argument(
+            f"{field} contains no supported files (.epub, .txt): {path!s}",
+            field=field,
+        )
+
+
 def _ensure_output_dir(value: str, *, field: str) -> Path:
     if not value:
         raise BridgeError.invalid_argument(
@@ -675,6 +693,7 @@ class TaskService:
         app = settings.app
 
         input_dir = _require_directory(translation.input_folder, field="input_folder")
+        _require_input_with_supported_files(input_dir, field="input_folder")
         output_dir = _ensure_output_dir(
             translation.output_folder, field="output_folder"
         )
@@ -809,6 +828,7 @@ class TaskService:
         app = settings.app
 
         input_dir = _require_directory(glossary.input_folder, field="input_folder")
+        _require_input_with_supported_files(input_dir, field="input_folder")
         output_dir = _ensure_output_dir(
             glossary.output_folder, field="output_folder"
         )
