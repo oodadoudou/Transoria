@@ -354,7 +354,7 @@ class GlossaryOrchestrator:
             for s in snapshot.subtasks
             if s.status is SubtaskStatus.FAILED and s.last_error
         )
-        statistics_path, _ = write_glossary_statistics(
+        statistics_path = write_glossary_statistics(
             statistics,
             config.output_dir,
             failed_subtask_details=failed_subtask_details,
@@ -378,7 +378,7 @@ class GlossaryOrchestrator:
         statistics = GlossaryStatistics(
             started_at=started_at, ended_at=self.clock()
         )
-        statistics_path, _ = write_glossary_statistics(statistics, config.output_dir)
+        statistics_path = write_glossary_statistics(statistics, config.output_dir)
         result = GlossaryExtractionResult(
             task_id="",
             statistics=statistics,

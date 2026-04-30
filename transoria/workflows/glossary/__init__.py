@@ -45,7 +45,6 @@ from transoria.workflows.glossary.runner import (
 )
 from transoria.workflows.glossary.statistics import (
     GLOSSARY_STATISTICS_FILENAME_JSON,
-    GLOSSARY_STATISTICS_FILENAME_TEXT,
     GlossaryFailedFile,
     GlossaryStatistics,
     write_glossary_statistics,
@@ -59,7 +58,6 @@ __all__ = [
     "GLOSSARY_FILENAME_REFERENCES",
     "GLOSSARY_FILENAME_XLSX",
     "GLOSSARY_STATISTICS_FILENAME_JSON",
-    "GLOSSARY_STATISTICS_FILENAME_TEXT",
     "GlossaryChunk",
     "GlossaryConfig",
     "GlossaryArtifactSet",

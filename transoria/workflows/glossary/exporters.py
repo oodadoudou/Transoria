@@ -71,6 +71,13 @@ def write_glossary_xlsx(
                 record.frequency,
             ]
         )
+    # Enable Excel auto-filter on the header so users can sort and
+    # filter without setting it up themselves. Range covers all
+    # populated rows (header + data).
+    last_col_letter = chr(ord("A") + len(XLSX_COLUMNS) - 1)
+    last_row = 1 + len(records)
+    sheet.auto_filter.ref = f"A1:{last_col_letter}{last_row}"
+    sheet.freeze_panes = "A2"
     workbook.save(path)
     return path
 
