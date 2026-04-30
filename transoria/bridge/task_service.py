@@ -1038,10 +1038,14 @@ class TaskService:
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
             )
-        if snapshot.record.status not in (TaskStatus.STOPPED, TaskStatus.PAUSED):
+        if snapshot.record.status not in (
+            TaskStatus.STOPPED,
+            TaskStatus.PAUSED,
+            TaskStatus.FAILED,
+        ):
             raise BridgeError(
                 "task.invalid_transition",
-                f"continue requires status STOPPED or PAUSED; got {snapshot.record.status.value}.",
+                f"continue requires status STOPPED, PAUSED, or FAILED; got {snapshot.record.status.value}.",
                 retryable=False,
                 details={"status": snapshot.record.status.value},
             )
@@ -1145,6 +1149,7 @@ class TaskService:
             if snapshot.record.status not in (
                 TaskStatus.STOPPED,
                 TaskStatus.PAUSED,
+                TaskStatus.FAILED,
             ):
                 continue
             progress = snapshot.progress()
