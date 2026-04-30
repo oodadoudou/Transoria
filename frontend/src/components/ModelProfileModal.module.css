@@ -176,12 +176,23 @@
 }
 
 .modelPicker {
+  align-self: flex-start;
+  max-width: 100%;
   border: 1px solid var(--hairline-strong, #d8d2c7);
   background: var(--panel, #fff);
+  color: var(--ink, #2c2620);
   padding: 6px 10px;
   border-radius: 8px;
   font: inherit;
   font-size: 12.5px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .modelPicker {
+    border-color: var(--panel, #fff);
+    background: var(--hairline-strong, #d8d2c7);
+    color: var(--panel, #fff);
+  }
 }
 
 .actionRow {
