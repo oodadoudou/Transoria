@@ -1,76 +1,49 @@
-.bar {
-  display: block;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 18px;
-  letter-spacing: 2px;
-  line-height: 1.4;
-  color: var(--ink-soft, #1f1f23);
-  padding: 8px 4px;
-  white-space: nowrap;
-  overflow-x: auto;
-  /* Shimmer wave — only visible when ``barShimmer`` class is on. */
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent 35%,
-    rgba(173, 157, 122, 0.18) 50%,
-    transparent 65%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  background-position: 200% 0;
-  background-repeat: no-repeat;
-}
-
-.barShimmer {
-  animation: asciiShimmer 2.4s linear infinite;
-}
-
-@keyframes asciiShimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 0;
 }
 
 .cell {
   display: inline-block;
-  min-width: 0.7em;
-  text-align: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--hairline-strong, #d8d2c7);
+  transition: background 220ms ease, opacity 220ms ease;
   cursor: help;
-  transition: color 220ms ease;
 }
 
 .pending {
-  color: var(--hairline-strong, #d8d2c7);
+  background: var(--hairline-strong, #d8d2c7);
 }
 
 .completed {
-  color: var(--success, #2f7d57);
+  background: var(--success, #2f7d57);
 }
 
 .failed {
-  color: var(--warn, #b6541b);
-  font-weight: 600;
+  background: var(--warn, #b6541b);
 }
 
 .skipped {
-  color: var(--muted, #7a7166);
+  background: var(--muted, #7a7166);
   opacity: 0.55;
 }
 
+/* Running cells breathe via opacity only — no glow ring, no scale.
+ * Matches the rest of the panel-soft / hairline visual language. */
 .running {
-  color: var(--action, #3d3530);
-  font-weight: 700;
-  animation: cellBreathe 1.4s ease-in-out infinite;
+  background: var(--accent, #ad9d7a);
+  animation: cellBreathe 1.6s ease-in-out infinite;
 }
 
 @keyframes cellBreathe {
   0%,
   100% {
-    opacity: 0.45;
+    opacity: 0.5;
   }
   50% {
     opacity: 1;
@@ -78,11 +51,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .barShimmer,
   .running {
     animation: none;
-  }
-  .running {
     opacity: 1;
   }
 }

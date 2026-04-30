@@ -9,6 +9,19 @@ import styles from "./Inspector.module.css";
 
 const NUM = new Intl.NumberFormat("en");
 
+/**
+ * Token-count formatter. Displays the precise integer up to 999,999;
+ * once the count crosses one million we shift to ``X.XX M`` so the
+ * Inspector chip stays readable on long runs without losing the
+ * order-of-magnitude signal.
+ */
+function formatTokens(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(2)} M`;
+  }
+  return NUM.format(value);
+}
+
 function moduleToRunKind(module: string): PromptKind {
   return module === "glossary" ? "glossary" : "translation";
 }
@@ -152,7 +165,7 @@ function TokenCell({ label, value, full }: TokenCellProps) {
   return (
     <div className={`${styles.cell} ${full ? styles.full : ""}`.trim()}>
       <div className={styles.cellLabel}>{label}</div>
-      <b className="tnum">{NUM.format(value)}</b>
+      <b className="tnum">{formatTokens(value)}</b>
     </div>
   );
 }

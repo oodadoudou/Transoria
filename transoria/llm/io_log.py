@@ -36,7 +36,11 @@ _VERBOSITY_ENV = "TRANSORIA_LLM_LOG"
 _VERBOSITY_OFF = "off"
 _VERBOSITY_COMPACT = "compact"
 _VERBOSITY_FULL = "full"
-_VERBOSITY_DEFAULT = _VERBOSITY_COMPACT
+# Defaults to off because pywebview macOS apps often run without a
+# terminal-attached stderr; cross-thread writes there have crashed
+# Python. Users opt in by exporting ``TRANSORIA_LLM_LOG=compact`` (or
+# ``full``) before launching the backend / dev shell.
+_VERBOSITY_DEFAULT = _VERBOSITY_OFF
 _VERBOSITY_VALID = {_VERBOSITY_OFF, _VERBOSITY_COMPACT, _VERBOSITY_FULL}
 
 # stderr writes are not atomic across threads — guard so concurrent
@@ -69,9 +73,24 @@ def _payload_size(payload: Mapping[str, object]) -> int:
 
 
 def _emit(line: str) -> None:
-    with _LOCK:
-        sys.stderr.write(line + "\n")
-        sys.stderr.flush()
+    """Write ``line`` to stderr if reachable. Swallows every failure —
+    a debug log must never bring the host down. pywebview .app bundles
+    on macOS routinely run with ``sys.stderr`` set to a closed fd or
+    detached from any terminal; writing there can raise OSError or
+    even crash the interpreter under some configurations."""
+
+    stream = sys.stderr
+    if stream is None:
+        return
+    try:
+        with _LOCK:
+            stream.write(line + "\n")
+            try:
+                stream.flush()
+            except (OSError, ValueError, AttributeError):
+                pass
+    except (OSError, ValueError, AttributeError):
+        return
 
 
 def _label_or_model(label: str, model_id: str) -> str:
