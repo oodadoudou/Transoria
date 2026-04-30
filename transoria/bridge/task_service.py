@@ -229,27 +229,69 @@ def _format_header(record: TaskRecord) -> dict[str, object]:
     }
 
 
+def _progress_to_block(progress) -> dict[str, object]:
+    return {
+        "total": progress.total,
+        "pending": progress.pending,
+        "running": progress.running,
+        "completed": progress.completed,
+        "failed": progress.failed,
+        "skipped": progress.skipped,
+        "rate_per_second": progress.rate_per_second,
+        "eta_seconds": progress.eta_seconds,
+    }
+
+
+def _usage_to_block(usage) -> dict[str, object]:
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "total_tokens": usage.input_tokens + usage.output_tokens,
+    }
+
+
 def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
     progress = snapshot.progress()
     usage = snapshot.usage()
     metadata = dict(snapshot.record.metadata)
+    # When subtasks/ has been pruned post-completion (see
+    # ``_maybe_cleanup_cache``), the live progress recomputes to 0/0;
+    # surface the frozen totals stashed in metadata instead so the Run
+    # page keeps showing the completed run's final stats until the user
+    # starts a fresh task.
+    if len(snapshot.subtasks) == 0:
+        frozen_progress = metadata.get("final_progress")
+        if isinstance(frozen_progress, dict):
+            progress_block = {
+                "total": int(frozen_progress.get("total", 0)),
+                "pending": int(frozen_progress.get("pending", 0)),
+                "running": int(frozen_progress.get("running", 0)),
+                "completed": int(frozen_progress.get("completed", 0)),
+                "failed": int(frozen_progress.get("failed", 0)),
+                "skipped": int(frozen_progress.get("skipped", 0)),
+                "rate_per_second": 0.0,
+                "eta_seconds": 0.0,
+            }
+        else:
+            progress_block = _progress_to_block(progress)
+        frozen_usage = metadata.get("final_usage")
+        if isinstance(frozen_usage, dict):
+            input_t = int(frozen_usage.get("input_tokens", 0))
+            output_t = int(frozen_usage.get("output_tokens", 0))
+            usage_block = {
+                "input_tokens": input_t,
+                "output_tokens": output_t,
+                "total_tokens": input_t + output_t,
+            }
+        else:
+            usage_block = _usage_to_block(usage)
+    else:
+        progress_block = _progress_to_block(progress)
+        usage_block = _usage_to_block(usage)
     return {
         "header": _format_header(snapshot.record),
-        "progress": {
-            "total": progress.total,
-            "pending": progress.pending,
-            "running": progress.running,
-            "completed": progress.completed,
-            "failed": progress.failed,
-            "skipped": progress.skipped,
-            "rate_per_second": progress.rate_per_second,
-            "eta_seconds": progress.eta_seconds,
-        },
-        "usage": {
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "total_tokens": usage.input_tokens + usage.output_tokens,
-        },
+        "progress": progress_block,
+        "usage": usage_block,
         # Per-chunk status drives the chunk-grid UX. Tuple-of-objects
         # is preserved in the order the orchestrator seeded them, so
         # the grid renders chunk-0 leftmost.
@@ -586,8 +628,34 @@ class TaskService:
             return
         if snapshot.record.status is not TaskStatus.COMPLETED:
             return
-        if snapshot.progress().failed > 0:
+        progress = snapshot.progress()
+        if progress.failed > 0:
             return
+        # Freeze the final progress + token totals into metadata before we
+        # wipe subtasks/. Without this the next read_snapshot would re-derive
+        # progress from an empty subtask list and surface 0/0 instead of
+        # the completed run's stats.
+        usage = snapshot.usage()
+        frozen = dict(snapshot.record.metadata)
+        frozen["final_progress"] = {
+            "total": progress.total,
+            "pending": progress.pending,
+            "running": progress.running,
+            "completed": progress.completed,
+            "failed": progress.failed,
+            "skipped": progress.skipped,
+        }
+        frozen["final_usage"] = {
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+        }
+        cache.save_task(
+            replace(
+                snapshot.record,
+                metadata=frozen,
+                updated_at=_utc_now_iso(),
+            )
+        )
         subtasks_dir = cache.task_dir(task_id) / "subtasks"
         if subtasks_dir.exists():
             try:
