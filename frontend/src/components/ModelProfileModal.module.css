@@ -169,6 +169,12 @@
   gap: 6px;
 }
 
+.fetchButtonRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .modelPicker {
   border: 1px solid var(--hairline-strong, #d8d2c7);
   background: var(--panel, #fff);

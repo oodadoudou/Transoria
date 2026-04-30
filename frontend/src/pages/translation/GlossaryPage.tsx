@@ -9,8 +9,10 @@ import { TextField } from "@/components/TextField";
 import { Segmented } from "@/components/Segmented";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import {
+  EMPTY_SELECTION,
   RuleTable,
   type RuleTableColumn,
+  type RuleTableSelection,
   ruleTableStyles,
 } from "@/components/RuleTable";
 import { GlossaryStatsModal } from "@/components/GlossaryStatsModal";
@@ -58,11 +60,12 @@ export function GlossaryPage() {
   const { glossaryPage: g } = messages.translation;
   const state = useTaskStore((s) => s.translationGlossary);
   const setEnabled = useTaskStore((s) => s.setTranslationGlossaryEnabled);
-  const setSelectedId = useTaskStore((s) => s.setTranslationGlossarySelectedId);
   const addEntry = useTaskStore((s) => s.addTranslationGlossaryEntry);
   const updateEntry = useTaskStore((s) => s.updateTranslationGlossaryEntry);
   const deleteEntry = useTaskStore((s) => s.deleteTranslationGlossaryEntry);
   const importEntries = useTaskStore((s) => s.importTranslationGlossaryEntries);
+  const [selection, setSelection] =
+    useState<RuleTableSelection>(EMPTY_SELECTION);
   const moduleSettings = useModuleSettings("translation");
   const draft = moduleSettings.draft;
   const isHydrated = moduleSettings.isHydrated;
@@ -107,10 +110,13 @@ export function GlossaryPage() {
     );
   })();
 
-  const selectedIndex = state.selectedId
-    ? filteredEntries.findIndex((e) => e.id === state.selectedId)
-    : -1;
-  const selected = selectedIndex >= 0 ? filteredEntries[selectedIndex] : null;
+  const selectedIndex = selection.last;
+  const selected =
+    selectedIndex !== null &&
+    selectedIndex >= 0 &&
+    selectedIndex < filteredEntries.length
+      ? filteredEntries[selectedIndex]
+      : null;
   const enabledCount = state.entries.filter((e) => e.enabled).length;
 
   const handleImport = async () => {
@@ -172,18 +178,31 @@ export function GlossaryPage() {
     }
   };
 
+  const commitFromIndex = (idx: number, patch: Partial<GlossaryEntry>) => {
+    const target = filteredEntries[idx];
+    if (target) updateEntry(target.id, patch);
+  };
+
   const columns: RuleTableColumn<GlossaryEntry>[] = [
     {
       key: "source",
       label: g.columns.source,
       width: "1.4fr",
       render: (entry) => entry.source,
+      edit: {
+        getValue: (entry) => entry.source,
+        onCommit: (idx, value) => commitFromIndex(idx, { source: value }),
+      },
     },
     {
       key: "translation",
       label: g.columns.translation,
       width: "1.4fr",
       render: (entry) => entry.translation,
+      edit: {
+        getValue: (entry) => entry.translation,
+        onCommit: (idx, value) => commitFromIndex(idx, { translation: value }),
+      },
     },
     {
       key: "description",
@@ -192,6 +211,10 @@ export function GlossaryPage() {
       render: (entry) => (
         <span className={ruleTableStyles.cellMuted}>{entry.description}</span>
       ),
+      edit: {
+        getValue: (entry) => entry.description,
+        onCommit: (idx, value) => commitFromIndex(idx, { description: value }),
+      },
     },
     {
       key: "rule",
@@ -208,6 +231,25 @@ export function GlossaryPage() {
       ),
     },
   ];
+
+  const handleAdd = () => {
+    addEntry();
+    // The new entry is appended at the end of state.entries; once the
+    // search filter is cleared this will also be the last filtered
+    // index. We optimistically point selection at the new tail.
+    const newIndex = state.entries.length;
+    setSelection({ indices: [newIndex], last: newIndex });
+  };
+
+  const handleBulkDelete = (indices: number[]) => {
+    // Translate indices in the filtered view to entry ids before
+    // mutating, so the array shifts during deletion don't bite us.
+    const ids = indices
+      .map((i) => filteredEntries[i]?.id)
+      .filter((id): id is string => Boolean(id));
+    ids.forEach(deleteEntry);
+    setSelection(EMPTY_SELECTION);
+  };
 
   return (
     <>
@@ -252,12 +294,13 @@ export function GlossaryPage() {
         ) : null}
         <RuleTable
           rules={filteredEntries}
-          selectedIndex={selectedIndex >= 0 ? selectedIndex : null}
-          onSelectIndex={(idx) =>
-            setSelectedId(
-              idx === null ? null : (filteredEntries[idx]?.id ?? null),
-            )
-          }
+          selection={selection}
+          onSelectionChange={setSelection}
+          onBulkDelete={handleBulkDelete}
+          contextMenuLabels={{
+            deleteSelected: (n) =>
+              format(messages.ruleTable.deleteSelected, { n }),
+          }}
           isEnabled={(entry) => entry.enabled}
           columns={columns}
           emptyMessage={g.empty}
@@ -275,7 +318,7 @@ export function GlossaryPage() {
             )
           }
           toolbar={[
-            { label: g.actions.add, onClick: addEntry, primary: true },
+            { label: g.actions.add, onClick: handleAdd, primary: true },
             { label: g.actions.import, onClick: () => void handleImport() },
             { label: g.actions.export, onClick: () => void handleExport() },
             {

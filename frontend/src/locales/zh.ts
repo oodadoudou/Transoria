@@ -44,6 +44,9 @@ export const zh: Messages = {
     delete: "删除",
     systemBadge: "系统",
   },
+  ruleTable: {
+    deleteSelected: "删除选中的 {n} 项",
+  },
   errors: {
     runFailureTitle: "最近一次操作失败",
     loadFailureTitle: "加载失败",

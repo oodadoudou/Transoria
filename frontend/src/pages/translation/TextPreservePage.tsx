@@ -7,8 +7,10 @@ import { Pill } from "@/components/Pill";
 import { TextField } from "@/components/TextField";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import {
+  EMPTY_SELECTION,
   RuleTable,
   type RuleTableColumn,
+  type RuleTableSelection,
   ruleTableStyles,
 } from "@/components/RuleTable";
 
@@ -23,7 +25,9 @@ export function TextPreservePage() {
   const m = messages.translation.textPreservePage;
   const moduleSettings = useModuleSettings("translation");
   const draft = moduleSettings.draft;
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selection, setSelection] =
+    useState<RuleTableSelection>(EMPTY_SELECTION);
+  const selectedIndex = selection.last;
 
   const rules = draft?.text_preserve_rules ?? EMPTY_RULES;
 
@@ -37,18 +41,24 @@ export function TextPreservePage() {
   const addRule = () => {
     const next = [...rules, emptyRule()];
     setRules(next);
-    setSelectedIndex(next.length - 1);
+    const newIndex = next.length - 1;
+    setSelection({ indices: [newIndex], last: newIndex });
   };
   const updateRule = (
     index: number,
     patch: Partial<PersistedTextPreserveRule>,
   ) =>
-    setRules(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)));
+    setRules(
+      rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
+    );
   const deleteRule = (index: number) => {
     setRules(rules.filter((_, i) => i !== index));
-    if (selectedIndex !== null && selectedIndex >= index) {
-      setSelectedIndex(null);
-    }
+    setSelection(EMPTY_SELECTION);
+  };
+  const handleBulkDelete = (indices: number[]) => {
+    const drop = new Set(indices);
+    setRules(rules.filter((_, i) => !drop.has(i)));
+    setSelection(EMPTY_SELECTION);
   };
 
   const enabledCount = rules.filter((r) => r.enabled).length;
@@ -65,6 +75,10 @@ export function TextPreservePage() {
       render: (rule) => (
         <span style={{ fontFamily: "var(--font-mono)" }}>{rule.pattern}</span>
       ),
+      edit: {
+        getValue: (rule) => rule.pattern,
+        onCommit: (idx, value) => updateRule(idx, { pattern: value }),
+      },
     },
     {
       key: "note",
@@ -73,21 +87,17 @@ export function TextPreservePage() {
       render: (rule) => (
         <span className={ruleTableStyles.cellMuted}>{rule.note}</span>
       ),
-    },
-    {
-      key: "status",
-      label: m.columns.status,
-      width: "56px",
-      align: "right",
-      render: (rule) => (
-        <span
-          className={`${ruleTableStyles.statusDot} ${rule.enabled ? ruleTableStyles.statusDotOn : ""}`.trim()}
-        />
-      ),
+      edit: {
+        getValue: (rule) => rule.note,
+        onCommit: (idx, value) => updateRule(idx, { note: value }),
+      },
     },
   ];
 
-  const selected = selectedIndex !== null ? rules[selectedIndex] : null;
+  const selected =
+    selectedIndex !== null && selectedIndex >= 0 && selectedIndex < rules.length
+      ? rules[selectedIndex]
+      : null;
 
   return (
     <>
@@ -99,8 +109,13 @@ export function TextPreservePage() {
       >
         <RuleTable
           rules={rules}
-          selectedIndex={selectedIndex}
-          onSelectIndex={setSelectedIndex}
+          selection={selection}
+          onSelectionChange={setSelection}
+          onBulkDelete={handleBulkDelete}
+          contextMenuLabels={{
+            deleteSelected: (n) =>
+              format(messages.ruleTable.deleteSelected, { n }),
+          }}
           isEnabled={(rule) => rule.enabled}
           columns={columns}
           emptyMessage={m.empty}
@@ -113,9 +128,7 @@ export function TextPreservePage() {
                 onDelete={() => deleteRule(selectedIndex)}
               />
             ) : (
-              <div className={ruleTableStyles.editorEmpty}>
-                {m.editorEmpty}
-              </div>
+              <div className={ruleTableStyles.editorEmpty}>{m.editorEmpty}</div>
             )
           }
           toolbar={[

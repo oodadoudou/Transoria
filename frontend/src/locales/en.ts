@@ -44,6 +44,9 @@ export const en: Messages = {
     delete: "Delete",
     systemBadge: "System",
   },
+  ruleTable: {
+    deleteSelected: "Delete {n} selected",
+  },
   allKeysFailed: {
     title: "All API keys failed",
     body: "Every API key configured for the active model has been rejected by the provider. The task has been stopped. Open the Model page to refresh or replace the keys, then start the task again.",

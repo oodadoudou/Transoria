@@ -8,8 +8,10 @@ import { Segmented } from "@/components/Segmented";
 import { TextField } from "@/components/TextField";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import {
+  EMPTY_SELECTION,
   RuleTable,
   type RuleTableColumn,
+  type RuleTableSelection,
   ruleTableStyles,
 } from "@/components/RuleTable";
 
@@ -34,11 +36,14 @@ export function TranslationReplacementPage() {
   const moduleSettings = useModuleSettings("translation");
   const draft = moduleSettings.draft;
   const [group, setGroup] = useState<Group>("pre");
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selection, setSelection] =
+    useState<RuleTableSelection>(EMPTY_SELECTION);
+  const selectedIndex = selection.last;
 
   const fieldName: "pre_replacements" | "post_replacements" =
     group === "pre" ? "pre_replacements" : "post_replacements";
-  const rules = (draft?.[fieldName] ?? EMPTY_RULES) as PersistedTranslationReplacementRule[];
+  const rules = (draft?.[fieldName] ??
+    EMPTY_RULES) as PersistedTranslationReplacementRule[];
 
   const setRules = useCallback(
     (next: PersistedTranslationReplacementRule[]) => {
@@ -50,18 +55,24 @@ export function TranslationReplacementPage() {
   const addRule = () => {
     const next = [...rules, emptyRule()];
     setRules(next);
-    setSelectedIndex(next.length - 1);
+    const newIndex = next.length - 1;
+    setSelection({ indices: [newIndex], last: newIndex });
   };
   const updateRule = (
     index: number,
     patch: Partial<PersistedTranslationReplacementRule>,
   ) =>
-    setRules(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)));
+    setRules(
+      rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
+    );
   const deleteRule = (index: number) => {
     setRules(rules.filter((_, i) => i !== index));
-    if (selectedIndex !== null && selectedIndex >= index) {
-      setSelectedIndex(null);
-    }
+    setSelection(EMPTY_SELECTION);
+  };
+  const handleBulkDelete = (indices: number[]) => {
+    const drop = new Set(indices);
+    setRules(rules.filter((_, i) => !drop.has(i)));
+    setSelection(EMPTY_SELECTION);
   };
 
   const enabledCount = rules.filter((r) => r.enabled).length;
@@ -78,6 +89,10 @@ export function TranslationReplacementPage() {
       render: (rule) => (
         <span style={{ fontFamily: "var(--font-mono)" }}>{rule.src}</span>
       ),
+      edit: {
+        getValue: (rule) => rule.src,
+        onCommit: (idx, value) => updateRule(idx, { src: value }),
+      },
     },
     {
       key: "dst",
@@ -86,6 +101,10 @@ export function TranslationReplacementPage() {
       render: (rule) => (
         <span style={{ fontFamily: "var(--font-mono)" }}>{rule.dst}</span>
       ),
+      edit: {
+        getValue: (rule) => rule.dst,
+        onCommit: (idx, value) => updateRule(idx, { dst: value }),
+      },
     },
     {
       key: "rule",
@@ -109,20 +128,12 @@ export function TranslationReplacementPage() {
         </span>
       ),
     },
-    {
-      key: "status",
-      label: m.columns.status,
-      width: "48px",
-      align: "right",
-      render: (rule) => (
-        <span
-          className={`${ruleTableStyles.statusDot} ${rule.enabled ? ruleTableStyles.statusDotOn : ""}`.trim()}
-        />
-      ),
-    },
   ];
 
-  const selected = selectedIndex !== null ? rules[selectedIndex] : null;
+  const selected =
+    selectedIndex !== null && selectedIndex >= 0 && selectedIndex < rules.length
+      ? rules[selectedIndex]
+      : null;
 
   return (
     <>
@@ -139,7 +150,7 @@ export function TranslationReplacementPage() {
             value={group}
             onChange={(v) => {
               setGroup(v);
-              setSelectedIndex(null);
+              setSelection(EMPTY_SELECTION);
             }}
           />
         }
@@ -156,8 +167,13 @@ export function TranslationReplacementPage() {
       >
         <RuleTable
           rules={rules}
-          selectedIndex={selectedIndex}
-          onSelectIndex={setSelectedIndex}
+          selection={selection}
+          onSelectionChange={setSelection}
+          onBulkDelete={handleBulkDelete}
+          contextMenuLabels={{
+            deleteSelected: (n) =>
+              format(messages.ruleTable.deleteSelected, { n }),
+          }}
           isEnabled={(rule) => rule.enabled}
           columns={columns}
           emptyMessage={m.empty}
@@ -170,9 +186,7 @@ export function TranslationReplacementPage() {
                 onDelete={() => deleteRule(selectedIndex)}
               />
             ) : (
-              <div className={ruleTableStyles.editorEmpty}>
-                {m.editorEmpty}
-              </div>
+              <div className={ruleTableStyles.editorEmpty}>{m.editorEmpty}</div>
             )
           }
           toolbar={[

@@ -40,6 +40,9 @@ export interface Messages {
     delete: string;
     systemBadge: string;
   };
+  ruleTable: {
+    deleteSelected: string;
+  };
   allKeysFailed: {
     title: string;
     body: string;

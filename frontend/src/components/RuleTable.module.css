@@ -30,6 +30,25 @@
   text-align: right;
 }
 
+.checkboxCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkbox {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--action);
+  margin: 0;
+}
+
+.checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .colRight {
   text-align: right;
 }
@@ -55,7 +74,7 @@
   border-bottom: 0;
 }
 
-.row:hover:not(.rowActive) {
+.row:hover:not(.rowActive):not(.rowMultiSelected) {
   background: var(--panel-soft);
 }
 
@@ -63,6 +82,16 @@
 .rowActive:hover {
   background: var(--panel-soft);
   box-shadow: inset 3px 0 0 var(--action);
+}
+
+.rowMultiSelected,
+.rowMultiSelected:hover {
+  background: var(--panel-soft);
+  box-shadow: inset 3px 0 0 var(--hairline-strong);
+}
+
+.tableWrap:focus {
+  outline: none;
 }
 
 .rowDisabled {
@@ -79,6 +108,57 @@
 
 .cellMuted {
   color: var(--muted);
+}
+
+.cellEditable {
+  /* Subtle hint that double-click enters edit mode. */
+}
+
+.cellEditable:hover {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+}
+
+.cellEditor {
+  width: 100%;
+  border: 1px solid var(--action);
+  background: var(--panel, #fff);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  resize: vertical;
+}
+
+.contextMenu {
+  position: fixed;
+  z-index: 200;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--panel, #fff);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.contextMenuItem {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--accent-danger, #b14b3f);
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.contextMenuItem:hover {
+  background: rgba(177, 75, 63, 0.08);
 }
 
 .ruleChip {

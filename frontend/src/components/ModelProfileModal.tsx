@@ -603,12 +603,14 @@ function FormStep({
                 ? me.fetchRunning
                 : me.fetchModels;
             return (
-              <Pill
-                onClick={onFetch}
-                disabled={probeBusy !== null || fetchUnsupported}
-              >
-                {fetchLabel}
-              </Pill>
+              <div className={styles.fetchButtonRow}>
+                <Pill
+                  onClick={onFetch}
+                  disabled={probeBusy !== null || fetchUnsupported}
+                >
+                  {fetchLabel}
+                </Pill>
+              </div>
             );
           })()}
           {fetchedModels && fetchedModels.length > 0 ? (
