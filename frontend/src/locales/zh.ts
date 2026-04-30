@@ -88,9 +88,9 @@ export const zh: Messages = {
     pickerBack: "← 返回",
     saveAction: "保存",
     cancelAction: "取消",
-    rotateKeysLabel: "瞬时失败时轮询 API key",
+    rotateKeysLabel: "多 key 调用间轮询",
     rotateKeysHelp:
-      "配置多个 API key 时，遇到限速 / 5xx 时自动切换下一个 key 再放弃。",
+      "配置多个 API key 时，每次调用自动轮询到下一个 key（摊薄单 key 的速率限制）。返回 HTTP 401/403 的 key 立即从本次任务的轮询池剔除；429 限流则不剔除、跳到下一 key 重试。所有 key 都失败时任务自动停止并弹窗提醒。",
     runtimeTuningLabel: "运行参数",
     samplingLabel: "采样",
   },

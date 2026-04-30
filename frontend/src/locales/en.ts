@@ -94,9 +94,9 @@ export const en: Messages = {
     pickerBack: "← Back",
     saveAction: "Save",
     cancelAction: "Cancel",
-    rotateKeysLabel: "Rotate API keys on transient failures",
+    rotateKeysLabel: "Round-robin API keys per call",
     rotateKeysHelp:
-      "When more than one API key is set, cycle through them on rate-limit / 5xx errors before giving up.",
+      "When more than one API key is set, every call rotates to the next key (spreads load to bypass per-key rate limits). Auth-rejected keys (HTTP 401/403) are dropped from the rotation for the rest of the task; 429 transient rate limits skip to the next key without dropping. When all keys fail, the task stops and you get an alert.",
     runtimeTuningLabel: "Runtime tuning",
     samplingLabel: "Sampling",
   },
