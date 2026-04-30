@@ -31,10 +31,14 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
   return {
     modules: [
       {
+        id: "model",
+        label: messages.rail.model,
+        children: null,
+      },
+      {
         id: "translation",
         label: messages.rail.translation,
         children: [
-          { page: "model", label: t.model },
           { page: "run", label: t.run },
           { page: "glossary", label: t.glossary },
           { page: "prompt", label: t.prompt },
@@ -47,7 +51,6 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         id: "glossary",
         label: messages.rail.glossary,
         children: [
-          { page: "model", label: g.model },
           { page: "run", label: g.run },
           { page: "prompt", label: g.prompt },
           { page: "settings", label: g.settings },

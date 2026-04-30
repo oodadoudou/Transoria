@@ -16,11 +16,10 @@ from typing import Mapping, Sequence
 
 from transoria.domain import Language
 from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
-from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import decode_translation_jsonl
 from transoria.llm.retry import retry_async
 from transoria.llm.usage import estimate_tokens_from_text
-from transoria.runtime.rate_limit import TpmLimiter
+from transoria.runtime.profile_pool import ProfilePool
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
 from transoria.runtime.executor import SubtaskResult
 from transoria.runtime.subtask import Subtask
@@ -181,13 +180,14 @@ def _decode_subtask_payload(
 class TranslationSubtaskRunner:
     """Runs one translation subtask end-to-end.
 
-    Construction takes the immutable per-task settings (client, model,
-    preset, languages, post-replacements). Per-subtask data lives in the
-    subtask payload that the orchestrator builds.
+    Construction takes the immutable per-task settings. The model
+    profile rotation lives in ``pool``: each LLM call dispatches
+    through ``pool.acquire()`` which round-robins across profiles
+    while honoring per-profile RPM/TPM buckets.
     """
 
     client: LlmClient
-    model: ModelConfig
+    pool: ProfilePool
     prompt_preset: PromptPreset
     source_language: Language
     target_language: Language
@@ -197,7 +197,6 @@ class TranslationSubtaskRunner:
     max_length_ratio: float = 3.0
     max_punctuation_delta: int = 4
     low_confidence_max_retries: int = 0
-    tpm_limiter: TpmLimiter | None = None
     stream: bool = False
     debug_log_dir: Path | None = None
     fake_name_roster: FakeNameRoster | FakeNameSession | None = None
@@ -206,7 +205,7 @@ class TranslationSubtaskRunner:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
         return await retry_async(
             lambda: self._attempt(chunk, metadata),
-            model=self.model,
+            model=self.pool.primary,
         )
 
     async def _attempt(
@@ -218,7 +217,7 @@ class TranslationSubtaskRunner:
                 source_language=self.source_language.value,
                 target_language=self.target_language.value,
             ),
-            thinking=self.model.thinking_enabled,
+            thinking=self.pool.primary.thinking_enabled,
         )
 
         initial_user_prompt = self._apply_roster(assemble_user_prompt(chunk))
@@ -335,26 +334,32 @@ class TranslationSubtaskRunner:
         return restore_fake_name_text(roster, content)
 
     async def _one_llm_call(self, system_prompt: str, user_prompt: str):
+        model = await self.pool.acquire()
+        tpm_limiter = self.pool.tpm_for(model.id)
         reservation = -1
-        if self.tpm_limiter is not None:
+        if tpm_limiter is not None:
             estimated = estimate_tokens_from_text(
                 system_prompt
             ) + estimate_tokens_from_text(user_prompt)
-            reservation = await self.tpm_limiter.reserve(estimated)
+            reservation = await tpm_limiter.reserve(estimated)
         response = None
         try:
             response = await self.client.chat(
                 ChatRequest(
-                    model=self.model,
+                    model=model,
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     stream=self.stream,
                 )
             )
+        except LlmRequestError as exc:
+            if exc.code in {"llm.no_api_key", "llm.all_keys_failed"}:
+                self.pool.mark_failed(model.id)
+            raise
         finally:
-            if self.tpm_limiter is not None and reservation >= 0:
+            if tpm_limiter is not None and reservation >= 0:
                 actual = response.usage.total_tokens if response is not None else 0
-                self.tpm_limiter.settle(reservation, actual)
+                tpm_limiter.settle(reservation, actual)
         assert response is not None
         return response
 

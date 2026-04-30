@@ -4,6 +4,7 @@ export interface Messages {
   rail: {
     modules: string;
     workspace: string;
+    model: string;
     translation: string;
     glossary: string;
     generalTools: string;
@@ -88,6 +89,20 @@ export interface Messages {
     emptyModel: string;
     emptyPrompt: string;
     manageLink: string;
+  };
+  modelListPicker: {
+    title: string;
+    selectedTitle: string;
+    selectedEmpty: string;
+    availableTitle: string;
+    availableEmpty: string;
+    addAction: string;
+    moveUp: string;
+    moveDown: string;
+    removeAction: string;
+    cancelAction: string;
+    applyAction: string;
+    rotationHint: string;
   };
   promptModal: {
     titleAdd: string;
@@ -207,10 +222,12 @@ export interface Messages {
   };
   pages: {
     /** Visible names for every leaf page, used by the rail and breadcrumbs. */
+    model: {
+      general: string;
+    };
     translation: {
       run: string;
       settings: string;
-      model: string;
       glossary: string;
       textPreserve: string;
       replacement: string;
@@ -219,7 +236,6 @@ export interface Messages {
     glossary: {
       run: string;
       settings: string;
-      model: string;
       prompt: string;
     };
     generalTools: {
@@ -477,6 +493,7 @@ export interface Messages {
     noThinkingPrompt: string;
   };
   model: {
+    crumb: string;
     pageTitle: string;
     pageSub: string;
     sections: {

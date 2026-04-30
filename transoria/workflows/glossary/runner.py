@@ -15,12 +15,11 @@ from pathlib import Path
 from typing import Mapping
 
 from transoria.domain import Language
-from transoria.llm.client import ChatRequest, LlmClient
-from transoria.llm.config import ModelConfig
+from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
 from transoria.llm.decoders import GlossaryEntry, decode_glossary_jsonl
 from transoria.llm.retry import retry_async
 from transoria.llm.usage import estimate_tokens_from_text
-from transoria.runtime.rate_limit import TpmLimiter
+from transoria.runtime.profile_pool import ProfilePool
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
 from transoria.runtime.executor import SubtaskResult
 from transoria.runtime.subtask import Subtask
@@ -51,11 +50,10 @@ def _decode_chunk(payload: Mapping[str, object]) -> tuple[str, str, str]:
 @dataclass(frozen=True)
 class GlossarySubtaskRunner:
     client: LlmClient
-    model: ModelConfig
+    pool: ProfilePool
     prompt_preset: PromptPreset
     source_language: Language
     target_language: Language
-    tpm_limiter: TpmLimiter | None = None
     stream: bool = False
     debug_log_dir: Path | None = None
     fake_name_session: FakeNameSession | None = None
@@ -65,7 +63,7 @@ class GlossarySubtaskRunner:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
         return await retry_async(
             lambda: self._attempt(chunk_id, source_file, text),
-            model=self.model,
+            model=self.pool.primary,
         )
 
     async def _attempt(self, chunk_id: str, source_file: str, text: str) -> SubtaskResult:
@@ -75,7 +73,7 @@ class GlossarySubtaskRunner:
                 source_language=self.source_language.value,
                 target_language=self.target_language.value,
             ),
-            thinking=self.model.thinking_enabled,
+            thinking=self.pool.primary.thinking_enabled,
         )
         prompt_text = _inject_first_name(
             text, (self.name_injections or {}).get(source_file, "")
@@ -85,29 +83,35 @@ class GlossarySubtaskRunner:
             prompt_text = session.apply(prompt_text)
         user_prompt = "[Source Text]\n" + prompt_text
 
+        model = await self.pool.acquire()
+        tpm_limiter = self.pool.tpm_for(model.id)
         reservation = -1
-        if self.tpm_limiter is not None:
+        if tpm_limiter is not None:
             estimated = estimate_tokens_from_text(system_prompt) + estimate_tokens_from_text(
                 user_prompt
             )
-            reservation = await self.tpm_limiter.reserve(estimated)
+            reservation = await tpm_limiter.reserve(estimated)
 
         response = None
         try:
             response = await self.client.chat(
                 ChatRequest(
-                    model=self.model,
+                    model=model,
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     stream=self.stream,
                 )
             )
+        except LlmRequestError as exc:
+            if exc.code in {"llm.no_api_key", "llm.all_keys_failed"}:
+                self.pool.mark_failed(model.id)
+            raise
         finally:
-            if self.tpm_limiter is not None and reservation >= 0:
+            if tpm_limiter is not None and reservation >= 0:
                 actual = (
                     response.usage.total_tokens if response is not None else 0
                 )
-                self.tpm_limiter.settle(reservation, actual)
+                tpm_limiter.settle(reservation, actual)
         assert response is not None
 
         raw_content = response.content

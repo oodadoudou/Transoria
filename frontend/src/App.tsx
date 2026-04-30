@@ -3,6 +3,7 @@ import { isRunPage, useTaskStore, type Route } from "./store/useTaskStore";
 import { SubNav, crumbFor } from "./components/SubNav";
 import { Rail } from "./components/Rail";
 import { StatusBar } from "./components/StatusBar";
+import { ModelModule } from "./pages/model";
 import { TranslationModule } from "./pages/translation";
 import { GlossaryModule } from "./pages/glossary";
 import { GeneralToolsModule } from "./pages/general-tools";
@@ -39,6 +40,8 @@ export function App() {
 
 function PageBody({ route }: { route: Route }) {
   switch (route.module) {
+    case "model":
+      return <ModelModule />;
     case "translation":
       return <TranslationModule page={route.page} />;
     case "glossary":

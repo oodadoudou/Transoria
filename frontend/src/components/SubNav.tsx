@@ -1,8 +1,8 @@
-import { useI18n, useMessages, type Locale } from '@/locales';
-import type { Route } from '@/store/useTaskStore';
-import { Pill } from './Pill';
-import { PlayIcon, StopIcon } from './Icon';
-import styles from './SubNav.module.css';
+import { useI18n, useMessages, type Locale } from "@/locales";
+import type { Route } from "@/store/useTaskStore";
+import { Pill } from "./Pill";
+import { PlayIcon, StopIcon } from "./Icon";
+import styles from "./SubNav.module.css";
 
 interface SubNavProps {
   route: Route;
@@ -32,9 +32,9 @@ export function SubNav({
   const messages = useMessages();
   const locale = useI18n((state) => state.locale);
   const setLocale = useI18n((state) => state.setLocale);
-  const altLocale: Locale = locale === 'en' ? 'zh' : 'en';
+  const altLocale: Locale = locale === "en" ? "zh" : "en";
   const altLabel =
-    altLocale === 'en'
+    altLocale === "en"
       ? messages.appSettings.languageEnglish
       : messages.appSettings.languageChinese;
 
@@ -58,10 +58,18 @@ export function SubNav({
       <div className={styles.actions}>
         {showRunActions ? (
           <>
-            <Pill variant="ghost" icon={<StopIcon size={12} />} onClick={onStop}>
+            <Pill
+              variant="ghost"
+              icon={<StopIcon size={12} />}
+              onClick={onStop}
+            >
               {messages.topbar.stop}
             </Pill>
-            <Pill icon={<PlayIcon size={12} />} disabled={primaryDisabled} onClick={onStart}>
+            <Pill
+              icon={<PlayIcon size={12} />}
+              disabled={primaryDisabled}
+              onClick={onStart}
+            >
               {primaryLabel ?? messages.topbar.start.translation}
             </Pill>
           </>
@@ -85,22 +93,27 @@ export function crumbFor(
   messages: ReturnType<typeof useMessages>,
 ): { module: string; page: string } {
   switch (route.module) {
-    case 'translation':
+    case "model":
+      return {
+        module: messages.model.crumb,
+        page: messages.pages.model[route.page],
+      };
+    case "translation":
       return {
         module: messages.translation.crumb,
         page: messages.pages.translation[route.page],
       };
-    case 'glossary':
+    case "glossary":
       return {
         module: messages.glossary.crumb,
         page: messages.pages.glossary[route.page],
       };
-    case 'general-tools':
+    case "general-tools":
       return {
         module: messages.generalTools.crumb,
         page: messages.pages.generalTools[route.page],
       };
-    case 'app-settings':
+    case "app-settings":
       return {
         module: messages.appSettings.crumb,
         page: messages.pages.appSettings[route.page],
@@ -112,7 +125,7 @@ export function primaryLabelFor(
   route: Route,
   messages: ReturnType<typeof useMessages>,
 ): string | undefined {
-  if (route.module === 'translation') return messages.topbar.start.translation;
-  if (route.module === 'glossary') return messages.topbar.start.extraction;
+  if (route.module === "translation") return messages.topbar.start.translation;
+  if (route.module === "glossary") return messages.topbar.start.extraction;
   return undefined;
 }

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Mapping
 
 from transoria.settings.defaults import (
+    _APP_TUPLE_OF_STR_FIELDS,
     _TRANSLATION_LIST_OF_MAPPING_FIELDS,
     AllSettings,
     AppSettings,
@@ -25,6 +26,14 @@ from transoria.settings.defaults import (
     default_settings,
     merge_module,
 )
+
+# Legacy single-id fields that pre-date the multi-profile rollout. On
+# hydrate we fold a non-null value into the corresponding new tuple
+# field so existing settings.json files don't lose their selection.
+_LEGACY_APP_FIELDS: dict[str, str] = {
+    "active_translation_model_id": "translation_model_ids",
+    "active_glossary_model_id": "glossary_model_ids",
+}
 
 ModuleValue = (
     AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings
@@ -142,8 +151,22 @@ def _hydrate(
                     dict(item) if isinstance(item, Mapping) else item
                     for item in value
                 )
+            elif (
+                cls is AppSettings
+                and key in _APP_TUPLE_OF_STR_FIELDS
+                and isinstance(value, list)
+            ):
+                init_kwargs[key] = tuple(
+                    str(item) for item in value if isinstance(item, str)
+                )
             else:
                 init_kwargs[key] = value
+    if cls is AppSettings:
+        for legacy, new_key in _LEGACY_APP_FIELDS.items():
+            if legacy in raw and not init_kwargs.get(new_key):
+                legacy_value = raw[legacy]
+                if isinstance(legacy_value, str) and legacy_value:
+                    init_kwargs[new_key] = (legacy_value,)
     return cls(**init_kwargs)
 
 

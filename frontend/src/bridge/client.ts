@@ -159,13 +159,13 @@ export const modelProfilesBridge = {
       request_id: requestId,
     });
   },
-  selectActive(
+  setModuleProfiles(
     module: "translation" | "glossary",
-    profileId: string | null,
+    profileIds: string[],
   ): Promise<{ app: AppSettings }> {
-    return call("model_profiles.select_active", {
+    return call("model_profiles.set_module_profiles", {
       module,
-      profile_id: profileId,
+      profile_ids: profileIds,
     });
   },
 };

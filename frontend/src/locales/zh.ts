@@ -5,6 +5,7 @@ export const zh: Messages = {
   rail: {
     modules: "模块",
     workspace: "工作区",
+    model: "模型",
     translation: "翻译",
     glossary: "术语提取",
     generalTools: "通用工具",
@@ -86,6 +87,21 @@ export const zh: Messages = {
       "配置多个 API key 时，遇到限速 / 5xx 时自动切换下一个 key 再放弃。",
     runtimeTuningLabel: "运行参数",
     samplingLabel: "采样",
+  },
+  modelListPicker: {
+    title: "模型轮询列表",
+    selectedTitle: "轮询顺序",
+    selectedEmpty: "未选择任何配置,至少选一项才能开始任务。",
+    availableTitle: "可用配置",
+    availableEmpty: "全部已配置项都已加入轮询。",
+    addAction: "加入",
+    moveUp: "上移",
+    moveDown: "下移",
+    removeAction: "移除",
+    cancelAction: "取消",
+    applyAction: "应用",
+    rotationHint:
+      "每次 LLM 调用按列表顺序轮询下一个配置,各自的 RPM 桶独立计数。配置目录在「模型」页管理。",
   },
   quickSwitch: {
     titleModel: "切换激活模型",
@@ -236,10 +252,10 @@ export const zh: Messages = {
     statisticsFile: "统计文件",
   },
   pages: {
+    model: { general: "配置" },
     translation: {
       run: "运行",
       settings: "设置",
-      model: "模型",
       glossary: "术语表",
       textPreserve: "保留文本",
       replacement: "替换",
@@ -248,7 +264,6 @@ export const zh: Messages = {
     glossary: {
       run: "运行",
       settings: "设置",
-      model: "模型",
       prompt: "提示词",
     },
     generalTools: { batchReplacement: "批量替换" },
@@ -533,9 +548,10 @@ export const zh: Messages = {
     noThinkingPrompt: "本预设没有推理补充段。模型只会收到系统提示与后缀。",
   },
   model: {
-    pageTitle: "模型",
+    crumb: "模型",
+    pageTitle: "模型库",
     pageSub:
-      "翻译与术语提取各自维护一份模型库。点击下方任意 chip 打开编辑面板,再点击「设为当前」来应用;预设条目内置不可删除,自定义条目可新增。",
+      "管理全局 API 配置目录。每个模块(翻译、术语提取、…)在自己的运行页里从这份目录中挑选要使用的配置。",
     sections: {
       preset: {
         title: "预设模型",

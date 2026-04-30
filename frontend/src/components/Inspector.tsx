@@ -1,15 +1,15 @@
-import { useMessages } from '@/locales';
-import { useTaskStore } from '@/store/useTaskStore';
-import { useRunSnapshot, type RunKind } from '@/store/useRuntimeStore';
-import { useModelProfiles } from '@/store/useModelProfilesStore';
-import { usePromptPresets } from '@/store/usePromptPresetsStore';
-import { useModuleSettings } from '@/store/useSettingsStore';
-import styles from './Inspector.module.css';
+import { useMessages } from "@/locales";
+import { useTaskStore } from "@/store/useTaskStore";
+import { useRunSnapshot, type RunKind } from "@/store/useRuntimeStore";
+import { useModelProfiles } from "@/store/useModelProfilesStore";
+import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { useModuleSettings } from "@/store/useSettingsStore";
+import styles from "./Inspector.module.css";
 
-const NUM = new Intl.NumberFormat('en');
+const NUM = new Intl.NumberFormat("en");
 
 function moduleToRunKind(module: string): RunKind {
-  return module === 'glossary' ? 'glossary' : 'translation';
+  return module === "glossary" ? "glossary" : "translation";
 }
 
 export function Inspector() {
@@ -19,24 +19,21 @@ export function Inspector() {
   const snapshot = useRunSnapshot(kind);
   const profilesStore = useModelProfiles();
   const promptPresets = usePromptPresets(kind);
-  const appSettings = useModuleSettings('app');
+  const appSettings = useModuleSettings("app");
 
-  const activeModelId =
+  const profileIds =
     appSettings.draft?.[
-      kind === 'translation'
-        ? 'active_translation_model_id'
-        : 'active_glossary_model_id'
-    ] ?? null;
-  const activeProfile = profilesStore.profiles.find(
-    (p) => p.id === activeModelId,
-  );
+      kind === "translation" ? "translation_model_ids" : "glossary_model_ids"
+    ] ?? [];
+  const primaryId = profileIds[0] ?? null;
+  const activeProfile = profilesStore.profiles.find((p) => p.id === primaryId);
 
   const activePresetId =
     promptPresets[kind].activeId ??
     appSettings.draft?.[
-      kind === 'translation'
-        ? 'active_translation_prompt_id'
-        : 'active_glossary_prompt_id'
+      kind === "translation"
+        ? "active_translation_prompt_id"
+        : "active_glossary_prompt_id"
     ] ??
     null;
   const activePreset =
@@ -119,13 +116,13 @@ function Block({ title, subtitle, children }: BlockProps) {
 }
 
 interface ModelCardProps {
-  gradient: 'warm' | 'cool';
+  gradient: "warm" | "cool";
   title: string;
   subtitle: string;
 }
 
 function ModelCard({ gradient, title, subtitle }: ModelCardProps) {
-  const avClass = gradient === 'warm' ? styles.avWarm : styles.avCool;
+  const avClass = gradient === "warm" ? styles.avWarm : styles.avCool;
   return (
     <div className={styles.modelCard}>
       <div className={`${styles.av} ${avClass}`} />
@@ -145,7 +142,7 @@ interface TokenCellProps {
 
 function TokenCell({ label, value, full }: TokenCellProps) {
   return (
-    <div className={`${styles.cell} ${full ? styles.full : ''}`.trim()}>
+    <div className={`${styles.cell} ${full ? styles.full : ""}`.trim()}>
       <div className={styles.cellLabel}>{label}</div>
       <b className="tnum">{NUM.format(value)}</b>
     </div>

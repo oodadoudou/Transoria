@@ -5,6 +5,7 @@ export const en: Messages = {
   rail: {
     modules: "Modules",
     workspace: "Workspace",
+    model: "Models",
     translation: "Translation",
     glossary: "Glossary Extraction",
     generalTools: "General Tools",
@@ -92,6 +93,21 @@ export const en: Messages = {
       "When more than one API key is set, cycle through them on rate-limit / 5xx errors before giving up.",
     runtimeTuningLabel: "Runtime tuning",
     samplingLabel: "Sampling",
+  },
+  modelListPicker: {
+    title: "Active Model Rotation",
+    selectedTitle: "Rotation order",
+    selectedEmpty: "No profiles selected. Pick at least one to start a task.",
+    availableTitle: "Available profiles",
+    availableEmpty: "Every configured profile is already in the rotation.",
+    addAction: "Add",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    removeAction: "Remove",
+    cancelAction: "Cancel",
+    applyAction: "Apply",
+    rotationHint:
+      "Each LLM call rotates to the next profile in this list, gated by per-profile RPM. Configure profiles on the Models page.",
   },
   quickSwitch: {
     titleModel: "Switch active model",
@@ -246,10 +262,10 @@ export const en: Messages = {
     statisticsFile: "Statistics file",
   },
   pages: {
+    model: { general: "Configuration" },
     translation: {
       run: "Run",
       settings: "Settings",
-      model: "Model",
       glossary: "Glossary",
       textPreserve: "Text Preserve",
       replacement: "Replacement",
@@ -258,7 +274,6 @@ export const en: Messages = {
     glossary: {
       run: "Run",
       settings: "Settings",
-      model: "Model",
       prompt: "Prompt",
     },
     generalTools: { batchReplacement: "Batch Replacement" },
@@ -550,9 +565,10 @@ export const en: Messages = {
       "This preset has no reasoning addendum. The model receives the system prompt and suffix only.",
   },
   model: {
-    pageTitle: "Model",
+    crumb: "Models",
+    pageTitle: "Model Library",
     pageSub:
-      "Translation and Glossary each carry their own model library. Pick a preset or add a custom model; clicking a chip opens its edit panel, then use Set as active to apply it.",
+      "Manage the global catalog of API profiles. Each module (Translation, Glossary Extraction, …) selects which profiles to use from this catalog on its own Run page.",
     sections: {
       preset: {
         title: "Preset Models",

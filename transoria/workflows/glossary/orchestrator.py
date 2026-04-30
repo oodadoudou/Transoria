@@ -39,7 +39,7 @@ from transoria.runtime.executor import (
     SubtaskRunner,
     TaskExecutor,
 )
-from transoria.runtime.rate_limit import TpmLimiter
+from transoria.runtime.profile_pool import ProfilePool
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskRecord
 from transoria.workflows.glossary.candidate import Candidate, GlossaryRecord
@@ -108,18 +108,13 @@ IdFactory = Callable[[], str]
 def _default_runner_factory(
     client: LlmClient, config: GlossaryConfig
 ) -> SubtaskRunner:
-    tpm_limiter = (
-        TpmLimiter(limit=config.model.tpm_limit)
-        if config.model.tpm_limit > 0
-        else None
-    )
+    pool = ProfilePool(config.models)
     return GlossarySubtaskRunner(
         client=client,
-        model=config.model,
+        pool=pool,
         prompt_preset=config.prompt_preset,
         source_language=config.source_language,
         target_language=config.target_language,
-        tpm_limiter=tpm_limiter,
         stream=config.stream,
         debug_log_dir=config.debug_log_dir,
         fake_name_session=config.fake_name_session,
@@ -191,7 +186,8 @@ class GlossaryOrchestrator:
                     "output_dir": str(config.output_dir),
                     "source_language": config.source_language.value,
                     "target_language": config.target_language.value,
-                    "model_id": config.model.id,
+                    "model_id": config.models[0].id,
+                    "model_ids": [m.id for m in config.models],
                     "prompt_preset_id": config.prompt_preset.id,
                 },
             )
@@ -210,8 +206,8 @@ class GlossaryOrchestrator:
         executor = TaskExecutor(
             cache=self.cache,
             runner=runner,
-            concurrency_limit=max(1, config.model.concurrency_limit),
-            rpm_limit=max(0, config.model.rpm_limit),
+            concurrency_limit=max(1, config.models[0].concurrency_limit),
+            rpm_limit=0,
             progress=self.progress,
             clock=self.clock,
         )

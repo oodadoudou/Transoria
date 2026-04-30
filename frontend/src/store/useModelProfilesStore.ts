@@ -45,9 +45,9 @@ interface ModelProfilesState {
   ) => Promise<ModelProfile | null>;
   deleteProfile: (id: string) => Promise<boolean>;
   setApiKey: (id: string, apiKeys: string[]) => Promise<ModelProfile | null>;
-  selectActive: (
+  setModuleProfiles: (
     module: "translation" | "glossary",
-    profileId: string | null,
+    profileIds: string[],
   ) => Promise<AppSettings | null>;
   testConnection: (id: string) => Promise<void>;
   fetchModelList: (id: string) => Promise<void>;
@@ -178,12 +178,12 @@ export const useModelProfilesStore = create<ModelProfilesState>((set, get) => {
       }
     },
 
-    selectActive: async (module, profileId) => {
+    setModuleProfiles: async (module, profileIds) => {
       set({ mutationError: null });
       try {
-        const { app } = await modelProfilesBridge.selectActive(
+        const { app } = await modelProfilesBridge.setModuleProfiles(
           module,
-          profileId,
+          profileIds,
         );
         return app;
       } catch (error) {

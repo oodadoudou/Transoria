@@ -1,0 +1,145 @@
+.modalWide {
+  max-width: 540px;
+}
+
+.section {
+  padding: 12px 18px 16px;
+}
+
+.section + .section {
+  border-top: 1px solid var(--hairline, #ece8e2);
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted, #7a7166);
+  margin-bottom: 8px;
+}
+
+.orderedList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.orderedRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: var(--panel-soft, #fbf8f3);
+}
+
+.rank {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #7a7166);
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.rowName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink, #2c2620);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  font-size: 11.5px;
+  color: var(--muted, #7a7166);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.iconButton {
+  border: 1px solid var(--hairline, #ece8e2);
+  background: var(--panel, #fff);
+  color: var(--ink, #2c2620);
+  font: inherit;
+  font-size: 13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--panel-soft, #f5f0e9);
+}
+
+.iconButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.availableList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.availableRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px dashed var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.12s;
+}
+
+.availableRow:hover {
+  background: var(--panel-soft, #f5f0e9);
+}
+
+.addBadge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent, #b15c1f);
+  flex-shrink: 0;
+}
+
+.spacer {
+  flex: 1;
+}

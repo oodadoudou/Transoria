@@ -13,6 +13,7 @@ import { create } from "zustand";
  * ------------------------------------------------------------------ */
 
 export type ModuleId =
+  | "model"
   | "translation"
   | "glossary"
   | "general-tools"
@@ -21,19 +22,21 @@ export type ModuleId =
 export type TranslationPage =
   | "run"
   | "settings"
-  | "model"
   | "glossary"
   | "textPreserve"
   | "replacement"
   | "prompt";
 
-export type GlossaryPage = "run" | "settings" | "model" | "prompt";
+export type GlossaryPage = "run" | "settings" | "prompt";
 
 export type GeneralToolsPage = "batchReplacement";
 
 export type AppSettingsPage = "general";
 
+export type ModelPage = "general";
+
 export type Route =
+  | { module: "model"; page: ModelPage }
   | { module: "translation"; page: TranslationPage }
   | { module: "glossary"; page: GlossaryPage }
   | { module: "general-tools"; page: GeneralToolsPage }
@@ -48,6 +51,8 @@ export function isRunPage(route: Route): boolean {
 
 export function defaultPageFor(module: ModuleId): Route {
   switch (module) {
+    case "model":
+      return { module: "model", page: "general" };
     case "translation":
       return { module: "translation", page: "run" };
     case "glossary":
