@@ -208,12 +208,15 @@ class TranslationSubtaskRunner:
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
         return await retry_async(
-            lambda: self._attempt(chunk, metadata),
+            lambda: self._attempt(chunk, metadata, subtask.id),
             model=self.model,
         )
 
     async def _attempt(
-        self, chunk, metadata: tuple[_SegmentPayload, ...]
+        self,
+        chunk,
+        metadata: tuple[_SegmentPayload, ...],
+        subtask_id: str = "",
     ) -> SubtaskResult:
         system_prompt = build_prompt(
             self.prompt_preset,
@@ -225,7 +228,10 @@ class TranslationSubtaskRunner:
         )
 
         initial_user_prompt = self._apply_roster(assemble_user_prompt(chunk))
-        response = await self._one_llm_call(system_prompt, initial_user_prompt)
+        log_label = f"translation {subtask_id}" if subtask_id else "translation"
+        response = await self._one_llm_call(
+            system_prompt, initial_user_prompt, log_label
+        )
         total_input = response.usage.input_tokens
         total_output = response.usage.output_tokens
 
@@ -264,7 +270,9 @@ class TranslationSubtaskRunner:
                 glossary_entries=chunk.glossary_entries,
             )
             retry_user_prompt = self._apply_roster(assemble_user_prompt(retry_chunk))
-            retry_response = await self._one_llm_call(system_prompt, retry_user_prompt)
+            retry_response = await self._one_llm_call(
+                system_prompt, retry_user_prompt, f"{log_label} retry"
+            )
             total_input += retry_response.usage.input_tokens
             total_output += retry_response.usage.output_tokens
 
@@ -337,7 +345,9 @@ class TranslationSubtaskRunner:
             return content
         return restore_fake_name_text(roster, content)
 
-    async def _one_llm_call(self, system_prompt: str, user_prompt: str):
+    async def _one_llm_call(
+        self, system_prompt: str, user_prompt: str, log_label: str = ""
+    ):
         reservation = -1
         if self.tpm_limiter is not None:
             estimated = estimate_tokens_from_text(
@@ -353,6 +363,7 @@ class TranslationSubtaskRunner:
                     user_prompt=user_prompt,
                     stream=self.stream,
                     key_pool=self.key_pool,
+                    log_label=log_label,
                 )
             )
         finally:

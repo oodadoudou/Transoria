@@ -8,12 +8,14 @@ a fake :class:`ChatTransport`; production uses :class:`HttpxChatTransport`.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol
 
 import httpx
 
 from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
+from transoria.llm.io_log import log_error, log_recv, log_send
 from transoria.llm.usage import TokenUsage
 from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
 
@@ -65,6 +67,9 @@ class ChatRequest:
     # the offending key; pool exhaustion raises
     # ``llm.all_keys_failed``.
     key_pool: KeyPool | None = None
+    # Free-form tag the runner sets to identify this request in stderr
+    # IO logs, e.g. ``"glossary chunk-00012"``.
+    log_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -420,6 +425,8 @@ class LlmClient:
             key = keys[attempt % len(keys)]
             url = url_or_template.format(key=key) if url_takes_key else url_or_template
             headers = header_factory(key)
+            log_send(request.log_label, request.model.id, payload)
+            send_start = time.monotonic()
             try:
                 result = await self.transport.execute(
                     url, headers, payload, request.model.timeout_seconds
@@ -427,6 +434,12 @@ class LlmClient:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                log_error(
+                    request.log_label,
+                    request.model.id,
+                    latency_seconds=time.monotonic() - send_start,
+                    error=exc,
+                )
                 last_error = exc
                 if attempt + 1 < attempts:
                     continue
@@ -434,6 +447,18 @@ class LlmClient:
                     f"Transport failed for model {request.model.id!r}: {exc}",
                     code="llm.transport_error",
                 ) from exc
+
+            latency = time.monotonic() - send_start
+            response = parser(result.body) if result.status_code < 400 else None
+            log_recv(
+                request.log_label,
+                request.model.id,
+                latency_seconds=latency,
+                status_code=result.status_code,
+                body=result.body,
+                input_tokens=response.usage.input_tokens if response else 0,
+                output_tokens=response.usage.output_tokens if response else 0,
+            )
 
             if (
                 result.status_code in _ROTATABLE_STATUSES
@@ -451,7 +476,7 @@ class LlmClient:
                     code="llm.http_error",
                 )
 
-            return parser(result.body)
+            return response  # type: ignore[return-value]
 
         raise LlmRequestError(
             f"All API keys failed for model {request.model.id!r}: {last_error}",
@@ -490,6 +515,8 @@ class LlmClient:
             url = url_or_template.format(key=key) if url_takes_key else url_or_template
             headers = header_factory(key)
 
+            log_send(request.log_label, request.model.id, payload)
+            send_start = time.monotonic()
             try:
                 result = await self.transport.execute(
                     url, headers, payload, request.model.timeout_seconds
@@ -497,12 +524,30 @@ class LlmClient:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                log_error(
+                    request.log_label,
+                    request.model.id,
+                    latency_seconds=time.monotonic() - send_start,
+                    error=exc,
+                )
                 # Transport / network error — don't evict; surface to
                 # the runner so retry_async can decide whether to retry.
                 raise LlmRequestError(
                     f"Transport failed for model {request.model.id!r}: {exc}",
                     code="llm.transport_error",
                 ) from exc
+
+            latency = time.monotonic() - send_start
+            response = parser(result.body) if result.status_code < 400 else None
+            log_recv(
+                request.log_label,
+                request.model.id,
+                latency_seconds=latency,
+                status_code=result.status_code,
+                body=result.body,
+                input_tokens=response.usage.input_tokens if response else 0,
+                output_tokens=response.usage.output_tokens if response else 0,
+            )
 
             if result.status_code in {401, 403}:
                 pool.mark_dead(key)
@@ -524,7 +569,7 @@ class LlmClient:
                     code="llm.http_error",
                 )
 
-            return parser(result.body)
+            return response  # type: ignore[return-value]
 
 
 def _parse_openai_response(body: Mapping[str, object]) -> ChatResponse:

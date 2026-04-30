@@ -103,6 +103,7 @@ class GlossarySubtaskRunner:
                     user_prompt=user_prompt,
                     stream=self.stream,
                     key_pool=self.key_pool,
+                    log_label=f"glossary {chunk_id}",
                 )
             )
         finally:
