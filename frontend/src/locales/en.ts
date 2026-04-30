@@ -134,12 +134,9 @@ export const en: Messages = {
       "Short note for the picker — what this preset is for",
     enabledLabel: "Enabled",
     systemTab: "System prompt",
-    suffixTab: "Output format",
     thinkingTab: "Thinking prompt",
     systemTabHelp:
       "Primary instructions: role, core rules, style baseline. Sent on every call — this is the bedrock of translation quality.",
-    suffixTabHelp:
-      "Output format contract. Forces the model to emit JSONLINE so the runner can decode line-by-line. Editing this can break translation decoding.",
     thinkingTabHelp:
       "Reasoning guidance. Active only when the model supports thinking mode — steers it through structured reasoning before producing the translation, improving fidelity on complex sentences.",
     saveAction: "Save",
@@ -199,10 +196,6 @@ export const en: Messages = {
     proxyUrlHint: "HTTP(S) proxy used by LLM and update calls. Empty disables.",
     aboutLabel: "About",
     updatesLabel: "Updates",
-    pythonRuntime: "Python runtime",
-    pythonRuntimeHint: "Reported by the desktop shell.",
-    cacheRoot: "Cache root",
-    cacheRootHint: "Read-only; configured by the runtime.",
     checkForUpdates: "Check for updates",
     checking: "Checking…",
     currentLabel: "Current",
@@ -486,6 +479,9 @@ export const en: Messages = {
       normalizeWidths: "Normalize term widths",
       normalizeWidthsHint:
         "Fold full-width Latin/digits/katakana to half-width (NFKC) and strip leading/trailing punctuation from extracted terms. Reduces near-duplicate entries; on by default.",
+      referenceExamplesPerTerm: "Reference examples per term",
+      minimumFrequency: "Minimum frequency",
+      maxTermDisplayLength: "Max term display length",
       on: "On",
       off: "Off",
     },

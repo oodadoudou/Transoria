@@ -127,12 +127,9 @@ export const zh: Messages = {
     descriptionPlaceholder: "选择列表中的简短说明——本预设的用途",
     enabledLabel: "启用",
     systemTab: "系统提示词",
-    suffixTab: "输出格式",
     thinkingTab: "思考引导",
     systemTabHelp:
       "主提示词。设定模型的角色、核心规则、文风基线。每次调用都会发送，是翻译质量的根本依据。",
-    suffixTabHelp:
-      "输出格式约束。强制模型按 JSONLINE 格式返回，便于程序逐行解析。改动这里可能会让译文解码失败。",
     thinkingTabHelp:
       "思考引导。仅当模型支持「思考模式」时生效，引导其先做结构化推理再产出译文，可提升复杂句的还原度。",
     saveAction: "保存",
@@ -190,10 +187,6 @@ export const zh: Messages = {
     proxyUrlHint: "用于 LLM 与更新检查的 HTTP(S) 代理。留空表示不启用。",
     aboutLabel: "关于",
     updatesLabel: "更新",
-    pythonRuntime: "Python 运行时",
-    pythonRuntimeHint: "由桌面壳层提供。",
-    cacheRoot: "缓存目录",
-    cacheRootHint: "只读，由运行时控制。",
     checkForUpdates: "检查更新",
     checking: "检查中…",
     currentLabel: "当前",
@@ -472,6 +465,9 @@ export const zh: Messages = {
       normalizeWidths: "术语全/半角归一化",
       normalizeWidthsHint:
         "对提取出的术语做 NFKC 折叠(全角拉丁字母/数字/片假名→半角),并剥离首尾标点。可减少近似重复条目;默认开启。",
+      referenceExamplesPerTerm: "每个术语的参考示例数",
+      minimumFrequency: "最低出现频率",
+      maxTermDisplayLength: "术语最大显示长度",
       on: "开",
       off: "关",
     },

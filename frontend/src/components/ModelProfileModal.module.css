@@ -187,12 +187,10 @@
   font-size: 12.5px;
 }
 
-@media (prefers-color-scheme: dark) {
-  .modelPicker {
-    border-color: var(--panel, #fff);
-    background: var(--hairline-strong, #d8d2c7);
-    color: var(--panel, #fff);
-  }
+:global(:root[data-theme="dark"]) .modelPicker {
+  border-color: var(--hairline-strong);
+  background: var(--panel);
+  color: var(--ink);
 }
 
 .actionRow {

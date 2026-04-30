@@ -119,10 +119,8 @@ export interface Messages {
     descriptionPlaceholder: string;
     enabledLabel: string;
     systemTab: string;
-    suffixTab: string;
     thinkingTab: string;
     systemTabHelp: string;
-    suffixTabHelp: string;
     thinkingTabHelp: string;
     saveAction: string;
     cancelAction: string;
@@ -177,10 +175,6 @@ export interface Messages {
     proxyUrlHint: string;
     aboutLabel: string;
     updatesLabel: string;
-    pythonRuntime: string;
-    pythonRuntimeHint: string;
-    cacheRoot: string;
-    cacheRootHint: string;
     checkForUpdates: string;
     checking: string;
     currentLabel: string;
@@ -430,6 +424,9 @@ export interface Messages {
       allowSrcEqDstHint: string;
       normalizeWidths: string;
       normalizeWidthsHint: string;
+      referenceExamplesPerTerm: string;
+      minimumFrequency: string;
+      maxTermDisplayLength: string;
       on: string;
       off: string;
     };

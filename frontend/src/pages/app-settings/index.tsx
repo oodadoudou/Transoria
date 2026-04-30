@@ -141,20 +141,7 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
               {meta.app_version} · {meta.platform} · {meta.build_mode}
             </span>
           }
-        >
-          <SettingRow
-            label={appSettingsExtra.pythonRuntime}
-            hint={appSettingsExtra.pythonRuntimeHint}
-          >
-            <span className={styles.metaValue}>{meta.python_version}</span>
-          </SettingRow>
-          <SettingRow
-            label={appSettingsExtra.cacheRoot}
-            hint={appSettingsExtra.cacheRootHint}
-          >
-            <span className={styles.metaPath}>{meta.cache_root}</span>
-          </SettingRow>
-        </Panel>
+        />
       ) : null}
 
       <UpdatesPanel />

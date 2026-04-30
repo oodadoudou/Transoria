@@ -14,7 +14,7 @@ import { ToggleSwitch } from "./ToggleSwitch";
 import styles from "./PromptPresetModal.module.css";
 
 type Mode = "create" | "edit";
-type Tab = "system" | "suffix" | "thinking";
+type Tab = "system" | "thinking";
 
 interface PromptPresetModalProps {
   mode: Mode;
@@ -207,15 +207,10 @@ export function PromptPresetModal({
   };
 
   const tabValue =
-    tab === "system"
-      ? draft.system_prompt
-      : tab === "suffix"
-        ? draft.suffix_prompt
-        : draft.thinking_prompt;
+    tab === "system" ? draft.system_prompt : draft.thinking_prompt;
 
   const setTabValue = (value: string) => {
     if (tab === "system") update("system_prompt", value);
-    else if (tab === "suffix") update("suffix_prompt", value);
     else update("thinking_prompt", value);
   };
 
@@ -285,12 +280,6 @@ export function PromptPresetModal({
               {m.systemTab}
             </TabButton>
             <TabButton
-              active={tab === "suffix"}
-              onClick={() => setTab("suffix")}
-            >
-              {m.suffixTab}
-            </TabButton>
-            <TabButton
               active={tab === "thinking"}
               onClick={() => setTab("thinking")}
             >
@@ -298,11 +287,7 @@ export function PromptPresetModal({
             </TabButton>
           </div>
           <div className={styles.tabHelp}>
-            {tab === "system"
-              ? m.systemTabHelp
-              : tab === "suffix"
-                ? m.suffixTabHelp
-                : m.thinkingTabHelp}
+            {tab === "system" ? m.systemTabHelp : m.thinkingTabHelp}
           </div>
           <TextField
             label=""

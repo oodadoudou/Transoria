@@ -55,11 +55,13 @@ export function RunPage() {
 
   const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
 
-  const modelItems: QuickSwitchItem[] = profiles.profiles.map((p) => ({
-    id: p.id,
-    name: p.display_name,
-    description: p.model_id,
-  }));
+  const modelItems: QuickSwitchItem[] = profiles.profiles
+    .filter((p) => p.api_key_status !== "missing")
+    .map((p) => ({
+      id: p.id,
+      name: p.display_name,
+      description: p.model_id,
+    }));
   const promptItems: QuickSwitchItem[] = promptSlice.presets
     .filter(
       (preset) => !preset.is_system || preset.id === localeDefaultPromptId,

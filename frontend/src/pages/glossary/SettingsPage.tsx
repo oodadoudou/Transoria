@@ -114,7 +114,7 @@ export function SettingsPage() {
         </ToggleRow>
         <ToggleRow label="" hint="">
           <NumberField
-            label="Reference examples per term"
+            label={settings.referenceExamplesPerTerm}
             value={draft.reference_examples_per_term}
             onChange={(v) =>
               moduleSettings.update("reference_examples_per_term", v)
@@ -125,7 +125,7 @@ export function SettingsPage() {
         </ToggleRow>
         <ToggleRow label="" hint="">
           <NumberField
-            label="Minimum frequency"
+            label={settings.minimumFrequency}
             value={draft.minimum_frequency}
             onChange={(v) => moduleSettings.update("minimum_frequency", v)}
             min={1}
@@ -133,22 +133,13 @@ export function SettingsPage() {
         </ToggleRow>
         <ToggleRow label="" hint="">
           <NumberField
-            label="Max term display length"
+            label={settings.maxTermDisplayLength}
             value={draft.max_term_display_length}
             onChange={(v) =>
               moduleSettings.update("max_term_display_length", v)
             }
             min={4}
             max={128}
-          />
-        </ToggleRow>
-        <ToggleRow label="" hint="">
-          <NumberField
-            label="Chunk token limit"
-            value={draft.chunk_token_limit}
-            onChange={(v) => moduleSettings.update("chunk_token_limit", v)}
-            min={500}
-            max={32000}
           />
         </ToggleRow>
       </Panel>
