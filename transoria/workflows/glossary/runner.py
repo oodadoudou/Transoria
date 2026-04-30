@@ -40,12 +40,27 @@ _FORMAT_RETRY_REMINDER = (
     "Output JSONLINE only. The first non-whitespace character must be \"{\". "
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
-_OUTPUT_CONTRACT_REMINDER = (
-    "FINAL OUTPUT CONTRACT: output JSONLINE only. Each line must be one JSON "
-    'object with exactly these keys: "src", "dst", "type". The "type" value '
-    "must be non-empty and follow the active prompt's taxonomy. "
-    "No prose, no Markdown, no code fence."
-)
+
+
+def _output_contract_reminder(target_language: str) -> str:
+    """Runtime-level output contract appended to every glossary call.
+
+    Lives here (not in the preset) so the same hard rules apply
+    regardless of which preset (system or user-custom) is active —
+    custom prompts shouldn't be able to drift the schema or let the
+    LLM emit mixed-language ``type`` values. The language clause is
+    parameterized so it tracks the user's currently selected target
+    language without the prompt author having to remember to set it.
+    """
+
+    return (
+        "FINAL OUTPUT CONTRACT: output JSONLINE only. Each line must be one JSON "
+        'object with exactly these keys: "src", "dst", "type". The "type" value '
+        "must be non-empty and follow the active prompt's taxonomy. "
+        f'The "type" value must always be written in {target_language} — '
+        "never mix languages, never fall back to English category names. "
+        "No prose, no Markdown, no code fence."
+    )
 
 
 def _should_retry_glossary(exc: BaseException) -> bool:
@@ -158,7 +173,10 @@ class GlossarySubtaskRunner:
         if session is not None:
             prompt_text = session.apply(prompt_text)
         user_prompt = _build_glossary_user_prompt(
-            instruction_prompt, prompt_text, format_retry=attempt_index > 0
+            instruction_prompt,
+            prompt_text,
+            target_language=self.target_language.value,
+            format_retry=attempt_index > 0,
         )
 
         reservation = -1
@@ -299,14 +317,18 @@ def _inject_first_name(text: str, first_name: str) -> str:
 
 
 def _build_glossary_user_prompt(
-    instruction_prompt: str, source_text: str, *, format_retry: bool
+    instruction_prompt: str,
+    source_text: str,
+    *,
+    target_language: str,
+    format_retry: bool,
 ) -> str:
     parts: list[str] = []
     if format_retry:
         parts.append(_FORMAT_RETRY_REMINDER)
     parts.append(instruction_prompt)
     parts.append("[Source Text]\n" + source_text)
-    parts.append(_OUTPUT_CONTRACT_REMINDER)
+    parts.append(_output_contract_reminder(target_language))
     return "\n\n".join(part for part in parts if part)
 
 
