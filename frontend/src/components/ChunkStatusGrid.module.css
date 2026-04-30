@@ -13,7 +13,6 @@
   border-radius: 4px;
   background: var(--hairline-strong, #d8d2c7);
   transition: background 220ms ease, opacity 220ms ease;
-  cursor: help;
 }
 
 .pending {
