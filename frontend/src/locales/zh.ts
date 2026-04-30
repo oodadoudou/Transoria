@@ -88,7 +88,8 @@ export const zh: Messages = {
     rpm: "每分钟请求数软上限。后端在每次请求前预先节流。",
     tpm: "每分钟 token 数软上限。0 表示不限（仅当 provider 提供 TPM 配额时启用）。",
     retry: "瞬时失败（5xx / 超时 / 限速）的最大重试次数。退避按指数递增。",
-    maxOutputTokens: "单次请求输出的 token 上限。值低更省，值高给推理留余地。",
+    maxOutputTokens:
+      "单次请求输出的 token 上限。值低更省，值高给推理留余地。0 表示交给 provider 默认；Anthropic 必须有上限，0 时会自动用 8192 兜底。",
     temperature: "采样温度 0–2。低值（0–0.5）更确定；高值更发散。",
   },
   modelModal: {

@@ -93,7 +93,7 @@ export const en: Messages = {
     retry:
       "Maximum retry attempts on transient failures (5xx, timeouts, rate-limit). Backoff is exponential.",
     maxOutputTokens:
-      "Upper bound on tokens emitted per request. Lower = cheaper, higher = more headroom for reasoning.",
+      "Upper bound on tokens emitted per request. Lower = cheaper, higher = more headroom for reasoning. 0 defers to the provider default; Anthropic requires a cap, so 0 is auto-substituted with 8192.",
     temperature:
       "Sampling temperature 0–2. Lower (0–0.5) is more deterministic; higher introduces variance.",
   },

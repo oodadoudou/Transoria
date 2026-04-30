@@ -627,6 +627,18 @@ class TaskService:
     prompts_cache_root: Path
     llm_client_factory: LlmClientFactory
 
+    def __post_init__(self) -> None:
+        # Per-task in-memory mirrors. Populated by
+        # ``_maybe_cleanup_cache`` right before it wipes a successfully
+        # completed task's disk cache, so ``read_snapshot`` and
+        # ``read_artifacts`` can still surface the run's final stats +
+        # output paths until the user starts a new task or restarts
+        # the app. The disk wipe is what the user sees on Finder; the
+        # mirrors keep the Run page coherent without leaving cache
+        # artifacts in the output folder.
+        self._completed_snapshots: dict[str, TaskSnapshot] = {}
+        self._completed_results: dict[str, dict[str, object]] = {}
+
     # ------------------------------------------------------------------
     # Per-task cache resolution
     # ------------------------------------------------------------------
@@ -663,16 +675,24 @@ class TaskService:
         return self.cache
 
     def _maybe_cleanup_cache(self, kind: str, task_id: str) -> None:
-        """Drop the bulky ``subtasks/`` dir on clean success.
+        """Wipe the entire ``transoria-cache/`` artifact for a clean run.
 
-        ``Clean success`` = task status COMPLETED and zero failed
-        subtasks. ``task.json`` + ``result.json`` are preserved so
-        ``read_snapshot`` / ``read_artifacts`` can still surface the
-        completed run; only the per-subtask payloads (which can be
-        thousands of files for a long book) are deleted.
+        ``Clean success`` = task status COMPLETED with zero failed
+        subtasks. After such a run the user only wants the actual
+        deliverables (translated files, glossary xlsx/json, references,
+        statistics) sitting in the output folder — the ``transoria-
+        cache/`` working directory is internal bookkeeping and should
+        not be visible.
+
+        Before the disk wipe, the snapshot is mirrored into
+        ``_completed_snapshots`` (in-memory, per-process) with progress
+        + token totals frozen into ``record.metadata``. ``read_snapshot``
+        falls back to that mirror so the Run page can keep showing
+        100% / completed-count / token totals until the user starts a
+        new task or restarts the app.
 
         Stopped / paused / failed tasks keep their full cache so the
-        user can resume.
+        user can resume — only clean COMPLETED triggers the wipe.
         """
 
         cache = self._cache_for_kind(kind)
@@ -686,10 +706,12 @@ class TaskService:
         progress = snapshot.progress(elapsed_seconds=elapsed_seconds)
         if progress.failed > 0:
             return
-        # Freeze the final progress + token totals into metadata before we
-        # wipe subtasks/. Without this the next read_snapshot would re-derive
-        # progress from an empty subtask list and surface 0/0 instead of
-        # the completed run's stats.
+
+        # Freeze final stats into the in-memory mirror's record so
+        # `_format_snapshot` reads them back even after the on-disk
+        # subtasks have vanished. Subtasks list is intentionally empty
+        # in the mirrored TaskSnapshot — `_format_snapshot` already
+        # handles that branch.
         usage = snapshot.usage()
         frozen = dict(snapshot.record.metadata)
         frozen["final_progress"] = {
@@ -706,17 +728,35 @@ class TaskService:
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
         }
-        cache.save_task(
-            replace(
-                snapshot.record,
-                metadata=frozen,
-                updated_at=_utc_now_iso(),
-            )
+        frozen_record = replace(
+            snapshot.record,
+            metadata=frozen,
+            updated_at=_utc_now_iso(),
         )
-        subtasks_dir = cache.task_dir(task_id) / "subtasks"
-        if subtasks_dir.exists():
+        self._completed_snapshots[task_id] = TaskSnapshot(
+            record=frozen_record, subtasks=()
+        )
+        # Read result.json into the result mirror BEFORE wiping —
+        # otherwise read_artifacts would 404 right after a clean
+        # completion. Failures swallowed: if the result file is
+        # already gone or unreadable, the mirror just stays empty
+        # and read_artifacts falls back to its partial path.
+        result_payload = self._read_result(task_id)
+        if result_payload is not None:
+            self._completed_results[task_id] = result_payload
+
+        # Wipe this task's directory under the cache root, then prune
+        # the cache root itself if no other task is parked there.
+        task_dir = cache.task_dir(task_id)
+        if task_dir.exists():
             try:
-                shutil.rmtree(subtasks_dir)
+                shutil.rmtree(task_dir)
+            except OSError:
+                return
+        if cache.root.exists():
+            try:
+                if not any(cache.root.iterdir()):
+                    cache.root.rmdir()
             except OSError:
                 return
 
@@ -1248,6 +1288,18 @@ class TaskService:
         try:
             snapshot = self._cache_for_task(task_id).load(task_id)
         except TaskNotFoundError as exc:
+            mirrored = self._completed_snapshots.get(task_id)
+            if mirrored is not None and mirrored.record.kind is record_kind:
+                # The disk cache was wiped because this task already
+                # finished cleanly; reject with the same error code we'd
+                # return if the cache were still on disk so callers see
+                # consistent behavior.
+                raise BridgeError(
+                    "task.invalid_transition",
+                    f"continue requires status STOPPED, PAUSED, or FAILED; got {mirrored.record.status.value}.",
+                    retryable=False,
+                    details={"status": mirrored.record.status.value},
+                ) from exc
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
                 details={"task_id": task_id},
@@ -1400,6 +1452,12 @@ class TaskService:
         try:
             snapshot = cache.load(task_id)
         except TaskNotFoundError as exc:
+            mirrored = self._completed_snapshots.get(task_id)
+            if mirrored is not None and mirrored.record.kind is record_kind:
+                # Disk cache was wiped after a clean COMPLETED run; serve
+                # the in-memory mirror so the Run page keeps showing the
+                # final stats until a new task is started.
+                return {"snapshot": _format_snapshot(mirrored)}
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
                 details={"task_id": task_id},
@@ -1447,6 +1505,15 @@ class TaskService:
         try:
             record = cache.load_record(task_id)
         except TaskNotFoundError as exc:
+            mirrored_result = self._completed_results.get(task_id)
+            mirrored_snapshot = self._completed_snapshots.get(task_id)
+            if mirrored_result is not None and mirrored_snapshot is not None:
+                if mirrored_snapshot.record.kind is not record_kind:
+                    raise BridgeError.invalid_argument(
+                        f"task {task_id!r} kind mismatch.",
+                        field="task_id",
+                    ) from exc
+                return mirrored_result
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
                 details={"task_id": task_id},
@@ -1542,6 +1609,18 @@ class TaskService:
                     cache.delete(record.id)
                 except TaskNotFoundError:
                     continue
+
+        # 3) Drop any in-memory completion mirrors for this kind so a
+        #    fresh start doesn't see stale "completed 100%" stats from
+        #    the previous run.
+        stale = [
+            tid
+            for tid, snap in self._completed_snapshots.items()
+            if snap.record.kind is task_kind
+        ]
+        for tid in stale:
+            self._completed_snapshots.pop(tid, None)
+            self._completed_results.pop(tid, None)
 
     def _spawn_thread(
         self,

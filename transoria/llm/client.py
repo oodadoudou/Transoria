@@ -238,6 +238,24 @@ def _thinking_payload(level: ThinkingLevel) -> dict[str, object] | None:
     return {"type": "enabled", "effort": level.value}
 
 
+# Anthropic's ``/v1/messages`` requires a non-zero ``max_tokens``; sending
+# 0 is rejected outright. Mirror the convention used by other tooling: a
+# user value of 0 / negative is treated as "auto" and replaced with this
+# minimum so the API accepts the request and the model has enough headroom
+# for typical translation responses.
+_ANTHROPIC_AUTO_MAX_TOKENS: int = 8192
+
+
+def _anthropic_max_tokens(configured: int) -> int:
+    """Convert a possibly-zero ``max_output_tokens`` into a value
+    Anthropic will accept. Zero or negative means the user wants the
+    provider default; we substitute a safe minimum because Anthropic
+    has no provider default for this field."""
+    if configured > 0:
+        return configured
+    return _ANTHROPIC_AUTO_MAX_TOKENS
+
+
 @dataclass(frozen=True)
 class LlmClient:
     transport: ChatTransport
@@ -320,7 +338,7 @@ class LlmClient:
         payload: dict[str, object] = {
             "model": request.model.model_id,
             "messages": messages,
-            "max_tokens": request.model.max_output_tokens,
+            "max_tokens": _anthropic_max_tokens(request.model.max_output_tokens),
         }
         if request.system_prompt:
             payload["system"] = request.system_prompt
