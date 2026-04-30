@@ -377,7 +377,6 @@ export const en: Messages = {
         failed: "Failed",
         remaining: "Remaining",
         elapsed: "Elapsed",
-        eta: "ETA",
         avgSpeed: "Avg speed",
       },
       liveCounter: {
@@ -514,7 +513,6 @@ export const en: Messages = {
         failed: "Failed",
         remaining: "Remaining",
         elapsed: "Elapsed",
-        eta: "ETA",
         avgSpeed: "Avg speed",
       },
       liveCounter: {

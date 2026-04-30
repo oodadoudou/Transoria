@@ -83,7 +83,6 @@ class ProgressStats:
     failed: int
     skipped: int
     rate_per_second: float = 0.0
-    eta_seconds: float = 0.0
 
     @property
     def remaining(self) -> int:
@@ -106,14 +105,10 @@ class TaskSnapshot:
         for subtask in self.subtasks:
             counts[subtask.status] += 1
         rate = 0.0
-        eta = 0.0
         if elapsed_seconds is not None and elapsed_seconds > 0:
             settled = counts[SubtaskStatus.COMPLETED] + counts[SubtaskStatus.SKIPPED]
             if settled > 0:
                 rate = settled / elapsed_seconds
-                remaining = counts[SubtaskStatus.PENDING] + counts[SubtaskStatus.RUNNING]
-                if rate > 0:
-                    eta = remaining / rate
         return ProgressStats(
             total=len(self.subtasks),
             pending=counts[SubtaskStatus.PENDING],
@@ -122,7 +117,6 @@ class TaskSnapshot:
             failed=counts[SubtaskStatus.FAILED],
             skipped=counts[SubtaskStatus.SKIPPED],
             rate_per_second=rate,
-            eta_seconds=eta,
         )
 
     def usage(self) -> TokenUsage:

@@ -365,7 +365,6 @@ export const zh: Messages = {
         failed: "失败",
         remaining: "剩余",
         elapsed: "已用时",
-        eta: "预计剩余",
         avgSpeed: "平均速度",
       },
       liveCounter: {
@@ -500,7 +499,6 @@ export const zh: Messages = {
         failed: "失败",
         remaining: "剩余",
         elapsed: "已用时",
-        eta: "预计剩余",
         avgSpeed: "平均速度",
       },
       liveCounter: {

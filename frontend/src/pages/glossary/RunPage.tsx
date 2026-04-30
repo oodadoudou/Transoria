@@ -98,8 +98,7 @@ export function RunPage() {
   const remaining = snapshot.progress.pending + snapshot.progress.running;
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
-  const etaSeconds =
-    snapshot.progress.eta_seconds > 0 ? snapshot.progress.eta_seconds : null;
+  const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
 
   return (
     <>
@@ -165,11 +164,7 @@ export function RunPage() {
             <Stat label={run.stats.remaining} value={NUM.format(remaining)} />
             <Stat
               label={run.stats.elapsed}
-              value={snapshot.isIdle ? "—" : formatDuration(0)}
-            />
-            <Stat
-              label={run.stats.eta}
-              value={etaSeconds === null ? "—" : formatDuration(etaSeconds)}
+              value={snapshot.isIdle ? "—" : formatDuration(elapsedSeconds)}
             />
             <Stat
               label={run.stats.avgSpeed}

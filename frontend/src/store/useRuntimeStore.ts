@@ -199,8 +199,8 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
         completed: 0,
         failed: 0,
         skipped: 0,
+        elapsed_seconds: 0,
         rate_per_second: 0,
-        eta_seconds: 0,
       },
       usage: runtime.snapshot?.usage ?? {
         input_tokens: 0,

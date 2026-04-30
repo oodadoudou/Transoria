@@ -342,8 +342,8 @@ export interface TaskProgress {
   completed: number;
   failed: number;
   skipped: number;
+  elapsed_seconds: number;
   rate_per_second: number;
-  eta_seconds: number;
 }
 
 export interface TaskUsage {

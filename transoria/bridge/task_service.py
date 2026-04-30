@@ -103,7 +103,7 @@ _ZOMBIE_TASK_STATES: frozenset[TaskStatus] = frozenset(
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def _new_task_id(kind: str) -> str:
@@ -247,7 +247,7 @@ def _format_header(record: TaskRecord) -> dict[str, object]:
     }
 
 
-def _progress_to_block(progress) -> dict[str, object]:
+def _progress_to_block(progress, *, elapsed_seconds: float) -> dict[str, object]:
     return {
         "total": progress.total,
         "pending": progress.pending,
@@ -255,8 +255,8 @@ def _progress_to_block(progress) -> dict[str, object]:
         "completed": progress.completed,
         "failed": progress.failed,
         "skipped": progress.skipped,
+        "elapsed_seconds": elapsed_seconds,
         "rate_per_second": progress.rate_per_second,
-        "eta_seconds": progress.eta_seconds,
     }
 
 
@@ -269,7 +269,8 @@ def _usage_to_block(usage) -> dict[str, object]:
 
 
 def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
-    progress = snapshot.progress()
+    elapsed_seconds = _task_elapsed_seconds(snapshot.record)
+    progress = snapshot.progress(elapsed_seconds=elapsed_seconds)
     usage = snapshot.usage()
     metadata = dict(snapshot.record.metadata)
     # When subtasks/ has been pruned post-completion (see
@@ -280,6 +281,9 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
     if len(snapshot.subtasks) == 0:
         frozen_progress = metadata.get("final_progress")
         if isinstance(frozen_progress, dict):
+            frozen_elapsed = _coerce_float(
+                frozen_progress.get("elapsed_seconds"), elapsed_seconds
+            )
             progress_block = {
                 "total": int(frozen_progress.get("total", 0)),
                 "pending": int(frozen_progress.get("pending", 0)),
@@ -287,11 +291,13 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
                 "completed": int(frozen_progress.get("completed", 0)),
                 "failed": int(frozen_progress.get("failed", 0)),
                 "skipped": int(frozen_progress.get("skipped", 0)),
-                "rate_per_second": 0.0,
-                "eta_seconds": 0.0,
+                "elapsed_seconds": frozen_elapsed,
+                "rate_per_second": _coerce_float(
+                    frozen_progress.get("rate_per_second"), 0.0
+                ),
             }
         else:
-            progress_block = _progress_to_block(progress)
+            progress_block = _progress_to_block(progress, elapsed_seconds=elapsed_seconds)
         frozen_usage = metadata.get("final_usage")
         if isinstance(frozen_usage, dict):
             input_t = int(frozen_usage.get("input_tokens", 0))
@@ -304,7 +310,7 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
         else:
             usage_block = _usage_to_block(usage)
     else:
-        progress_block = _progress_to_block(progress)
+        progress_block = _progress_to_block(progress, elapsed_seconds=elapsed_seconds)
         usage_block = _usage_to_block(usage)
     return {
         "header": _format_header(snapshot.record),
@@ -320,6 +326,36 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
         "active_prompt_id": metadata.get("prompt_preset_id"),
         "metadata": metadata,
     }
+
+
+def _task_elapsed_seconds(record: TaskRecord) -> float:
+    start = _parse_iso_timestamp(record.created_at)
+    if start is None:
+        return 0.0
+    if record.status in {TaskStatus.RUNNING, TaskStatus.PAUSING, TaskStatus.STOPPING}:
+        end = datetime.now(timezone.utc)
+    else:
+        end = _parse_iso_timestamp(record.updated_at) or datetime.now(timezone.utc)
+    return max(0.0, (end - start).total_seconds())
+
+
+def _parse_iso_timestamp(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _coerce_float(value: object, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _format_failures(snapshot: TaskSnapshot) -> list[dict[str, object]]:
@@ -646,7 +682,8 @@ class TaskService:
             return
         if snapshot.record.status is not TaskStatus.COMPLETED:
             return
-        progress = snapshot.progress()
+        elapsed_seconds = _task_elapsed_seconds(snapshot.record)
+        progress = snapshot.progress(elapsed_seconds=elapsed_seconds)
         if progress.failed > 0:
             return
         # Freeze the final progress + token totals into metadata before we
@@ -662,6 +699,8 @@ class TaskService:
             "completed": progress.completed,
             "failed": progress.failed,
             "skipped": progress.skipped,
+            "elapsed_seconds": elapsed_seconds,
+            "rate_per_second": progress.rate_per_second,
         }
         frozen["final_usage"] = {
             "input_tokens": usage.input_tokens,

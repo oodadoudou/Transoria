@@ -334,7 +334,6 @@ export interface Messages {
         failed: string;
         remaining: string;
         elapsed: string;
-        eta: string;
         avgSpeed: string;
       };
       liveCounter: {
@@ -454,7 +453,6 @@ export interface Messages {
         failed: string;
         remaining: string;
         elapsed: string;
-        eta: string;
         avgSpeed: string;
       };
       liveCounter: {
