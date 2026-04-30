@@ -34,9 +34,9 @@ ACTIVE_FIELD_BY_KIND = {
     "glossary": "active_glossary_prompt_id",
 }
 
-PROFILES_FIELD_BY_KIND = {
-    PromptKind.TRANSLATION: "translation_model_ids",
-    PromptKind.GLOSSARY: "glossary_model_ids",
+ACTIVE_MODEL_FIELD_BY_KIND = {
+    PromptKind.TRANSLATION: "active_translation_model_id",
+    PromptKind.GLOSSARY: "active_glossary_model_id",
 }
 
 
@@ -95,19 +95,17 @@ def _resolve_active_thinking_level(
     profile_store: ModelProfileStore,
     kind: PromptKind,
 ) -> ThinkingLevel | None:
-    """Return the leading model profile's thinking_level for ``kind``,
-    or ``None`` when the profile list is empty or the first saved
-    profile is gone. The caller treats ``None`` as 'no clamp; honor
-    the requested flag'. The preview clamp uses the first profile in
-    the rotation; mixed-thinking lists are a user choice we don't
-    second-guess for preview purposes."""
+    """Return the active model profile's thinking_level for ``kind``,
+    or ``None`` when no model is selected or the saved profile is
+    gone. The caller treats ``None`` as 'no clamp; honor the
+    requested flag'."""
 
-    field = PROFILES_FIELD_BY_KIND[kind]
+    field = ACTIVE_MODEL_FIELD_BY_KIND[kind]
     settings = settings_store.load_all()
-    profile_ids = getattr(settings.app, field)
-    if not profile_ids:
+    profile_id = getattr(settings.app, field)
+    if not isinstance(profile_id, str) or not profile_id:
         return None
-    profile = profile_store.get(profile_ids[0])
+    profile = profile_store.get(profile_id)
     if profile is None:
         return None
     return profile.thinking_level

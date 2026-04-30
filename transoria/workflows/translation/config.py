@@ -27,10 +27,7 @@ class TranslationConfig:
     output_dir: Path
     source_language: Language
     target_language: Language
-    # Ordered list of profiles for round-robin dispatch. The first
-    # profile is treated as the canonical source for retry policy
-    # (``retry_attempts``, backoff) and the prompt-build thinking flag.
-    models: tuple[ModelConfig, ...]
+    model: ModelConfig
     prompt_preset: PromptPreset
 
     glossary: Glossary = field(default_factory=Glossary.empty)

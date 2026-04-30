@@ -8,14 +8,14 @@ from transoria.runtime.executor import (
     SubtaskRunner,
     TaskExecutor,
 )
-from transoria.runtime.profile_pool import AllProfilesExhaustedError, ProfilePool
+from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
 from transoria.runtime.rate_limit import RpmLimiter
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import ProgressStats, TaskRecord, TaskSnapshot
 
 __all__ = [
-    "AllProfilesExhaustedError",
-    "ProfilePool",
+    "AllKeysFailedError",
+    "KeyPool",
     "ProgressEvent",
     "ProgressListener",
     "ProgressStats",

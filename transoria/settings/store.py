@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Mapping
 
 from transoria.settings.defaults import (
-    _APP_TUPLE_OF_STR_FIELDS,
     _TRANSLATION_LIST_OF_MAPPING_FIELDS,
     AllSettings,
     AppSettings,
@@ -27,12 +26,13 @@ from transoria.settings.defaults import (
     merge_module,
 )
 
-# Legacy single-id fields that pre-date the multi-profile rollout. On
-# hydrate we fold a non-null value into the corresponding new tuple
-# field so existing settings.json files don't lose their selection.
-_LEGACY_APP_FIELDS: dict[str, str] = {
-    "active_translation_model_id": "translation_model_ids",
-    "active_glossary_model_id": "glossary_model_ids",
+# Mid-rollout artefacts: the multi-profile experiment shipped briefly
+# with ``*_model_ids`` tuples on disk. On hydrate we fold the first id
+# back into the (now restored) single ``active_*_model_id`` so the
+# user's selection survives the architecture revert.
+_TUPLE_TO_SINGLE_APP_FIELDS: dict[str, str] = {
+    "translation_model_ids": "active_translation_model_id",
+    "glossary_model_ids": "active_glossary_model_id",
 }
 
 ModuleValue = (
@@ -139,9 +139,6 @@ def _hydrate(
     init_kwargs = {**asdict(fallback)}
     for key, value in raw.items():
         if key in valid_keys:
-            # JSON deserializes tuples as lists. Re-freeze list-of-dict
-            # fields on TranslationSettings so frozen dataclass
-            # invariants hold across save → load round-trips.
             if (
                 cls is TranslationSettings
                 and key in _TRANSLATION_LIST_OF_MAPPING_FIELDS
@@ -151,22 +148,16 @@ def _hydrate(
                     dict(item) if isinstance(item, Mapping) else item
                     for item in value
                 )
-            elif (
-                cls is AppSettings
-                and key in _APP_TUPLE_OF_STR_FIELDS
-                and isinstance(value, list)
-            ):
-                init_kwargs[key] = tuple(
-                    str(item) for item in value if isinstance(item, str)
-                )
             else:
                 init_kwargs[key] = value
     if cls is AppSettings:
-        for legacy, new_key in _LEGACY_APP_FIELDS.items():
-            if legacy in raw and not init_kwargs.get(new_key):
-                legacy_value = raw[legacy]
-                if isinstance(legacy_value, str) and legacy_value:
-                    init_kwargs[new_key] = (legacy_value,)
+        for tuple_field, single_field in _TUPLE_TO_SINGLE_APP_FIELDS.items():
+            if tuple_field in raw and not init_kwargs.get(single_field):
+                raw_value = raw[tuple_field]
+                if isinstance(raw_value, list) and raw_value:
+                    first = raw_value[0]
+                    if isinstance(first, str) and first:
+                        init_kwargs[single_field] = first
     return cls(**init_kwargs)
 
 

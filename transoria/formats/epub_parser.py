@@ -16,7 +16,6 @@ from lxml import etree
 
 OCF_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:container"
 ROW_BASE_NAV = 8_000_000_000
-ROW_BASE_OPF_TITLE = 8_500_000_000
 ROW_BASE_NCX = 9_000_000_000
 ROW_MULTIPLIER = 1_000_000
 
@@ -79,7 +78,6 @@ RE_NCX_BARE_AMP = re.compile(
 
 class EpubTextKind(str, Enum):
     BODY = "body"
-    OPF_TITLE = "opf_title"
     NAV = "nav"
     NCX = "ncx"
 
@@ -242,8 +240,12 @@ def find_ncx_path(root: etree._Element, manifest: dict[str, dict[str, str]]) -> 
 
 
 def extract_segments(archive: zipfile.ZipFile, package: EpubPackageInfo) -> list[EpubTextSegment]:
+    # OPF metadata <dc:title> is intentionally NOT extracted: many users
+    # keep the original-language title alongside the translation as a
+    # reference, and the title is part of the user's own metadata. NCX
+    # nav labels (inner TOC) are still extracted below — those are
+    # chapter titles, not the book title.
     segments: list[EpubTextSegment] = []
-    append_opf_title_segment(archive, package, segments)
 
     processed_paths: set[str] = set()
     for spine_index, doc_path in enumerate(package.spine_paths):
@@ -266,29 +268,6 @@ def extract_segments(archive: zipfile.ZipFile, package: EpubPackageInfo) -> list
         append_ncx_segments(archive, package.ncx_path, segments)
 
     return segments
-
-
-def append_opf_title_segment(
-    archive: zipfile.ZipFile,
-    package: EpubPackageInfo,
-    segments: list[EpubTextSegment],
-) -> None:
-    root = etree.fromstring(read_archive_entry(archive, package.opf_path))
-    for title in root.xpath(".//*[local-name()='metadata']/*[local-name()='title']"):
-        text = normalize_slot_text(title.text or "")
-        if not text.strip():
-            continue
-        elem_path = build_elem_path(root, title)
-        append_segment(
-            segments,
-            doc_path=package.opf_path,
-            block_path=elem_path,
-            part_texts=[text],
-            parts=[EpubPartRef(slot="text", path=elem_path)],
-            kind=EpubTextKind.OPF_TITLE,
-            row=ROW_BASE_OPF_TITLE,
-        )
-        return
 
 
 def append_xhtml_segments(

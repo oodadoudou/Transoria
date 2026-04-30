@@ -15,6 +15,7 @@ import httpx
 
 from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.usage import TokenUsage
+from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
 
 
 class LlmRequestError(RuntimeError):
@@ -58,6 +59,12 @@ class ChatRequest:
     history: tuple[ChatMessage, ...] = field(default_factory=tuple)
     temperature: float | None = None
     stream: bool = False
+    # Optional task-scoped key pool. When provided, the client picks
+    # keys via round-robin from the pool instead of iterating
+    # ``model.api_keys`` in order. Persistent auth failures evict
+    # the offending key; pool exhaustion raises
+    # ``llm.all_keys_failed``.
+    key_pool: KeyPool | None = None
 
 
 @dataclass(frozen=True)
@@ -395,6 +402,16 @@ class LlmClient:
         parser,
         url_takes_key: bool = False,
     ) -> ChatResponse:
+        if request.key_pool is not None:
+            return await self._send_with_pool(
+                request,
+                url_or_template,
+                payload,
+                header_factory=header_factory,
+                parser=parser,
+                url_takes_key=url_takes_key,
+            )
+
         keys = list(request.model.api_keys)
         attempts = len(keys) if request.model.rotate_keys else 1
         last_error: Exception | None = None
@@ -440,6 +457,74 @@ class LlmClient:
             f"All API keys failed for model {request.model.id!r}: {last_error}",
             code="llm.all_keys_failed",
         )
+
+    async def _send_with_pool(
+        self,
+        request: ChatRequest,
+        url_or_template: str,
+        payload: dict[str, object],
+        *,
+        header_factory,
+        parser,
+        url_takes_key: bool,
+    ) -> ChatResponse:
+        """Round-robin path. The pool picks the next key per call;
+        HTTP 401/403 evicts the key permanently for this task; HTTP 429
+        is treated as transient (retry without eviction); transport
+        failures don't evict (could be network blip)."""
+
+        assert request.key_pool is not None
+        pool = request.key_pool
+        last_error: Exception | None = None
+
+        while True:
+            try:
+                key = await pool.acquire()
+            except AllKeysFailedError as exc:
+                detail = f": {last_error}" if last_error is not None else ""
+                raise LlmRequestError(
+                    f"All API keys failed for model {request.model.id!r}{detail}",
+                    code="llm.all_keys_failed",
+                ) from exc
+
+            url = url_or_template.format(key=key) if url_takes_key else url_or_template
+            headers = header_factory(key)
+
+            try:
+                result = await self.transport.execute(
+                    url, headers, payload, request.model.timeout_seconds
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # Transport / network error — don't evict; surface to
+                # the runner so retry_async can decide whether to retry.
+                raise LlmRequestError(
+                    f"Transport failed for model {request.model.id!r}: {exc}",
+                    code="llm.transport_error",
+                ) from exc
+
+            if result.status_code in {401, 403}:
+                pool.mark_dead(key)
+                last_error = LlmRequestError(
+                    f"HTTP {result.status_code} (auth failure) from {url}: {result.body!r}"
+                )
+                continue
+
+            if result.status_code == 429:
+                # Per-key rate limit — try the next key without evicting.
+                last_error = LlmRequestError(
+                    f"HTTP 429 (rate limited) from {url}: {result.body!r}"
+                )
+                continue
+
+            if result.status_code >= 400:
+                raise LlmRequestError(
+                    f"HTTP {result.status_code} from {url}: {result.body!r}",
+                    code="llm.http_error",
+                )
+
+            return parser(result.body)
 
 
 def _parse_openai_response(body: Mapping[str, object]) -> ChatResponse:

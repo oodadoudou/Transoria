@@ -8,6 +8,7 @@ import { TranslationModule } from "./pages/translation";
 import { GlossaryModule } from "./pages/glossary";
 import { GeneralToolsModule } from "./pages/general-tools";
 import { AppSettingsModule } from "./pages/app-settings";
+import { AllKeysFailedDialog } from "./components/AllKeysFailedDialog";
 import styles from "./App.module.css";
 
 export function App() {
@@ -34,6 +35,7 @@ export function App() {
         </section>
         {onRunPage ? <StatusBar /> : null}
       </main>
+      <AllKeysFailedDialog />
     </div>
   );
 }

@@ -21,12 +21,15 @@ export function Inspector() {
   const promptPresets = usePromptPresets(kind);
   const appSettings = useModuleSettings("app");
 
-  const profileIds =
+  const activeModelId =
     appSettings.draft?.[
-      kind === "translation" ? "translation_model_ids" : "glossary_model_ids"
-    ] ?? [];
-  const primaryId = profileIds[0] ?? null;
-  const activeProfile = profilesStore.profiles.find((p) => p.id === primaryId);
+      kind === "translation"
+        ? "active_translation_model_id"
+        : "active_glossary_model_id"
+    ] ?? null;
+  const activeProfile = profilesStore.profiles.find(
+    (p) => p.id === activeModelId,
+  );
 
   const activePresetId =
     promptPresets[kind].activeId ??

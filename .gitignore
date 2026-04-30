@@ -4,6 +4,7 @@ docs/
 tasks/
 test/
 tests/
+scripts/
 
 # macOS
 .DS_Store

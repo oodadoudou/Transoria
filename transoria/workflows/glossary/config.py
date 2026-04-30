@@ -31,9 +31,7 @@ class GlossaryConfig:
     output_dir: Path
     source_language: Language
     target_language: Language
-    # Ordered list of profiles for round-robin dispatch. See
-    # ``TranslationConfig.models`` for semantics.
-    models: tuple[ModelConfig, ...]
+    model: ModelConfig
     prompt_preset: PromptPreset
 
     reference_example_limit: int = DEFAULT_REFERENCE_EXAMPLE_LIMIT

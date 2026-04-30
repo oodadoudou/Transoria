@@ -74,10 +74,8 @@ export interface AppSettings {
   theme: Theme;
   ui_scale: number;
   proxy_url: string;
-  /** Ordered list of profile ids the runtime rotates across for
-   *  translation tasks. Empty = no model selected. */
-  translation_model_ids: string[];
-  glossary_model_ids: string[];
+  active_translation_model_id: string | null;
+  active_glossary_model_id: string | null;
   active_translation_prompt_id: string | null;
   active_glossary_prompt_id: string | null;
 }

@@ -36,6 +36,12 @@ export const en: Messages = {
     dismiss: "Dismiss",
     retry: "Retry",
   },
+  allKeysFailed: {
+    title: "All API keys failed",
+    body: "Every API key configured for the active model has been rejected by the provider. The task has been stopped. Open the Model page to refresh or replace the keys, then start the task again.",
+    dismiss: "Dismiss",
+    openModelConfig: "Open Model config",
+  },
   runControls: {
     start: "Start",
     pause: "Pause",
@@ -93,21 +99,6 @@ export const en: Messages = {
       "When more than one API key is set, cycle through them on rate-limit / 5xx errors before giving up.",
     runtimeTuningLabel: "Runtime tuning",
     samplingLabel: "Sampling",
-  },
-  modelListPicker: {
-    title: "Active Model Rotation",
-    selectedTitle: "Rotation order",
-    selectedEmpty: "No profiles selected. Pick at least one to start a task.",
-    availableTitle: "Available profiles",
-    availableEmpty: "Every configured profile is already in the rotation.",
-    addAction: "Add",
-    moveUp: "Move up",
-    moveDown: "Move down",
-    removeAction: "Remove",
-    cancelAction: "Cancel",
-    applyAction: "Apply",
-    rotationHint:
-      "Each LLM call rotates to the next profile in this list, gated by per-profile RPM. Configure profiles on the Models page.",
   },
   quickSwitch: {
     titleModel: "Switch active model",

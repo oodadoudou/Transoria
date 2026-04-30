@@ -36,9 +36,9 @@ from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.model_profiles import ModelProfileStore, mask_api_keys
 from transoria.settings import SettingsStore
 
-PROFILES_FIELD_BY_MODULE = {
-    "translation": "translation_model_ids",
-    "glossary": "glossary_model_ids",
+ACTIVE_FIELD_BY_MODULE = {
+    "translation": "active_translation_model_id",
+    "glossary": "active_glossary_model_id",
 }
 
 
@@ -136,14 +136,13 @@ def _build_handlers(
             raise BridgeError.not_found(
                 f"profile {profile_id!r} does not exist."
             ) from exc
-        # Drop the deleted profile from every module's selection list.
+        # Clear active-model selections that referenced the deleted profile.
         current = settings_store.load_all()
         patch: dict[str, object] = {}
-        for field in PROFILES_FIELD_BY_MODULE.values():
-            current_ids = getattr(current.app, field)
-            filtered = tuple(pid for pid in current_ids if pid != profile_id)
-            if filtered != current_ids:
-                patch[field] = list(filtered)
+        if current.app.active_translation_model_id == profile_id:
+            patch["active_translation_model_id"] = None
+        if current.app.active_glossary_model_id == profile_id:
+            patch["active_glossary_model_id"] = None
         if patch:
             settings_store.save_partial("app", patch)
         return {}
@@ -170,46 +169,26 @@ def _build_handlers(
             )
         }
 
-    def set_module_profiles(payload: Mapping[str, object]) -> dict[str, object]:
-        """Replace the ordered profile-id list for one module.
-
-        Empty list = no model selected (task start will surface a
-        friendly error). Duplicate ids and unknown ids are rejected.
-        """
-
+    def select_active(payload: Mapping[str, object]) -> dict[str, object]:
         module = payload.get("module")
-        if module not in PROFILES_FIELD_BY_MODULE:
+        if module not in ACTIVE_FIELD_BY_MODULE:
             raise BridgeError.invalid_argument(
                 "module must be 'translation' or 'glossary'.",
                 field="module",
             )
-        raw = payload.get("profile_ids")
-        if not isinstance(raw, list):
+        profile_id = payload.get("profile_id")
+        if profile_id is not None and not isinstance(profile_id, str):
             raise BridgeError.invalid_argument(
-                "profile_ids must be a list of strings.",
-                field="profile_ids",
+                "profile_id must be a string or null.",
+                field="profile_id",
             )
-        ids: list[str] = []
-        seen: set[str] = set()
-        for index, entry in enumerate(raw):
-            if not isinstance(entry, str) or not entry:
-                raise BridgeError.invalid_argument(
-                    f"profile_ids[{index}] must be a non-empty string.",
-                    field="profile_ids",
-                )
-            if entry in seen:
-                raise BridgeError.invalid_argument(
-                    f"profile_ids contains duplicate id: {entry!r}",
-                    field="profile_ids",
-                )
-            if profile_store.get(entry) is None:
+        if isinstance(profile_id, str) and profile_id:
+            if profile_store.get(profile_id) is None:
                 raise BridgeError.not_found(
-                    f"profile {entry!r} does not exist."
+                    f"profile {profile_id!r} does not exist."
                 )
-            seen.add(entry)
-            ids.append(entry)
-        field = PROFILES_FIELD_BY_MODULE[module]
-        updated = settings_store.save_partial("app", {field: ids})
+        field = ACTIVE_FIELD_BY_MODULE[module]
+        updated = settings_store.save_partial("app", {field: profile_id})
         return {"app": _app_settings_dict(updated.app)}
 
     def test_connection(payload: Mapping[str, object]) -> dict[str, object]:
@@ -302,7 +281,7 @@ def _build_handlers(
         "model_profiles.update": update,
         "model_profiles.delete": delete,
         "model_profiles.set_api_key": set_api_key,
-        "model_profiles.set_module_profiles": set_module_profiles,
+        "model_profiles.select_active": select_active,
         "model_profiles.test_connection": test_connection,
         "model_profiles.fetch_model_list": fetch_model_list,
     }
@@ -578,14 +557,7 @@ def _field_from_exc(exc: Exception) -> str | None:
 def _app_settings_dict(value: object) -> dict[str, object]:
     from dataclasses import asdict  # noqa: PLC0415
 
-    raw = asdict(value)  # type: ignore[arg-type]
-    # asdict preserves tuples; the wire format is JSON, so coerce
-    # tuple-of-string fields to lists so the bridge response matches
-    # what the frontend will deserialize.
-    for field_name in ("translation_model_ids", "glossary_model_ids"):
-        if field_name in raw and isinstance(raw[field_name], tuple):
-            raw[field_name] = list(raw[field_name])
-    return raw
+    return asdict(value)  # type: ignore[arg-type]
 
 
 def _default_chat_transport() -> ChatTransport:

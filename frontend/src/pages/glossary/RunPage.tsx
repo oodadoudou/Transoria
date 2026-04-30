@@ -17,7 +17,6 @@ import {
   QuickSwitchModal,
   type QuickSwitchItem,
 } from "@/components/QuickSwitchModal";
-import { ModelListPicker } from "@/components/ModelListPicker";
 import styles from "./RunPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -39,27 +38,29 @@ export function RunPage() {
   const snapshot = useRunSnapshot("glossary");
   usePollRunSnapshot("glossary");
 
-  const profileIds = appSettings.draft?.glossary_model_ids ?? [];
-  const activeModels = profileIds
-    .map((id) => profiles.profiles.find((p) => p.id === id))
-    .filter((p): p is NonNullable<typeof p> => p !== undefined);
-  const primaryModel = activeModels[0];
+  const activeModelId = appSettings.draft?.active_glossary_model_id ?? null;
+  const activeModel = activeModelId
+    ? profiles.profiles.find((p) => p.id === activeModelId)
+    : undefined;
   const activePrompt = promptSlice.activeId
     ? promptSlice.presets.find((p) => p.id === promptSlice.activeId)
     : undefined;
 
   const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
 
+  const modelItems: QuickSwitchItem[] = profiles.profiles.map((p) => ({
+    id: p.id,
+    name: p.display_name,
+    description: p.model_id,
+  }));
   const promptItems: QuickSwitchItem[] = promptSlice.presets.map((preset) => ({
     id: preset.id,
     name: preset.name,
     description: preset.description,
   }));
 
-  const handleSubmitModelList = async (orderedIds: string[]) => {
-    await useModelProfilesStore
-      .getState()
-      .setModuleProfiles("glossary", orderedIds);
+  const handleSelectModel = async (id: string) => {
+    await useModelProfilesStore.getState().selectActive("glossary", id);
     void useSettingsStore.getState().hydrate();
   };
   const handleSelectPrompt = async (id: string) => {
@@ -85,18 +86,8 @@ export function RunPage() {
         <div className={styles.activeStrip}>
           <ActiveCard
             label={run.activeModel}
-            primary={
-              activeModels.length === 0
-                ? "—"
-                : activeModels.length === 1
-                  ? (primaryModel?.display_name ?? "—")
-                  : `${primaryModel?.display_name ?? ""} +${activeModels.length - 1}`
-            }
-            secondary={
-              activeModels.length === 0
-                ? ""
-                : activeModels.map((m) => m.model_id).join(" → ")
-            }
+            primary={activeModel?.display_name ?? "—"}
+            secondary={activeModel?.model_id ?? ""}
             onSwitch={() => setSwitchOpen("model")}
             switchLabel={run.switch}
           />
@@ -111,12 +102,12 @@ export function RunPage() {
       </Panel>
 
       {switchOpen === "model" ? (
-        <ModelListPicker
-          title={messages.modelListPicker.title}
-          available={profiles.profiles}
-          selectedIds={profileIds}
+        <QuickSwitchModal
+          title={messages.quickSwitch.titleModel}
+          items={modelItems}
+          activeId={activeModelId}
           emptyMessage={messages.quickSwitch.emptyModel}
-          onSubmit={handleSubmitModelList}
+          onSelect={handleSelectModel}
           onClose={() => setSwitchOpen(null)}
           onManage={() => navigate({ module: "model", page: "general" })}
         />

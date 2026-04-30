@@ -30,6 +30,12 @@ export const zh: Messages = {
     perMinute: "{n} 段 / 分钟",
     tokens: "{n} token",
   },
+  allKeysFailed: {
+    title: "所有 API key 都已失效",
+    body: "当前模型配置的所有 API key 都被提供方拒绝。任务已自动停止。请打开「模型」页刷新或替换 key，然后重新开始任务。",
+    dismiss: "关闭",
+    openModelConfig: "打开模型配置",
+  },
   errors: {
     runFailureTitle: "最近一次操作失败",
     loadFailureTitle: "加载失败",
@@ -87,21 +93,6 @@ export const zh: Messages = {
       "配置多个 API key 时，遇到限速 / 5xx 时自动切换下一个 key 再放弃。",
     runtimeTuningLabel: "运行参数",
     samplingLabel: "采样",
-  },
-  modelListPicker: {
-    title: "模型轮询列表",
-    selectedTitle: "轮询顺序",
-    selectedEmpty: "未选择任何配置,至少选一项才能开始任务。",
-    availableTitle: "可用配置",
-    availableEmpty: "全部已配置项都已加入轮询。",
-    addAction: "加入",
-    moveUp: "上移",
-    moveDown: "下移",
-    removeAction: "移除",
-    cancelAction: "取消",
-    applyAction: "应用",
-    rotationHint:
-      "每次 LLM 调用按列表顺序轮询下一个配置,各自的 RPM 桶独立计数。配置目录在「模型」页管理。",
   },
   quickSwitch: {
     titleModel: "切换激活模型",

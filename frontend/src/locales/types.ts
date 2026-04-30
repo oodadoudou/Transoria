@@ -32,6 +32,12 @@ export interface Messages {
     dismiss: string;
     retry: string;
   };
+  allKeysFailed: {
+    title: string;
+    body: string;
+    dismiss: string;
+    openModelConfig: string;
+  };
   runControls: {
     start: string;
     pause: string;
@@ -89,20 +95,6 @@ export interface Messages {
     emptyModel: string;
     emptyPrompt: string;
     manageLink: string;
-  };
-  modelListPicker: {
-    title: string;
-    selectedTitle: string;
-    selectedEmpty: string;
-    availableTitle: string;
-    availableEmpty: string;
-    addAction: string;
-    moveUp: string;
-    moveDown: string;
-    removeAction: string;
-    cancelAction: string;
-    applyAction: string;
-    rotationHint: string;
   };
   promptModal: {
     titleAdd: string;

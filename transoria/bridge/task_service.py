@@ -544,8 +544,8 @@ class TaskService:
         target_lang = _coerce_language(
             translation.target_language, field="target_language"
         )
-        models = self._resolve_model_profiles(
-            app.translation_model_ids, field="translation_model_ids"
+        model = self._resolve_model_profile(
+            app.active_translation_model_id, field="active_translation_model_id"
         )
         preset = self._resolve_prompt_preset(
             app.active_translation_prompt_id, kind=PromptKind.TRANSLATION
@@ -567,7 +567,7 @@ class TaskService:
             output_dir=output_dir,
             source_language=source_lang,
             target_language=target_lang,
-            models=models,
+            model=model,
             prompt_preset=preset,
             glossary=glossary,
             text_preserve_rules=text_preserve_rules,
@@ -583,10 +583,10 @@ class TaskService:
                 0, int(translation.low_confidence_max_retries)
             ),
         )
-        return config, models, preset
+        return config, model, preset
 
     def start_translation(self, request_id: str) -> dict[str, object]:
-        config, models, preset = self._build_translation_config()
+        config, model, preset = self._build_translation_config()
         input_dir = config.input_dir
         output_dir = config.output_dir
         source_lang = config.source_language
@@ -607,8 +607,7 @@ class TaskService:
                 "output_dir": str(output_dir),
                 "source_language": source_lang.value,
                 "target_language": target_lang.value,
-                "model_id": models[0].id,
-                "model_ids": [m.id for m in models],
+                "model_id": model.id,
                 "prompt_preset_id": preset.id,
                 "request_id": request_id,
             },
@@ -673,8 +672,8 @@ class TaskService:
         target_lang = _coerce_language(
             glossary.target_language, field="target_language"
         )
-        models = self._resolve_model_profiles(
-            app.glossary_model_ids, field="glossary_model_ids"
+        model = self._resolve_model_profile(
+            app.active_glossary_model_id, field="active_glossary_model_id"
         )
         preset = self._resolve_prompt_preset(
             app.active_glossary_prompt_id, kind=PromptKind.GLOSSARY
@@ -685,7 +684,7 @@ class TaskService:
             output_dir=output_dir,
             source_language=source_lang,
             target_language=target_lang,
-            models=models,
+            model=model,
             prompt_preset=preset,
             reference_example_limit=max(
                 0, int(glossary.reference_examples_per_term)
@@ -697,10 +696,10 @@ class TaskService:
             combine_folder_glossary=bool(glossary.merge_folder_glossary),
             normalize_widths=bool(glossary.normalize_widths),
         )
-        return config, models, preset
+        return config, model, preset
 
     def start_glossary(self, request_id: str) -> dict[str, object]:
-        config, models, preset = self._build_glossary_config()
+        config, model, preset = self._build_glossary_config()
         input_dir = config.input_dir
         output_dir = config.output_dir
         source_lang = config.source_language
@@ -721,8 +720,7 @@ class TaskService:
                 "output_dir": str(output_dir),
                 "source_language": source_lang.value,
                 "target_language": target_lang.value,
-                "model_id": models[0].id,
-                "model_ids": [m.id for m in models],
+                "model_id": model.id,
                 "prompt_preset_id": preset.id,
                 "request_id": request_id,
             },
@@ -1254,30 +1252,27 @@ class TaskService:
             )
         return record_kind
 
-    def _resolve_model_profiles(
-        self, profile_ids: tuple[str, ...], *, field: str
-    ) -> tuple[ModelConfig, ...]:
-        if not profile_ids:
+    def _resolve_model_profile(
+        self, profile_id: str | None, *, field: str
+    ) -> ModelConfig:
+        if not profile_id:
             raise BridgeError.invalid_argument(
-                f"{field} is empty; pick at least one model profile.",
+                f"{field} is not set; pick a model profile in App Settings.",
                 field=field,
             )
-        resolved: list[ModelConfig] = []
-        for profile_id in profile_ids:
-            profile = self.profile_store.get(profile_id)
-            if profile is None:
-                raise BridgeError.invalid_argument(
-                    f"model profile {profile_id!r} does not exist.",
-                    field=field,
-                )
-            if not profile.api_keys:
-                raise BridgeError.invalid_argument(
-                    f"model profile {profile_id!r} has no API key configured.",
-                    field=field,
-                    details={"reason": "missing_api_key"},
-                )
-            resolved.append(profile)
-        return tuple(resolved)
+        profile = self.profile_store.get(profile_id)
+        if profile is None:
+            raise BridgeError.invalid_argument(
+                f"model profile {profile_id!r} does not exist.",
+                field=field,
+            )
+        if not profile.api_keys:
+            raise BridgeError.invalid_argument(
+                f"model profile {profile_id!r} has no API key configured.",
+                field=field,
+                details={"reason": "missing_api_key"},
+            )
+        return profile
 
     def _resolve_prompt_preset(
         self, preset_id: str | None, *, kind: PromptKind

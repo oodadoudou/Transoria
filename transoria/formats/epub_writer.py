@@ -208,7 +208,7 @@ def _is_nav_or_metadata_doc(doc_path: str, root: etree._Element, segments) -> bo
     lower = doc_path.lower()
     if lower.endswith(".opf") or lower.endswith(".ncx"):
         return True
-    if any(segment.kind in {EpubTextKind.NAV, EpubTextKind.OPF_TITLE, EpubTextKind.NCX} for segment in segments):
+    if any(segment.kind in {EpubTextKind.NAV, EpubTextKind.NCX} for segment in segments):
         return True
     return _is_nav_page(root)
 

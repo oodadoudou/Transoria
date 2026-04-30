@@ -25,11 +25,8 @@ class AppSettings:
     theme: Theme = "system"
     ui_scale: float = 1.0
     proxy_url: str = ""
-    # Ordered list of model profile ids that the module will rotate
-    # across at runtime (round-robin per LLM call). Empty list = no
-    # model selected; the task starter raises a friendly error.
-    translation_model_ids: tuple[str, ...] = ()
-    glossary_model_ids: tuple[str, ...] = ()
+    active_translation_model_id: str | None = None
+    active_glossary_model_id: str | None = None
     active_translation_prompt_id: str | None = None
     active_glossary_prompt_id: str | None = None
 
@@ -155,11 +152,6 @@ _TRANSLATION_LIST_OF_MAPPING_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-# AppSettings fields that hold ``tuple[str, ...]`` on disk but accept
-# a list of strings on the wire (multi-select profile picker).
-_APP_TUPLE_OF_STR_FIELDS: frozenset[str] = frozenset(
-    {"translation_model_ids", "glossary_model_ids"}
-)
 
 
 def default_module_settings(
@@ -230,30 +222,6 @@ def _coerce(
             normalized.append(dict(entry))
         return tuple(normalized)
 
-    # Special-case: tuple-of-string fields on AppSettings
-    # (per-module ordered profile id lists). Reject duplicates so the
-    # round-robin doesn't collapse silently.
-    if key in _APP_TUPLE_OF_STR_FIELDS and isinstance(current, AppSettings):
-        if not isinstance(value, (list, tuple)):
-            raise ValueError(
-                f"Field {key!r} expects a list of strings, "
-                f"got {type(value).__name__}"
-            )
-        ids: list[str] = []
-        seen: set[str] = set()
-        for index, entry in enumerate(value):
-            if not isinstance(entry, str):
-                raise ValueError(
-                    f"Field {key!r} entry {index} must be a string, "
-                    f"got {type(entry).__name__}"
-                )
-            if entry in seen:
-                raise ValueError(
-                    f"Field {key!r} contains duplicate id: {entry!r}"
-                )
-            seen.add(entry)
-            ids.append(entry)
-        return tuple(ids)
 
     field_type = current.__dataclass_fields__[key].type  # type: ignore[attr-defined]
     annotation = field_type if isinstance(field_type, str) else field_type.__name__
@@ -287,7 +255,6 @@ __all__ = [
     "SettingsModule",
     "Theme",
     "TranslationSettings",
-    "_APP_TUPLE_OF_STR_FIELDS",
     "_TRANSLATION_LIST_OF_MAPPING_FIELDS",
     "default_module_settings",
     "default_settings",
