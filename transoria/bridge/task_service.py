@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import threading
 import traceback
 from dataclasses import dataclass, replace
@@ -517,12 +518,76 @@ def _scan_bilingual_files(output_dir: Path) -> list[str]:
 class TaskService:
     """Bridge-facing facade over the runtime + workflow orchestrators."""
 
-    cache: TaskCache
+    cache: TaskCache  # legacy fallback when settings.output_folder is unset
     registry: TaskRegistry
     settings_store: SettingsStore
     profile_store: ModelProfileStore
     prompts_cache_root: Path
     llm_client_factory: LlmClientFactory
+
+    # ------------------------------------------------------------------
+    # Per-task cache resolution
+    # ------------------------------------------------------------------
+    #
+    # Task records (record.json + subtasks/) live under the user's
+    # output folder so each book/run keeps its own progress cache and
+    # the user can manually wipe runs they no longer want. Falls back
+    # to the legacy app-level cache when the output folder is unset
+    # (e.g. early test fixtures, smoke probes).
+
+    _CACHE_DIRNAME = "transoria-cache"
+
+    def _cache_for_kind(self, kind: str) -> TaskCache:
+        settings = self.settings_store.load_all()
+        if kind == "translation":
+            output = settings.translation.output_folder
+        elif kind == "glossary":
+            output = settings.glossary.output_folder
+        elif kind == "replacement":
+            output = settings.replacement.output_folder
+        else:
+            return self.cache
+        if not output:
+            return self.cache
+        return TaskCache(root=Path(output) / self._CACHE_DIRNAME)
+
+    def _cache_for_task(self, task_id: str) -> TaskCache:
+        if task_id.startswith("translation-"):
+            return self._cache_for_kind("translation")
+        if task_id.startswith("glossary-"):
+            return self._cache_for_kind("glossary")
+        if task_id.startswith("replacement-"):
+            return self._cache_for_kind("replacement")
+        return self.cache
+
+    def _maybe_cleanup_cache(self, kind: str, task_id: str) -> None:
+        """Drop the bulky ``subtasks/`` dir on clean success.
+
+        ``Clean success`` = task status COMPLETED and zero failed
+        subtasks. ``task.json`` + ``result.json`` are preserved so
+        ``read_snapshot`` / ``read_artifacts`` can still surface the
+        completed run; only the per-subtask payloads (which can be
+        thousands of files for a long book) are deleted.
+
+        Stopped / paused / failed tasks keep their full cache so the
+        user can resume.
+        """
+
+        cache = self._cache_for_kind(kind)
+        try:
+            snapshot = cache.load(task_id)
+        except (TaskNotFoundError, OSError, ValueError):
+            return
+        if snapshot.record.status is not TaskStatus.COMPLETED:
+            return
+        if snapshot.progress().failed > 0:
+            return
+        subtasks_dir = cache.task_dir(task_id) / "subtasks"
+        if subtasks_dir.exists():
+            try:
+                shutil.rmtree(subtasks_dir)
+            except OSError:
+                return
 
     # ------------------------------------------------------------------
     # Public: translation
@@ -617,10 +682,11 @@ class TaskService:
             },
         )
 
+        cache = self._cache_for_kind("translation")
         running = RunningTask(
             task_id=task_id,
             kind="translation",
-            cache=self.cache,
+            cache=cache,
             created_at=started_at,
         )
         self.registry.add(running)
@@ -638,6 +704,7 @@ class TaskService:
         running: RunningTask,
     ) -> None:
         client = self.llm_client_factory()
+        cache = self._cache_for_kind("translation")
 
         def _capture(executor: TaskExecutor) -> None:
             running.set_executor(executor)
@@ -647,13 +714,14 @@ class TaskService:
             self._write_result(task_id, payload)
 
         orchestrator = TranslationOrchestrator(
-            cache=self.cache,
+            cache=cache,
             client=client,
             id_factory=lambda: task_id,
             on_executor_created=_capture,
             on_result_finalized=_finalize,
         )
         await orchestrator.run(config)
+        self._maybe_cleanup_cache("translation", task_id)
 
     # ------------------------------------------------------------------
     # Public: glossary
@@ -733,10 +801,11 @@ class TaskService:
             },
         )
 
+        cache = self._cache_for_kind("glossary")
         running = RunningTask(
             task_id=task_id,
             kind="glossary",
-            cache=self.cache,
+            cache=cache,
             created_at=started_at,
         )
         self.registry.add(running)
@@ -754,6 +823,7 @@ class TaskService:
         running: RunningTask,
     ) -> None:
         client = self.llm_client_factory()
+        cache = self._cache_for_kind("glossary")
 
         def _capture(executor: TaskExecutor) -> None:
             running.set_executor(executor)
@@ -763,13 +833,14 @@ class TaskService:
             self._write_result(task_id, payload)
 
         orchestrator = GlossaryOrchestrator(
-            cache=self.cache,
+            cache=cache,
             client=client,
             id_factory=lambda: task_id,
             on_executor_created=_capture,
             on_result_finalized=_finalize,
         )
         await orchestrator.run(config)
+        self._maybe_cleanup_cache("glossary", task_id)
 
     # ------------------------------------------------------------------
     # Public: replacement
@@ -810,10 +881,11 @@ class TaskService:
         started_at = _utc_now_iso()
         files = scan_input_directory(input_dir)
 
+        cache = self._cache_for_kind("replacement")
         running = RunningTask(
             task_id=task_id,
             kind="replacement",
-            cache=self.cache,
+            cache=cache,
             created_at=started_at,
         )
         self.registry.add(running)
@@ -867,7 +939,7 @@ class TaskService:
             )
             for index, doc in enumerate(files)
         ]
-        self.cache.write_seed(record, subtasks)
+        cache.write_seed(record, subtasks)
 
         stop_on_first_error = bool(replacement.stop_on_first_error)
 
@@ -894,7 +966,8 @@ class TaskService:
     ) -> None:
         self._mark_status(task_id, TaskStatus.RUNNING)
 
-        snapshot = self.cache.load(task_id)
+        cache = self._cache_for_kind("replacement")
+        snapshot = cache.load(task_id)
         outputs: list[Path] = []
         total_replacements = 0
         was_stopped = False
@@ -912,7 +985,7 @@ class TaskService:
                 last_error="",
                 last_error_at="",
             )
-            self.cache.save_subtask(running_state)
+            cache.save_subtask(running_state)
 
             payload = subtask.request_payload
             source = Path(str(payload.get("source_file", "")))
@@ -936,7 +1009,7 @@ class TaskService:
                         ensure_ascii=False,
                     ),
                 )
-                self.cache.save_subtask(completed)
+                cache.save_subtask(completed)
             except Exception as exc:  # noqa: BLE001
                 failed = replace(
                     running_state,
@@ -944,7 +1017,7 @@ class TaskService:
                     last_error=f"{type(exc).__name__}: {exc}",
                     last_error_at=_utc_now_iso(),
                 )
-                self.cache.save_subtask(failed)
+                cache.save_subtask(failed)
                 if stop_on_first_error:
                     early_break = True
                     break
@@ -958,7 +1031,7 @@ class TaskService:
         }
         self._write_result(task_id, statistics)
 
-        latest = self.cache.load(task_id)
+        latest = cache.load(task_id)
         progress = latest.progress()
         if was_stopped or (early_break and progress.pending > 0):
             final = TaskStatus.STOPPED
@@ -969,6 +1042,7 @@ class TaskService:
         else:
             final = TaskStatus.STOPPED
         self._mark_status(task_id, final)
+        self._maybe_cleanup_cache("replacement", task_id)
 
     # ------------------------------------------------------------------
     # Public: lifecycle controls
@@ -978,7 +1052,7 @@ class TaskService:
         running = self.registry.get(task_id)
         if running is None:
             try:
-                self.cache.load_record(task_id)
+                self._cache_for_task(task_id).load_record(task_id)
             except TaskNotFoundError as exc:
                 raise BridgeError.not_found(
                     f"task {task_id!r} not found.",
@@ -1009,7 +1083,7 @@ class TaskService:
         running = self.registry.get(task_id)
         if running is None:
             try:
-                self.cache.load_record(task_id)
+                self._cache_for_task(task_id).load_record(task_id)
             except TaskNotFoundError as exc:
                 raise BridgeError.not_found(
                     f"task {task_id!r} not found.",
@@ -1039,7 +1113,7 @@ class TaskService:
             )
         record_kind = self._kind(kind)
         try:
-            snapshot = self.cache.load(task_id)
+            snapshot = self._cache_for_task(task_id).load(task_id)
         except TaskNotFoundError as exc:
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
@@ -1090,7 +1164,7 @@ class TaskService:
         running = RunningTask(
             task_id=task_id,
             kind="translation",
-            cache=self.cache,
+            cache=self._cache_for_kind("translation"),
             created_at=started_at,
         )
         self.registry.add(running)
@@ -1107,7 +1181,7 @@ class TaskService:
         running = RunningTask(
             task_id=task_id,
             kind="glossary",
-            cache=self.cache,
+            cache=self._cache_for_kind("glossary"),
             created_at=started_at,
         )
         self.registry.add(running)
@@ -1143,8 +1217,9 @@ class TaskService:
             input_folder = settings.glossary.input_folder
             output_folder = settings.glossary.output_folder
 
+        cache = self._cache_for_kind(kind)
         candidates = sorted(
-            (r for r in self.cache.list_tasks() if r.kind is record_kind),
+            (r for r in cache.list_tasks() if r.kind is record_kind),
             key=lambda r: r.created_at,
             reverse=True,
         )
@@ -1155,7 +1230,7 @@ class TaskService:
             if metadata.get("output_dir") != output_folder:
                 continue
             try:
-                snapshot = self.cache.load(record.id)
+                snapshot = cache.load(record.id)
             except (TaskNotFoundError, ValueError, OSError):
                 continue
             if snapshot.record.status not in (
@@ -1189,7 +1264,7 @@ class TaskService:
     def read_snapshot(self, *, kind: str, task_id: str) -> dict[str, object]:
         record_kind = self._kind(kind)
         try:
-            snapshot = self.cache.load(task_id)
+            snapshot = self._cache_for_task(task_id).load(task_id)
         except TaskNotFoundError as exc:
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
@@ -1206,7 +1281,8 @@ class TaskService:
         self, *, kind: str, limit: int | None
     ) -> dict[str, object]:
         record_kind = self._kind(kind)
-        records = [r for r in self.cache.list_tasks() if r.kind is record_kind]
+        cache = self._cache_for_kind(kind)
+        records = [r for r in cache.list_tasks() if r.kind is record_kind]
         records.sort(key=lambda r: r.created_at, reverse=True)
         if limit is not None and limit >= 0:
             records = records[:limit]
@@ -1217,7 +1293,7 @@ class TaskService:
     ) -> dict[str, object]:
         record_kind = self._kind(kind)
         try:
-            snapshot = self.cache.load(task_id)
+            snapshot = self._cache_for_task(task_id).load(task_id)
         except TaskNotFoundError as exc:
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
@@ -1232,8 +1308,9 @@ class TaskService:
 
     def read_artifacts(self, *, kind: str, task_id: str) -> dict[str, object]:
         record_kind = self._kind(kind)
+        cache = self._cache_for_task(task_id)
         try:
-            record = self.cache.load_record(task_id)
+            record = cache.load_record(task_id)
         except TaskNotFoundError as exc:
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
@@ -1246,7 +1323,7 @@ class TaskService:
             )
         result = self._read_result(task_id)
         if result is None:
-            snapshot = self.cache.load(task_id)
+            snapshot = cache.load(task_id)
             return self._partial_result(record=record, snapshot=snapshot)
         return result
 
@@ -1323,10 +1400,11 @@ class TaskService:
 
         # 2) Delete every cache record of this kind, including the
         #    just-stopped ones and stale completed/failed records.
-        for record in self.cache.list_tasks():
+        cache = self._cache_for_kind(kind)
+        for record in cache.list_tasks():
             if record.kind is task_kind:
                 try:
-                    self.cache.delete(record.id)
+                    cache.delete(record.id)
                 except TaskNotFoundError:
                     continue
 
@@ -1368,22 +1446,24 @@ class TaskService:
             updated_at=started_at,
             metadata=dict(metadata),
         )
-        self.cache.save_task(record)
+        self._cache_for_task(task_id).save_task(record)
 
     def _mark_status(self, task_id: str, status: TaskStatus) -> None:
+        cache = self._cache_for_task(task_id)
         try:
-            record = self.cache.load_record(task_id)
+            record = cache.load_record(task_id)
         except TaskNotFoundError:
             return
         if record.status is status:
             return
-        self.cache.save_task(
+        cache.save_task(
             record.with_status(status).with_updated_at(_utc_now_iso())
         )
 
     def _on_task_failure(self, task_id: str, exc: BaseException) -> None:
+        cache = self._cache_for_task(task_id)
         try:
-            record = self.cache.load_record(task_id)
+            record = cache.load_record(task_id)
         except TaskNotFoundError:
             return
         message = f"{type(exc).__name__}: {exc}"
@@ -1392,7 +1472,7 @@ class TaskService:
         metadata["last_traceback"] = "".join(
             traceback.format_exception(type(exc), exc, exc.__traceback__)
         )[-2000:]
-        self.cache.save_task(
+        cache.save_task(
             replace(
                 record,
                 status=TaskStatus.FAILED,
@@ -1402,7 +1482,7 @@ class TaskService:
         )
 
     def _result_path(self, task_id: str) -> Path:
-        return self.cache.task_dir(task_id) / _RESULT_FILENAME
+        return self._cache_for_task(task_id).task_dir(task_id) / _RESULT_FILENAME
 
     def _write_result(
         self, task_id: str, payload: Mapping[str, object]
