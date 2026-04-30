@@ -1,0 +1,63 @@
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.cell {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--hairline-strong, #d8d2c7);
+  transition: background 180ms ease, transform 180ms ease;
+  cursor: help;
+}
+
+.cell:hover {
+  transform: scale(1.18);
+}
+
+/* === per-status colors ==================================================== */
+
+.pending {
+  background: var(--hairline-strong, #d8d2c7);
+}
+
+.completed {
+  background: var(--success, #2f7d57);
+}
+
+.failed {
+  background: var(--warn, #b6541b);
+}
+
+.skipped {
+  background: var(--muted, #7a7166);
+  opacity: 0.55;
+}
+
+.running {
+  background: var(--accent, #ad9d7a);
+  animation: chunkPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chunkPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(173, 157, 122, 0.55);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(173, 157, 122, 0);
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .running {
+    animation: none;
+  }
+}

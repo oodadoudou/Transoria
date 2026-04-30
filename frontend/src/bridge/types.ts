@@ -352,10 +352,23 @@ export interface TaskUsage {
   total_tokens: number;
 }
 
+export type SubtaskStatusValue =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
+
+export interface SubtaskMini {
+  id: string;
+  status: SubtaskStatusValue;
+}
+
 export interface TaskSnapshot {
   header: TaskHeader;
   progress: TaskProgress;
   usage: TaskUsage;
+  subtasks: SubtaskMini[];
   active_model_id: string | null;
   active_prompt_id: string | null;
   metadata: Record<string, unknown>;

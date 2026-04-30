@@ -379,6 +379,11 @@ export const en: Messages = {
         eta: "ETA",
         avgSpeed: "Avg speed",
       },
+      liveCounter: {
+        progressLabel: "Done {done} / {total}",
+        inflightLabel: "In-flight {n}",
+        chunksLabel: "Chunk status",
+      },
       tuning: {
         concurrency: "Concurrency",
         rpm: "Requests / minute",
@@ -510,6 +515,11 @@ export const en: Messages = {
         elapsed: "Elapsed",
         eta: "ETA",
         avgSpeed: "Avg speed",
+      },
+      liveCounter: {
+        progressLabel: "Done {done} / {total}",
+        inflightLabel: "In-flight {n}",
+        chunksLabel: "Chunk status",
       },
       tuning: {
         chunkCharLimit: "Chunk size (chars)",

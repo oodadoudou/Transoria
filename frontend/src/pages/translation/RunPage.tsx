@@ -14,6 +14,8 @@ import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { ProgressRing } from "@/components/ProgressRing";
+import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
+import { LiveRequestCounter } from "@/components/LiveRequestCounter";
 import { RunErrorBanner } from "@/components/RunErrorBanner";
 import { FailedSubtaskList } from "@/components/FailedSubtaskList";
 import { RunControls } from "@/components/RunControls";
@@ -176,6 +178,19 @@ export function RunPage() {
             />
           </div>
         </div>
+        {snapshot.subtasks.length > 0 ? (
+          <>
+            <LiveRequestCounter
+              progress={snapshot.progress}
+              label={run.liveCounter.progressLabel}
+              inflightLabel={run.liveCounter.inflightLabel}
+            />
+            <ChunkStatusGrid
+              subtasks={snapshot.subtasks}
+              itemLabel={run.liveCounter.chunksLabel}
+            />
+          </>
+        ) : null}
       </Panel>
 
       <RunControls kind="translation" />

@@ -1,0 +1,48 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-soft, #1f1f23);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--panel-soft, #f3f2ec);
+  border: 1px solid var(--hairline, rgba(17, 17, 20, 0.09));
+  font-variant-numeric: tabular-nums;
+  transition: background 180ms ease, color 180ms ease,
+    border-color 180ms ease;
+}
+
+.inflight {
+  background: var(--primary-soft, rgba(61, 53, 48, 0.08));
+  color: var(--action, #3d3530);
+  border-color: var(--action, #3d3530);
+}
+
+/* Flash highlight when the underlying count updates — ~600ms then fades. */
+.flash {
+  animation: chipFlash 600ms ease-out;
+}
+
+@keyframes chipFlash {
+  0% {
+    background: var(--accent, #ad9d7a);
+    color: #fff;
+    border-color: var(--accent, #ad9d7a);
+  }
+  100% {
+    /* fall back to the per-variant resting style via shared transition */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    animation: none;
+  }
+}

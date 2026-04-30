@@ -367,6 +367,11 @@ export const zh: Messages = {
         eta: "预计剩余",
         avgSpeed: "平均速度",
       },
+      liveCounter: {
+        progressLabel: "已处理 {done} / {total}",
+        inflightLabel: "正在请求 {n}",
+        chunksLabel: "分块状态",
+      },
       tuning: {
         concurrency: "并发",
         rpm: "每分钟请求数",
@@ -496,6 +501,11 @@ export const zh: Messages = {
         elapsed: "已用时",
         eta: "预计剩余",
         avgSpeed: "平均速度",
+      },
+      liveCounter: {
+        progressLabel: "已处理 {done} / {total}",
+        inflightLabel: "正在请求 {n}",
+        chunksLabel: "分块状态",
       },
       tuning: {
         chunkCharLimit: "分块字符上限",

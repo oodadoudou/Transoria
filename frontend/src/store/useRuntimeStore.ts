@@ -179,6 +179,7 @@ export type SnapshotShape = {
   status: TaskStatus;
   progress: TaskSnapshot["progress"];
   usage: TaskSnapshot["usage"];
+  subtasks: TaskSnapshot["subtasks"];
   failures: TaskFailure[];
   isIdle: boolean;
   isRunning: boolean;
@@ -206,6 +207,7 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
         output_tokens: 0,
         total_tokens: 0,
       },
+      subtasks: runtime.snapshot?.subtasks ?? [],
       failures: runtime.failures,
       isIdle: runtime.activeTaskId === null,
       isRunning: status === "running",

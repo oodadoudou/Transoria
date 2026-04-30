@@ -243,6 +243,12 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
             "output_tokens": usage.output_tokens,
             "total_tokens": usage.input_tokens + usage.output_tokens,
         },
+        # Per-chunk status drives the chunk-grid UX. Tuple-of-objects
+        # is preserved in the order the orchestrator seeded them, so
+        # the grid renders chunk-0 leftmost.
+        "subtasks": [
+            {"id": s.id, "status": s.status.value} for s in snapshot.subtasks
+        ],
         "active_model_id": metadata.get("model_id"),
         "active_prompt_id": metadata.get("prompt_preset_id"),
         "metadata": metadata,

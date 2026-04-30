@@ -336,6 +336,11 @@ export interface Messages {
         eta: string;
         avgSpeed: string;
       };
+      liveCounter: {
+        progressLabel: string;
+        inflightLabel: string;
+        chunksLabel: string;
+      };
       tuning: {
         concurrency: string;
         rpm: string;
@@ -450,6 +455,11 @@ export interface Messages {
         elapsed: string;
         eta: string;
         avgSpeed: string;
+      };
+      liveCounter: {
+        progressLabel: string;
+        inflightLabel: string;
+        chunksLabel: string;
       };
       tuning: {
         chunkCharLimit: string;
