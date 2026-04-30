@@ -8,22 +8,28 @@ from transoria.domain import Language, translated_filename
 
 BILINGUAL_OUTPUT_FOLDER_EN = "bilingual outputs"
 
-# Single-byte Western encodings round-trip arbitrary bytes, which makes
-# them false-positive winners of chardet's pick + round-trip check on
-# short legacy-Asian inputs. Demote them so the Phase-3 candidate list
-# (Korean / Chinese / Japanese first) gets a chance.
-_CHARDET_LATIN_FALSE_POSITIVES: frozenset[str] = frozenset(
-    {
-        "iso-8859-1",
-        "iso-8859-2",
-        "iso-8859-15",
-        "windows-1250",
-        "windows-1251",
-        "windows-1252",
-        "ascii",
-        "latin-1",
-    }
+# Single-byte Western encodings round-trip arbitrary bytes (every
+# 0x00–0xFF maps to some code point), which makes them false-positive
+# winners of chardet's pick + round-trip check on short legacy-Asian
+# inputs. Demote the entire family by prefix so the Phase-3 candidate
+# list (Korean / Chinese / Japanese first) gets a chance.
+_CHARDET_LATIN_PREFIXES: tuple[str, ...] = (
+    "iso-8859-",  # iso-8859-1..16 — all single-byte Western/Cyrillic/Greek/Turkish
+    "windows-125",  # windows-1250..1258 — same family, MS variants
+    "cp125",  # cp1250..1258 (alias of windows-125x)
 )
+_CHARDET_LATIN_NAMES: frozenset[str] = frozenset(
+    {"ascii", "latin-1", "latin_1", "macroman", "mac-roman"}
+)
+
+
+def _is_chardet_latin_false_positive(name: str) -> bool:
+    if not name:
+        return False
+    lowered = name.lower().replace("_", "-")
+    if lowered in _CHARDET_LATIN_NAMES:
+        return True
+    return any(lowered.startswith(prefix) for prefix in _CHARDET_LATIN_PREFIXES)
 
 TXT_ENCODING_CANDIDATES = (
     # BOM-prefixed and UTF-8 variants come first.
@@ -64,17 +70,24 @@ class TextDocument:
     segments: list[TextSegment]
 
 
-def parse_txt_file(path: Path) -> TextDocument:
-    raw = path.read_bytes()
+def decode_text_bytes(raw: bytes) -> tuple[str, str]:
+    """Run the same BOM → chardet → candidate-list cascade as
+    ``parse_txt_file`` over a raw byte string. Returns ``(text, encoding)``.
+
+    Reused by JSON / replacement-rule importers so the desktop UI never
+    refuses a legacy-encoded file just because the surrounding wrapper
+    expected UTF-8. Raises ``UnicodeDecodeError`` only when every phase
+    fails, matching ``parse_txt_file``'s contract.
+    """
+
+    # Phase 1: stable BOM/UTF detection. UTF-8-with-BOM is unambiguous;
+    # raw UTF-8 succeeds when the bytes are well-formed UTF-8. UTF-16 is
+    # only attempted when a BOM is present — without one,
+    # ``raw.decode("utf-16")`` happily consumes arbitrary byte pairs as
+    # code units (e.g. cp949 bytes become Chinese-looking gibberish)
+    # because the codec almost never raises on aligned input.
     text: str | None = None
     encoding_used = ""
-
-    # Phase 1: stable BOM/UTF detection. UTF-8-with-BOM is unambiguous; raw
-    # UTF-8 succeeds when the bytes are well-formed UTF-8. UTF-16 is only
-    # attempted when a BOM is present — without one, ``raw.decode("utf-16")``
-    # happily consumes arbitrary byte pairs as code units (e.g. cp949 bytes
-    # become Chinese-looking gibberish) because the codec almost never
-    # raises UnicodeDecodeError on aligned input.
     for encoding in ("utf-8-sig", "utf-8"):
         try:
             text = raw.decode(encoding)
@@ -90,14 +103,15 @@ def parse_txt_file(path: Path) -> TextDocument:
         except UnicodeDecodeError:
             text = None
 
-    # Phase 2: chardet-based detection for legacy encodings. Multiple legacy
-    # encodings (cp949, gbk, big5, shift_jis, …) have overlapping byte
-    # ranges, so a naive "try-each" loop produces garbage when a wrong-but-
-    # tolerant encoding wins. ``chardet`` looks at character-frequency
-    # statistics to pick the most likely one. We trust the pick only if
-    # decode + re-encode round-trips back to the original bytes — that
-    # rules out wrong-encoding "successes" without needing a high
-    # confidence threshold (which chardet rarely meets on short inputs).
+    # Phase 2: chardet-based detection for legacy encodings. Multiple
+    # legacy encodings (cp949, gbk, big5, shift_jis, …) have overlapping
+    # byte ranges, so a naive "try-each" loop produces garbage when a
+    # wrong-but-tolerant encoding wins. ``chardet`` looks at character-
+    # frequency statistics to pick the most likely one. We trust the
+    # pick only if decode + re-encode round-trips back to the original
+    # bytes — that rules out wrong-encoding "successes" without needing
+    # a high confidence threshold (which chardet rarely meets on short
+    # inputs).
     if text is None:
         try:
             import chardet  # type: ignore[import-not-found]
@@ -107,13 +121,6 @@ def parse_txt_file(path: Path) -> TextDocument:
             detection = chardet.detect(raw)
             confidence = float(detection.get("confidence") or 0.0)
             detected = (detection.get("encoding") or "").lower()
-            # Need both modest confidence AND a clean round-trip. Confidence
-            # alone is unreliable on short inputs (chardet often picks an
-            # unrelated Asian encoding with confidence < 0.1); round-trip
-            # alone is unreliable for byte ranges shared by many encodings
-            # (e.g. gb18030 swallows cp949 bytes). The combination filters
-            # both failure modes.
-            #
             # Western single-byte encodings round-trip ANY byte sequence
             # (Latin-1 maps every 0x00–0xFF to a code point), so the
             # round-trip test is a no-op there. chardet often picks one
@@ -123,7 +130,7 @@ def parse_txt_file(path: Path) -> TextDocument:
             if (
                 detected
                 and confidence >= 0.3
-                and detected not in _CHARDET_LATIN_FALSE_POSITIVES
+                and not _is_chardet_latin_false_positive(detected)
             ):
                 try:
                     candidate = raw.decode(detected)
@@ -133,9 +140,10 @@ def parse_txt_file(path: Path) -> TextDocument:
                 except (UnicodeDecodeError, LookupError):
                     text = None
 
-    # Phase 3: fall back to the candidate list in priority order. Korean
-    # encodings come first because the project's primary fixtures are
-    # Korean novels and chardet is least helpful on short Korean names.
+    # Phase 3: fall back to the candidate list in priority order.
+    # Korean encodings come first because the project's primary fixtures
+    # are Korean novels and chardet is least helpful on short Korean
+    # names.
     if text is None:
         for encoding in TXT_ENCODING_CANDIDATES:
             try:
@@ -148,8 +156,14 @@ def parse_txt_file(path: Path) -> TextDocument:
             break
 
     if text is None:
-        raise UnicodeDecodeError("utf-8", raw, 0, len(raw), "unsupported text encoding")
+        raise UnicodeDecodeError(
+            "utf-8", raw, 0, len(raw), "unsupported text encoding"
+        )
+    return text, encoding_used
 
+
+def parse_txt_file(path: Path) -> TextDocument:
+    text, encoding_used = decode_text_bytes(path.read_bytes())
     return TextDocument(path=path, encoding=encoding_used, segments=_split_segments(text))
 
 

@@ -14,6 +14,7 @@ from typing import Mapping
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
+from transoria.formats.text import decode_text_bytes
 
 
 def _entry_from_record(raw: object) -> dict[str, object] | None:
@@ -35,10 +36,11 @@ def _entry_from_record(raw: object) -> dict[str, object] | None:
 
 
 def _parse_json(path: Path) -> list[dict[str, object]]:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = path.read_text(encoding="utf-8-sig")
+    # Reuse the txt parser's tolerant cascade so legacy-encoded JSON
+    # exports (cp949, gbk, …) load without forcing the user to re-save
+    # as UTF-8. The two-try utf-8 / utf-8-sig path that lived here
+    # silently failed for any other encoding.
+    text, _ = decode_text_bytes(path.read_bytes())
     payload = json.loads(text)
     if not isinstance(payload, list):
         raise BridgeError.invalid_argument(
