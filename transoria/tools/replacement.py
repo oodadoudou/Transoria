@@ -39,22 +39,31 @@ def load_replacement_rules_txt(path: Path) -> list[ReplacementRule]:
     if path.suffix.lower() != ".txt":
         raise ValueError(f"Only .txt replacement rule files are supported: {path}")
 
+    # Use ``parse_txt_file`` so users can drop legacy-encoded rule files
+    # (cp949, gbk, shift_jis, …) without having to convert them first;
+    # the txt parser already runs the BOM/UTF → chardet → candidate-list
+    # cascade and rejects Western single-byte false positives.
+    document = parse_txt_file(path)
+
     rules: list[ReplacementRule] = []
-    with path.open("r", encoding="utf-8-sig") as handle:
-        for line_number, raw_line in enumerate(handle, start=1):
-            line = raw_line.strip()
-            if line == "" or line.startswith("#"):
-                continue
-            if "->" not in line:
-                raise ValueError(f"Malformed replacement rule at line {line_number}: expected `original phrase->new phrase`")
+    for line_number, segment in enumerate(document.segments, start=1):
+        line = segment.text.strip()
+        if line == "" or line.startswith("#"):
+            continue
+        if "->" not in line:
+            raise ValueError(
+                f"Malformed replacement rule at line {line_number}: expected `original phrase->new phrase`"
+            )
 
-            src, dst = line.split("->", 1)
-            src = src.strip()
-            dst = dst.strip()
-            if src == "":
-                raise ValueError(f"Malformed replacement rule at line {line_number}: src cannot be empty")
+        src, dst = line.split("->", 1)
+        src = src.strip()
+        dst = dst.strip()
+        if src == "":
+            raise ValueError(
+                f"Malformed replacement rule at line {line_number}: src cannot be empty"
+            )
 
-            rules.append(ReplacementRule(src=src, dst=dst))
+        rules.append(ReplacementRule(src=src, dst=dst))
     return rules
 
 

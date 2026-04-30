@@ -26,11 +26,14 @@ _CHARDET_LATIN_FALSE_POSITIVES: frozenset[str] = frozenset(
 )
 
 TXT_ENCODING_CANDIDATES = (
-    # BOM-prefixed and UTF variants are tried first because they're the most
-    # likely to decode without ambiguity.
+    # BOM-prefixed and UTF-8 variants come first.
+    # UTF-16 is intentionally NOT in this list — its codec doesn't reject
+    # arbitrary aligned byte sequences, so without a BOM it would silently
+    # win over the Asian candidates below and produce gibberish. BOM-
+    # prefixed UTF-16 is handled by the Phase-1 BOM check in
+    # ``parse_txt_file``.
     "utf-8-sig",
     "utf-8",
-    "utf-16",
     # Korean encodings (existing test fixtures).
     "cp949",
     "euc-kr",
@@ -67,14 +70,25 @@ def parse_txt_file(path: Path) -> TextDocument:
     encoding_used = ""
 
     # Phase 1: stable BOM/UTF detection. UTF-8-with-BOM is unambiguous; raw
-    # UTF-8 succeeds when the bytes are well-formed UTF-8.
-    for encoding in ("utf-8-sig", "utf-8", "utf-16"):
+    # UTF-8 succeeds when the bytes are well-formed UTF-8. UTF-16 is only
+    # attempted when a BOM is present — without one, ``raw.decode("utf-16")``
+    # happily consumes arbitrary byte pairs as code units (e.g. cp949 bytes
+    # become Chinese-looking gibberish) because the codec almost never
+    # raises UnicodeDecodeError on aligned input.
+    for encoding in ("utf-8-sig", "utf-8"):
         try:
             text = raw.decode(encoding)
         except UnicodeDecodeError:
             continue
         encoding_used = "utf-8" if encoding == "utf-8-sig" else encoding
         break
+
+    if text is None and (raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff")):
+        try:
+            text = raw.decode("utf-16")
+            encoding_used = "utf-16"
+        except UnicodeDecodeError:
+            text = None
 
     # Phase 2: chardet-based detection for legacy encodings. Multiple legacy
     # encodings (cp949, gbk, big5, shift_jis, …) have overlapping byte
