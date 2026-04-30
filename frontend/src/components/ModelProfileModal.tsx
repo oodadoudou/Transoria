@@ -424,7 +424,6 @@ export function ModelProfileModal({
           <FormStep
             draft={draft}
             update={update}
-            mode={mode}
             hintTemplate={hintTemplate}
             hintMode={hintMode}
             providerLocked={
@@ -506,7 +505,6 @@ function TemplatePickerStep({ templates, onPick }: TemplatePickerStepProps) {
 interface FormStepProps {
   draft: Draft;
   update: <K extends keyof Draft>(key: K, value: Draft[K]) => void;
-  mode: Mode;
   hintTemplate: ProviderTemplate | null;
   hintMode: "provider" | "custom";
   providerLocked: boolean;
@@ -520,7 +518,6 @@ interface FormStepProps {
 function FormStep({
   draft,
   update,
-  mode,
   hintTemplate,
   hintMode,
   providerLocked,

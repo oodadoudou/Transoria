@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useMessages } from "@/locales";
 import {
   BridgeError,
-  promptsBridge,
   type PromptKind,
   type PromptPresetBody,
   type PromptPreviewResult,
@@ -135,6 +134,7 @@ export function PromptPresetModal({
           kind,
           description: draft.description,
           enabled: draft.enabled,
+          is_system: false,
           system_prompt: draft.system_prompt,
           suffix_prompt: draft.suffix_prompt,
           thinking_prompt: draft.thinking_prompt,

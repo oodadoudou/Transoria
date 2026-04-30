@@ -7,7 +7,7 @@ import {
   useModelProfilesStore,
 } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
-import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
+import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { ProgressRing } from "@/components/ProgressRing";
 import { RunErrorBanner } from "@/components/RunErrorBanner";
@@ -74,7 +74,6 @@ export function RunPage() {
 
   const handleSelectModel = async (id: string) => {
     await useModelProfilesStore.getState().selectActive("translation", id);
-    void useSettingsStore.getState().hydrate();
   };
   const handleSelectPrompt = async (id: string) => {
     await prompts.selectActive("translation", id);

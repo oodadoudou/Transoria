@@ -63,9 +63,11 @@ function statusLabel(
     case "running":
       return messages.status.running;
     case "stopping":
+    case "pausing":
       return messages.status.stopping;
     case "stopped":
     case "pending":
+    case "paused":
       return messages.status.stopped;
     case "failed":
       return messages.status.failed;

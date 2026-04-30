@@ -11,6 +11,7 @@ import {
   type PromptPreviewContext,
   type PromptPreviewResult,
 } from "@/bridge";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
 interface KindSlice {
   presets: PromptPresetSummary[];
@@ -174,6 +175,7 @@ export const usePromptPresetsStore = create<PromptPresetsState>((set, get) => {
       set({ mutationError: null });
       try {
         const { app } = await promptsBridge.selectActive(kind, presetId);
+        useSettingsStore.getState().applyAppFromBridge(app);
         set((state) => ({
           [kind]: {
             ...state[kind],

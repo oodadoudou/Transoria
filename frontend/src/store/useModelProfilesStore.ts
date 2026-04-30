@@ -185,6 +185,7 @@ export const useModelProfilesStore = create<ModelProfilesState>((set, get) => {
           module,
           profileId,
         );
+        useSettingsStore.getState().applyAppFromBridge(app);
         return app;
       } catch (error) {
         set({ mutationError: asBridgeError(error) });

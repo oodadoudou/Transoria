@@ -1,14 +1,15 @@
 import { useMessages, useI18n } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
-import { useRunSnapshot, type RunKind } from "@/store/useRuntimeStore";
+import { useRunSnapshot } from "@/store/useRuntimeStore";
 import { useModelProfiles } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
+import type { PromptKind } from "@/bridge";
 import styles from "./Inspector.module.css";
 
 const NUM = new Intl.NumberFormat("en");
 
-function moduleToRunKind(module: string): RunKind {
+function moduleToRunKind(module: string): PromptKind {
   return module === "glossary" ? "glossary" : "translation";
 }
 

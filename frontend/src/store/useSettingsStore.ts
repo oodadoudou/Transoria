@@ -41,6 +41,7 @@ interface SettingsState extends Slices {
   hydrating: boolean;
   loadError: BridgeError | null;
   hydrate: () => Promise<void>;
+  applyAppFromBridge: (app: AppSettings) => void;
   updateField: <
     TModule extends SettingsModule,
     TKey extends keyof ModuleSettingsMap[TModule],
@@ -186,6 +187,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           loadError: asBridgeError(error),
         });
       }
+    },
+
+    applyAppFromBridge: (app) => {
+      set((state) => ({
+        app: {
+          ...state.app,
+          draft: app,
+          baseline: app,
+        } as ModuleSlice<"app">,
+      }));
     },
 
     updateField: (module, key, value) => {
