@@ -372,7 +372,7 @@ class GlossaryOrchestrator:
         )
         statistics_path = write_glossary_statistics(
             statistics,
-            config.output_dir,
+            self.cache.task_dir(task_id),
             failed_subtask_details=failed_subtask_details,
         )
 

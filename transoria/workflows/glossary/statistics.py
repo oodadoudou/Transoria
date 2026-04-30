@@ -54,7 +54,7 @@ class GlossaryStatistics:
 
 def write_glossary_statistics(
     statistics: GlossaryStatistics,
-    output_dir: Path,
+    statistics_dir: Path,
     *,
     failed_subtask_details: tuple[tuple[str, str], ...] = (),
 ) -> Path:
@@ -63,14 +63,14 @@ def write_glossary_statistics(
     to the JSON has been removed — the JSON is the single source of
     truth and the text duplicate was noise users didn't read."""
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = output_dir / GLOSSARY_STATISTICS_FILENAME_JSON
+    statistics_dir.mkdir(parents=True, exist_ok=True)
+    json_path = statistics_dir / GLOSSARY_STATISTICS_FILENAME_JSON
     json_path.write_text(
         json.dumps(statistics.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     if failed_subtask_details:
-        failed_path = output_dir / GLOSSARY_STATISTICS_FILENAME_FAILED_SUBTASKS
+        failed_path = statistics_dir / GLOSSARY_STATISTICS_FILENAME_FAILED_SUBTASKS
         blocks = [
             f"subtask: {subtask_id}\nerror: {error}"
             for subtask_id, error in failed_subtask_details

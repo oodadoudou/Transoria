@@ -461,7 +461,7 @@ def _partial_translation_payload(
 
 
 def _partial_glossary_payload(
-    *, output_dir: Path, input_folder_name: str
+    *, output_dir: Path, input_folder_name: str, statistics_dir: Path
 ) -> dict[str, object]:
     artifacts: list[dict[str, object]] = []
     combined: dict[str, object] | None = None
@@ -488,7 +488,7 @@ def _partial_glossary_payload(
         str(path)
         for path in sorted(output_dir.glob(f"*{GLOSSARY_FILENAME_DECODE_ISSUES}"))
     ]
-    stats_path = output_dir / GLOSSARY_STATISTICS_FILENAME_JSON
+    stats_path = statistics_dir / GLOSSARY_STATISTICS_FILENAME_JSON
     return {
         "kind": "glossary",
         "partial": True,
@@ -1660,6 +1660,7 @@ class TaskService:
             return _partial_glossary_payload(
                 output_dir=output_dir,
                 input_folder_name=input_dir.name,
+                statistics_dir=self._cache_for_kind("glossary").task_dir(record.id),
             )
         if record.kind is TaskKind.REPLACEMENT:
             return _partial_replacement_payload(snapshot, output_dir=output_dir)
