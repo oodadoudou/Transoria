@@ -113,6 +113,7 @@ export interface TranslationSettings {
   context_lines: number;
   low_confidence_max_retries: number;
   auto_open_output_folder: boolean;
+  timeout_seconds: number;
   translation_glossary: PersistedGlossaryEntry[];
   text_preserve_rules: PersistedTextPreserveRule[];
   pre_replacements: PersistedTranslationReplacementRule[];
@@ -133,6 +134,7 @@ export interface GlossarySettings {
   keep_identical_src_dst: boolean;
   normalize_widths: boolean;
   auto_open_output_folder: boolean;
+  timeout_seconds: number;
 }
 
 export interface ReplacementSettings {

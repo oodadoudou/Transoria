@@ -57,6 +57,29 @@ _FENCED_BLOCK_PATTERN = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 _THINKING_BLOCK_PATTERN = re.compile(r"<why>.*?</why>", re.DOTALL | re.IGNORECASE)
+_TABLE_ROW_PATTERN = re.compile(r"^\s*\|(.+)\|\s*$")
+_TABLE_SEPARATOR_PATTERN = re.compile(r"^\s*\|[\s:|\-]+\|\s*$")
+# Header cells we should never treat as src/dst — common bilingual table
+# headers seen in DeepSeek / Gemini Markdown fallback output.
+_TABLE_HEADER_TOKENS = {
+    "原文",
+    "译文",
+    "类型",
+    "类别",
+    "分类",
+    "子类别",
+    "备注",
+    "韩文原文",
+    "中文译名",
+    "src",
+    "dst",
+    "type",
+    "category",
+    "source",
+    "translation",
+    "korean",
+    "chinese",
+}
 
 
 def _preprocess(raw: str) -> str:
@@ -65,6 +88,55 @@ def _preprocess(raw: str) -> str:
     if match:
         text = match.group(1)
     return text.strip()
+
+
+def _try_parse_glossary_markdown_table(
+    text: str,
+) -> tuple[tuple[GlossaryEntry, ...], tuple[DecodeIssue, ...]]:
+    """Recover glossary entries from Markdown table rows.
+
+    Last-resort fallback when the LLM returns ``| src | dst | type |``
+    rows instead of JSONLINE. Drops separator rows and header-looking
+    rows; otherwise treats the first three non-empty cells as
+    ``(src, dst, info)``.
+    """
+
+    entries: list[GlossaryEntry] = []
+    issues: list[DecodeIssue] = []
+    for line in text.splitlines():
+        if _TABLE_SEPARATOR_PATTERN.match(line):
+            continue
+        match = _TABLE_ROW_PATTERN.match(line)
+        if not match:
+            continue
+        # `| a | b | c |` → ["", " a ", " b ", " c ", ""] → strip and drop empties.
+        raw_cells = match.group(1).split("|")
+        cells = [c.strip() for c in raw_cells]
+        cells = [c for c in cells if c]
+        if len(cells) < 3:
+            continue
+        # Drop bold markers, html tags, and embedded backticks that
+        # leak into table cells.
+        cleaned = [_strip_table_cell(c) for c in cells[:4]]
+        src, dst, info = cleaned[0], cleaned[1], cleaned[2]
+        if not src or not dst:
+            continue
+        if src.lower() in _TABLE_HEADER_TOKENS or dst.lower() in _TABLE_HEADER_TOKENS:
+            continue
+        entries.append(GlossaryEntry(src=src, dst=dst, info=info))
+    return tuple(entries), tuple(issues)
+
+
+_BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
+_BACKTICK_PATTERN = re.compile(r"`([^`]+)`")
+_HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+
+
+def _strip_table_cell(value: str) -> str:
+    out = _BOLD_PATTERN.sub(r"\1", value)
+    out = _BACKTICK_PATTERN.sub(r"\1", out)
+    out = _HTML_TAG_PATTERN.sub("", out)
+    return out.strip()
 
 
 def _parse_json_line(line: str) -> object | None:
@@ -120,12 +192,18 @@ def decode_glossary_jsonl(raw: str) -> GlossaryDecodeResult:
     ``info`` so downstream code only ever sees one name. Rows missing ``src``
     or ``dst`` are reported as issues and skipped; rows missing ``type`` /
     ``info`` pass through with an empty ``info``.
+
+    When JSONLINE parsing yields zero entries but the response still has
+    Markdown-table-shaped lines (``| src | dst | type | …``), the decoder
+    falls back to table parsing as a salvage path — covers DeepSeek/Gemini
+    runs that ignore JSONLINE instructions.
     """
 
     entries: list[GlossaryEntry] = []
     issues: list[DecodeIssue] = []
+    preprocessed = _preprocess(raw)
 
-    for line in _preprocess(raw).splitlines():
+    for line in preprocessed.splitlines():
         stripped = line.strip().rstrip(",")
         if not stripped:
             continue
@@ -149,6 +227,13 @@ def decode_glossary_jsonl(raw: str) -> GlossaryDecodeResult:
                 info=str(info).strip(),
             )
         )
+
+    if not entries:
+        salvaged, _ = _try_parse_glossary_markdown_table(preprocessed)
+        if salvaged:
+            entries = list(salvaged)
+            # Keep the original JSONLINE issues for visibility; the
+            # salvage worked but the raw content was still off-spec.
 
     return GlossaryDecodeResult(entries=tuple(entries), issues=tuple(issues))
 

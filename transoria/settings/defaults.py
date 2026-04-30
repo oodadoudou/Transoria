@@ -42,6 +42,7 @@ class TranslationSettings:
     context_lines: int = 25
     low_confidence_max_retries: int = 3
     auto_open_output_folder: bool = False
+    timeout_seconds: int = 120
     # Glossary entries threaded into TranslationConfig.glossary at run
     # start. Each entry mirrors the backend `GlossaryEntry` shape:
     # ``{src, dst, info, regex, case_sensitive, enabled}``. JSON lists
@@ -76,6 +77,7 @@ class GlossarySettings:
     keep_identical_src_dst: bool = False
     normalize_widths: bool = True
     auto_open_output_folder: bool = False
+    timeout_seconds: int = 120
 
 
 @dataclass(frozen=True)

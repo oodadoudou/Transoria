@@ -143,6 +143,16 @@ export function SettingsPage() {
             max={10}
           />
         </Row>
+        <Row label="" hint="">
+          <NumberField
+            label={settings.timeoutSeconds}
+            value={draft.timeout_seconds}
+            onChange={(v) => moduleSettings.update("timeout_seconds", v)}
+            help={settings.timeoutSecondsHelp}
+            min={5}
+            max={600}
+          />
+        </Row>
       </Panel>
 
       <SettingsToolbar

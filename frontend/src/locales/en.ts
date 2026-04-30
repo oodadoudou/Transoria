@@ -301,6 +301,9 @@ export const en: Messages = {
       lowConfidenceMaxRetries: "Low-confidence retry attempts",
       lowConfidenceMaxRetriesHelp:
         "When a translated segment looks suspicious (length far off, source-language characters left over, etc.), retry that segment up to this many times. Set to 0 to disable retries.",
+      timeoutSeconds: "Timeout threshold (s)",
+      timeoutSecondsHelp:
+        "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 120.",
       on: "On",
       off: "Off",
     },
@@ -477,8 +480,17 @@ export const en: Messages = {
       normalizeWidthsHint:
         "Fold full-width Latin/digits/katakana to half-width (NFKC) and strip leading/trailing punctuation from extracted terms. Reduces near-duplicate entries; on by default.",
       referenceExamplesPerTerm: "Reference examples per term",
+      referenceExamplesPerTermHelp:
+        "How many source-line snippets to attach per term in the -references.txt artifact. Larger values produce longer files; the term entries themselves are unaffected. Default 20.",
       minimumFrequency: "Minimum frequency",
+      minimumFrequencyHelp:
+        "Candidates seen fewer than this many times in the source are dropped. Set to 2 to filter one-off names/terms; default 1 keeps everything.",
       maxTermDisplayLength: "Max term display length",
+      maxTermDisplayLengthHelp:
+        "Drop candidates whose display width exceeds this — guards against the LLM returning a whole sentence as a term. Default 32 (matches KeywordGacha).",
+      timeoutSeconds: "Timeout threshold (s)",
+      timeoutSecondsHelp:
+        "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 120.",
       on: "On",
       off: "Off",
     },

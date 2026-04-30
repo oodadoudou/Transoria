@@ -271,13 +271,17 @@ Named Entities: Male Character, Female Character, Unknown-Gender Character, Deit
 World Settings: Title / Profession, Ability / Skill, Key Event / Era, Core Concept / Law."""
 
 _GLOSSARY_SUFFIX_ZH = """\
-仅在代码块中以 JSONLINE 格式输出，不要任何额外解释或说明：
+仅在代码块中以 JSONLINE 格式输出，每行一个独立 JSON 对象。
+严禁使用 Markdown 表格、严禁添加章节标题、解释性前缀或后缀。
+代码块外不得有任何字符。第一个非空字符必须是 ` ``` ` 或 `{`。
 ```jsonline
 {"src":"<原文>","dst":"<译文>","type":"<分类>"}
 ```"""
 
 _GLOSSARY_SUFFIX_EN = """\
-Output the result in a code block using JSONLINE, without extra explanation or clarification:
+Output strictly as JSONLINE inside a single code block — one independent JSON object per line.
+No Markdown tables, no section headings, no explanatory prefix or suffix.
+Nothing may appear outside the code block. The first non-whitespace character must be ` ``` ` or `{`.
 ```jsonline
 {"src":"<Source Text>","dst":"<Translated Text>","type":"<Category>"}
 ```"""

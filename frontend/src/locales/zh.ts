@@ -291,6 +291,9 @@ export const zh: Messages = {
       lowConfidenceMaxRetries: "低置信度重试次数",
       lowConfidenceMaxRetriesHelp:
         "当某段译文异常时(长度差异过大、原文语言字符残留等),最多重译该段几次。设为 0 关闭重试。",
+      timeoutSeconds: "超时时间阈值 (秒)",
+      timeoutSecondsHelp:
+        "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。慢模型/长输出可调高，默认 120。",
       on: "开",
       off: "关",
     },
@@ -463,8 +466,17 @@ export const zh: Messages = {
       normalizeWidthsHint:
         "对提取出的术语做 NFKC 折叠(全角拉丁字母/数字/片假名→半角),并剥离首尾标点。可减少近似重复条目;默认开启。",
       referenceExamplesPerTerm: "每个术语的参考示例数",
+      referenceExamplesPerTermHelp:
+        "每条术语在 -references.txt 里附带几条原文出处，便于复盘上下文。值越大文件越长，对术语本身没影响。默认 20。",
       minimumFrequency: "最低出现频率",
+      minimumFrequencyHelp:
+        "候选术语在源文中出现少于此次数会被丢弃。设为 2 可过滤掉只出现一次的人名/术语；默认 1（保留全部）。",
       maxTermDisplayLength: "术语最大显示长度",
+      maxTermDisplayLengthHelp:
+        "字符宽度超过此值的候选术语丢弃，防止 LLM 把整句话当作术语返回。默认 32（与 KeywordGacha 一致）。",
+      timeoutSeconds: "超时时间阈值 (秒)",
+      timeoutSecondsHelp:
+        "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。慢模型/长输出可调高，默认 120。",
       on: "开",
       off: "关",
     },

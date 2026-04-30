@@ -252,6 +252,17 @@ class GlossaryOrchestrator:
         per_file_record_count = 0
 
         for source_file, segments in source_segments_by_file.items():
+            # Always emit decode issues if any — even when nothing else
+            # was extracted, the user needs to see why parsing failed.
+            file_issues = issues_by_file.get(source_file, ())
+            decode_issue_path: "Path | None" = None
+            if file_issues:
+                decode_issue_path = write_glossary_decode_issues(
+                    file_issues,
+                    config.output_dir,
+                    basename=glossary_basename(source_file),
+                )
+
             raw_entries = candidates_by_file.get(source_file, ())
             if not raw_entries:
                 failed_files.append(
@@ -288,15 +299,6 @@ class GlossaryOrchestrator:
                 config.output_dir,
                 source_path=source_file,
             )
-
-            file_issues = issues_by_file.get(source_file, ())
-            decode_issue_path = None
-            if file_issues:
-                decode_issue_path = write_glossary_decode_issues(
-                    file_issues,
-                    config.output_dir,
-                    basename=glossary_basename(source_file),
-                )
             glossary_outputs_per_file.append(
                 GlossaryArtifactSet(
                     novel_name=source_file.stem,

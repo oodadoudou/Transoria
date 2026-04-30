@@ -666,13 +666,6 @@ function FormStep({
       <details className={styles.details}>
         <summary>{m.runtimeTuningLabel}</summary>
         <div className={styles.gridTwo}>
-          <FieldRow hint={renderHint("timeout_seconds")}>
-            <NumberField
-              label={me.timeoutSeconds}
-              value={draft.timeout_seconds}
-              onChange={(v) => update("timeout_seconds", v)}
-            />
-          </FieldRow>
           <FieldRow hint={renderHint("concurrency_limit")}>
             <NumberField
               label={model.concurrency}

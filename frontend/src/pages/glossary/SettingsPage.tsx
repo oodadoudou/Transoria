@@ -119,6 +119,7 @@ export function SettingsPage() {
             onChange={(v) =>
               moduleSettings.update("reference_examples_per_term", v)
             }
+            help={settings.referenceExamplesPerTermHelp}
             min={0}
             max={200}
           />
@@ -128,6 +129,7 @@ export function SettingsPage() {
             label={settings.minimumFrequency}
             value={draft.minimum_frequency}
             onChange={(v) => moduleSettings.update("minimum_frequency", v)}
+            help={settings.minimumFrequencyHelp}
             min={1}
           />
         </ToggleRow>
@@ -138,8 +140,19 @@ export function SettingsPage() {
             onChange={(v) =>
               moduleSettings.update("max_term_display_length", v)
             }
+            help={settings.maxTermDisplayLengthHelp}
             min={4}
             max={128}
+          />
+        </ToggleRow>
+        <ToggleRow label="" hint="">
+          <NumberField
+            label={settings.timeoutSeconds}
+            value={draft.timeout_seconds}
+            onChange={(v) => moduleSettings.update("timeout_seconds", v)}
+            help={settings.timeoutSecondsHelp}
+            min={5}
+            max={600}
           />
         </ToggleRow>
       </Panel>

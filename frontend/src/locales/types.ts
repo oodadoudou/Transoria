@@ -262,6 +262,8 @@ export interface Messages {
       precedingLinesHelp: string;
       lowConfidenceMaxRetries: string;
       lowConfidenceMaxRetriesHelp: string;
+      timeoutSeconds: string;
+      timeoutSecondsHelp: string;
       on: string;
       off: string;
     };
@@ -422,8 +424,13 @@ export interface Messages {
       normalizeWidths: string;
       normalizeWidthsHint: string;
       referenceExamplesPerTerm: string;
+      referenceExamplesPerTermHelp: string;
       minimumFrequency: string;
+      minimumFrequencyHelp: string;
       maxTermDisplayLength: string;
+      maxTermDisplayLengthHelp: string;
+      timeoutSeconds: string;
+      timeoutSecondsHelp: string;
       on: string;
       off: string;
     };

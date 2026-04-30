@@ -542,6 +542,9 @@ class TaskService:
         model = self._resolve_model_profile(
             app.active_translation_model_id, field="active_translation_model_id"
         )
+        # Per-task timeout overrides any value persisted on the model
+        # profile — this knob lives in the translation settings UI now.
+        model = replace(model, timeout_seconds=float(translation.timeout_seconds))
         preset = self._resolve_prompt_preset(
             app.active_translation_prompt_id, kind=PromptKind.TRANSLATION
         )
@@ -670,6 +673,9 @@ class TaskService:
         model = self._resolve_model_profile(
             app.active_glossary_model_id, field="active_glossary_model_id"
         )
+        # Per-task timeout overrides any value persisted on the model
+        # profile — this knob lives in the glossary settings UI now.
+        model = replace(model, timeout_seconds=float(glossary.timeout_seconds))
         preset = self._resolve_prompt_preset(
             app.active_glossary_prompt_id, kind=PromptKind.GLOSSARY
         )
