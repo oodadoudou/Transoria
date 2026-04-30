@@ -17,6 +17,7 @@ from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.bridge.task_service import TaskService
+from transoria.formats.text import parse_txt_file
 from transoria.tools.replacement import ReplacementRule
 
 
@@ -55,18 +56,18 @@ def import_rules(payload: Mapping[str, object]) -> dict[str, object]:
             f"rule file does not exist: {path_str!r}",
             details={"path": path_str},
         )
+    # Reuse the txt parser's tolerant detection (utf-8 → BOM-checked
+    # utf-16 → chardet → cp949/euc-kr/gbk/big5/shift_jis fallback) so
+    # users can drop legacy-encoded rule files without converting first.
     try:
-        text = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        try:
-            text = path.read_text(encoding="utf-8-sig")
-        except UnicodeDecodeError as exc:
-            raise BridgeError(
-                "bridge.io_error",
-                f"cannot decode rule file as UTF-8: {exc}",
-                retryable=False,
-                details={"path": path_str},
-            ) from exc
+        document = parse_txt_file(path)
+    except UnicodeDecodeError as exc:
+        raise BridgeError(
+            "bridge.io_error",
+            f"cannot decode rule file: {exc}",
+            retryable=False,
+            details={"path": path_str},
+        ) from exc
     except OSError as exc:
         raise BridgeError(
             "bridge.io_error",
@@ -77,8 +78,8 @@ def import_rules(payload: Mapping[str, object]) -> dict[str, object]:
 
     rules: list[dict[str, object]] = []
     warnings: list[dict[str, object]] = []
-    for index, line in enumerate(text.splitlines(), start=1):
-        rule, warning = _parse_rule_line(line, index)
+    for index, segment in enumerate(document.segments, start=1):
+        rule, warning = _parse_rule_line(segment.text, index)
         if rule is not None:
             rules.append(rule)
         if warning is not None:
