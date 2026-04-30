@@ -34,6 +34,11 @@ class _GlossaryFormatRetry(Exception):
 # Below this, an empty response is more plausibly a chunk that legitimately
 # has no extractable terms — retrying would just waste tokens.
 _FORMAT_RETRY_MIN_ISSUES = 3
+_FORMAT_RETRY_REMINDER = (
+    "FORMAT RETRY: the previous answer was rejected because it contained "
+    "prose, headings, Markdown, or non-JSON text. Output JSONLINE only. "
+    'The first non-whitespace character must be "{".'
+)
 
 
 def _should_retry_glossary(exc: BaseException) -> bool:
@@ -86,9 +91,18 @@ class GlossarySubtaskRunner:
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
+        attempt_index = -1
+
+        async def operation() -> SubtaskResult:
+            nonlocal attempt_index
+            attempt_index += 1
+            return await self._attempt(
+                chunk_id, source_file, text, attempt_index=attempt_index
+            )
+
         try:
             return await retry_async(
-                lambda: self._attempt(chunk_id, source_file, text),
+                operation,
                 model=self.model,
                 should_retry=_should_retry_glossary,
             )
@@ -104,8 +118,10 @@ class GlossarySubtaskRunner:
                 output_tokens=0,
             )
 
-    async def _attempt(self, chunk_id: str, source_file: str, text: str) -> SubtaskResult:
-        system_prompt = build_prompt(
+    async def _attempt(
+        self, chunk_id: str, source_file: str, text: str, *, attempt_index: int = 0
+    ) -> SubtaskResult:
+        instruction_prompt = build_prompt(
             self.prompt_preset,
             PromptContext(
                 source_language=self.source_language.value,
@@ -119,13 +135,13 @@ class GlossarySubtaskRunner:
         session = self.fake_name_session
         if session is not None:
             prompt_text = session.apply(prompt_text)
-        user_prompt = "[Source Text]\n" + prompt_text
+        user_prompt = _build_glossary_user_prompt(
+            instruction_prompt, prompt_text, format_retry=attempt_index > 0
+        )
 
         reservation = -1
         if self.tpm_limiter is not None:
-            estimated = estimate_tokens_from_text(system_prompt) + estimate_tokens_from_text(
-                user_prompt
-            )
+            estimated = estimate_tokens_from_text(user_prompt)
             reservation = await self.tpm_limiter.reserve(estimated)
 
         response = None
@@ -133,7 +149,7 @@ class GlossarySubtaskRunner:
             response = await self.client.chat(
                 ChatRequest(
                     model=self.model,
-                    system_prompt=system_prompt,
+                    system_prompt="",
                     user_prompt=user_prompt,
                     stream=self.stream,
                     key_pool=self.key_pool,
@@ -169,7 +185,8 @@ class GlossarySubtaskRunner:
                 chunk_id,
                 {
                     "kind": "glossary",
-                    "system_prompt": system_prompt,
+                    "system_prompt": "",
+                    "instruction_prompt": instruction_prompt,
                     "user_prompt": user_prompt,
                     "raw_response": response.content,
                     "restored_response": raw_content,
@@ -252,6 +269,17 @@ def _inject_first_name(text: str, first_name: str) -> str:
         lines[index] = f"【{first_name}】{line}"
         return "\n".join(lines)
     return text
+
+
+def _build_glossary_user_prompt(
+    instruction_prompt: str, source_text: str, *, format_retry: bool
+) -> str:
+    parts: list[str] = []
+    if format_retry:
+        parts.append(_FORMAT_RETRY_REMINDER)
+    parts.append(instruction_prompt)
+    parts.append("[Source Text]\n" + source_text)
+    return "\n\n".join(part for part in parts if part)
 
 
 __all__ = [

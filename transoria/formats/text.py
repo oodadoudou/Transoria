@@ -8,6 +8,23 @@ from transoria.domain import Language, translated_filename
 
 BILINGUAL_OUTPUT_FOLDER_EN = "bilingual outputs"
 
+# Single-byte Western encodings round-trip arbitrary bytes, which makes
+# them false-positive winners of chardet's pick + round-trip check on
+# short legacy-Asian inputs. Demote them so the Phase-3 candidate list
+# (Korean / Chinese / Japanese first) gets a chance.
+_CHARDET_LATIN_FALSE_POSITIVES: frozenset[str] = frozenset(
+    {
+        "iso-8859-1",
+        "iso-8859-2",
+        "iso-8859-15",
+        "windows-1250",
+        "windows-1251",
+        "windows-1252",
+        "ascii",
+        "latin-1",
+    }
+)
+
 TXT_ENCODING_CANDIDATES = (
     # BOM-prefixed and UTF variants are tried first because they're the most
     # likely to decode without ambiguity.
@@ -82,7 +99,18 @@ def parse_txt_file(path: Path) -> TextDocument:
             # alone is unreliable for byte ranges shared by many encodings
             # (e.g. gb18030 swallows cp949 bytes). The combination filters
             # both failure modes.
-            if detected and confidence >= 0.3:
+            #
+            # Western single-byte encodings round-trip ANY byte sequence
+            # (Latin-1 maps every 0x00–0xFF to a code point), so the
+            # round-trip test is a no-op there. chardet often picks one
+            # of these for short legacy-Korean (cp949) inputs because
+            # the byte distribution looks slightly Western. Skip them
+            # and let Phase 3 try cp949/euc-kr first.
+            if (
+                detected
+                and confidence >= 0.3
+                and detected not in _CHARDET_LATIN_FALSE_POSITIVES
+            ):
                 try:
                     candidate = raw.decode(detected)
                     if candidate.encode(detected) == raw:

@@ -222,85 +222,52 @@ Before outputting the results, perform **structured thinking** within <why>...</
 
 
 _GLOSSARY_SYSTEM_ZH = """\
-角色：小说世界观数据库架构师。
-任务：从原文中提取被命名的、独一无二的实体，并将每条译为 {target_language}。
-像严苛的数据库管理员一样思考——拒绝通用、冗余、模糊的条目。
+任务目标：从 {source_language} 小说片段中提取会影响后续翻译一致性的术语表，并译为 {target_language}。
 
-# 原则一：实体资格
-仅提取被命名、独一无二的实体。
-- "这只是一个 X 吗？"测试：若答案落在某个通用职业 / 物品 / 概念上，不提取。
-- 可替代性测试：可被同类实例替代的不算专有命名。
+提取范围：
+1. 人物姓名、昵称、宠物名、组织、店名、地点、家族、作品内物品、事件、能力、设定概念。
+2. 会反复影响称呼或叙事理解的称号、职业、身份词。
+3. 只出现一次但明显是角色、物品、地点、事件或设定名称的词也要保留。
 
-# 原则二：三层过滤（任一层失败即抛弃）
-1. 结构性：凡是"A 的 B"型属格短语，一律抛弃。
-2. 通用性：现实世界的通用名词 / 动词 / 形容词 / 抽象概念 / 生理 / 解剖学词汇，一律抛弃。
-3. 资格性：通过前两层后，再用原则一做最终审查。
+过滤规则：
+1. 不提取普通动词、形容词、完整句子、泛泛描述、无边界的长短语。
+2. 不为了严格过滤而丢失重要角色、物品、地点、事件或设定信息。
+3. 术语边界要短而准；人名和称号可以拆成独立条目。
 
-# 原则三：合并 / 拆分
-"专有名称 + 称号"组合（如"某某伯爵"、"某某公爵"）必须拆成两条：
-- 专有名称归入对应的人物分类。
-- 称号归入"称号 / 职业"分类。
-最终输出每个称号、每个人物只出现一次；不应同时存在「某某」与「某某伯爵」两条。
-
-# 分类
-命名实体：男性角色、女性角色、性别未知 / 不适用、神祇 / 传说人物、命名组织、命名地理、命名物品。
-世界观设定：称号 / 职业、能力 / 技能、关键事件 / 时期、核心概念 / 法则。"""
+分类只能使用：男性角色、女性角色、性别未知/不适用、命名组织、命名地理、命名物品、称号/职业、能力/技能、关键事件/时期、核心概念/法则、其他重要术语。"""
 
 _GLOSSARY_SYSTEM_EN = """\
-Role: Novel worldbuilding database architect.
-Task: Extract named, unique entities from the source and translate each into {target_language}. Think like a strict DB admin — reject generic, redundant, fuzzy entries.
+Goal: extract a glossary from {source_language} novel snippets for later translation consistency, and translate each term into {target_language}.
 
-# Principle 1: Entity qualification
-Extract only **named, unique** entities.
-- "Is this just an X?" test: if the answer is a generic profession, item, or concept, do not extract.
-- Replaceability test: a term that can be substituted by another instance of the same kind is not a proper name.
+Extract:
+1. Character names, nicknames, pet names, organizations, shops, places, families, named items, events, abilities, and setting concepts.
+2. Titles, jobs, or identity terms that affect recurring address or story understanding.
+3. Terms that appear only once but are clearly character, item, place, event, or setting names.
 
-# Principle 2: Three-filter gauntlet (any failure = reject)
-1. Structural: any "A of B" possessive phrase is rejected.
-2. Generic: everyday real-world nouns / verbs / adjectives / abstract concepts / anatomical / biological terms — all rejected.
-3. Qualification: surviving terms pass a final check via Principle 1.
+Filter:
+1. Do not extract ordinary verbs, adjectives, full sentences, vague descriptions, or unbounded long phrases.
+2. Do not lose important character, item, place, event, or setting information for the sake of strict filtering.
+3. Keep term boundaries short and precise; names and titles may be separate entries.
 
-# Principle 3: Merge / split
-For "proper name + title" combos (e.g. "Lord X", "Count Y") split into two entries:
-- The proper name goes into the appropriate character category.
-- The title goes into the "Title / Profession" category.
-Each title and each character must appear at most once. Never emit both "X" and "Lord X".
-
-# Categories
-Named Entities: Male Character, Female Character, Unknown-Gender Character, Deity / Legend, Named Organization, Named Geography, Named Item.
-World Settings: Title / Profession, Ability / Skill, Key Event / Era, Core Concept / Law."""
+Use only these categories: Male Character, Female Character, Unknown/Not Applicable, Named Organization, Named Geography, Named Item, Title/Profession, Ability/Skill, Key Event/Era, Core Concept/Law, Other Important Term."""
 
 _GLOSSARY_SUFFIX_ZH = """\
-仅在代码块中以 JSONLINE 格式输出，每行一个独立 JSON 对象。
-严禁使用 Markdown 表格、严禁添加章节标题、解释性前缀或后缀。
-代码块外不得有任何字符。第一个非空字符必须是 ` ``` ` 或 `{`。
-```jsonline
+只输出 JSONLINE，每行一个独立 JSON 对象。
+严禁 Markdown 表格、代码块、标题、解释、前缀、后缀。
+第一个非空字符必须是 `{`。
 {"src":"<原文>","dst":"<译文>","type":"<分类>"}
-```"""
+"""
 
 _GLOSSARY_SUFFIX_EN = """\
-Output strictly as JSONLINE inside a single code block — one independent JSON object per line.
-No Markdown tables, no section headings, no explanatory prefix or suffix.
-Nothing may appear outside the code block. The first non-whitespace character must be ` ``` ` or `{`.
-```jsonline
+Output JSONLINE only: one independent JSON object per line.
+No Markdown tables, no code fences, no headings, no explanations, no prefix, no suffix.
+The first non-whitespace character must be `{`.
 {"src":"<Source Text>","dst":"<Translated Text>","type":"<Category>"}
-```"""
+"""
 
-_GLOSSARY_THINKING_ZH = """\
-在输出结果之前，先在 <why>...</why> 标签内进行结构化思考：
-<why>
-[全局语境]：用一句话概括原文的题材、世界观与叙事设定，识别潜在的虚构设定。
-[核心约束]：重申当前文本最关键的 1-2 条"红线"规则（如三层过滤、合并 / 拆分协议）。
-[边界判断]：挑出 3-5 个最难判定的候选词，用 `原文 -> 结果（理由）` 的格式简述判断逻辑。
-</why>"""
+_GLOSSARY_THINKING_ZH = ""
 
-_GLOSSARY_THINKING_EN = """\
-Before outputting the results, perform **structured thinking** within <why>...</why> tags:
-<why>
-[Global Context]: Summarize the source's genre, worldbuilding, and narrative setting in one sentence; identify potential fictional settings.
-[Core Constraints]: Restate the 1-2 most critical "red line" rules for the current text (e.g. three-filter gauntlet, merge/split protocol).
-[Edge Cases]: Pick 3-5 of the hardest-to-judge candidates, briefly outlining the logic in `Source -> Result (Reason)` format.
-</why>"""
+_GLOSSARY_THINKING_EN = ""
 
 
 def _seeded_translation_zh() -> PromptPreset:
