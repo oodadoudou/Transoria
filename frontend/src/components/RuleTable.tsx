@@ -8,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { useMessages } from "@/locales";
 import styles from "./RuleTable.module.css";
 
 export interface RuleTableColumnEdit<T> {
@@ -120,6 +121,7 @@ export function RuleTable<T>({
   sortState,
   onSortChange,
 }: RuleTableProps<T>) {
+  const messages = useMessages();
   const gridTemplate = ["28px", "36px", ...columns.map((c) => c.width)].join(
     " ",
   );
@@ -308,7 +310,7 @@ export function RuleTable<T>({
               checked={allChecked}
               onChange={toggleAll}
               disabled={rules.length === 0}
-              aria-label="select all"
+              aria-label={messages.ruleTable.selectAll}
             />
           </span>
           <span className={styles.colIndex}>#</span>

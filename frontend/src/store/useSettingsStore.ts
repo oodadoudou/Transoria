@@ -33,6 +33,11 @@ interface ModuleSlice<TModule extends SettingsModule> {
   pendingPatch: Partial<ModuleSettingsMap[TModule]>;
   saveState: SaveState;
   lastSavedAt: string | null;
+  /** Auto-saves and programmatic saves are silent; the success toast
+   * fires only when the caller passes ``explicit: true`` (the manual
+   * "保存" button does this). The ``saved_at`` from such a save is
+   * mirrored here so the toast hook knows which write to surface. */
+  lastExplicitSavedAt: string | null;
   lastError: BridgeError | null;
   /** Fields the backend's lenient ``save_partial`` couldn't apply
    * (unknown fields, type mismatches). Reset on every successful save
@@ -60,7 +65,10 @@ interface SettingsState extends Slices {
     key: TKey,
     value: ModuleSettingsMap[TModule][TKey],
   ) => void;
-  saveNow: (module: SettingsModule) => Promise<void>;
+  saveNow: (
+    module: SettingsModule,
+    opts?: { explicit?: boolean },
+  ) => Promise<void>;
   reset: (module: SettingsModule) => Promise<void>;
   clearSaveError: (module: SettingsModule) => void;
 }
@@ -71,6 +79,7 @@ const emptySlice: ModuleSlice<SettingsModule> = {
   pendingPatch: {},
   saveState: "idle",
   lastSavedAt: null,
+  lastExplicitSavedAt: null,
   lastError: null,
   lastRejectedFields: [],
   debounceHandle: null,
@@ -98,7 +107,10 @@ function patchSlice<TModule extends SettingsModule>(
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => {
-  const flush = async (module: SettingsModule): Promise<void> => {
+  const flush = async (
+    module: SettingsModule,
+    explicit = false,
+  ): Promise<void> => {
     const slice = get()[module];
     const patch = slice.pendingPatch;
     if (!Object.keys(patch).length) return;
@@ -132,6 +144,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           baseline: updated.draft,
           saveState: hasRemaining ? "saving" : "saved",
           lastSavedAt: saved_at,
+          lastExplicitSavedAt: explicit
+            ? saved_at
+            : updated.lastExplicitSavedAt,
           lastRejectedFields: rejected_fields ?? [],
         });
       });
@@ -233,13 +248,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       scheduleSave(module);
     },
 
-    saveNow: async (module) => {
+    saveNow: async (module, opts) => {
       const slice = get()[module];
       if (slice.debounceHandle) {
         clearTimeout(slice.debounceHandle);
         set((state) => patchSlice(state, module, { debounceHandle: null }));
       }
-      await flush(module);
+      await flush(module, opts?.explicit ?? false);
     },
 
     reset: async (module) => {
@@ -294,6 +309,7 @@ export function useModuleSettings<TModule extends SettingsModule>(
   draft: ModuleSettingsMap[TModule] | null;
   saveState: SaveState;
   lastSavedAt: string | null;
+  lastExplicitSavedAt: string | null;
   lastError: BridgeError | null;
   lastRejectedFields: RejectedField[];
   isHydrated: boolean;
@@ -302,7 +318,7 @@ export function useModuleSettings<TModule extends SettingsModule>(
     key: TKey,
     value: ModuleSettingsMap[TModule][TKey],
   ) => void;
-  saveNow: () => Promise<void>;
+  saveNow: (opts?: { explicit?: boolean }) => Promise<void>;
   reset: () => Promise<void>;
   clearError: () => void;
 } {
@@ -325,12 +341,13 @@ export function useModuleSettings<TModule extends SettingsModule>(
     draft: slice.draft,
     saveState: slice.saveState,
     lastSavedAt: slice.lastSavedAt,
+    lastExplicitSavedAt: slice.lastExplicitSavedAt,
     lastError: slice.lastError,
     lastRejectedFields: slice.lastRejectedFields,
     isHydrated: hydrated,
     loadError,
     update: (key, value) => updateField(module, key, value),
-    saveNow: () => saveNow(module),
+    saveNow: (opts) => saveNow(module, opts),
     reset: () => reset(module),
     clearError: () => clearError(module),
   };

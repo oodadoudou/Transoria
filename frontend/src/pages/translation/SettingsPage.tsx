@@ -159,7 +159,7 @@ export function SettingsPage() {
         saveState={moduleSettings.saveState}
         lastError={moduleSettings.lastError}
         onSave={() => {
-          void moduleSettings.saveNow();
+          void moduleSettings.saveNow({ explicit: true });
         }}
         onReset={() => {
           void moduleSettings.reset();

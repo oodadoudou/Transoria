@@ -135,6 +135,7 @@ export function Rail() {
         >
           <span>{messages.rail.githubLink}</span>
           <span className={styles.githubStar}>★</span>
+          <span className={styles.githubFace}>{messages.rail.githubFace}</span>
         </a>
         <div className={styles.watermark} aria-hidden>
           <span className={styles.watermarkApp}>Transoria</span>

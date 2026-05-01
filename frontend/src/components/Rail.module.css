@@ -173,6 +173,13 @@
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
+.githubFace {
+  margin-left: 3px;
+  color: #a84a12;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
 .watermark {
   display: flex;
   align-items: center;

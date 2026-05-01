@@ -189,7 +189,11 @@ export function RunControls({ kind }: RunControlsProps) {
 
   return (
     <>
-      <div className={styles.bar} role="group" aria-label="task controls">
+      <div
+        className={styles.bar}
+        role="group"
+        aria-label={labels.taskControls}
+      >
         <Button
           kind="primary"
           icon={ICON_PLAY}

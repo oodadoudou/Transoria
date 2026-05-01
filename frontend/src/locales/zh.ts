@@ -12,9 +12,11 @@ export const zh: Messages = {
     generalTools: "通用工具",
     appSettings: "应用设置",
     githubLink: "请给这个 D 一颗",
+    githubFace: "(๑'ω'๑)",
     githubAria: "打开 Transoria GitHub 页面",
   },
   topbar: {
+    breadcrumb: "面包屑导航",
     settings: "设置",
     stop: "停止",
     start: {
@@ -48,10 +50,12 @@ export const zh: Messages = {
     systemBadge: "系统",
   },
   ruleTable: {
+    selectAll: "全选",
     deleteSelected: "删除选中的 {n} 项",
     duplicateSelected: "复制选中的 {n} 项",
   },
   errors: {
+    notifications: "通知",
     runFailureTitle: "最近一次操作失败",
     loadFailureTitle: "加载失败",
     dismiss: "关闭",
@@ -72,6 +76,7 @@ export const zh: Messages = {
     confirmStartConfirm: "重新开始",
     confirmStartCancel: "取消",
     restartHint: "再点 {count} 次以重跑",
+    taskControls: "任务控制",
   },
   bilingual: {
     label: "双语输出",

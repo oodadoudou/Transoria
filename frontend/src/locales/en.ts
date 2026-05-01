@@ -12,9 +12,11 @@ export const en: Messages = {
     generalTools: "General Tools",
     appSettings: "App Settings",
     githubLink: "Give this D a",
+    githubFace: "(๑'ω'๑)",
     githubAria: "Open the Transoria GitHub page",
   },
   topbar: {
+    breadcrumb: "Breadcrumb",
     settings: "Settings",
     stop: "Stop",
     start: {
@@ -34,6 +36,7 @@ export const en: Messages = {
     tokens: "{n} tokens",
   },
   errors: {
+    notifications: "Notifications",
     runFailureTitle: "Last action failed",
     loadFailureTitle: "Failed to load",
     dismiss: "Dismiss",
@@ -48,6 +51,7 @@ export const en: Messages = {
     systemBadge: "System",
   },
   ruleTable: {
+    selectAll: "Select all",
     deleteSelected: "Delete {n} selected",
     duplicateSelected: "Duplicate {n} selected",
   },
@@ -72,6 +76,7 @@ export const en: Messages = {
     confirmStartConfirm: "Start fresh",
     confirmStartCancel: "Cancel",
     restartHint: "Click {count} more time(s) to re-run",
+    taskControls: "Task controls",
   },
   bilingual: {
     label: "Bilingual output",

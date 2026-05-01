@@ -45,6 +45,10 @@ export function SubNav({
     if (!store.hydrated && !store.hydrating) {
       await store.hydrate();
     }
+    if (!useSettingsStore.getState().app.draft) {
+      setLocale(previous);
+      return;
+    }
     useSettingsStore
       .getState()
       .updateField("app", "interface_language", altLocale);
@@ -66,7 +70,7 @@ export function SubNav({
         <span className={styles.wordmark}>{messages.brand.name}</span>
       </div>
 
-      <nav className={styles.crumb} aria-label="breadcrumb">
+      <nav className={styles.crumb} aria-label={messages.topbar.breadcrumb}>
         <span className={styles.module}>{category}</span>
         <span className={styles.sep} aria-hidden>
           ›

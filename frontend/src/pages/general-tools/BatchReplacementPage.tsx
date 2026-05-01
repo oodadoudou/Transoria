@@ -61,7 +61,10 @@ export function BatchReplacementPage() {
         const result = await replacementBridge.readArtifacts(activeTaskId);
         if (!cancelled) setArtifacts(result);
       } catch (error) {
-        if (BridgeError.isBridgeError(error) && error.code !== "bridge.not_found") {
+        if (
+          BridgeError.isBridgeError(error) &&
+          error.code !== "bridge.not_found"
+        ) {
           if (!cancelled) setActionError(error);
         }
       }
@@ -303,7 +306,7 @@ export function BatchReplacementPage() {
         saveState={moduleSettings.saveState}
         lastError={moduleSettings.lastError}
         onSave={() => {
-          void moduleSettings.saveNow();
+          void moduleSettings.saveNow({ explicit: true });
         }}
         onReset={() => {
           void moduleSettings.reset();

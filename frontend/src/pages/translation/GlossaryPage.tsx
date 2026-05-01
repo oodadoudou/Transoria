@@ -274,7 +274,7 @@ export function GlossaryPage() {
       render: (entry) => (
         <span
           className={`${ruleTableStyles.ruleChip} ${entry.caseSensitive ? ruleTableStyles.ruleChipOn : ""}`.trim()}
-          title="Aa"
+          title={g.editor.caseSensitive}
         >
           Aa
         </span>

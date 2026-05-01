@@ -11,9 +11,11 @@ export interface Messages {
     generalTools: string;
     appSettings: string;
     githubLink: string;
+    githubFace: string;
     githubAria: string;
   };
   topbar: {
+    breadcrumb: string;
     settings: string;
     stop: string;
     start: { translation: string; extraction: string };
@@ -30,6 +32,7 @@ export interface Messages {
     tokens: string;
   };
   errors: {
+    notifications: string;
     runFailureTitle: string;
     loadFailureTitle: string;
     dismiss: string;
@@ -44,6 +47,7 @@ export interface Messages {
     systemBadge: string;
   };
   ruleTable: {
+    selectAll: string;
     deleteSelected: string;
     duplicateSelected: string;
   };
@@ -67,6 +71,7 @@ export interface Messages {
     confirmStartConfirm: string;
     confirmStartCancel: string;
     restartHint: string;
+    taskControls: string;
   };
   bilingual: {
     label: string;
