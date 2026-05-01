@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import Mapping
 
+from transoria.app_paths import default_cache_root
 from transoria.bridge.router import BridgeRouter
 
 PLATFORM_KEYS: dict[str, str] = {
@@ -62,14 +63,11 @@ def _build_mode() -> str:
 def _cache_root() -> str:
     """Return the runtime cache root.
 
-    The cache lives under the user's app-data directory at runtime, but for
-    the source-mode shell we surface a project-relative path so the path is
-    deterministic during development.
+    Packaged builds use the user's app-data directory; source-mode shells keep
+    the project-relative cache path so development remains deterministic.
     """
 
-    project_root = Path(__file__).resolve().parents[3]
-    cache_dir = project_root / ".transoria-cache"
-    return cache_dir.as_posix()
+    return default_cache_root().as_posix()
 
 
 def get_metadata(_payload: Mapping[str, object]) -> dict[str, object]:

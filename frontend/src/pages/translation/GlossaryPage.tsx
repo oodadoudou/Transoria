@@ -449,6 +449,7 @@ export function GlossaryPage() {
               description: entry.info,
               caseSensitive: entry.case_sensitive,
               enabled: entry.enabled,
+              frequency: 0,
             }));
             importEntries([...state.entries, ...incoming]);
           }}

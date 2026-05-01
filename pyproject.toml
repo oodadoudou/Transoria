@@ -19,6 +19,9 @@ dev = [
 gui = [
   "pywebview>=5.0",
 ]
+build = [
+  "pyinstaller>=6.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -105,8 +105,7 @@ def build_default_router(
     transport here.
     """
 
-    from pathlib import Path  # noqa: PLC0415 — local to keep top-level small
-
+    from transoria.app_paths import default_cache_root  # noqa: PLC0415
     from transoria.bridge.handlers.app import register as register_app
     from transoria.bridge.handlers.app import _read_app_version  # noqa: PLC0415
     from transoria.bridge.handlers.dialogs import (  # noqa: PLC0415
@@ -148,7 +147,7 @@ def build_default_router(
     from transoria.runtime.cache import TaskCache  # noqa: PLC0415
 
     if cache_root is None:
-        cache_root = Path(__file__).resolve().parents[2] / ".transoria-cache"
+        cache_root = default_cache_root()
 
     settings_store = default_store(cache_root)
     profile_store = ModelProfileStore.from_cache_root(cache_root)

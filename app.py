@@ -35,6 +35,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from transoria.app_paths import APP_NAME, resource_root
 from transoria.bridge.handlers.dialogs import DialogProvider, NullDialogProvider
 from transoria.bridge.handlers.updates import GithubReleaseChecker
 from transoria.bridge.router import build_default_router
@@ -67,7 +68,7 @@ def _reconfigure_stdio_utf8() -> None:
 _reconfigure_stdio_utf8()
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = resource_root()
 FRONTEND_DIR = ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
 NODE_MODULES = FRONTEND_DIR / "node_modules"
@@ -407,7 +408,7 @@ def _run_desktop(
         url = f"http://127.0.0.1:{actual_bridge_port}"
 
     window = webview.create_window(
-        "Transoria",
+        APP_NAME,
         url,
         js_api=js_api,
         width=1280,
@@ -634,7 +635,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     args = parser.parse_args(argv)
     if args.mode is None:
-        args.mode = "dev"
+        args.mode = "prod" if getattr(sys, "frozen", False) else "dev"
     return args
 
 
