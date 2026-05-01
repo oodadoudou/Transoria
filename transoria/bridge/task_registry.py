@@ -16,6 +16,7 @@ one instance and threads it through all handlers that need it.
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -36,6 +37,12 @@ class RunningTask:
     _done: bool = field(default=False, init=False, repr=False)
     _error: "BaseException | None" = field(default=None, init=False, repr=False)
     _stop_flag: bool = field(default=False, init=False, repr=False)
+    _last_heartbeat_monotonic: float = field(
+        default_factory=time.monotonic, init=False, repr=False
+    )
+    _stop_requested_monotonic: float | None = field(
+        default=None, init=False, repr=False
+    )
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
@@ -47,6 +54,11 @@ class RunningTask:
         """
         with self._lock:
             self._executor = executor
+            self._last_heartbeat_monotonic = time.monotonic()
+
+    def touch(self) -> None:
+        with self._lock:
+            self._last_heartbeat_monotonic = time.monotonic()
 
     def request_stop(self) -> None:
         """Signal cooperative stop. No-op if the executor does not exist yet.
@@ -58,6 +70,8 @@ class RunningTask:
         with self._lock:
             executor = self._executor
             self._stop_flag = True
+            if self._stop_requested_monotonic is None:
+                self._stop_requested_monotonic = time.monotonic()
         if executor is not None:
             executor.request_stop()
 
@@ -67,6 +81,7 @@ class RunningTask:
         pause for replacement before reaching here."""
         with self._lock:
             executor = self._executor
+            self._last_heartbeat_monotonic = time.monotonic()
         if executor is not None:
             executor.request_pause()
 
@@ -80,6 +95,7 @@ class RunningTask:
         with self._lock:
             self._done = True
             self._error = error
+            self._last_heartbeat_monotonic = time.monotonic()
 
     @property
     def is_done(self) -> bool:
@@ -90,6 +106,28 @@ class RunningTask:
     def last_error(self) -> "BaseException | None":
         with self._lock:
             return self._error
+
+    def heartbeat_age_seconds(self) -> float:
+        with self._lock:
+            return max(0.0, time.monotonic() - self._last_heartbeat_monotonic)
+
+    def stop_requested_age_seconds(self) -> float | None:
+        with self._lock:
+            if self._stop_requested_monotonic is None:
+                return None
+            return max(0.0, time.monotonic() - self._stop_requested_monotonic)
+
+    def is_stalled(
+        self, *, active_timeout_seconds: float, stopping_timeout_seconds: float
+    ) -> bool:
+        with self._lock:
+            now = time.monotonic()
+            if self._stop_requested_monotonic is not None:
+                return (
+                    now - self._stop_requested_monotonic
+                    >= stopping_timeout_seconds
+                )
+            return now - self._last_heartbeat_monotonic >= active_timeout_seconds
 
 
 class TaskRegistry:

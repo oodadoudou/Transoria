@@ -205,12 +205,12 @@ _GLOSSARY_THINKING_EN = ""
 def _seeded_translation_zh() -> PromptPreset:
     return PromptPreset(
         id=DEFAULT_TRANSLATION_PRESET_ID,
-        name="Default (Chinese)",
+        name="默认",
         kind=PromptKind.TRANSLATION,
         system_prompt=_TRANSLATION_SYSTEM_ZH,
         suffix_prompt=_TRANSLATION_SUFFIX_ZH,
         thinking_prompt=_TRANSLATION_THINKING_ZH,
-        description="默认翻译预设（中文指令版）。保持通用任务边界，具体风格由用户提示词决定。",
+        description="默认翻译预设。",
         enabled=True,
         is_system=True,
     )
@@ -219,12 +219,12 @@ def _seeded_translation_zh() -> PromptPreset:
 def _seeded_translation_en() -> PromptPreset:
     return PromptPreset(
         id=DEFAULT_TRANSLATION_EN_ID,
-        name="Default (English)",
+        name="Default",
         kind=PromptKind.TRANSLATION,
         system_prompt=_TRANSLATION_SYSTEM_EN,
         suffix_prompt=_TRANSLATION_SUFFIX_EN,
         thinking_prompt=_TRANSLATION_THINKING_EN,
-        description="Default translation preset (English instructions). Keeps a neutral task boundary; user prompts decide the style.",
+        description="Default translation preset.",
         enabled=True,
         is_system=True,
     )
@@ -233,12 +233,12 @@ def _seeded_translation_en() -> PromptPreset:
 def _seeded_glossary_zh() -> PromptPreset:
     return PromptPreset(
         id=DEFAULT_GLOSSARY_PRESET_ID,
-        name="Default (Chinese)",
+        name="默认",
         kind=PromptKind.GLOSSARY,
         system_prompt=_GLOSSARY_SYSTEM_ZH,
         suffix_prompt=_GLOSSARY_SUFFIX_ZH,
         thinking_prompt=_GLOSSARY_THINKING_ZH,
-        description="默认术语提取预设（中文指令版）。保持通用任务边界，提取范围由用户提示词决定。",
+        description="默认术语提取预设。",
         enabled=True,
         is_system=True,
     )
@@ -247,12 +247,12 @@ def _seeded_glossary_zh() -> PromptPreset:
 def _seeded_glossary_en() -> PromptPreset:
     return PromptPreset(
         id=DEFAULT_GLOSSARY_EN_ID,
-        name="Default (English)",
+        name="Default",
         kind=PromptKind.GLOSSARY,
         system_prompt=_GLOSSARY_SYSTEM_EN,
         suffix_prompt=_GLOSSARY_SUFFIX_EN,
         thinking_prompt=_GLOSSARY_THINKING_EN,
-        description="Default glossary extraction preset (English instructions). Keeps a neutral task boundary; user prompts decide the extraction scope.",
+        description="Default glossary extraction preset.",
         enabled=True,
         is_system=True,
     )

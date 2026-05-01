@@ -102,6 +102,8 @@ _ZOMBIE_TASK_STATES: frozenset[TaskStatus] = frozenset(
         TaskStatus.PAUSING,
     }
 )
+_LIVE_TASK_STALL_SECONDS = 600.0
+_STOP_REQUEST_STALL_SECONDS = 90.0
 
 
 # ---------------------------------------------------------------------------
@@ -953,6 +955,9 @@ class TaskService:
         def _capture(executor: TaskExecutor) -> None:
             running.set_executor(executor)
 
+        def _touch_progress(_event: object) -> None:
+            running.touch()
+
         def _finalize(result: TranslationRunResult) -> None:
             payload = _translation_result_payload(result, config=config)
             self._write_result(task_id, payload)
@@ -961,6 +966,7 @@ class TaskService:
             cache=cache,
             client=client,
             id_factory=lambda: task_id,
+            progress=_touch_progress,
             on_executor_created=_capture,
             on_result_finalized=_finalize,
         )
@@ -1078,6 +1084,9 @@ class TaskService:
         def _capture(executor: TaskExecutor) -> None:
             running.set_executor(executor)
 
+        def _touch_progress(_event: object) -> None:
+            running.touch()
+
         def _finalize(result: GlossaryExtractionResult) -> None:
             payload = _glossary_result_payload(result, config=config)
             self._write_result(task_id, payload)
@@ -1086,6 +1095,7 @@ class TaskService:
             cache=cache,
             client=client,
             id_factory=lambda: task_id,
+            progress=_touch_progress,
             on_executor_created=_capture,
             on_result_finalized=_finalize,
         )
@@ -1220,6 +1230,7 @@ class TaskService:
         stop_on_first_error: bool,
         running: RunningTask,
     ) -> None:
+        running.touch()
         self._mark_status(task_id, TaskStatus.RUNNING)
 
         cache = self._cache_for_kind("replacement")
@@ -1230,6 +1241,7 @@ class TaskService:
         early_break = False
 
         for subtask in snapshot.subtasks:
+            running.touch()
             if running.stop_requested:
                 was_stopped = True
                 break
@@ -1326,6 +1338,7 @@ class TaskService:
                 field="task_id",
             )
         running.request_stop()
+        self._mark_status(task_id, TaskStatus.STOPPING)
         return self.read_snapshot(kind=kind, task_id=task_id)
 
     def pause_task(self, *, kind: str, task_id: str) -> dict[str, object]:
@@ -1395,10 +1408,7 @@ class TaskService:
             )
         existing = self.registry.get(task_id)
         if existing is not None and not existing.is_done:
-            raise BridgeError.conflict(
-                f"task {task_id!r} is already running.",
-                details={"task_id": task_id},
-            )
+            self._raise_live_task_conflict(existing)
         snapshot = self._reconcile_zombie(snapshot, cache)
         if snapshot.record.status not in (
             TaskStatus.STOPPED,
@@ -1765,6 +1775,36 @@ class TaskService:
         )
         running.thread = thread
         thread.start()
+
+    def _raise_live_task_conflict(self, running: RunningTask) -> None:
+        stalled = running.is_stalled(
+            active_timeout_seconds=_LIVE_TASK_STALL_SECONDS,
+            stopping_timeout_seconds=_STOP_REQUEST_STALL_SECONDS,
+        )
+        heartbeat_age = running.heartbeat_age_seconds()
+        stop_age = running.stop_requested_age_seconds()
+        details: dict[str, object] = {
+            "task_id": running.task_id,
+            "stalled": stalled,
+            "stop_requested": running.stop_requested,
+            "heartbeat_age_seconds": round(heartbeat_age, 3),
+        }
+        if stop_age is not None:
+            details["stop_requested_age_seconds"] = round(stop_age, 3)
+        if stalled:
+            if running.stop_requested:
+                message = (
+                    f"task {running.task_id!r} is still stopping and appears "
+                    "stalled; restart the app if it does not recover."
+                )
+            else:
+                message = (
+                    f"task {running.task_id!r} is already running and appears "
+                    "stalled; stop it or restart the app before continuing."
+                )
+        else:
+            message = f"task {running.task_id!r} is already running."
+        raise BridgeError.conflict(message, details=details)
 
     def _seed_placeholder(
         self,
