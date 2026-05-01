@@ -184,12 +184,11 @@ export function GlossaryPage() {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (fmt: "json" | "xlsx") => {
     setImportError(null);
     try {
-      const choice = await dialogsBridge.chooseSavePath("glossary.json", [
-        "json",
-        "xlsx",
+      const choice = await dialogsBridge.chooseSavePath(`glossary.${fmt}`, [
+        fmt,
       ]);
       if (!choice.path) return;
       await glossaryBridge.exportRules(
@@ -400,7 +399,14 @@ export function GlossaryPage() {
           toolbar={[
             { label: g.actions.add, onClick: handleAdd, primary: true },
             { label: g.actions.import, onClick: () => void handleImport() },
-            { label: g.actions.export, onClick: () => void handleExport() },
+            {
+              label: g.actions.exportJson,
+              onClick: () => void handleExport("json"),
+            },
+            {
+              label: g.actions.exportXlsx,
+              onClick: () => void handleExport("xlsx"),
+            },
             {
               label: g.actions.search,
               onClick: () => {

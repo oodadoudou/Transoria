@@ -323,7 +323,8 @@ export interface Messages {
         more: string;
         delete: string;
         import: string;
-        export: string;
+        exportJson: string;
+        exportXlsx: string;
         search: string;
         statistics: string;
         preset: string;
