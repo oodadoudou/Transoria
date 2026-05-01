@@ -26,6 +26,18 @@ export interface RuleTableColumn<T> {
   render: (item: T, index: number) => ReactNode;
   /** Enable inline edit on double-click for this column. */
   edit?: RuleTableColumnEdit<T>;
+  /** When set, the column header is clickable and toggles sort
+   * ``asc`` → ``desc`` → ``null`` on the parent's ``onSortChange``
+   * callback. The parent owns the actual sort (re-orders ``rules``
+   * before passing in) so the table stays generic. */
+  sortable?: boolean;
+}
+
+export type SortDirection = "asc" | "desc";
+
+export interface SortState {
+  key: string;
+  direction: SortDirection;
 }
 
 export interface RuleTableAction {
@@ -54,10 +66,20 @@ interface RuleTableProps<T> {
   /** Right-click → "Delete N rules"; called with the rows the user
    *  acted on. When omitted, the context menu is suppressed. */
   onBulkDelete?: (indices: number[]) => void;
+  /** Right-click → "Duplicate N rules"; appends fresh copies after
+   * the current list (parent owns the actual append logic). */
+  onBulkDuplicate?: (indices: number[]) => void;
   /** Localized labels for the row context menu. */
   contextMenuLabels?: {
     deleteSelected: (n: number) => string;
+    duplicateSelected?: (n: number) => string;
   };
+  /** Active sort state. When set, the matching column shows an
+   * indicator. Owned by the parent. */
+  sortState?: SortState | null;
+  /** Fired when a sortable header is clicked. ``next`` is ``null``
+   * when the user clicks through to clear the sort. */
+  onSortChange?: (next: SortState | null) => void;
 }
 
 interface ContextMenuState {
@@ -93,7 +115,10 @@ export function RuleTable<T>({
   editor,
   toolbar,
   onBulkDelete,
+  onBulkDuplicate,
   contextMenuLabels,
+  sortState,
+  onSortChange,
 }: RuleTableProps<T>) {
   const gridTemplate = ["28px", "36px", ...columns.map((c) => c.width)].join(
     " ",
@@ -193,6 +218,27 @@ export function RuleTable<T>({
     closeContextMenu();
   };
 
+  const handleBulkDuplicate = () => {
+    if (contextMenu && onBulkDuplicate) {
+      onBulkDuplicate(contextMenu.targetIndices);
+    }
+    closeContextMenu();
+  };
+
+  const handleHeaderClick = (col: RuleTableColumn<T>) => {
+    if (!col.sortable || !onSortChange) return;
+    if (sortState?.key !== col.key) {
+      onSortChange({ key: col.key, direction: "asc" });
+      return;
+    }
+    if (sortState.direction === "asc") {
+      onSortChange({ key: col.key, direction: "desc" });
+      return;
+    }
+    // desc → off
+    onSortChange(null);
+  };
+
   // Cmd/Ctrl+A: select all rows when the table region has focus.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -266,14 +312,35 @@ export function RuleTable<T>({
             />
           </span>
           <span className={styles.colIndex}>#</span>
-          {columns.map((col) => (
-            <span
-              key={col.key}
-              className={col.align === "right" ? styles.colRight : ""}
-            >
-              {col.label}
-            </span>
-          ))}
+          {columns.map((col) => {
+            const isSorted = sortState?.key === col.key;
+            const indicator = !isSorted
+              ? ""
+              : sortState!.direction === "asc"
+                ? " ↑"
+                : " ↓";
+            const headerClass = [
+              col.align === "right" ? styles.colRight : "",
+              col.sortable ? styles.headerSortable : "",
+              isSorted ? styles.headerSortActive : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            return (
+              <span
+                key={col.key}
+                className={headerClass}
+                onClick={
+                  col.sortable ? () => handleHeaderClick(col) : undefined
+                }
+                role={col.sortable ? "button" : undefined}
+                tabIndex={col.sortable ? 0 : undefined}
+              >
+                {col.label}
+                {indicator}
+              </span>
+            );
+          })}
         </div>
         {rules.length === 0 ? (
           <div className={styles.empty}>{emptyMessage}</div>
@@ -374,6 +441,17 @@ export function RuleTable<T>({
           onMouseDown={(event) => event.stopPropagation()}
           role="menu"
         >
+          {onBulkDuplicate ? (
+            <button
+              type="button"
+              className={styles.contextMenuItem}
+              onClick={handleBulkDuplicate}
+            >
+              {contextMenuLabels?.duplicateSelected?.(
+                contextMenu.targetIndices.length,
+              ) ?? `Duplicate ${contextMenu.targetIndices.length}`}
+            </button>
+          ) : null}
           <button
             type="button"
             className={styles.contextMenuItem}

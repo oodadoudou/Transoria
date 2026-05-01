@@ -15,6 +15,7 @@ import {
   type ProviderTemplateFieldHint,
   type ThinkingLevel,
 } from "@/bridge";
+import { useToastStore } from "@/store/useToastStore";
 import { Pill } from "./Pill";
 import { TextField } from "./TextField";
 import { NumberField } from "./NumberField";
@@ -373,6 +374,7 @@ export function ModelProfileModal({
     }
     setSaving(true);
     setError(null);
+    const pushToast = useToastStore.getState().push;
     try {
       if (mode === "edit" && profile) {
         // Update profile fields, then api keys separately if user typed any.
@@ -385,15 +387,32 @@ export function ModelProfileModal({
         if (keys && keys.length > 0) {
           await modelProfilesBridge.setApiKey(profile.id, keys);
         }
+        pushToast({
+          variant: "success",
+          title: messages.toast.profileSaved,
+          detail: draft.display_name,
+        });
         onSaved(profile.id);
       } else {
         const { profile: saved } = await modelProfilesBridge.create(
           draftToCreatePayload(draft),
         );
+        pushToast({
+          variant: "success",
+          title: messages.toast.profileSaved,
+          detail: draft.display_name,
+        });
         onSaved(saved.id);
       }
     } catch (err) {
-      setError(asBridgeError(err));
+      const bridgeError = asBridgeError(err);
+      setError(bridgeError);
+      pushToast({
+        variant: "error",
+        title: messages.toast.profileSaveFailed,
+        detail: bridgeError.message,
+        durationMs: 5000,
+      });
     } finally {
       setSaving(false);
     }

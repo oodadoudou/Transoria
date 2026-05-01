@@ -42,6 +42,7 @@ export interface Messages {
   };
   ruleTable: {
     deleteSelected: string;
+    duplicateSelected: string;
   };
   allKeysFailed: {
     title: string;
@@ -194,6 +195,15 @@ export interface Messages {
     error: string;
     idle: string;
   };
+  toast: {
+    settingsSaved: string;
+    settingsSaveFailed: string;
+    settingsRejectedFields: string;
+    presetSaved: string;
+    presetSaveFailed: string;
+    profileSaved: string;
+    profileSaveFailed: string;
+  };
   folderPicker: {
     choose: string;
     open: string;
@@ -284,6 +294,7 @@ export interface Messages {
         description: string;
         rule: string;
         status: string;
+        frequency: string;
       };
       editor: {
         empty: string;

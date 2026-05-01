@@ -80,6 +80,11 @@ export interface GlossaryEntry {
   description: string;
   caseSensitive: boolean;
   enabled: boolean;
+  /** Occurrence count carried over from glossary-extraction artifacts.
+   * 0 when the row was hand-authored / imported from a source that
+   * doesn't track frequency. Drives the optional sort-by-frequency
+   * column in the rule table. */
+  frequency: number;
 }
 
 export interface ModuleGlossaryRules {
@@ -131,6 +136,7 @@ export const useTaskStore = create<TaskState>((set) => ({
         description: "",
         caseSensitive: false,
         enabled: true,
+        frequency: 0,
       };
       return {
         translationGlossary: {

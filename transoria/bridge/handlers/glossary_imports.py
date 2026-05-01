@@ -33,6 +33,15 @@ def _entry_from_record(raw: object) -> dict[str, object] | None:
     if not src or not dst:
         return None
     info_value = raw.get("info") or raw.get("type") or raw.get("description") or ""
+    # Frequency is preserved when the source carries it (typical for
+    # the glossary-extraction xlsx) so the UI can sort by occurrence
+    # count after import. User-authored glossaries without the column
+    # default to 0; the UI treats that as "unknown / not measured".
+    frequency_raw = raw.get("frequency", 0)
+    try:
+        frequency = max(0, int(frequency_raw))
+    except (TypeError, ValueError):
+        frequency = 0
     return {
         "src": src,
         "dst": dst,
@@ -40,6 +49,7 @@ def _entry_from_record(raw: object) -> dict[str, object] | None:
         "regex": bool(raw.get("regex", False)),
         "case_sensitive": bool(raw.get("case_sensitive", False)),
         "enabled": raw.get("enabled", True) is not False,
+        "frequency": frequency,
     }
 
 

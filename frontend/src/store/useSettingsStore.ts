@@ -22,6 +22,11 @@ type ModuleSettingsMap = {
   replacement: ReplacementSettings;
 };
 
+interface RejectedField {
+  field: string;
+  reason: string;
+}
+
 interface ModuleSlice<TModule extends SettingsModule> {
   draft: ModuleSettingsMap[TModule] | null;
   baseline: ModuleSettingsMap[TModule] | null;
@@ -29,6 +34,11 @@ interface ModuleSlice<TModule extends SettingsModule> {
   saveState: SaveState;
   lastSavedAt: string | null;
   lastError: BridgeError | null;
+  /** Fields the backend's lenient ``save_partial`` couldn't apply
+   * (unknown fields, type mismatches). Reset on every successful save
+   * so a previous rejection from an old patch doesn't haunt the
+   * current toast. */
+  lastRejectedFields: RejectedField[];
   debounceHandle: ReturnType<typeof setTimeout> | null;
 }
 
@@ -62,6 +72,7 @@ const emptySlice: ModuleSlice<SettingsModule> = {
   saveState: "idle",
   lastSavedAt: null,
   lastError: null,
+  lastRejectedFields: [],
   debounceHandle: null,
 };
 
@@ -98,7 +109,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       }),
     );
     try {
-      const { saved_at } = await settingsBridge.savePartial(module, patch);
+      const { saved_at, rejected_fields } = await settingsBridge.savePartial(
+        module,
+        patch,
+      );
       set((state) => {
         const updated = state[module];
         const consumed = updated.pendingPatch;
@@ -118,6 +132,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           baseline: updated.draft,
           saveState: hasRemaining ? "saving" : "saved",
           lastSavedAt: saved_at,
+          lastRejectedFields: rejected_fields ?? [],
         });
       });
     } catch (error) {
@@ -280,6 +295,7 @@ export function useModuleSettings<TModule extends SettingsModule>(
   saveState: SaveState;
   lastSavedAt: string | null;
   lastError: BridgeError | null;
+  lastRejectedFields: RejectedField[];
   isHydrated: boolean;
   loadError: BridgeError | null;
   update: <TKey extends keyof ModuleSettingsMap[TModule]>(
@@ -310,6 +326,7 @@ export function useModuleSettings<TModule extends SettingsModule>(
     saveState: slice.saveState,
     lastSavedAt: slice.lastSavedAt,
     lastError: slice.lastError,
+    lastRejectedFields: slice.lastRejectedFields,
     isHydrated: hydrated,
     loadError,
     update: (key, value) => updateField(module, key, value),

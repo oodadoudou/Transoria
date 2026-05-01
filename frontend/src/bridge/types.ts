@@ -84,6 +84,10 @@ export interface PersistedGlossaryEntry {
   regex: boolean;
   case_sensitive: boolean;
   enabled: boolean;
+  /** Carried over from import (e.g. glossary-extraction xlsx).
+   * Optional so existing settings.json from older versions still
+   * load — missing field treated as 0. */
+  frequency?: number;
 }
 
 export interface PersistedTextPreserveRule {

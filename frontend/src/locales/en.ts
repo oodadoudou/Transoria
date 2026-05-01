@@ -46,6 +46,7 @@ export const en: Messages = {
   },
   ruleTable: {
     deleteSelected: "Delete {n} selected",
+    duplicateSelected: "Duplicate {n} selected",
   },
   allKeysFailed: {
     title: "All API keys failed",
@@ -216,6 +217,15 @@ export const en: Messages = {
     error: "Save failed",
     idle: "All changes saved",
   },
+  toast: {
+    settingsSaved: "Settings saved",
+    settingsSaveFailed: "Save failed",
+    settingsRejectedFields: "{count} field(s) rejected: {fields}",
+    presetSaved: "Prompt preset saved",
+    presetSaveFailed: "Prompt preset save failed",
+    profileSaved: "Model profile saved",
+    profileSaveFailed: "Model profile save failed",
+  },
   folderPicker: {
     choose: "Choose folder",
     open: "Open",
@@ -325,6 +335,7 @@ export const en: Messages = {
         description: "Description",
         rule: "Rule",
         status: "Status",
+        frequency: "Frequency",
       },
       editor: {
         empty:

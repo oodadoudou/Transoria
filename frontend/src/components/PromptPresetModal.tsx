@@ -7,6 +7,7 @@ import {
   type PromptPreviewResult,
 } from "@/bridge";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { useToastStore } from "@/store/useToastStore";
 import { Pill } from "./Pill";
 import { TextField } from "./TextField";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -143,6 +144,7 @@ export function PromptPresetModal({
     }
     setSaving(true);
     setError(null);
+    const pushToast = useToastStore.getState().push;
     try {
       if (mode === "edit" && seed) {
         await store.updatePreset(seed.id, {
@@ -152,6 +154,11 @@ export function PromptPresetModal({
           system_prompt: draft.system_prompt,
           suffix_prompt: draft.suffix_prompt,
           thinking_prompt: draft.thinking_prompt,
+        });
+        pushToast({
+          variant: "success",
+          title: messages.toast.presetSaved,
+          detail: draft.name,
         });
         onSaved(seed.id);
       } else {
@@ -165,14 +172,34 @@ export function PromptPresetModal({
           suffix_prompt: draft.suffix_prompt,
           thinking_prompt: draft.thinking_prompt,
         });
-        if (created) onSaved(created.id);
-        else
-          setError(
-            store.mutationError ?? makeUnknownError("create returned null"),
-          );
+        if (created) {
+          pushToast({
+            variant: "success",
+            title: messages.toast.presetSaved,
+            detail: draft.name,
+          });
+          onSaved(created.id);
+        } else {
+          const failureError =
+            store.mutationError ?? makeUnknownError("create returned null");
+          setError(failureError);
+          pushToast({
+            variant: "error",
+            title: messages.toast.presetSaveFailed,
+            detail: failureError.message,
+            durationMs: 5000,
+          });
+        }
       }
     } catch (err) {
-      setError(asBridgeError(err));
+      const bridgeError = asBridgeError(err);
+      setError(bridgeError);
+      pushToast({
+        variant: "error",
+        title: messages.toast.presetSaveFailed,
+        detail: bridgeError.message,
+        durationMs: 5000,
+      });
     } finally {
       setSaving(false);
     }

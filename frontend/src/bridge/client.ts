@@ -56,7 +56,10 @@ export const settingsBridge = {
   savePartial<TModule extends SettingsModule>(
     module: TModule,
     patch: Partial<ModuleSettings>,
-  ): Promise<{ saved_at: string }> {
+  ): Promise<{
+    saved_at: string;
+    rejected_fields: Array<{ field: string; reason: string }>;
+  }> {
     return call("settings.save_partial", { module, patch });
   },
   resetModule(module: SettingsModule): Promise<ModuleSettings> {
@@ -307,6 +310,7 @@ export const glossaryBridge = {
       regex: boolean;
       case_sensitive: boolean;
       enabled: boolean;
+      frequency: number;
     }>;
   }> {
     return call("glossary.import_rules", { path });
@@ -320,6 +324,7 @@ export const glossaryBridge = {
       regex: boolean;
       case_sensitive: boolean;
       enabled: boolean;
+      frequency?: number;
     }>,
   ): Promise<{ path: string; count: number }> {
     return call("glossary.export_rules", { path, entries });

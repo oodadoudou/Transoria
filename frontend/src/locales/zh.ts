@@ -46,6 +46,7 @@ export const zh: Messages = {
   },
   ruleTable: {
     deleteSelected: "删除选中的 {n} 项",
+    duplicateSelected: "复制选中的 {n} 项",
   },
   errors: {
     runFailureTitle: "最近一次操作失败",
@@ -208,6 +209,15 @@ export const zh: Messages = {
     error: "保存失败",
     idle: "所有更改已保存",
   },
+  toast: {
+    settingsSaved: "设置已保存",
+    settingsSaveFailed: "保存失败",
+    settingsRejectedFields: "{count} 个字段被拒：{fields}",
+    presetSaved: "Prompt 预设已保存",
+    presetSaveFailed: "Prompt 保存失败",
+    profileSaved: "模型配置已保存",
+    profileSaveFailed: "模型配置保存失败",
+  },
   folderPicker: {
     choose: "选择文件夹",
     open: "打开",
@@ -316,6 +326,7 @@ export const zh: Messages = {
         description: "说明",
         rule: "规则",
         status: "状态",
+        frequency: "频率",
       },
       editor: {
         empty: "在左侧表格中点选条目,或点击 + 新增 创建一条。",

@@ -9,11 +9,14 @@ import { GlossaryModule } from "./pages/glossary";
 import { GeneralToolsModule } from "./pages/general-tools";
 import { AppSettingsModule } from "./pages/app-settings";
 import { AllKeysFailedDialog } from "./components/AllKeysFailedDialog";
+import { ToastHost } from "./components/ToastHost";
+import { useSettingsSaveToast } from "./components/useSettingsSaveToast";
 import styles from "./App.module.css";
 
 export function App() {
   const messages = useMessages();
   const route = useTaskStore((state) => state.route);
+  useSettingsSaveToast();
 
   const onRunPage = isRunPage(route);
   const crumb = crumbFor(route, messages);
@@ -36,6 +39,7 @@ export function App() {
         {onRunPage ? <StatusBar /> : null}
       </main>
       <AllKeysFailedDialog />
+      <ToastHost />
     </div>
   );
 }

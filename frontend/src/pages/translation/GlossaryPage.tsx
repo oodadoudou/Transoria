@@ -13,6 +13,7 @@ import {
   RuleTable,
   type RuleTableColumn,
   type RuleTableSelection,
+  type SortState,
   ruleTableStyles,
 } from "@/components/RuleTable";
 import { GlossaryStatsModal } from "@/components/GlossaryStatsModal";
@@ -27,6 +28,7 @@ interface PersistedEntry {
   regex: boolean;
   case_sensitive: boolean;
   enabled: boolean;
+  frequency: number;
 }
 
 function entryToPersisted(entry: GlossaryEntry): PersistedEntry {
@@ -37,6 +39,7 @@ function entryToPersisted(entry: GlossaryEntry): PersistedEntry {
     regex: false,
     case_sensitive: entry.caseSensitive,
     enabled: entry.enabled,
+    frequency: entry.frequency,
   };
 }
 
@@ -45,6 +48,7 @@ function persistedToEntry(raw: unknown, index: number): GlossaryEntry | null {
   const obj = raw as Record<string, unknown>;
   const src = typeof obj.src === "string" ? obj.src : "";
   const dst = typeof obj.dst === "string" ? obj.dst : "";
+  const freq = typeof obj.frequency === "number" ? obj.frequency : 0;
   return {
     id: `g-${index}`,
     source: src,
@@ -52,6 +56,7 @@ function persistedToEntry(raw: unknown, index: number): GlossaryEntry | null {
     description: typeof obj.info === "string" ? obj.info : "",
     caseSensitive: obj.case_sensitive === true,
     enabled: obj.enabled !== false,
+    frequency: freq,
   };
 }
 
@@ -99,15 +104,43 @@ export function GlossaryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statsOpen, setStatsOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
+  const [sortState, setSortState] = useState<SortState | null>(null);
 
   const filteredEntries = (() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!searchOpen || !query) return state.entries;
-    return state.entries.filter((e) =>
-      [e.source, e.translation, e.description].some((field) =>
-        field.toLowerCase().includes(query),
-      ),
-    );
+    const base =
+      !searchOpen || !query
+        ? state.entries
+        : state.entries.filter((e) =>
+            [e.source, e.translation, e.description].some((field) =>
+              field.toLowerCase().includes(query),
+            ),
+          );
+    if (!sortState) return base;
+    const direction = sortState.direction === "asc" ? 1 : -1;
+    const extract = (entry: GlossaryEntry): string | number => {
+      switch (sortState.key) {
+        case "source":
+          return entry.source.toLowerCase();
+        case "translation":
+          return entry.translation.toLowerCase();
+        case "description":
+          return entry.description.toLowerCase();
+        case "frequency":
+          return entry.frequency;
+        default:
+          return 0;
+      }
+    };
+    // Sort a copy so the underlying ``state.entries`` order (and thus
+    // settings persistence) is not perturbed by sort-only views.
+    return [...base].sort((a, b) => {
+      const av = extract(a);
+      const bv = extract(b);
+      if (av < bv) return -direction;
+      if (av > bv) return direction;
+      return 0;
+    });
   })();
 
   const selectedIndex = selection.last;
@@ -135,6 +168,7 @@ export function GlossaryPage() {
         description: entry.info,
         caseSensitive: entry.case_sensitive,
         enabled: entry.enabled,
+        frequency: entry.frequency ?? 0,
       }));
       if (incoming.length === 0) {
         setImportError(g.importEmpty);
@@ -167,6 +201,7 @@ export function GlossaryPage() {
           regex: false,
           case_sensitive: entry.caseSensitive,
           enabled: entry.enabled,
+          frequency: entry.frequency,
         })),
       );
     } catch (error) {
@@ -188,6 +223,7 @@ export function GlossaryPage() {
       key: "source",
       label: g.columns.source,
       width: "1.4fr",
+      sortable: true,
       render: (entry) => entry.source,
       edit: {
         getValue: (entry) => entry.source,
@@ -198,6 +234,7 @@ export function GlossaryPage() {
       key: "translation",
       label: g.columns.translation,
       width: "1.4fr",
+      sortable: true,
       render: (entry) => entry.translation,
       edit: {
         getValue: (entry) => entry.translation,
@@ -208,6 +245,7 @@ export function GlossaryPage() {
       key: "description",
       label: g.columns.description,
       width: "1.6fr",
+      sortable: true,
       render: (entry) => (
         <span className={ruleTableStyles.cellMuted}>{entry.description}</span>
       ),
@@ -215,6 +253,18 @@ export function GlossaryPage() {
         getValue: (entry) => entry.description,
         onCommit: (idx, value) => commitFromIndex(idx, { description: value }),
       },
+    },
+    {
+      key: "frequency",
+      label: g.columns.frequency,
+      width: "84px",
+      align: "right",
+      sortable: true,
+      render: (entry) => (
+        <span className={`${ruleTableStyles.cellMuted} tnum`}>
+          {entry.frequency || ""}
+        </span>
+      ),
     },
     {
       key: "rule",
@@ -249,6 +299,31 @@ export function GlossaryPage() {
       .filter((id): id is string => Boolean(id));
     ids.forEach(deleteEntry);
     setSelection(EMPTY_SELECTION);
+  };
+
+  const handleBulkDuplicate = (indices: number[]) => {
+    // Snapshot the targets first since the array of entries is about
+    // to grow. Append fresh copies (new ids) at the end so the user
+    // sees a clear "originals stay, copies appended" result and can
+    // edit just the copies without disturbing the source rows.
+    const sources = indices
+      .map((i) => filteredEntries[i])
+      .filter((e): e is GlossaryEntry => Boolean(e));
+    if (sources.length === 0) return;
+    const stamp = Date.now().toString(36);
+    const copies: GlossaryEntry[] = sources.map((entry, idx) => ({
+      ...entry,
+      id: `g-dup-${stamp}-${idx}`,
+    }));
+    importEntries([...state.entries, ...copies]);
+    // Move the selection to the just-appended copies so the user can
+    // tab straight into editing them.
+    const startIndex = state.entries.length;
+    const newIndices = copies.map((_, i) => startIndex + i);
+    setSelection({
+      indices: newIndices,
+      last: newIndices[newIndices.length - 1] ?? null,
+    });
   };
 
   return (
@@ -297,10 +372,15 @@ export function GlossaryPage() {
           selection={selection}
           onSelectionChange={setSelection}
           onBulkDelete={handleBulkDelete}
+          onBulkDuplicate={handleBulkDuplicate}
           contextMenuLabels={{
             deleteSelected: (n) =>
               format(messages.ruleTable.deleteSelected, { n }),
+            duplicateSelected: (n) =>
+              format(messages.ruleTable.duplicateSelected, { n }),
           }}
+          sortState={sortState}
+          onSortChange={setSortState}
           isEnabled={(entry) => entry.enabled}
           columns={columns}
           emptyMessage={g.empty}
