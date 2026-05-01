@@ -54,6 +54,39 @@ SUBTASK_PAYLOAD_VERSION = 1
 SUBTASK_RESPONSE_VERSION = 2
 
 
+# Same lesson as glossary: DeepSeek-v4 ignores JSONL contracts when they
+# arrive in the system_prompt slot. Concatenating everything into a single
+# user message is what empirically gets compliance, and a strict reminder
+# on retry attempts shifts the next call further toward format compliance.
+_FORMAT_RETRY_REMINDER = (
+    "FORMAT RETRY: the previous answer was rejected because it did not "
+    "follow JSONLINE — too few lines, prose interleaved, or non-JSON text "
+    "around the objects. Output JSONLINE only: one independent JSON object "
+    "per line, exactly one line per source index. The first non-whitespace "
+    'character must be "{". No prose, no Markdown, no code fence, no extra '
+    "lines."
+)
+
+
+def _output_contract_reminder(target_language: str) -> str:
+    """Runtime-level output contract appended to every translation call.
+
+    Lives here (not in the preset) so the same hard rules apply
+    regardless of which preset is active. The line-count constraint and
+    target-language clause are spelled out so a custom preset can't let
+    the LLM drift the schema.
+    """
+
+    return (
+        "FINAL OUTPUT CONTRACT: output JSONLINE only. Each line must be "
+        'one JSON object {"<INDEX>":"<translation>"} where <INDEX> matches '
+        "exactly the integer index of the corresponding source line. The "
+        "output line count must equal the source line count — never merge, "
+        "split, omit, or invent lines. Translations must be in "
+        f"{target_language}. No prose, no Markdown, no code fence."
+    )
+
+
 @dataclass(frozen=True)
 class _SegmentPayload:
     """Internal: per-segment data carried alongside the chunk in the payload."""
@@ -207,18 +240,26 @@ class TranslationSubtaskRunner:
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
-        return await retry_async(
-            lambda: self._attempt(chunk, metadata, subtask.id),
-            model=self.model,
-        )
+        attempt_index = -1
+
+        async def operation() -> SubtaskResult:
+            nonlocal attempt_index
+            attempt_index += 1
+            return await self._attempt(
+                chunk, metadata, subtask.id, attempt_index=attempt_index
+            )
+
+        return await retry_async(operation, model=self.model)
 
     async def _attempt(
         self,
         chunk,
         metadata: tuple[_SegmentPayload, ...],
         subtask_id: str = "",
+        *,
+        attempt_index: int = 0,
     ) -> SubtaskResult:
-        system_prompt = build_prompt(
+        instruction_prompt = build_prompt(
             self.prompt_preset,
             PromptContext(
                 source_language=self.source_language.value,
@@ -227,10 +268,14 @@ class TranslationSubtaskRunner:
             thinking=self.model.thinking_prompt_enabled,
         )
 
-        initial_user_prompt = self._apply_roster(assemble_user_prompt(chunk))
+        initial_user_prompt = self._compose_user_prompt(
+            instruction_prompt,
+            self._apply_roster(assemble_user_prompt(chunk)),
+            format_retry=attempt_index > 0,
+        )
         log_label = f"translation {subtask_id}" if subtask_id else "translation"
         response = await self._one_llm_call(
-            system_prompt, initial_user_prompt, log_label
+            "", initial_user_prompt, log_label
         )
         total_input = response.usage.input_tokens
         total_output = response.usage.output_tokens
@@ -269,9 +314,13 @@ class TranslationSubtaskRunner:
                 context_lines=chunk.context_lines,
                 glossary_entries=chunk.glossary_entries,
             )
-            retry_user_prompt = self._apply_roster(assemble_user_prompt(retry_chunk))
+            retry_user_prompt = self._compose_user_prompt(
+                instruction_prompt,
+                self._apply_roster(assemble_user_prompt(retry_chunk)),
+                format_retry=False,
+            )
             retry_response = await self._one_llm_call(
-                system_prompt, retry_user_prompt, f"{log_label} retry"
+                "", retry_user_prompt, f"{log_label} retry"
             )
             total_input += retry_response.usage.input_tokens
             total_output += retry_response.usage.output_tokens
@@ -314,7 +363,8 @@ class TranslationSubtaskRunner:
                 _chunk_log_id(chunk),
                 {
                     "kind": "translation",
-                    "system_prompt": system_prompt,
+                    "system_prompt": "",
+                    "instruction_prompt": instruction_prompt,
                     "user_prompt": initial_user_prompt,
                     "raw_response": raw_content,
                     "translations": finalized,
@@ -332,6 +382,21 @@ class TranslationSubtaskRunner:
             input_tokens=total_input,
             output_tokens=total_output,
         )
+
+    def _compose_user_prompt(
+        self,
+        instruction_prompt: str,
+        body: str,
+        *,
+        format_retry: bool,
+    ) -> str:
+        parts: list[str] = []
+        if format_retry:
+            parts.append(_FORMAT_RETRY_REMINDER)
+        parts.append(instruction_prompt)
+        parts.append(body)
+        parts.append(_output_contract_reminder(self.target_language.value))
+        return "\n\n".join(part for part in parts if part)
 
     def _apply_roster(self, prompt: str) -> str:
         roster = self.fake_name_roster
