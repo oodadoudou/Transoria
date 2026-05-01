@@ -284,6 +284,13 @@ def _anthropic_max_tokens(configured: int) -> int:
     return _ANTHROPIC_AUTO_MAX_TOKENS
 
 
+def _transport_error_detail(exc: Exception) -> str:
+    message = str(exc).strip()
+    if message:
+        return f"{type(exc).__name__}: {message}"
+    return type(exc).__name__
+
+
 @dataclass(frozen=True)
 class LlmClient:
     transport: ChatTransport
@@ -489,8 +496,9 @@ class LlmClient:
                 last_error = exc
                 if attempt + 1 < attempts:
                     continue
+                detail = _transport_error_detail(exc)
                 raise LlmRequestError(
-                    f"Transport failed for model {request.model.id!r}: {exc}",
+                    f"Transport failed for model {request.model.id!r}: {detail}",
                     code="llm.transport_error",
                 ) from exc
 
@@ -578,8 +586,9 @@ class LlmClient:
                 )
                 # Transport / network error — don't evict; surface to
                 # the runner so retry_async can decide whether to retry.
+                detail = _transport_error_detail(exc)
                 raise LlmRequestError(
-                    f"Transport failed for model {request.model.id!r}: {exc}",
+                    f"Transport failed for model {request.model.id!r}: {detail}",
                     code="llm.transport_error",
                 ) from exc
 
