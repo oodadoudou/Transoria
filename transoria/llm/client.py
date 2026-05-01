@@ -705,6 +705,8 @@ def _parse_google_response(body: Mapping[str, object]) -> ChatResponse:
     if isinstance(parts, list):
         for part in parts:
             if isinstance(part, Mapping):
+                if part.get("thought"):
+                    continue
                 text_parts.append(str(part.get("text", "")))
     usage_meta = body.get("usageMetadata")
     usage = TokenUsage()

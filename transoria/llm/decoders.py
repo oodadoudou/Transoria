@@ -56,7 +56,9 @@ _FENCED_BLOCK_PATTERN = re.compile(
     r"```(?:jsonline|jsonl|json)?\s*\n(.*?)\n```",
     re.DOTALL | re.IGNORECASE,
 )
-_THINKING_BLOCK_PATTERN = re.compile(r"<why>.*?</why>", re.DOTALL | re.IGNORECASE)
+_THINKING_BLOCK_PATTERN = re.compile(
+    r"<(?:why|think)>.*?</(?:why|think)>", re.DOTALL | re.IGNORECASE
+)
 _TABLE_ROW_PATTERN = re.compile(r"^\s*\|(.+)\|\s*$")
 _TABLE_SEPARATOR_PATTERN = re.compile(r"^\s*\|[\s:|\-]+\|\s*$")
 _BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
