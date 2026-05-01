@@ -13,9 +13,8 @@ Design decisions worth calling out:
   multiple files are present. Subtasks carry a stable ``segment_id`` of the
   form ``"<file_index>:<segment_index>"`` so the orchestrator can route each
   decoded result back to the right file at writeback time.
-- A failed subtask leaves its segments untranslated; the writer falls back to
-  the original source text for those segments and the file path is recorded
-  in the statistics output. The run is *partial*, not all-or-nothing.
+- User-facing translated files are written only after a clean completed run;
+  failed/stopped runs keep cache + statistics for resume/diagnostics.
 - Bilingual output goes under a single shared subfolder (per design doc),
   not a per-file subfolder. The English and Chinese UI defaults are exposed
   as ``BILINGUAL_OUTPUT_FOLDER_EN`` / ``..._ZH`` constants.
@@ -220,13 +219,24 @@ class TranslationOrchestrator:
         translations_by_segment, low_confidence_records = _collect_translations(
             snapshot.subtasks
         )
-
-        translated_outputs, bilingual_outputs, failed_files = _write_outputs(
-            parsed_files,
-            translations_by_segment,
-            prepared_per_file,
-            config,
+        clean_completion = _is_clean_completion(
+            snapshot,
+            expected_segments=len(prepared),
+            translations=translations_by_segment,
         )
+        if clean_completion:
+            translated_outputs, bilingual_outputs, failed_files = _write_outputs(
+                parsed_files,
+                translations_by_segment,
+                prepared_per_file,
+                config,
+            )
+        else:
+            translated_outputs = []
+            bilingual_outputs = []
+            failed_files = _failed_files_for_missing_translations(
+                parsed_files, translations_by_segment, prepared_per_file
+            )
 
         statistics = TranslationStatistics(
             started_at=started_at,
@@ -523,6 +533,44 @@ def _collect_translations(
             for segment_id, text in payload.items():
                 translations[str(segment_id)] = str(text)
     return translations, low_confidence
+
+
+def _is_clean_completion(
+    snapshot,
+    *,
+    expected_segments: int,
+    translations: Mapping[str, str],
+) -> bool:
+    if snapshot.record.status is not TaskStatus.COMPLETED:
+        return False
+    if len(translations) != expected_segments:
+        return False
+    return all(
+        subtask.status in {SubtaskStatus.COMPLETED, SubtaskStatus.SKIPPED}
+        for subtask in snapshot.subtasks
+    )
+
+
+def _failed_files_for_missing_translations(
+    parsed_files: tuple[_ParsedFile, ...],
+    translations_by_segment: Mapping[str, str],
+    prepared_per_file: Mapping[int, tuple[PreparedSegment, ...]],
+) -> list[FailedFile]:
+    failed_files: list[FailedFile] = []
+    for parsed in parsed_files:
+        missing_for_file = sum(
+            1
+            for item in prepared_per_file.get(parsed.file_index, ())
+            if item.segment_id not in translations_by_segment
+        )
+        if missing_for_file:
+            failed_files.append(
+                FailedFile(
+                    path=str(parsed.document.path),  # type: ignore[union-attr]
+                    reason=f"{missing_for_file} segments missing from translation results",
+                )
+            )
+    return failed_files
 
 
 def _write_outputs(
