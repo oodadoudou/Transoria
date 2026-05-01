@@ -1,5 +1,7 @@
-import { useMessages } from "./locales";
+import { useEffect } from "react";
+import { useI18n, useMessages } from "./locales";
 import { isRunPage, useTaskStore, type Route } from "./store/useTaskStore";
+import { useSettingsStore } from "./store/useSettingsStore";
 import { SubNav, crumbFor } from "./components/SubNav";
 import { Rail } from "./components/Rail";
 import { StatusBar } from "./components/StatusBar";
@@ -15,8 +17,24 @@ import styles from "./App.module.css";
 
 export function App() {
   const messages = useMessages();
+  const locale = useI18n((state) => state.locale);
+  const setLocale = useI18n((state) => state.setLocale);
   const route = useTaskStore((state) => state.route);
+  const hydrateSettings = useSettingsStore((state) => state.hydrate);
+  const interfaceLanguage = useSettingsStore(
+    (state) => state.app.draft?.interface_language,
+  );
   useSettingsSaveToast();
+
+  useEffect(() => {
+    void hydrateSettings();
+  }, [hydrateSettings]);
+
+  useEffect(() => {
+    if (interfaceLanguage && interfaceLanguage !== locale) {
+      setLocale(interfaceLanguage);
+    }
+  }, [interfaceLanguage, locale, setLocale]);
 
   const onRunPage = isRunPage(route);
   const crumb = crumbFor(route, messages);

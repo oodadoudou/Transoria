@@ -126,6 +126,51 @@
 .footer {
   margin-top: auto;
   padding: 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.githubLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 7px 12px;
+  border: 1px solid #f0c84d;
+  border-radius: 999px;
+  color: #b85414;
+  background: rgba(255, 249, 224, 0.52);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.githubLink:hover {
+  background: #fff8d8;
+  border-color: #e6b72f;
+  color: #9d4210;
+  transform: translateY(-1px);
+}
+
+.githubLink:focus-visible {
+  outline: 2px solid rgba(184, 84, 20, 0.34);
+  outline-offset: 3px;
+}
+
+.githubStar {
+  color: #e7ae1a;
+  font-size: 17px;
+  line-height: 0.8;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .watermark {

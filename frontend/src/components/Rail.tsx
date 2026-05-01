@@ -99,7 +99,7 @@ export function Rail() {
   const isOpen = (id: ModuleId) => expanded.has(id);
 
   return (
-    <nav className={styles.rail} aria-label="Modules">
+    <nav className={styles.rail} aria-label={messages.rail.modulesAria}>
       <div className={styles.label}>{messages.rail.modules}</div>
       {tree.modules.map((mod) => (
         <ModuleNode
@@ -126,6 +126,16 @@ export function Rail() {
       ))}
 
       <div className={styles.footer}>
+        <a
+          className={styles.githubLink}
+          href="https://github.com/oodadoudou/Transoria"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={messages.rail.githubAria}
+        >
+          <span>{messages.rail.githubLink}</span>
+          <span className={styles.githubStar}>★</span>
+        </a>
         <div className={styles.watermark} aria-hidden>
           <span className={styles.watermarkApp}>Transoria</span>
           <span className={styles.watermarkSep}>·</span>

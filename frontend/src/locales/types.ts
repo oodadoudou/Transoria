@@ -2,6 +2,7 @@
 export interface Messages {
   brand: { name: string };
   rail: {
+    modulesAria: string;
     modules: string;
     workspace: string;
     model: string;
@@ -9,6 +10,8 @@ export interface Messages {
     glossary: string;
     generalTools: string;
     appSettings: string;
+    githubLink: string;
+    githubAria: string;
   };
   topbar: {
     settings: string;
@@ -339,6 +342,7 @@ export interface Messages {
       title: string;
       sub: string;
       progress: string;
+      failedSubtasks: string;
       runtimeTuning: string;
       activeConfig: string;
       activeModel: string;
@@ -458,6 +462,7 @@ export interface Messages {
       title: string;
       sub: string;
       progress: string;
+      failedSubtasks: string;
       runtimeTuning: string;
       activeConfig: string;
       activeModel: string;

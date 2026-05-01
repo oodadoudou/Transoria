@@ -3,6 +3,7 @@ import type { Messages } from "./types";
 export const en: Messages = {
   brand: { name: "Transoria" },
   rail: {
+    modulesAria: "Module navigation",
     modules: "Modules",
     workspace: "Workspace",
     model: "Models",
@@ -10,6 +11,8 @@ export const en: Messages = {
     glossary: "Glossary Extraction",
     generalTools: "General Tools",
     appSettings: "App Settings",
+    githubLink: "Give this D a",
+    githubAria: "Open the Transoria GitHub page",
   },
   topbar: {
     settings: "Settings",
@@ -383,6 +386,7 @@ export const en: Messages = {
       title: "Run Translation",
       sub: "Start, monitor, and stop the active translation job. Folder and language choices are configured in Settings.",
       progress: "Progress",
+      failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
       activeModel: "Model",
@@ -519,6 +523,7 @@ export const en: Messages = {
       title: "Run Glossary Extraction",
       sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references TXT alongside the source folder.",
       progress: "Progress",
+      failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
       activeModel: "Model",

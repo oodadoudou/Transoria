@@ -150,7 +150,7 @@ export function RunPage() {
       ) : null}
 
       {snapshot.failures.length > 0 ? (
-        <Panel label="Failed subtasks">
+        <Panel label={run.failedSubtasks}>
           <FailedSubtaskList failures={snapshot.failures} />
         </Panel>
       ) : null}

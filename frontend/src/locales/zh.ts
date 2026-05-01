@@ -3,6 +3,7 @@ import type { Messages } from "./types";
 export const zh: Messages = {
   brand: { name: "Transoria" },
   rail: {
+    modulesAria: "模块导航",
     modules: "模块",
     workspace: "工作区",
     model: "模型",
@@ -10,6 +11,8 @@ export const zh: Messages = {
     glossary: "术语提取",
     generalTools: "通用工具",
     appSettings: "应用设置",
+    githubLink: "请给这个 D 一颗",
+    githubAria: "打开 Transoria GitHub 页面",
   },
   topbar: {
     settings: "设置",
@@ -372,6 +375,7 @@ export const zh: Messages = {
       title: "执行翻译",
       sub: "启动、监控并停止当前翻译任务。文件夹与语言对在「设置」页配置。",
       progress: "进度",
+      failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
       activeModel: "模型",
@@ -506,6 +510,7 @@ export const zh: Messages = {
       title: "执行术语提取",
       sub: "启动、监控并停止术语提取任务。输出 XLSX、JSON 与参考 TXT 三件套,放在源文件夹同级。",
       progress: "进度",
+      failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
       activeModel: "模型",

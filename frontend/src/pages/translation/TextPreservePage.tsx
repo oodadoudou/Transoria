@@ -60,6 +60,20 @@ export function TextPreservePage() {
     setRules(rules.filter((_, i) => !drop.has(i)));
     setSelection(EMPTY_SELECTION);
   };
+  const handleBulkDuplicate = (indices: number[]) => {
+    const sources = indices
+      .map((i) => rules[i])
+      .filter((r): r is PersistedTextPreserveRule => Boolean(r));
+    if (sources.length === 0) return;
+    const copies = sources.map((rule) => ({ ...rule }));
+    setRules([...rules, ...copies]);
+    const startIndex = rules.length;
+    const newIndices = copies.map((_, i) => startIndex + i);
+    setSelection({
+      indices: newIndices,
+      last: newIndices[newIndices.length - 1] ?? null,
+    });
+  };
 
   const enabledCount = rules.filter((r) => r.enabled).length;
 
@@ -112,9 +126,12 @@ export function TextPreservePage() {
           selection={selection}
           onSelectionChange={setSelection}
           onBulkDelete={handleBulkDelete}
+          onBulkDuplicate={handleBulkDuplicate}
           contextMenuLabels={{
             deleteSelected: (n) =>
               format(messages.ruleTable.deleteSelected, { n }),
+            duplicateSelected: (n) =>
+              format(messages.ruleTable.duplicateSelected, { n }),
           }}
           isEnabled={(rule) => rule.enabled}
           columns={columns}
