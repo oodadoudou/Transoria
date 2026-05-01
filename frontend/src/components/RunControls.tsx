@@ -53,6 +53,7 @@ export function RunControls({ kind }: RunControlsProps) {
 
   const status = snapshot.status;
   const idle = snapshot.isIdle;
+  const isInFlight = !idle && IN_FLIGHT_STATUSES.has(status);
 
   const bridge = kind === "translation" ? translationBridge : glossaryBridge;
 
@@ -126,7 +127,7 @@ export function RunControls({ kind }: RunControlsProps) {
   const handleStartClick = useCallback(() => {
     // While a task is in flight, the click acts
     // as a vote toward force-restart; show the dialog only after 3 hits.
-    if (IN_FLIGHT_STATUSES.has(status)) {
+    if (isInFlight) {
       clearRestartTimer();
       const next = restartClicks + 1;
       if (next >= 3) {
@@ -147,7 +148,14 @@ export function RunControls({ kind }: RunControlsProps) {
       return;
     }
     void performStart();
-  }, [clearRestartTimer, probe.task_id, restartClicks, status, performStart]);
+  }, [
+    clearRestartTimer,
+    isInFlight,
+    performStart,
+    probe.task_id,
+    restartClicks,
+    status,
+  ]);
 
   const handleConfirmStart = useCallback(() => {
     setConfirmOpen(false);
@@ -157,11 +165,11 @@ export function RunControls({ kind }: RunControlsProps) {
   // Reset the click counter when the task leaves the active set so the
   // hint disappears as soon as Stop / Continue / a fresh start lands.
   useEffect(() => {
-    if (!IN_FLIGHT_STATUSES.has(status)) {
+    if (!isInFlight) {
       clearRestartTimer();
       setRestartClicks(0);
     }
-  }, [clearRestartTimer, status]);
+  }, [clearRestartTimer, isInFlight]);
 
   useEffect(() => clearRestartTimer, [clearRestartTimer]);
 
@@ -207,11 +215,11 @@ export function RunControls({ kind }: RunControlsProps) {
   // Pause is intentionally fused into Stop — the pause path was racy
   // and crash-prone. Stop is the only way to pause-then-resume now;
   // the user picks up via Continue (cache survives stop).
-  const canStop = status === "running";
-  const canContinue = probe.continuable && !IN_FLIGHT_STATUSES.has(status);
+  const canStop = !idle && status === "running";
+  const canContinue = probe.continuable && !isInFlight;
   // Start looks inactive while a task is in flight, but stays clickable
   // so a triple-click can force-restart (see handleStartClick).
-  const startActive = IN_FLIGHT_STATUSES.has(status);
+  const startActive = isInFlight;
   const restartRemaining = startActive ? Math.max(0, 3 - restartClicks) : 0;
 
   const stopLabel =

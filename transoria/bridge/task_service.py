@@ -92,9 +92,15 @@ _KIND_TO_TASKKIND: dict[str, TaskKind] = {
 }
 
 # Persisted statuses that imply a live executor must exist; if the
-# in-memory registry is empty for one of these, the host crashed mid-run.
+# in-memory registry is empty for one of these, the host crashed during
+# start or mid-run.
 _ZOMBIE_TASK_STATES: frozenset[TaskStatus] = frozenset(
-    {TaskStatus.RUNNING, TaskStatus.STOPPING, TaskStatus.PAUSING}
+    {
+        TaskStatus.PENDING,
+        TaskStatus.RUNNING,
+        TaskStatus.STOPPING,
+        TaskStatus.PAUSING,
+    }
 )
 
 
@@ -1554,10 +1560,20 @@ class TaskService:
     ) -> dict[str, object]:
         record_kind = self._kind(kind)
         cache = self._cache_for_kind(kind)
-        # Pull from disk first.
-        on_disk: list[TaskRecord] = [
-            r for r in cache.list_tasks() if r.kind is record_kind
-        ]
+        # Pull from disk first. Reconcile transient orphan records before
+        # formatting headers so a restart after early task seeding doesn't
+        # surface a dead PENDING/RUNNING task as "Starting..." forever.
+        on_disk: list[TaskRecord] = []
+        for record in cache.list_tasks():
+            if record.kind is not record_kind:
+                continue
+            if record.status in _ZOMBIE_TASK_STATES:
+                try:
+                    snapshot = self._reconcile_zombie(cache.load(record.id), cache)
+                except (TaskNotFoundError, ValueError, OSError):
+                    continue
+                record = snapshot.record
+            on_disk.append(record)
         seen_ids = {r.id for r in on_disk}
         # Then merge in any completed tasks that have already had their
         # disk cache wiped — without this, the frontend's ``refreshActiveTask``
@@ -1779,11 +1795,10 @@ class TaskService:
     def _reconcile_zombie(
         self, snapshot: TaskSnapshot, cache: TaskCache
     ) -> TaskSnapshot:
-        # After a host-process crash (e.g. macOS WebKit setCursorFromBundle
-        # SIGBUS, OOM, kill -9) the runtime never writes a terminal state,
-        # so the cache stays at RUNNING/STOPPING/PAUSING while the in-memory
-        # executor is gone. Flip it to STOPPED here so the UI surfaces a
-        # continuable task instead of a zombie.
+        # After a host-process crash (e.g. SIGBUS, OOM, kill -9) the runtime
+        # never writes a terminal state, so the cache stays transient while
+        # the in-memory executor is gone. Flip it to STOPPED here so the UI
+        # surfaces a continuable task instead of a zombie.
         record = snapshot.record
         if record.status not in _ZOMBIE_TASK_STATES:
             return snapshot
