@@ -1528,6 +1528,14 @@ class TaskService:
         try:
             snapshot = self._cache_for_task(task_id).load(task_id)
         except TaskNotFoundError as exc:
+            mirrored = self._completed_snapshots.get(task_id)
+            if mirrored is not None and mirrored.record.kind is record_kind:
+                # Disk cache wiped after a clean COMPLETED run; the
+                # mirror has no subtasks, so failures = []. Returning
+                # an empty list here (instead of bridge.not_found) is
+                # what keeps the frontend's pollSnapshot from clearing
+                # ``activeTaskId`` and zeroing the Run page.
+                return {"failures": []}
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
                 details={"task_id": task_id},

@@ -40,11 +40,10 @@ TXT_ENCODING_CANDIDATES = (
     # ``parse_txt_file``.
     "utf-8-sig",
     "utf-8",
-    # Korean encodings (existing test fixtures).
+    # Korean (project's primary fixtures live here).
     "cp949",
     "euc-kr",
-    # Chinese encodings (Simplified covers Mainland; Traditional covers
-    # Taiwan/HK). gb18030 is a strict superset of gbk so we try it last
+    # Chinese: gb18030 is a strict superset of gbk so we try it last
     # among Chinese variants — anything that fails the others may still
     # land here.
     "gbk",
@@ -53,6 +52,31 @@ TXT_ENCODING_CANDIDATES = (
     # Japanese.
     "shift_jis",
     "euc-jp",
+    # Vietnamese (Windows code page; covers UI locale's Vietnamese
+    # source).
+    "cp1258",
+    # Russian / Cyrillic — KOI8-R is the legacy standard, cp1251 is
+    # Windows. Order matters because cp1251 is more permissive (Latin-1-
+    # like) and would otherwise match too eagerly. We rely on the
+    # Phase-2 chardet stage having already filtered cp1251 if it really
+    # wasn't the right encoding.
+    "koi8-r",
+    "cp1251",
+    # Thai (Windows + ISO).
+    "cp874",
+    "iso-8859-11",
+    # Arabic (Windows code page).
+    "cp1256",
+    # Turkish (Windows code page).
+    "cp1254",
+    # German / French / Spanish / Italian / Portuguese / Polish /
+    # Hungarian — most modern files for these are UTF-8, so legacy
+    # detection only needs to cover Western Europe with one Latin-1
+    # superset (cp1252) and Central Europe with one (cp1250). These
+    # come last because they're permissive and would otherwise mask
+    # legitimate Asian decode failures.
+    "cp1250",
+    "cp1252",
 )
 
 
