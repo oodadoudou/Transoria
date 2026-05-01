@@ -29,6 +29,13 @@ const NEEDS_CONFIRM: ReadonlySet<string> = new Set([
   "stopped",
 ]);
 
+const IN_FLIGHT_STATUSES: ReadonlySet<string> = new Set([
+  "pending",
+  "running",
+  "pausing",
+  "stopping",
+]);
+
 const EMPTY_PROBE: ProbeContinuable = {
   continuable: false,
   task_id: null,
@@ -117,9 +124,9 @@ export function RunControls({ kind }: RunControlsProps) {
   }, []);
 
   const handleStartClick = useCallback(() => {
-    // While a task is in flight ("running" / "stopping") the click acts
+    // While a task is in flight, the click acts
     // as a vote toward force-restart; show the dialog only after 3 hits.
-    if (status === "running" || status === "stopping") {
+    if (IN_FLIGHT_STATUSES.has(status)) {
       clearRestartTimer();
       const next = restartClicks + 1;
       if (next >= 3) {
@@ -150,7 +157,7 @@ export function RunControls({ kind }: RunControlsProps) {
   // Reset the click counter when the task leaves the active set so the
   // hint disappears as soon as Stop / Continue / a fresh start lands.
   useEffect(() => {
-    if (status !== "running" && status !== "stopping") {
+    if (!IN_FLIGHT_STATUSES.has(status)) {
       clearRestartTimer();
       setRestartClicks(0);
     }
@@ -201,13 +208,14 @@ export function RunControls({ kind }: RunControlsProps) {
   // and crash-prone. Stop is the only way to pause-then-resume now;
   // the user picks up via Continue (cache survives stop).
   const canStop = status === "running";
-  const canContinue = probe.continuable && status !== "running";
+  const canContinue = probe.continuable && !IN_FLIGHT_STATUSES.has(status);
   // Start looks inactive while a task is in flight, but stays clickable
   // so a triple-click can force-restart (see handleStartClick).
-  const startActive = status === "running" || status === "stopping";
+  const startActive = IN_FLIGHT_STATUSES.has(status);
   const restartRemaining = startActive ? Math.max(0, 3 - restartClicks) : 0;
 
-  const stopLabel = status === "stopping" ? labels.stopping : labels.stop;
+  const stopLabel =
+    status === "stopping" || status === "pausing" ? labels.stopping : labels.stop;
   const startLabel = startActive
     ? status === "running"
       ? labels.running

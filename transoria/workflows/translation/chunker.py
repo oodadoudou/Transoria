@@ -185,7 +185,15 @@ def format_context_section(context_lines: Iterable[str]) -> str:
 
 
 def assemble_user_prompt(chunk: TranslationChunk) -> str:
-    """Compose the user message: optional glossary, optional context, JSONL block."""
+    """Compose the user message: optional glossary, optional context,
+    fenced JSONL block.
+
+    The translate block is wrapped in a `````jsonline``
+    code fence so the model sees an unambiguous format boundary; this is
+    the strongest single signal we can give a chat model that "respond
+    with the same shape between fences" — much more reliable than a
+    plain label.
+    """
 
     parts: list[str] = []
     glossary_section = format_glossary_section(chunk.glossary_entries)
@@ -194,7 +202,9 @@ def assemble_user_prompt(chunk: TranslationChunk) -> str:
     context_section = format_context_section(chunk.context_lines)
     if context_section:
         parts.append("[Context]\n" + context_section)
-    parts.append("[Translate]\n" + chunk.jsonl_input())
+    parts.append(
+        "[Translate]\n```jsonline\n" + chunk.jsonl_input() + "\n```"
+    )
     return "\n\n".join(parts)
 
 

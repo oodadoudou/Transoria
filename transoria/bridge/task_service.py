@@ -1360,8 +1360,9 @@ class TaskService:
                 details={"reason": "single_pass"},
             )
         record_kind = self._kind(kind)
+        cache = self._cache_for_task(task_id)
         try:
-            snapshot = self._cache_for_task(task_id).load(task_id)
+            snapshot = cache.load(task_id)
         except TaskNotFoundError as exc:
             mirrored = self._completed_snapshots.get(task_id)
             if mirrored is not None and mirrored.record.kind is record_kind:
@@ -1384,6 +1385,13 @@ class TaskService:
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
             )
+        existing = self.registry.get(task_id)
+        if existing is not None and not existing.is_done:
+            raise BridgeError.conflict(
+                f"task {task_id!r} is already running.",
+                details={"task_id": task_id},
+            )
+        snapshot = self._reconcile_zombie(snapshot, cache)
         if snapshot.record.status not in (
             TaskStatus.STOPPED,
             TaskStatus.PAUSED,
@@ -1402,16 +1410,6 @@ class TaskService:
                 "task has no pending or failed subtasks; nothing to continue.",
                 retryable=False,
                 details={"reason": "no_remaining_work"},
-            )
-
-        # An in-flight task with the same id (e.g. a previous continue
-        # mid-run) blocks a fresh continue. The frontend must stop
-        # first; the bridge surfaces a typed conflict.
-        existing = self.registry.get(task_id)
-        if existing is not None and not existing.is_done:
-            raise BridgeError.conflict(
-                f"task {task_id!r} is already running.",
-                details={"task_id": task_id},
             )
 
         if kind == "translation":
@@ -1498,6 +1496,7 @@ class TaskService:
                 snapshot = cache.load(record.id)
             except (TaskNotFoundError, ValueError, OSError):
                 continue
+            snapshot = self._reconcile_zombie(snapshot, cache)
             if snapshot.record.status not in (
                 TaskStatus.STOPPED,
                 TaskStatus.PAUSED,
