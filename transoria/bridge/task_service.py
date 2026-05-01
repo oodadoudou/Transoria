@@ -79,7 +79,7 @@ from transoria.workflows.translation.orchestrator import (
     TranslationRunResult,
 )
 from transoria.workflows.translation.statistics import STATISTICS_FILENAME_JSON
-from transoria.utils.paths import describe_os_error
+from transoria.utils.paths import describe_os_error, normalize_path_key
 
 LlmClientFactory = Callable[[], LlmClient]
 
@@ -189,6 +189,20 @@ def _coerce_language(value: str, *, field: str) -> Language:
             f"unsupported language {value!r} for {field}.",
             field=field,
         ) from exc
+
+
+def _normalized_dir(value: object) -> str:
+    """Compare-friendly form of a directory string. Empty / non-string
+    inputs collapse to ``""`` so two missing values match each other,
+    not a real path.
+    """
+
+    if not isinstance(value, str) or not value:
+        return ""
+    try:
+        return normalize_path_key(Path(value))
+    except Exception:
+        return value
 
 
 def _require_directory(value: str, *, field: str) -> Path:
@@ -1469,11 +1483,16 @@ class TaskService:
             key=lambda r: r.created_at,
             reverse=True,
         )
+        # Compare via the cache-key normalizer so a trailing slash,
+        # double slashes, or NFD-vs-NFC (macOS readdir vs settings.json)
+        # don't silently filter out a continuable task.
+        expected_input = _normalized_dir(input_folder)
+        expected_output = _normalized_dir(output_folder)
         for record in candidates:
             metadata = record.metadata
-            if metadata.get("input_dir") != input_folder:
+            if _normalized_dir(metadata.get("input_dir")) != expected_input:
                 continue
-            if metadata.get("output_dir") != output_folder:
+            if _normalized_dir(metadata.get("output_dir")) != expected_output:
                 continue
             try:
                 snapshot = cache.load(record.id)

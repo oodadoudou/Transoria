@@ -158,11 +158,38 @@ export function RunControls({ kind }: RunControlsProps) {
 
   useEffect(() => clearRestartTimer, [clearRestartTimer]);
 
-  const handleStop = useCallback(() => {
+  const handleStop = useCallback(async () => {
     const taskId = useRuntimeStore.getState()[kind].activeTaskId;
     if (!taskId) return;
-    void dispatch(() => bridge.stopTask(taskId));
-  }, [bridge, kind, dispatch]);
+    setLastError(kind, null);
+    try {
+      await bridge.stopTask(taskId);
+      // Stop is asynchronous on the backend — the executor finishes
+      // cancelling in-flight LLM calls and only then transitions to
+      // STOPPED. Without this loop the next probe fires while status
+      // is still STOPPING, ``probe.continuable`` returns false, and
+      // Continue stays disabled until the next 2s poll tick.
+      const pollSnapshot = useRuntimeStore.getState().pollSnapshot;
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        await pollSnapshot(kind);
+        const cur = useRuntimeStore.getState()[kind].snapshot?.header.status;
+        if (cur === "stopped" || cur === "completed" || cur === "failed") {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      await refreshActiveTask(kind);
+      const next = await bridge.probeContinuable();
+      setProbe(next);
+    } catch (error) {
+      if (BridgeError.isBridgeError(error)) {
+        setLastError(kind, error);
+        return;
+      }
+      throw error;
+    }
+  }, [bridge, kind, refreshActiveTask, setLastError]);
 
   const handleContinue = useCallback(() => {
     const taskId = probe.task_id;
@@ -189,11 +216,7 @@ export function RunControls({ kind }: RunControlsProps) {
 
   return (
     <>
-      <div
-        className={styles.bar}
-        role="group"
-        aria-label={labels.taskControls}
-      >
+      <div className={styles.bar} role="group" aria-label={labels.taskControls}>
         <Button
           kind="primary"
           icon={ICON_PLAY}
