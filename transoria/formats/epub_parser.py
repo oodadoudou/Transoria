@@ -118,6 +118,9 @@ class EpubDocument:
     archive_bytes: bytes | None = None
 
 
+_MAX_EPUB_BYTES: int = 500 * 1024 * 1024  # 500 MB hard cap
+
+
 def parse_epub_file(path: Path, *, buffer_archive: bool = False) -> EpubDocument:
     """Parse an EPUB file.
 
@@ -126,7 +129,24 @@ def parse_epub_file(path: Path, *, buffer_archive: bool = False) -> EpubDocument
     to re-reading from disk, so writeback survives the source file being
     moved or deleted between parse and write — an important guarantee for
     long-running translation tasks.
+
+    Files larger than ``_MAX_EPUB_BYTES`` (500 MB) are rejected with a
+    typed ``ValueError`` rather than blindly loaded. With ``buffer_archive``
+    true that prevents an OOM kill on the parent process; even with the
+    flag false the in-memory data structures alongside ``archive_bytes``
+    grow with file size, so a hard ceiling protects the desktop session.
     """
+
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise ValueError(f"Cannot stat EPUB file: {path}") from exc
+    if size > _MAX_EPUB_BYTES:
+        raise ValueError(
+            f"EPUB file is too large to load safely "
+            f"({size / 1024 / 1024:.1f} MB > "
+            f"{_MAX_EPUB_BYTES / 1024 / 1024:.0f} MB cap): {path}"
+        )
 
     try:
         raw = path.read_bytes() if buffer_archive else None

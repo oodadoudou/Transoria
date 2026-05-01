@@ -87,6 +87,13 @@ class GlossaryArtifactSet:
         yield self.references_path
 
 
+class GlossaryEmptyInputError(RuntimeError):
+    """Raised when extraction would produce zero output because the
+    input has no usable text. ``_on_task_failure`` records the message
+    in ``record.metadata.last_error`` so the Run page surfaces a
+    specific "why" — far more useful than a silent COMPLETED / 0/0."""
+
+
 @dataclass(frozen=True)
 class GlossaryExtractionResult:
     task_id: str
@@ -154,7 +161,15 @@ class GlossaryOrchestrator:
         source_segments_by_file = _scan_and_parse(config.input_dir)
 
         if not source_segments_by_file:
-            return self._finalize_empty(config, started_at)
+            return self._finalize_empty(
+                config,
+                started_at,
+                reason=(
+                    "Input folder contained supported files but none yielded any "
+                    "text segments (files may be empty, corrupt, or only contain "
+                    "metadata)."
+                ),
+            )
 
         # Earlier versions called ``purge_glossary_artifacts`` here to
         # sweep stale outputs upfront. That destroyed the user's
@@ -179,7 +194,15 @@ class GlossaryOrchestrator:
         )
 
         if not chunks:
-            return self._finalize_empty(config, started_at)
+            return self._finalize_empty(
+                config,
+                started_at,
+                reason=(
+                    "Files were parsed successfully but produced no chunks for "
+                    "the LLM (text segments may all be shorter than the chunk "
+                    "limit's minimum, or filtered out by ruby/preserve rules)."
+                ),
+            )
 
         task_id = self.id_factory()
         # "Continue path" means subtasks were already seeded. A bare
@@ -390,8 +413,20 @@ class GlossaryOrchestrator:
         return result
 
     def _finalize_empty(
-        self, config: GlossaryConfig, started_at: str
+        self,
+        config: GlossaryConfig,
+        started_at: str,
+        *,
+        reason: str = "",
     ) -> GlossaryExtractionResult:
+        # Empty input is treated as FAILED (with a typed reason) rather
+        # than silently COMPLETED — a task that produces no glossary
+        # but reports "completed 0/0" was the most-confused user
+        # signal in early reports. Raising here surfaces the reason
+        # via ``_on_task_failure`` → ``record.metadata.last_error``,
+        # which the Run page displays under the status pill.
+        if reason:
+            raise GlossaryEmptyInputError(reason)
         statistics = GlossaryStatistics(
             started_at=started_at, ended_at=self.clock()
         )

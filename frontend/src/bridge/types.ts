@@ -368,6 +368,10 @@ export type SubtaskStatusValue =
 export interface SubtaskMini {
   id: string;
   status: SubtaskStatusValue;
+  /** Populated only for ``failed`` subtasks; the chunk-grid tooltip
+   * surfaces this so users can hover a red square and see the LLM /
+   * decoder error instead of guessing why it failed. */
+  last_error?: string;
 }
 
 export interface TaskSnapshot {

@@ -111,6 +111,7 @@ export const zh: Messages = {
       "仅当 thinking_level=off 时显示。开启后，每次调用会把当前 prompt 预设里的「思考引导」段拼到用户消息前面，让不支持原生思考的模型也走一遍结构化推理。注意：不会向 provider 发送任何思考相关 API 字段（避免 4xx），只是 prompt 层面的伪思考。",
     runtimeTuningLabel: "运行参数",
     samplingLabel: "采样",
+    unsavedChangesConfirm: "当前修改尚未保存，确定要关闭吗？",
   },
   quickSwitch: {
     titleModel: "切换激活模型",
@@ -153,6 +154,7 @@ export const zh: Messages = {
     sampleSourceLanguage: "韩语",
     sampleTargetLanguage: "简体中文",
     sampleInput: "안녕하세요, 세상.",
+    unsavedChangesConfirm: "当前修改尚未保存，确定要关闭吗？",
   },
   modelExtra: {
     deleteProfile: "删除配置",

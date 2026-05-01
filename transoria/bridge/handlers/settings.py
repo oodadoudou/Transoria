@@ -57,11 +57,17 @@ def _build_handlers(store: SettingsStore) -> dict[str, object]:
         module = _expect_module(payload)
         patch = _expect_patch(payload)
         try:
-            store.save_partial(module, patch)
+            _, rejected = store.save_partial_lenient(module, patch)
         except ValueError as exc:
             field = _extract_field(exc)
             raise BridgeError.invalid_argument(str(exc), field=field) from exc
-        return {"saved_at": _utc_now_iso()}
+        return {
+            "saved_at": _utc_now_iso(),
+            # Per-field rejection list. Empty when every patch field
+            # accepted its value. The frontend can surface these as
+            # warnings while still confirming the rest of the save.
+            "rejected_fields": rejected,
+        }
 
     def reset_module(payload: Mapping[str, object]) -> dict[str, object]:
         module = _expect_module(payload)

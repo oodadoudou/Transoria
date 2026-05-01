@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping, Protocol
+from typing import Callable, Mapping, Protocol, Sequence
 
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
@@ -124,7 +124,57 @@ def _optional_string(payload: Mapping[str, object], key: str) -> str | None:
     return value
 
 
-def _build_handlers(provider: DialogProvider) -> dict[str, Callable[[Mapping[str, object]], dict[str, object]]]:
+AllowedRootsProvider = Callable[[], "Sequence[Path]"]
+
+
+def _validated_dialog_path(
+    raw: str, allowed_roots_provider: AllowedRootsProvider | None
+) -> Path:
+    """Resolve a JS-supplied path and reject anything outside the
+    user-configured output folders.
+
+    Without this check, a compromised renderer could call
+    ``dialogs.open_directory("/Applications/Calculator.app")`` (macOS)
+    or any other path the host process can read, turning the bridge
+    into a generic shell-out. ``allowed_roots_provider`` returns the
+    current Translation / Glossary / Replacement output folders; an
+    empty list disables the check (for early dev / smoke tools that
+    haven't configured any output yet).
+    """
+
+    target = Path(raw)
+    if not target.exists():
+        raise BridgeError.not_found(
+            f"path does not exist: {raw!r}",
+            details={"path": raw},
+        )
+    resolved = target.resolve(strict=False)
+    if allowed_roots_provider is None:
+        return resolved
+    roots = [r for r in allowed_roots_provider() if r]
+    if not roots:
+        return resolved
+    for root in roots:
+        try:
+            resolved.relative_to(root.resolve(strict=False))
+            return resolved
+        except ValueError:
+            continue
+    raise BridgeError.invalid_argument(
+        "path must be inside the configured output folder.",
+        field="path",
+        details={
+            "path": raw,
+            "allowed_roots": [str(r) for r in roots],
+        },
+    )
+
+
+def _build_handlers(
+    provider: DialogProvider,
+    *,
+    allowed_roots_provider: AllowedRootsProvider | None,
+) -> dict[str, Callable[[Mapping[str, object]], dict[str, object]]]:
     def choose_input_directory(payload: Mapping[str, object]) -> dict[str, object]:
         path = provider.choose_directory(
             initial_path=_optional_string(payload, "initial_path")
@@ -184,23 +234,17 @@ def _build_handlers(provider: DialogProvider) -> dict[str, Callable[[Mapping[str
         return {"path": path}
 
     def open_directory(payload: Mapping[str, object]) -> dict[str, object]:
-        path = expect_string(payload, "path")
-        if not Path(path).exists():
-            raise BridgeError.not_found(
-                f"path does not exist: {path!r}",
-                details={"path": path},
-            )
-        provider.open_directory(path)
+        path = _validated_dialog_path(
+            expect_string(payload, "path"), allowed_roots_provider
+        )
+        provider.open_directory(str(path))
         return {}
 
     def reveal_file(payload: Mapping[str, object]) -> dict[str, object]:
-        path = expect_string(payload, "path")
-        if not Path(path).exists():
-            raise BridgeError.not_found(
-                f"path does not exist: {path!r}",
-                details={"path": path},
-            )
-        provider.reveal_file(path)
+        path = _validated_dialog_path(
+            expect_string(payload, "path"), allowed_roots_provider
+        )
+        provider.reveal_file(str(path))
         return {}
 
     return {
@@ -214,8 +258,15 @@ def _build_handlers(provider: DialogProvider) -> dict[str, Callable[[Mapping[str
     }
 
 
-def register(router: BridgeRouter, *, provider: DialogProvider) -> None:
-    for method, handler in _build_handlers(provider).items():
+def register(
+    router: BridgeRouter,
+    *,
+    provider: DialogProvider,
+    allowed_roots_provider: AllowedRootsProvider | None = None,
+) -> None:
+    for method, handler in _build_handlers(
+        provider, allowed_roots_provider=allowed_roots_provider
+    ).items():
         router.register(method, handler)  # type: ignore[arg-type]
 
 

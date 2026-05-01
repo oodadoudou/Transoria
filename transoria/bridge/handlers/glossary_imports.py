@@ -18,11 +18,19 @@ from transoria.formats.text import decode_text_bytes
 
 
 def _entry_from_record(raw: object) -> dict[str, object] | None:
+    """Coerce one row of an imported glossary into the wire shape.
+
+    Both ``src`` and ``dst`` must be non-empty after trimming —
+    earlier versions accepted rows with one side empty, which seeded
+    blank terms (rules that match the empty string or replace
+    everything with ``""``) into the user's glossary table.
+    """
+
     if not isinstance(raw, Mapping):
         return None
     src = str(raw.get("src", "")).strip()
     dst = str(raw.get("dst", "")).strip()
-    if not src and not dst:
+    if not src or not dst:
         return None
     info_value = raw.get("info") or raw.get("type") or raw.get("description") or ""
     return {

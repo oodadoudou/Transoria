@@ -59,6 +59,39 @@ def long_path(path: Path) -> Path:
     return Path(_WINDOWS_LONG_PATH_PREFIX + absolute_text)
 
 
+def describe_os_error(exc: OSError, *, action: str = "I/O") -> str:
+    """Translate an ``OSError`` into a user-friendly one-liner.
+
+    Default exception messages bury the actionable cause ("disk full"
+    vs "no permission" vs "path doesn't exist") behind ``[Errno 28]``
+    style preambles. Surface the cause first so the Run Error banner
+    tells the user what to fix.
+
+    ``action`` is the human-readable verb of what was being attempted
+    (e.g. ``"write output"``, ``"read settings"``); defaults to a
+    neutral ``"I/O"``.
+    """
+
+    import errno
+
+    code = exc.errno
+    path = getattr(exc, "filename", None) or getattr(exc, "filename2", None) or ""
+    detail = f" ({path})" if path else ""
+    if code == errno.ENOSPC:
+        return f"disk is full — cannot {action}{detail}"
+    if code == errno.EACCES:
+        return f"permission denied — cannot {action}{detail}"
+    if code == errno.EROFS:
+        return f"target is on a read-only filesystem — cannot {action}{detail}"
+    if code == errno.ENOENT:
+        return f"path does not exist — cannot {action}{detail}"
+    if code == errno.EEXIST:
+        return f"path already exists — cannot {action}{detail}"
+    if code == errno.EISDIR:
+        return f"target is a directory — cannot {action}{detail}"
+    return f"{action} failed: {exc}{detail}"
+
+
 def normalize_path_key(path: Path) -> str:
     """Return an NFC-normalized POSIX string for use as a dict / set
     key. Two ``Path`` objects pointing at the same file may compare
@@ -70,4 +103,4 @@ def normalize_path_key(path: Path) -> str:
     return unicodedata.normalize("NFC", path.as_posix())
 
 
-__all__ = ["long_path", "normalize_path_key"]
+__all__ = ["describe_os_error", "long_path", "normalize_path_key"]

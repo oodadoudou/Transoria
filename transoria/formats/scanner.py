@@ -47,7 +47,11 @@ def ensure_output_directory(output_dir: Path) -> Path:
     try:
         probe_path.write_text("", encoding="utf-8")
     except OSError as exc:
-        raise PermissionError(f"Output directory is not writable: {output_dir}") from exc
+        from transoria.utils.paths import describe_os_error  # noqa: PLC0415
+
+        raise PermissionError(
+            describe_os_error(exc, action=f"write to output directory ({output_dir})")
+        ) from exc
     finally:
         if probe_path.exists():
             probe_path.unlink()

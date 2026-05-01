@@ -142,6 +142,7 @@ def build_default_router(
     from transoria.bridge.task_service import (  # noqa: PLC0415
         TaskService,
         default_llm_client_factory,
+        make_llm_client_factory,
     )
     from transoria.model_profiles import ModelProfileStore  # noqa: PLC0415
     from transoria.runtime.cache import TaskCache  # noqa: PLC0415
@@ -153,13 +154,23 @@ def build_default_router(
     profile_store = ModelProfileStore.from_cache_root(cache_root)
     task_cache = TaskCache(root=cache_root / "tasks")
     task_registry = TaskRegistry()
+    # Honor the user's ``app.proxy_url`` setting on every LLM call.
+    # Tests pass an explicit ``llm_client_factory`` and bypass the proxy
+    # plumbing — production goes through ``make_llm_client_factory`` so
+    # changing the proxy in App Settings affects the very next call
+    # without a restart.
+    proxy_aware_factory = (
+        llm_client_factory
+        if llm_client_factory is not None
+        else make_llm_client_factory(settings_store)
+    )
     task_service = TaskService(
         cache=task_cache,
         registry=task_registry,
         settings_store=settings_store,
         profile_store=profile_store,
         prompts_cache_root=cache_root,
-        llm_client_factory=llm_client_factory or default_llm_client_factory,
+        llm_client_factory=proxy_aware_factory,
     )
     current_version = _read_app_version()
 
@@ -179,10 +190,47 @@ def build_default_router(
         settings_store=settings_store,
         profile_store=profile_store,
     )
-    register_dialogs(router, provider=dialog_provider or NullDialogProvider())
+    def _allowed_dialog_roots() -> list[Path]:
+        # Restrict open_directory / reveal_file to the user's
+        # configured output folders so the bridge can't be coerced
+        # into shelling out arbitrary host paths from the renderer.
+        try:
+            settings = settings_store.load_all()
+        except Exception:  # noqa: BLE001
+            return []
+        roots: list[Path] = []
+        for folder in (
+            settings.translation.output_folder,
+            settings.glossary.output_folder,
+            settings.replacement.output_folder,
+        ):
+            if folder:
+                roots.append(Path(folder))
+        return roots
+
+    register_dialogs(
+        router,
+        provider=dialog_provider or NullDialogProvider(),
+        allowed_roots_provider=_allowed_dialog_roots,
+    )
     register_replacement_parsers(router)
     register_replacement_tasks(router, service=task_service)
     register_glossary_imports(router, cache_root=cache_root)
+    # Bind the user's ``app.proxy_url`` to the supplied checker so its
+    # outbound HTTP calls (release list + asset download) honor the
+    # same proxy as LLM calls. Done with ``setattr`` (no static type
+    # check) because ``update_checker`` is typed as ``object`` here —
+    # this avoids forcing every dev-harness checker to grow the
+    # field.
+    if update_checker is not None and hasattr(update_checker, "proxy_provider"):
+        try:
+            setattr(
+                update_checker,
+                "proxy_provider",
+                lambda: settings_store.load_all().app.proxy_url or None,
+            )
+        except Exception:  # noqa: BLE001
+            pass
     register_updates(
         router,
         checker=update_checker or NullUpdateChecker(current_version=current_version),

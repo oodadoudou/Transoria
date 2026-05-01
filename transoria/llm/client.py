@@ -104,7 +104,21 @@ class HttpxChatTransport:
     stable (``TransportResult``) while letting the caller cancel mid-stream
     via ``asyncio.CancelledError`` — the underlying connection closes
     immediately rather than waiting for the full response to drain.
+
+    ``proxy`` (when set to a non-empty URL) routes every outbound LLM
+    call through that proxy. Empty / ``None`` falls back to httpx's
+    default which honors ``HTTPS_PROXY`` / ``HTTP_PROXY`` env vars; this
+    matches the App Settings hint that promises proxy support.
     """
+
+    def __init__(self, proxy: str | None = None) -> None:
+        self._proxy = proxy or None  # normalize "" → None
+
+    def _client_kwargs(self, timeout: float) -> dict[str, object]:
+        kwargs: dict[str, object] = {"timeout": timeout}
+        if self._proxy is not None:
+            kwargs["proxy"] = self._proxy
+        return kwargs
 
     async def execute(
         self,
@@ -115,7 +129,7 @@ class HttpxChatTransport:
     ) -> TransportResult:
         if bool(payload.get("stream")):
             return await self._execute_streaming(url, headers, payload, timeout)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(**self._client_kwargs(timeout)) as client:
             response = await client.post(url, headers=dict(headers), json=dict(payload))
         try:
             body = response.json()
@@ -135,7 +149,7 @@ class HttpxChatTransport:
         chunks: list[str] = []
         usage: Mapping[str, object] | None = None
         status_code = 0
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(**self._client_kwargs(timeout)) as client:
             async with client.stream(
                 "POST", url, headers=dict(headers), json=dict(payload)
             ) as response:
@@ -244,6 +258,20 @@ def _thinking_payload(level: ThinkingLevel) -> dict[str, object] | None:
 # minimum so the API accepts the request and the model has enough headroom
 # for typical translation responses.
 _ANTHROPIC_AUTO_MAX_TOKENS: int = 8192
+
+
+def _redact_url(url: str) -> str:
+    """Replace ``?key=<secret>`` (and ``&key=<secret>``) in any URL with
+    ``?key=***`` so error messages, logs, and stack traces never leak
+    the user's Google API key. Other providers send their key in the
+    Authorization header, not the URL — this only affects Google.
+    """
+
+    import re
+
+    return re.sub(
+        r"([?&])key=[^&]*", lambda m: f"{m.group(1)}key=***", url
+    )
 
 
 def _anthropic_max_tokens(configured: int) -> int:
@@ -490,7 +518,7 @@ class LlmClient:
 
             if result.status_code >= 400:
                 raise LlmRequestError(
-                    f"HTTP {result.status_code} from {url}: {result.body!r}",
+                    f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
                     code="llm.http_error",
                 )
 
@@ -570,20 +598,20 @@ class LlmClient:
             if result.status_code in {401, 403}:
                 pool.mark_dead(key)
                 last_error = LlmRequestError(
-                    f"HTTP {result.status_code} (auth failure) from {url}: {result.body!r}"
+                    f"HTTP {result.status_code} (auth failure) from {_redact_url(url)}: {result.body!r}"
                 )
                 continue
 
             if result.status_code == 429:
                 # Per-key rate limit — try the next key without evicting.
                 last_error = LlmRequestError(
-                    f"HTTP 429 (rate limited) from {url}: {result.body!r}"
+                    f"HTTP 429 (rate limited) from {_redact_url(url)}: {result.body!r}"
                 )
                 continue
 
             if result.status_code >= 400:
                 raise LlmRequestError(
-                    f"HTTP {result.status_code} from {url}: {result.body!r}",
+                    f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
                     code="llm.http_error",
                 )
 

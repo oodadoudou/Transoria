@@ -102,6 +102,7 @@ export interface Messages {
     forceThinkingHelp: string;
     runtimeTuningLabel: string;
     samplingLabel: string;
+    unsavedChangesConfirm: string;
   };
   quickSwitch: {
     titleModel: string;
@@ -140,6 +141,7 @@ export interface Messages {
     sampleSourceLanguage: string;
     sampleTargetLanguage: string;
     sampleInput: string;
+    unsavedChangesConfirm: string;
   };
   modelExtra: {
     deleteProfile: string;

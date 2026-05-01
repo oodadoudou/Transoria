@@ -185,6 +185,56 @@ def merge_module(
     return replace(current, **overrides)
 
 
+def merge_module_lenient(
+    current: AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings,
+    patch: Mapping[str, object],
+) -> tuple[
+    AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings,
+    list[dict[str, str]],
+]:
+    """Apply each patch entry independently; return ``(merged, rejected)``.
+
+    Unlike ``merge_module`` (single-error abort), this preserves every
+    valid field and reports the rejected ones individually. Used by the
+    user-facing ``settings.save_partial`` bridge handler so a typo in
+    one field doesn't throw away the user's other valid changes — the
+    common case where the Settings page has many fields and a single
+    bad input would otherwise wipe everything.
+    """
+
+    valid_fields = {f.name for f in current.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+    rejected: list[dict[str, str]] = []
+    overrides: dict[str, object] = {}
+    for key, value in patch.items():
+        if key not in valid_fields:
+            rejected.append({"field": key, "reason": "unknown field"})
+            continue
+        try:
+            overrides[key] = _coerce(current, key, value)
+        except (TypeError, ValueError) as exc:
+            rejected.append({"field": key, "reason": str(exc)})
+            continue
+    if not overrides:
+        return current, rejected
+    try:
+        merged = replace(current, **overrides)
+    except (TypeError, ValueError) as exc:
+        # ``replace`` only raises when a coerced value still doesn't
+        # match the dataclass field type — fall back to per-field
+        # bisection so the surviving fields still get applied.
+        merged = current
+        for key, value in overrides.items():
+            try:
+                merged = replace(merged, **{key: value})
+            except (TypeError, ValueError) as inner_exc:
+                rejected.append({"field": key, "reason": str(inner_exc)})
+        # Note: if every override failed at this stage, ``merged``
+        # equals ``current`` and the caller still sees the rejected
+        # list, which is the desired UX.
+        del exc  # silence linter
+    return merged, rejected
+
+
 def _coerce(
     current: AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings,
     key: str,

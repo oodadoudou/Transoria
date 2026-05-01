@@ -27,11 +27,33 @@ export function ChunkStatusGrid({
           key={subtask.id}
           role="listitem"
           className={`${styles.cell} ${styles[subtask.status] ?? ""}`.trim()}
-          title={`${itemLabel} ${index + 1} · ${subtask.id} · ${subtask.status}`}
+          title={cellTooltip(subtask, index, itemLabel)}
         />
       ))}
     </div>
   );
+}
+
+function cellTooltip(
+  subtask: SubtaskMini,
+  index: number,
+  itemLabel: string,
+): string {
+  const head = `${itemLabel} ${index + 1} · ${subtask.id} · ${subtask.status}`;
+  // Failed-chunk users want to know *why*. The wire shape only carries
+  // ``last_error`` on FAILED subtasks (gated server-side) so the
+  // tooltip stays compact for the common green-grid case.
+  if (subtask.status === "failed" && subtask.last_error) {
+    // Trim very long messages so the native title tooltip stays
+    // readable on Linux/Windows (some platforms truncate around 1024
+    // chars by default).
+    const trimmed =
+      subtask.last_error.length > 600
+        ? `${subtask.last_error.slice(0, 600)}…`
+        : subtask.last_error;
+    return `${head}\n${trimmed}`;
+  }
+  return head;
 }
 
 function CanvasGrid({
@@ -131,7 +153,11 @@ const STATUS_PRIORITY: Record<SubtaskMini["status"], number> = {
   pending: 1,
 };
 
-function cssVar(style: CSSStyleDeclaration, name: string, fallback: string): string {
+function cssVar(
+  style: CSSStyleDeclaration,
+  name: string,
+  fallback: string,
+): string {
   const raw = style.getPropertyValue(name).trim();
   return raw.length > 0 ? raw : fallback;
 }

@@ -24,6 +24,7 @@ from transoria.settings.defaults import (
     default_module_settings,
     default_settings,
     merge_module,
+    merge_module_lenient,
 )
 
 # Mid-rollout artefacts: the multi-profile experiment shipped briefly
@@ -85,6 +86,24 @@ class SettingsStore:
         updated = current.with_module(module, merged)
         self.save_all(updated)
         return updated
+
+    def save_partial_lenient(
+        self, module: SettingsModule, patch: Mapping[str, object]
+    ) -> tuple[AllSettings, list[dict[str, str]]]:
+        """Apply ``patch`` field-by-field; persist whichever fields
+        accept their values and return ``(updated, rejected)``.
+
+        Used by the user-facing settings bridge so a typo in one field
+        doesn't throw away the user's other valid changes — see
+        ``merge_module_lenient`` for the per-field semantics.
+        """
+
+        current = self.load_all()
+        module_value = _module_value(current, module)
+        merged, rejected = merge_module_lenient(module_value, patch)
+        updated = current.with_module(module, merged)
+        self.save_all(updated)
+        return updated, rejected
 
     def reset_module(self, module: SettingsModule) -> ModuleValue:
         current = self.load_all()

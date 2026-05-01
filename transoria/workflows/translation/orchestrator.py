@@ -68,6 +68,13 @@ from transoria.workflows.translation.statistics import (
 )
 
 
+class TranslationEmptyInputError(RuntimeError):
+    """Raised when translation would produce no output because the
+    input has no usable text. ``_on_task_failure`` records the message
+    in ``record.metadata.last_error`` so the Run page surfaces a
+    specific "why" — far more useful than a silent COMPLETED / 0/0."""
+
+
 @dataclass(frozen=True)
 class TranslationRunResult:
     task_id: str
@@ -115,7 +122,15 @@ class TranslationOrchestrator:
         prepared, prepared_per_file = _prepare_segments(parsed_files, config)
 
         if not prepared:
-            return self._finalize_empty(config, started_at)
+            return self._finalize_empty(
+                config,
+                started_at,
+                reason=(
+                    "Input folder contained supported files but none yielded any "
+                    "translatable text (files may be empty, corrupt, or only "
+                    "contain metadata)."
+                ),
+            )
 
         chunks = build_chunks(
             prepared,
@@ -261,8 +276,17 @@ class TranslationOrchestrator:
         return result
 
     def _finalize_empty(
-        self, config: TranslationConfig, started_at: str
+        self,
+        config: TranslationConfig,
+        started_at: str,
+        *,
+        reason: str = "",
     ) -> TranslationRunResult:
+        # Empty input is treated as FAILED with a typed reason rather
+        # than silently COMPLETED — see the matching note in
+        # ``transoria.workflows.glossary.orchestrator``.
+        if reason:
+            raise TranslationEmptyInputError(reason)
         statistics = TranslationStatistics(
             started_at=started_at,
             ended_at=self.clock(),

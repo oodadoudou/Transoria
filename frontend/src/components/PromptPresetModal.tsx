@@ -86,14 +86,40 @@ export function PromptPresetModal({
   const [preview, setPreview] = useState<PromptPreviewResult | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const requestSeq = useRef(0);
+  // Snapshot of the initial draft so the unsaved-changes guard can
+  // diff against "what the user opened with" rather than the latest
+  // keystroke. Refreshed whenever the seed changes (e.g. user picks a
+  // different preset from the list while the modal is open).
+  const baselineRef = useRef<Draft>(seed ? bodyToDraft(seed) : blankDraft());
 
   // For edit mode, when the seed prop changes (e.g. user opens a
   // different preset), refresh the local draft.
   useEffect(() => {
-    setDraft(seed ? bodyToDraft(seed) : blankDraft());
+    const next = seed ? bodyToDraft(seed) : blankDraft();
+    setDraft(next);
+    baselineRef.current = next;
     setPreview(null);
     setError(null);
   }, [seed]);
+
+  // Block accidental dismissal when the user has typed changes that
+  // haven't been saved. The default close paths (overlay click, Cancel
+  // button, ESC if any) all run through ``handleCancel`` so the prompt
+  // is consistent.
+  const isDirty = !readOnlyDraftEquals(draft, baselineRef.current);
+
+  const handleCancel = () => {
+    if (saving) return;
+    if (isDirty) {
+      // ``window.confirm`` is intentionally synchronous and native —
+      // the modal already blocks app interaction, and a custom dialog-
+      // inside-dialog would visually clash. Returning false drops
+      // out and keeps the modal open with the user's edits intact.
+      const confirmed = window.confirm(m.unsavedChangesConfirm);
+      if (!confirmed) return;
+    }
+    onCancel();
+  };
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -219,7 +245,7 @@ export function PromptPresetModal({
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
-      onClick={onCancel}
+      onClick={handleCancel}
     >
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
@@ -233,7 +259,7 @@ export function PromptPresetModal({
           <button
             type="button"
             className={styles.closeButton}
-            onClick={onCancel}
+            onClick={handleCancel}
             aria-label={readOnly ? m.closeAction : m.cancelAction}
           >
             ×
@@ -343,7 +369,7 @@ export function PromptPresetModal({
             </>
           )}
           <div className={styles.footerRight}>
-            <Pill variant="ghost" onClick={onCancel}>
+            <Pill variant="ghost" onClick={handleCancel}>
               {readOnly ? m.closeAction : m.cancelAction}
             </Pill>
             {readOnly ? null : (
@@ -355,6 +381,18 @@ export function PromptPresetModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function readOnlyDraftEquals(a: Draft, b: Draft): boolean {
+  // Shallow string-by-string equality across every editable field.
+  return (
+    a.name === b.name &&
+    a.description === b.description &&
+    a.enabled === b.enabled &&
+    a.system_prompt === b.system_prompt &&
+    a.suffix_prompt === b.suffix_prompt &&
+    a.thinking_prompt === b.thinking_prompt
   );
 }
 

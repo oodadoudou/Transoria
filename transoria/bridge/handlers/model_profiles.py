@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Mapping
+from typing import Callable, Mapping
 
 import httpx
 
@@ -445,8 +445,13 @@ def _do_fetch_models(
         try:
             response = client.get(url, headers=request_headers)
         except httpx.HTTPError as exc:
+            # ``exc`` may include the request URL, which carries the
+            # Google API key as a query parameter. Redact before bubbling.
+            from transoria.llm.client import _redact_url
+
             raise LlmRequestError(
-                f"transport failed: {exc}", code="llm.transport_error"
+                f"transport failed: {_redact_url(str(exc))}",
+                code="llm.transport_error",
             ) from exc
     if response.status_code >= 400:
         raise LlmRequestError(
@@ -568,19 +573,58 @@ def _default_http_client_factory(timeout: float):
     return httpx.Client(timeout=timeout)
 
 
+def _proxy_aware_chat_transport(settings_store: SettingsStore) -> Callable[[], ChatTransport]:
+    """Read ``app.proxy_url`` on every transport construction so the
+    Test Connection / Fetch Models buttons honor the user's current
+    proxy without an app restart."""
+
+    def factory() -> ChatTransport:
+        proxy = ""
+        try:
+            proxy = (settings_store.load_all().app.proxy_url or "").strip()
+        except Exception:  # noqa: BLE001
+            proxy = ""
+        return HttpxChatTransport(proxy=proxy or None)
+
+    return factory
+
+
+def _proxy_aware_http_client_factory(settings_store: SettingsStore) -> Callable[..., httpx.Client]:
+    def factory(timeout: float):
+        proxy = ""
+        try:
+            proxy = (settings_store.load_all().app.proxy_url or "").strip()
+        except Exception:  # noqa: BLE001
+            proxy = ""
+        kwargs: dict[str, object] = {"timeout": timeout}
+        if proxy:
+            kwargs["proxy"] = proxy
+        return httpx.Client(**kwargs)
+
+    return factory
+
+
 def register(
     router: BridgeRouter,
     *,
     profile_store: ModelProfileStore,
     settings_store: SettingsStore,
-    chat_transport_factory=_default_chat_transport,
-    http_client_factory=_default_http_client_factory,
+    chat_transport_factory: Callable[[], ChatTransport] | None = None,
+    http_client_factory: Callable[..., httpx.Client] | None = None,
 ) -> None:
     handlers = _build_handlers(
         profile_store,
         settings_store,
-        chat_transport_factory=chat_transport_factory,
-        http_client_factory=http_client_factory,
+        chat_transport_factory=(
+            chat_transport_factory
+            if chat_transport_factory is not None
+            else _proxy_aware_chat_transport(settings_store)
+        ),
+        http_client_factory=(
+            http_client_factory
+            if http_client_factory is not None
+            else _proxy_aware_http_client_factory(settings_store)
+        ),
     )
     for method, handler in handlers.items():
         router.register(method, handler)  # type: ignore[arg-type]

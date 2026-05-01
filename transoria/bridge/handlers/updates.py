@@ -86,6 +86,11 @@ class GithubReleaseChecker:
     repository: str = "doudouda/Transoria"
     downloads_dir: Path | None = None
     client_factory: Callable[..., object] | None = None
+    # Read on every HTTP call so the user can change ``app.proxy_url``
+    # in App Settings and the next "Check for updates" / "Download asset"
+    # click picks it up without restarting. Returning ``""`` / ``None``
+    # falls back to httpx defaults (which honor ``HTTPS_PROXY`` env var).
+    proxy_provider: Callable[[], str | None] | None = None
 
     def check_latest(
         self, *, channel: str, current_version: str
@@ -192,8 +197,17 @@ class GithubReleaseChecker:
             ) from exc
 
     def _client(self, *, timeout: float):
-        factory = self.client_factory or httpx.Client
-        return factory(timeout=timeout)
+        if self.client_factory is not None:
+            return self.client_factory(timeout=timeout)
+        kwargs: dict[str, object] = {"timeout": timeout}
+        if self.proxy_provider is not None:
+            try:
+                proxy = (self.proxy_provider() or "").strip()
+            except Exception:  # noqa: BLE001
+                proxy = ""
+            if proxy:
+                kwargs["proxy"] = proxy
+        return httpx.Client(**kwargs)
 
     def _api_base(self) -> str:
         return f"https://api.github.com/repos/{self.repository.strip('/')}"

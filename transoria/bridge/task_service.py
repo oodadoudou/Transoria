@@ -79,6 +79,7 @@ from transoria.workflows.translation.orchestrator import (
     TranslationRunResult,
 )
 from transoria.workflows.translation.statistics import STATISTICS_FILENAME_JSON
+from transoria.utils.paths import describe_os_error
 
 LlmClientFactory = Callable[[], LlmClient]
 
@@ -240,7 +241,7 @@ def _ensure_output_dir(value: str, *, field: str) -> Path:
     except OSError as exc:
         raise BridgeError(
             "bridge.io_error",
-            f"cannot create {field}: {exc}",
+            describe_os_error(exc, action=f"create {field}"),
             retryable=False,
             details={"field": field, "path": value},
         ) from exc
@@ -333,9 +334,17 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
         "usage": usage_block,
         # Per-chunk status drives the chunk-grid UX. Tuple-of-objects
         # is preserved in the order the orchestrator seeded them, so
-        # the grid renders chunk-0 leftmost.
+        # the grid renders chunk-0 leftmost. ``last_error`` is included
+        # only for FAILED chunks so the chunk-grid tooltip can tell the
+        # user *why* a red square is red without forcing a separate
+        # API call per chunk.
         "subtasks": [
-            {"id": s.id, "status": s.status.value} for s in snapshot.subtasks
+            {
+                "id": s.id,
+                "status": s.status.value,
+                "last_error": s.last_error if s.status is SubtaskStatus.FAILED else "",
+            }
+            for s in snapshot.subtasks
         ],
         "active_model_id": metadata.get("model_id"),
         "active_prompt_id": metadata.get("prompt_preset_id"),
@@ -653,6 +662,19 @@ class TaskService:
         # artifacts in the output folder.
         self._completed_snapshots: dict[str, TaskSnapshot] = {}
         self._completed_results: dict[str, dict[str, object]] = {}
+        # Per-kind start lock. Without this, two near-simultaneous
+        # ``start_*`` calls (rapid double-click, re-run dialog firing
+        # twice, frontend retry of a stuck request) race through
+        # ``_purge_kind_for_start`` and end up with two threads
+        # writing to the same output folder, corrupting the cache and
+        # producing mixed-task artifacts. Held only for the seed +
+        # spawn window, not for the full run, so single-threaded
+        # callers see no extra latency.
+        self._start_locks: dict[str, threading.Lock] = {
+            "translation": threading.Lock(),
+            "glossary": threading.Lock(),
+            "replacement": threading.Lock(),
+        }
 
     # ------------------------------------------------------------------
     # Per-task cache resolution
@@ -852,6 +874,10 @@ class TaskService:
         return config, model, preset
 
     def start_translation(self, request_id: str) -> dict[str, object]:
+        with self._start_locks["translation"]:
+            return self._start_translation_locked(request_id)
+
+    def _start_translation_locked(self, request_id: str) -> dict[str, object]:
         config, model, preset = self._build_translation_config()
         input_dir = config.input_dir
         output_dir = config.output_dir
@@ -972,6 +998,10 @@ class TaskService:
         return config, model, preset
 
     def start_glossary(self, request_id: str) -> dict[str, object]:
+        with self._start_locks["glossary"]:
+            return self._start_glossary_locked(request_id)
+
+    def _start_glossary_locked(self, request_id: str) -> dict[str, object]:
         config, model, preset = self._build_glossary_config()
         input_dir = config.input_dir
         output_dir = config.output_dir
@@ -1045,6 +1075,12 @@ class TaskService:
     # ------------------------------------------------------------------
 
     def start_replacement(
+        self, *, request_id: str, rules: Sequence[ReplacementRule]
+    ) -> dict[str, object]:
+        with self._start_locks["replacement"]:
+            return self._start_replacement_locked(request_id=request_id, rules=rules)
+
+    def _start_replacement_locked(
         self, *, request_id: str, rules: Sequence[ReplacementRule]
     ) -> dict[str, object]:
         settings = self.settings_store.load_all()
@@ -1837,9 +1873,34 @@ class TaskService:
 
 
 def default_llm_client_factory() -> LlmClient:
-    """Default factory used in production: a real httpx-backed transport."""
+    """Default factory used in production: a real httpx-backed transport
+    with no proxy. Use ``make_llm_client_factory(settings_store)`` from
+    the router build path to honor the user's ``app.proxy_url`` setting."""
 
     return LlmClient(transport=HttpxChatTransport())
+
+
+def make_llm_client_factory(
+    settings_store: SettingsStore,
+) -> LlmClientFactory:
+    """Build an ``LlmClientFactory`` that reads the current
+    ``app.proxy_url`` setting at every call.
+
+    Reading on each construction (not once at startup) means the user
+    can change the proxy in App Settings and the very next LLM call
+    picks it up — no restart required. Empty / missing proxy falls
+    back to httpx defaults (``HTTPS_PROXY`` env var if set).
+    """
+
+    def factory() -> LlmClient:
+        proxy = ""
+        try:
+            proxy = (settings_store.load_all().app.proxy_url or "").strip()
+        except Exception:  # noqa: BLE001 — settings hiccup must not block LLM calls
+            proxy = ""
+        return LlmClient(transport=HttpxChatTransport(proxy=proxy or None))
+
+    return factory
 
 
 __all__ = [
@@ -1847,4 +1908,5 @@ __all__ = [
     "TaskService",
     "LlmClientFactory",
     "default_llm_client_factory",
+    "make_llm_client_factory",
 ]

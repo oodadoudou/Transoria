@@ -231,6 +231,17 @@ export function ModelProfileModal({
   );
   const [probeBusy, setProbeBusy] = useState<"test" | "fetch" | null>(null);
   const requestSeq = useRef(0);
+  // Snapshot of the initial draft for the unsaved-changes guard.
+  const baselineRef = useRef<Draft>(draft);
+
+  const handleCancel = () => {
+    if (saving) return;
+    if (JSON.stringify(draft) !== JSON.stringify(baselineRef.current)) {
+      const confirmed = window.confirm(m.unsavedChangesConfirm);
+      if (!confirmed) return;
+    }
+    onCancel();
+  };
 
   // Load templates once on mount.
   useEffect(() => {
@@ -395,7 +406,7 @@ export function ModelProfileModal({
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
-      onClick={onCancel}
+      onClick={handleCancel}
     >
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
@@ -405,7 +416,7 @@ export function ModelProfileModal({
           <button
             type="button"
             className={styles.closeButton}
-            onClick={onCancel}
+            onClick={handleCancel}
             aria-label={m.cancelAction}
           >
             ×
@@ -460,7 +471,7 @@ export function ModelProfileModal({
             </Pill>
           ) : null}
           <div className={styles.footerRight}>
-            <Pill variant="ghost" onClick={onCancel}>
+            <Pill variant="ghost" onClick={handleCancel}>
               {m.cancelAction}
             </Pill>
             {!showStep1 ? (

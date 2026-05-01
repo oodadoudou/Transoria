@@ -29,8 +29,16 @@ interface KindRuntime {
   failures: TaskFailure[];
   loading: boolean;
   lastError: BridgeError | null;
+  /** Most-recent N errors (newest last) so the banner can hint
+   * "+N earlier" when several errors fire while the user is paused
+   * on the page. Without this every new error replaces the prior one
+   * in the single-slot ``lastError`` and the diagnostic trail is
+   * gone the moment the next click fails. */
+  errorHistory: BridgeError[];
   lastUpdatedAt: number | null;
 }
+
+const ERROR_HISTORY_CAP = 10;
 
 const emptyRuntime: KindRuntime = {
   activeTaskId: null,
@@ -39,6 +47,7 @@ const emptyRuntime: KindRuntime = {
   failures: [],
   loading: false,
   lastError: null,
+  errorHistory: [],
   lastUpdatedAt: null,
 };
 
@@ -107,10 +116,19 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     ),
 
   setLastError: (kind, error) =>
-    set((state) => withKind(state, kind, { lastError: error })),
+    set((state) => {
+      const next = state[kind];
+      const history =
+        error === null
+          ? next.errorHistory
+          : [...next.errorHistory, error].slice(-ERROR_HISTORY_CAP);
+      return withKind(state, kind, { lastError: error, errorHistory: history });
+    }),
 
   clearError: (kind) =>
-    set((state) => withKind(state, kind, { lastError: null })),
+    set((state) =>
+      withKind(state, kind, { lastError: null, errorHistory: [] }),
+    ),
 
   refreshActiveTask: async (kind) => {
     set((state) => withKind(state, kind, { loading: true, lastError: null }));

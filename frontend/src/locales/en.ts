@@ -116,6 +116,7 @@ export const en: Messages = {
       "Only shown while thinking_level=off. When enabled, the active prompt preset's reasoning prefix is prepended to every user message so models without a native thinking mode still go through a structured reasoning pass. No provider-specific thinking API field is sent (those would 4xx on non-thinking models) — this is a prompt-level fake-thinking.",
     runtimeTuningLabel: "Runtime tuning",
     samplingLabel: "Sampling",
+    unsavedChangesConfirm: "You have unsaved changes. Close without saving?",
   },
   quickSwitch: {
     titleModel: "Switch active model",
@@ -159,6 +160,7 @@ export const en: Messages = {
     sampleSourceLanguage: "Korean",
     sampleTargetLanguage: "Simplified Chinese",
     sampleInput: "안녕하세요, 세상.",
+    unsavedChangesConfirm: "You have unsaved changes. Close without saving?",
   },
   modelExtra: {
     deleteProfile: "Delete profile",
