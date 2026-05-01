@@ -933,6 +933,7 @@ class TaskService:
             created_at=started_at,
         )
         self.registry.add(running)
+        self._mark_status(task_id, TaskStatus.RUNNING)
 
         def _async_runner() -> None:
             asyncio.run(self._translation_thread(task_id, config, running))
@@ -1057,6 +1058,7 @@ class TaskService:
             created_at=started_at,
         )
         self.registry.add(running)
+        self._mark_status(task_id, TaskStatus.RUNNING)
 
         def _async_runner() -> None:
             asyncio.run(self._glossary_thread(task_id, config, running))
@@ -1432,6 +1434,7 @@ class TaskService:
             created_at=started_at,
         )
         self.registry.add(running)
+        self._mark_status(task_id, TaskStatus.RUNNING)
 
         def _async_runner() -> None:
             asyncio.run(self._translation_thread(task_id, config, running))
@@ -1449,6 +1452,7 @@ class TaskService:
             created_at=started_at,
         )
         self.registry.add(running)
+        self._mark_status(task_id, TaskStatus.RUNNING)
 
         def _async_runner() -> None:
             asyncio.run(self._glossary_thread(task_id, config, running))

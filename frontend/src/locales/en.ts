@@ -11,7 +11,7 @@ export const en: Messages = {
     glossary: "Glossary Extraction",
     generalTools: "General Tools",
     appSettings: "App Settings",
-    githubLink: "Give this D a",
+    githubLink: "Enjoy your book",
     githubFace: "(๑'ω'๑)",
     githubAria: "Open the Transoria GitHub page",
   },

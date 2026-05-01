@@ -17,6 +17,8 @@ interface RunControlsProps {
   kind: RunKind;
 }
 
+type ControlAction = "start" | "continue" | "stop";
+
 const ICON_PLAY = "▶";
 const ICON_STOP = "■";
 const ICON_CONTINUE = "↻";
@@ -53,12 +55,15 @@ export function RunControls({ kind }: RunControlsProps) {
 
   const status = snapshot.status;
   const idle = snapshot.isIdle;
-  const isInFlight = !idle && IN_FLIGHT_STATUSES.has(status);
 
   const bridge = kind === "translation" ? translationBridge : glossaryBridge;
 
   const [probe, setProbe] = useState<ProbeContinuable>(EMPTY_PROBE);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<ControlAction | null>(null);
+  const controlPendingRef = useRef(false);
+  const isInFlight =
+    pendingAction !== null || (!idle && IN_FLIGHT_STATUSES.has(status));
   // Triple-click escape hatch: while a task is active the start button
   // looks inactive but stays clickable so a misconfigured run can be
   // force-restarted without first hitting Stop. Counter resets after 5s
@@ -94,7 +99,13 @@ export function RunControls({ kind }: RunControlsProps) {
   }, [bridge, status, idle]);
 
   const dispatch = useCallback(
-    async (action: () => Promise<unknown>): Promise<void> => {
+    async (
+      action: () => Promise<unknown>,
+      actionKind: ControlAction,
+    ): Promise<void> => {
+      if (controlPendingRef.current) return;
+      controlPendingRef.current = true;
+      setPendingAction(actionKind);
       setLastError(kind, null);
       try {
         await action();
@@ -107,13 +118,20 @@ export function RunControls({ kind }: RunControlsProps) {
           return;
         }
         throw error;
+      } finally {
+        controlPendingRef.current = false;
+        setPendingAction(null);
       }
     },
     [bridge, kind, refreshActiveTask, setLastError],
   );
 
   const performStart = useCallback(
-    () => dispatch(() => bridge.startTask(`start-${Date.now().toString(36)}`)),
+    () =>
+      dispatch(
+        () => bridge.startTask(`start-${Date.now().toString(36)}`),
+        "start",
+      ),
     [bridge, dispatch],
   );
 
@@ -125,6 +143,7 @@ export function RunControls({ kind }: RunControlsProps) {
   }, []);
 
   const handleStartClick = useCallback(() => {
+    if (controlPendingRef.current) return;
     // While a task is in flight, the click acts
     // as a vote toward force-restart; show the dialog only after 3 hits.
     if (isInFlight) {
@@ -176,6 +195,9 @@ export function RunControls({ kind }: RunControlsProps) {
   const handleStop = useCallback(async () => {
     const taskId = useRuntimeStore.getState()[kind].activeTaskId;
     if (!taskId) return;
+    if (controlPendingRef.current) return;
+    controlPendingRef.current = true;
+    setPendingAction("stop");
     setLastError(kind, null);
     try {
       await bridge.stopTask(taskId);
@@ -203,13 +225,20 @@ export function RunControls({ kind }: RunControlsProps) {
         return;
       }
       throw error;
+    } finally {
+      controlPendingRef.current = false;
+      setPendingAction(null);
     }
   }, [bridge, kind, refreshActiveTask, setLastError]);
 
   const handleContinue = useCallback(() => {
+    if (controlPendingRef.current) return;
     const taskId = probe.task_id;
     if (!taskId) return;
-    void dispatch(() => bridge.continueTask(taskId));
+    setProbe((current) =>
+      current.task_id === taskId ? { ...current, continuable: false } : current,
+    );
+    void dispatch(() => bridge.continueTask(taskId), "continue");
   }, [bridge, dispatch, probe.task_id]);
 
   // Pause is intentionally fused into Stop — the pause path was racy
@@ -223,9 +252,11 @@ export function RunControls({ kind }: RunControlsProps) {
   const restartRemaining = startActive ? Math.max(0, 3 - restartClicks) : 0;
 
   const stopLabel =
-    status === "stopping" || status === "pausing" ? labels.stopping : labels.stop;
+    pendingAction === "stop" || status === "stopping" || status === "pausing"
+      ? labels.stopping
+      : labels.stop;
   const startLabel = startActive
-    ? status === "running"
+    ? pendingAction === "continue" || status === "running"
       ? labels.running
       : labels.starting
     : labels.start;
