@@ -1,4 +1,5 @@
 import { useI18n, useMessages, type Locale } from "@/locales";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import type { Route } from "@/store/useTaskStore";
 import { Pill } from "./Pill";
 import { PlayIcon, StopIcon } from "./Icon";
@@ -37,6 +38,24 @@ export function SubNav({
     altLocale === "en"
       ? messages.appSettings.languageEnglish
       : messages.appSettings.languageChinese;
+  const handleLocaleChange = async () => {
+    const previous = locale;
+    setLocale(altLocale);
+    const store = useSettingsStore.getState();
+    if (!store.hydrated && !store.hydrating) {
+      await store.hydrate();
+    }
+    useSettingsStore
+      .getState()
+      .updateField("app", "interface_language", altLocale);
+    await useSettingsStore.getState().saveNow("app");
+    if (useSettingsStore.getState().app.lastError) {
+      setLocale(previous);
+      useSettingsStore
+        .getState()
+        .updateField("app", "interface_language", previous);
+    }
+  };
 
   return (
     <header className={styles.bar}>
@@ -77,7 +96,9 @@ export function SubNav({
           <button
             type="button"
             className={styles.localeLink}
-            onClick={() => setLocale(altLocale)}
+            onClick={() => {
+              void handleLocaleChange();
+            }}
             aria-label={messages.appSettings.interfaceLanguage}
           >
             {altLabel}
