@@ -254,7 +254,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         clearTimeout(slice.debounceHandle);
         set((state) => patchSlice(state, module, { debounceHandle: null }));
       }
-      await flush(module, opts?.explicit ?? false);
+      const explicit = opts?.explicit ?? false;
+      const hadPending = Object.keys(slice.pendingPatch).length > 0;
+      await flush(module, explicit);
+      // An explicit save with nothing pending (auto-save already
+      // committed every change) should still confirm to the user.
+      // Bump the explicit timestamp so the toast hook fires.
+      if (explicit && !hadPending && get()[module].saveState !== "error") {
+        const now = new Date().toISOString();
+        set((state) =>
+          patchSlice(state, module, {
+            saveState: "saved",
+            lastSavedAt: now,
+            lastExplicitSavedAt: now,
+          }),
+        );
+      }
     },
 
     reset: async (module) => {
