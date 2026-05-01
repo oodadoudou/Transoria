@@ -366,8 +366,7 @@ export const en: Messages = {
         more: "More",
         delete: "Delete",
         import: "Import",
-        exportJson: "Export JSON",
-        exportXlsx: "Export XLSX",
+        export: "Export",
         search: "Search",
         statistics: "Statistics",
         preset: "Preset",
@@ -728,6 +727,19 @@ export const en: Messages = {
     topInfo: "Top categories",
     uncategorized: "Uncategorized",
     empty: "No category data yet.",
+  },
+  glossaryExport: {
+    title: "Export glossary",
+    hint: "Choose an export format.",
+    formatJson: "JSON",
+    formatJsonHint: "Full field fidelity, ideal for re-import.",
+    formatXlsx: "XLSX",
+    formatXlsxHint: "Browse and edit in Excel.",
+    cancel: "Cancel",
+  },
+  glossaryScrollNav: {
+    top: "Back to top",
+    bottom: "Jump to bottom",
   },
   common: {
     placeholder:

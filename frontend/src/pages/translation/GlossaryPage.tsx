@@ -18,6 +18,11 @@ import {
 } from "@/components/RuleTable";
 import { GlossaryStatsModal } from "@/components/GlossaryStatsModal";
 import { GlossaryPresetModal } from "@/components/GlossaryPresetModal";
+import {
+  GlossaryExportModal,
+  type GlossaryExportFormat,
+} from "@/components/GlossaryExportModal";
+import { GlossaryScrollNav } from "@/components/GlossaryScrollNav";
 
 type Toggle = "on" | "off";
 
@@ -104,6 +109,7 @@ export function GlossaryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statsOpen, setStatsOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [sortState, setSortState] = useState<SortState | null>(null);
 
   const filteredEntries = (() => {
@@ -399,14 +405,7 @@ export function GlossaryPage() {
           toolbar={[
             { label: g.actions.add, onClick: handleAdd, primary: true },
             { label: g.actions.import, onClick: () => void handleImport() },
-            {
-              label: g.actions.exportJson,
-              onClick: () => void handleExport("json"),
-            },
-            {
-              label: g.actions.exportXlsx,
-              onClick: () => void handleExport("xlsx"),
-            },
+            { label: g.actions.export, onClick: () => setExportOpen(true) },
             {
               label: g.actions.search,
               onClick: () => {
@@ -454,6 +453,26 @@ export function GlossaryPage() {
             importEntries([...state.entries, ...incoming]);
           }}
           onClose={() => setPresetOpen(false)}
+        />
+      ) : null}
+      {exportOpen ? (
+        <GlossaryExportModal
+          onPick={(fmt: GlossaryExportFormat) => {
+            setExportOpen(false);
+            void handleExport(fmt);
+          }}
+          onClose={() => setExportOpen(false)}
+        />
+      ) : null}
+      {state.entries.length > 30 ? (
+        <GlossaryScrollNav
+          onTop={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          onBottom={() =>
+            window.scrollTo({
+              top: document.documentElement.scrollHeight,
+              behavior: "smooth",
+            })
+          }
         />
       ) : null}
     </>

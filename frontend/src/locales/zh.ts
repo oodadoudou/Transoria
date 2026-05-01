@@ -356,8 +356,7 @@ export const zh: Messages = {
         more: "更多",
         delete: "删除",
         import: "导入",
-        exportJson: "导出 JSON",
-        exportXlsx: "导出 XLSX",
+        export: "导出",
         search: "搜索",
         statistics: "统计",
         preset: "预设",
@@ -706,6 +705,19 @@ export const zh: Messages = {
     topInfo: "类别分布",
     uncategorized: "未分类",
     empty: "暂无类别数据。",
+  },
+  glossaryExport: {
+    title: "导出术语表",
+    hint: "选择导出格式。",
+    formatJson: "JSON",
+    formatJsonHint: "完整字段保留,适合再次导入。",
+    formatXlsx: "XLSX",
+    formatXlsxHint: "可在 Excel 中查看与编辑。",
+    cancel: "取消",
+  },
+  glossaryScrollNav: {
+    top: "回到顶部",
+    bottom: "跳到底部",
   },
   common: {
     placeholder:

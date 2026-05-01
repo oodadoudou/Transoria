@@ -323,8 +323,7 @@ export interface Messages {
         more: string;
         delete: string;
         import: string;
-        exportJson: string;
-        exportXlsx: string;
+        export: string;
         search: string;
         statistics: string;
         preset: string;
@@ -639,6 +638,19 @@ export interface Messages {
     topInfo: string;
     uncategorized: string;
     empty: string;
+  };
+  glossaryExport: {
+    title: string;
+    hint: string;
+    formatJson: string;
+    formatJsonHint: string;
+    formatXlsx: string;
+    formatXlsxHint: string;
+    cancel: string;
+  };
+  glossaryScrollNav: {
+    top: string;
+    bottom: string;
   };
   common: { placeholder: string };
 }
