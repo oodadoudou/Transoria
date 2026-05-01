@@ -32,7 +32,6 @@ interface Draft {
   description: string;
   enabled: boolean;
   system_prompt: string;
-  suffix_prompt: string;
   thinking_prompt: string;
 }
 
@@ -42,7 +41,6 @@ function bodyToDraft(body: PromptPresetBody): Draft {
     description: body.description,
     enabled: body.enabled,
     system_prompt: body.system_prompt,
-    suffix_prompt: body.suffix_prompt,
     thinking_prompt: body.thinking_prompt,
   };
 }
@@ -53,7 +51,6 @@ function blankDraft(): Draft {
     description: "",
     enabled: true,
     system_prompt: "",
-    suffix_prompt: "",
     thinking_prompt: "",
   };
 }
@@ -152,7 +149,6 @@ export function PromptPresetModal({
           description: draft.description,
           enabled: draft.enabled,
           system_prompt: draft.system_prompt,
-          suffix_prompt: draft.suffix_prompt,
           thinking_prompt: draft.thinking_prompt,
         });
         pushToast({
@@ -169,7 +165,6 @@ export function PromptPresetModal({
           enabled: draft.enabled,
           is_system: false,
           system_prompt: draft.system_prompt,
-          suffix_prompt: draft.suffix_prompt,
           thinking_prompt: draft.thinking_prompt,
         });
         if (created) {
@@ -418,7 +413,6 @@ function readOnlyDraftEquals(a: Draft, b: Draft): boolean {
     a.description === b.description &&
     a.enabled === b.enabled &&
     a.system_prompt === b.system_prompt &&
-    a.suffix_prompt === b.suffix_prompt &&
     a.thinking_prompt === b.thinking_prompt
   );
 }

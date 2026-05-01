@@ -80,7 +80,6 @@ def _body(preset: PromptPreset) -> dict[str, object]:
     return {
         **_summary(preset),
         "system_prompt": preset.system_prompt,
-        "suffix_prompt": preset.suffix_prompt,
         "thinking_prompt": preset.thinking_prompt,
     }
 
@@ -168,7 +167,7 @@ def _build_handlers(
                 name=str(body["name"]),
                 kind=kind,
                 system_prompt=str(body.get("system_prompt", "")),
-                suffix_prompt=str(body.get("suffix_prompt", "")),
+                suffix_prompt="",
                 thinking_prompt=str(body.get("thinking_prompt", "")),
                 description=str(body.get("description", "")),
                 enabled=bool(body.get("enabled", True)),
@@ -225,6 +224,8 @@ def _build_handlers(
                     preset,
                     id=copy_id,
                     name=str(new_name) if new_name else f"{preset.name} (copy)",
+                    suffix_prompt="",
+                    is_system=False,
                 )
                 store.save([*presets, copied])
                 return {"preset": _body(copied)}
@@ -294,7 +295,7 @@ def _build_handlers(
                 # Clamp the requested ``thinking`` flag against the
                 # active model profile's ``thinking_level``. If the
                 # active profile is set to ``OFF``, preview must not
-                # render the thinking suffix — that would lie about
+                # render the reasoning addendum — that would lie about
                 # what the runner actually sends.
                 active_level = _resolve_active_thinking_level(
                     settings_store=settings_store,
@@ -368,7 +369,6 @@ def _validate_preset_patch(
     valid = {
         "name",
         "system_prompt",
-        "suffix_prompt",
         "thinking_prompt",
         "description",
         "enabled",

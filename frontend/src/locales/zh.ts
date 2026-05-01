@@ -158,7 +158,7 @@ export const zh: Messages = {
     previewRunning: "渲染中…",
     previewLabel: "预览输出",
     previewClampedNotice:
-      "当前激活模型的 thinking_level=off，已自动钳位 thinking 后缀。",
+      "当前激活模型的 thinking_level=off，已自动钳位推理补充段。",
     previewSampleContext: "示例上下文",
     sampleSourceLanguage: "韩语",
     sampleTargetLanguage: "简体中文",
@@ -587,7 +587,6 @@ export const zh: Messages = {
     availableHint: "默认预设由本项目种子,不可删除,只能复制为新预设后再修改。",
     preview: "预览",
     previewSystem: "系统提示",
-    previewSuffix: "后缀",
     previewThinking: "推理补充段",
     badgeDefault: "默认",
     badgeCustom: "自定义",
@@ -597,7 +596,7 @@ export const zh: Messages = {
       duplicate: "复制",
       delete: "删除",
     },
-    noThinkingPrompt: "本预设没有推理补充段。模型只会收到系统提示与后缀。",
+    noThinkingPrompt: "本预设没有推理补充段。模型只会收到系统提示。",
   },
   model: {
     crumb: "模型",

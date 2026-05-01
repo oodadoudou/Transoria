@@ -108,16 +108,16 @@ def build_prompt(
     """Assemble the preset into a single prompt string.
 
     Order: ``system_prompt`` → ``thinking_prompt`` (only when ``thinking`` is
-    ``True`` and the preset has one) → ``suffix_prompt``. Only the named
-    placeholders in ``_PLACEHOLDER_NAMES`` are substituted, so literal braces
-    in JSONL examples (e.g. ``{"<INDEX>":"<Translated Text>"}``) survive
-    untouched.
+    ``True`` and the preset has one) → read-only system ``suffix_prompt``.
+    Only the named placeholders in ``_PLACEHOLDER_NAMES`` are substituted, so
+    literal braces in JSONL examples (e.g.
+    ``{"<INDEX>":"<Translated Text>"}``) survive untouched.
     """
 
     parts: list[str] = [preset.system_prompt]
     if thinking and preset.thinking_prompt:
         parts.append(preset.thinking_prompt)
-    if preset.suffix_prompt:
+    if preset.is_system and preset.suffix_prompt:
         parts.append(preset.suffix_prompt)
     raw = "\n\n".join(part for part in parts if part)
     values = context.as_mapping()
@@ -135,62 +135,20 @@ DEFAULT_GLOSSARY_EN_ID = "default-glossary-en"
 
 
 _TRANSLATION_SYSTEM_ZH = """\
-角色：资深文学翻译家。
-任务：将原文译为 {target_language}，精准、流畅、忠实。
+任务：将原文翻译为 {target_language}。
 
-# Prime Directive：语义绝对忠实
-所有润色、调整、措辞选择必须建立在 100% 忠实原文语义的基础上。
-- 允许：调整语序；选用更精准的近义词；补充逻辑连接词。
-- 禁止：增加原文不存在的动作 / 情感 / 评价；删减有效信息；为文笔而扭曲原意。
-
-# 风格
-- 克制、精准、连贯。日常物品用客观形容词，避免堆砌大词或强凑成语。
-- 用清爽书面语去翻译腔；利用连接词把碎句合成流畅长句。
-- 对话符合 {target_language} 自然口语，按 {target_language} 句法习惯重组语序。
-
-# 语境与文化
-- 识别敬语 / 平语等语体切换，按 {target_language} 习惯处理。
-- 称呼按上下文本地化，避免机械直译。
-- 文化专有名词优先意译；难以直译的，简短解释保证理解无障碍。
-- 拟声词、语气词、情绪符号都要译。
-
-# 格式
-- 保留原文段落结构。被强切的碎句可在句内或行间合并以保证连贯。
-- 控制字符（变量、占位符、转义、HTML/XML 标签、ID、URL、文件路径、颜色码等）原样保留，不译。
-- 标点按 {target_language} 出版习惯排版。
-
-# 输出要求
-- 行数严格对应原文，禁止合并 / 拆分。
-- 不评价、不淡化、不回避；还原原文风格与细节。"""
+要求：
+- 保持原文含义、信息与可见结构。
+- 保留变量、占位符、转义、HTML/XML 标签、ID、URL、文件路径、代码片段等不可译内容。
+- 遵循当前预设中的用户指令；不要添加当前预设未要求的风格、解释或评价。"""
 
 _TRANSLATION_SYSTEM_EN = """\
-Role: Senior literary translator.
-Task: Translate the source into {target_language} — precise, fluent, faithful.
+Task: translate the source text into {target_language}.
 
-# Prime Directive: Absolute semantic fidelity
-Every polish, reorder, and word choice must rest on 100% faithfulness to the source meaning.
-- Allowed: re-order; substitute more precise synonyms; insert logical connectors.
-- Forbidden: add actions / feelings / judgments not in the source; drop valid information; distort meaning for stylistic flourish.
-
-# Style
-- Restrained, precise, coherent. Use objective adjectives for ordinary objects; avoid grandiose phrasing or forced idioms.
-- Avoid translationese: use clean, idiomatic prose; merge fragmented sentences with connectors.
-- Render dialogue in natural spoken {target_language}, restructured to native syntax.
-
-# Context & culture
-- Detect honorific / plain register switches; render per {target_language} norms.
-- Localize forms of address by context; do not transliterate mechanically.
-- Prefer meaning-based translation for culture-specific terms; add a brief gloss when a literal rendering would obscure meaning.
-- Translate onomatopoeia, interjections, and emotional symbols.
-
-# Format
-- Preserve the source paragraph structure. Lines fragmented for layout may be merged within a paragraph for coherence.
-- Preserve control sequences verbatim (variables, placeholders, escapes, HTML/XML tags, IDs, URLs, file paths, color codes, etc.) — do not translate them.
-- Punctuate per {target_language} publishing conventions.
-
-# Output requirements
-- Line count must exactly match the source — never merge or split lines.
-- Do not editorialize, sanitize, or evade; reproduce the source's style and detail."""
+Requirements:
+- Preserve the source meaning, information, and visible structure.
+- Preserve non-translatable content verbatim, including variables, placeholders, escapes, HTML/XML tags, IDs, URLs, file paths, and code fragments.
+- Follow the active preset's user instructions; do not add style, explanation, or judgment that the active preset did not request."""
 
 _TRANSLATION_SUFFIX_ZH = """\
 然后用 JSONLINE 格式输出译文，不要任何额外解释或说明：
@@ -204,34 +162,26 @@ Then use JSONLINE to output translation results, without extra explanation or cl
 {"<INDEX>":"<Translated Text>"}
 ```"""
 
-_TRANSLATION_THINKING_ZH = """\
-在输出译文之前，先在 <why>...</why> 标签内进行结构化思考：
-<why>
-[全局语境]：用一句话概括原文的语境、语气与情感基调，识别可能的潜台词或特殊表达。
-[核心约束]：重申当前文本最关键的 1-2 条"红线"规则。
-[难点处理]：挑出 3-5 个最难翻译的术语、短语或句式，用 `原文 -> 译文（理由）` 的格式简述思路。
-</why>"""
+_TRANSLATION_THINKING_ZH = ""
 
-_TRANSLATION_THINKING_EN = """\
-Before outputting the results, perform **structured thinking** within <why>...</why> tags:
-<why>
-[Global Context]: Summarize the source's context, tone, and emotional undertones in one sentence; identify potential subtext or special expressions.
-[Core Constraints]: Restate the 1-2 most critical "red line" rules for the current text.
-[Edge Cases]: Pick 3-5 of the hardest terms, phrases, or sentence structures, briefly outlining the logic in `Source -> Translation (Reasoning)` format.
-</why>"""
+_TRANSLATION_THINKING_EN = ""
 
 
 _GLOSSARY_SYSTEM_ZH = """\
-任务目标：从 {source_language} 文本片段中提取术语表，并译为 {target_language}。
-请按当前提示词要求判断哪些词应提取、如何命名分类、分类粒度多细。
-如果用户没有额外指定分类体系，`type` 使用简短、稳定、可供人工审阅的分类名。
-`type` 字段必须始终使用 {target_language}，不允许中英混合或英文分类名。"""
+任务：从 {source_language} 文本中提取当前预设要求的术语，并译为 {target_language}。
+
+要求：
+- 遵循当前预设中关于提取范围、命名和分类的用户指令。
+- 不添加当前预设未要求的筛选偏好或分类体系。
+- `type` 字段必须使用 {target_language}。"""
 
 _GLOSSARY_SYSTEM_EN = """\
-Goal: extract a glossary from {source_language} text snippets and translate each term into {target_language}.
-Use the active prompt to decide which terms to extract, how to categorize them, and how granular the categories should be.
-If the user has not specified a taxonomy, use concise, stable category names suitable for human review.
-The `type` field must always be written in {target_language}; do not mix languages or fall back to English category names."""
+Task: extract terms requested by the active preset from {source_language} text and translate them into {target_language}.
+
+Requirements:
+- Follow the active preset's user instructions for extraction scope, naming, and categorization.
+- Do not add filtering preferences or a taxonomy that the active preset did not request.
+- The `type` field must be written in {target_language}."""
 
 _GLOSSARY_SUFFIX_ZH = """\
 只输出 JSONLINE，每行一个独立 JSON 对象。
@@ -260,7 +210,7 @@ def _seeded_translation_zh() -> PromptPreset:
         system_prompt=_TRANSLATION_SYSTEM_ZH,
         suffix_prompt=_TRANSLATION_SUFFIX_ZH,
         thinking_prompt=_TRANSLATION_THINKING_ZH,
-        description="默认翻译预设（中文指令版）。语言无关化，可在任意 source/target 语言对上使用。",
+        description="默认翻译预设（中文指令版）。保持通用任务边界，具体风格由用户提示词决定。",
         enabled=True,
         is_system=True,
     )
@@ -274,7 +224,7 @@ def _seeded_translation_en() -> PromptPreset:
         system_prompt=_TRANSLATION_SYSTEM_EN,
         suffix_prompt=_TRANSLATION_SUFFIX_EN,
         thinking_prompt=_TRANSLATION_THINKING_EN,
-        description="Default translation preset (English instructions). Language-agnostic; works for any source/target language pair.",
+        description="Default translation preset (English instructions). Keeps a neutral task boundary; user prompts decide the style.",
         enabled=True,
         is_system=True,
     )
@@ -288,7 +238,7 @@ def _seeded_glossary_zh() -> PromptPreset:
         system_prompt=_GLOSSARY_SYSTEM_ZH,
         suffix_prompt=_GLOSSARY_SUFFIX_ZH,
         thinking_prompt=_GLOSSARY_THINKING_ZH,
-        description="默认术语提取预设（中文指令版）。聚焦命名实体提取与三层过滤，与原文语言无关。",
+        description="默认术语提取预设（中文指令版）。保持通用任务边界，提取范围由用户提示词决定。",
         enabled=True,
         is_system=True,
     )
@@ -302,7 +252,7 @@ def _seeded_glossary_en() -> PromptPreset:
         system_prompt=_GLOSSARY_SYSTEM_EN,
         suffix_prompt=_GLOSSARY_SUFFIX_EN,
         thinking_prompt=_GLOSSARY_THINKING_EN,
-        description="Default glossary extraction preset (English instructions). Focused on named-entity extraction with a three-filter qualification gauntlet.",
+        description="Default glossary extraction preset (English instructions). Keeps a neutral task boundary; user prompts decide the extraction scope.",
         enabled=True,
         is_system=True,
     )

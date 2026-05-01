@@ -164,7 +164,7 @@ export const en: Messages = {
     previewRunning: "Rendering…",
     previewLabel: "Preview output",
     previewClampedNotice:
-      "Active model has thinking_level=off, so the thinking suffix was clamped.",
+      "Active model has thinking_level=off, so the reasoning addendum was clamped.",
     previewSampleContext: "Sample context",
     sampleSourceLanguage: "Korean",
     sampleTargetLanguage: "Simplified Chinese",
@@ -602,7 +602,6 @@ export const en: Messages = {
       "Default presets are seeded with the project; they cannot be deleted, only duplicated and edited.",
     preview: "Preview",
     previewSystem: "System prompt",
-    previewSuffix: "Suffix",
     previewThinking: "Reasoning addendum",
     badgeDefault: "Default",
     badgeCustom: "Custom",
@@ -613,7 +612,7 @@ export const en: Messages = {
       delete: "Delete",
     },
     noThinkingPrompt:
-      "This preset has no reasoning addendum. The model receives the system prompt and suffix only.",
+      "This preset has no reasoning addendum. The model receives the system prompt only.",
   },
   model: {
     crumb: "Models",

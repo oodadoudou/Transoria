@@ -68,6 +68,14 @@ _FORMAT_RETRY_REMINDER = (
     "around the response, no extra lines."
 )
 
+_OUTPUT_CONTRACT_REMINDER = (
+    "Output JSONLINE only: one independent JSON object per source index "
+    'from [Translate], in the form {"<INDEX>":"<Translated Text>"}. '
+    "Return every source index exactly once. The first non-whitespace "
+    'character of the response must be "{". No prose, no Markdown headings, '
+    "no code fence around the response, no extra lines."
+)
+
 
 @dataclass(frozen=True)
 class _SegmentPayload:
@@ -372,6 +380,7 @@ class TranslationSubtaskRunner:
         if format_retry:
             parts.append(_FORMAT_RETRY_REMINDER)
         parts.append(body)
+        parts.append(_OUTPUT_CONTRACT_REMINDER)
         return "\n\n".join(part for part in parts if part)
 
     def _apply_roster(self, prompt: str) -> str:

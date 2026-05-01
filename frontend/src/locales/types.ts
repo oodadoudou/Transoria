@@ -529,7 +529,6 @@ export interface Messages {
     availableHint: string;
     preview: string;
     previewSystem: string;
-    previewSuffix: string;
     previewThinking: string;
     badgeDefault: string;
     badgeCustom: string;

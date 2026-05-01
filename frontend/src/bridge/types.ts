@@ -256,7 +256,6 @@ export interface PromptPresetSummary {
 
 export interface PromptPresetBody extends PromptPresetSummary {
   system_prompt: string;
-  suffix_prompt: string;
   thinking_prompt: string;
 }
 
@@ -270,7 +269,7 @@ export interface PromptPreviewContext {
 
 export interface PromptPreviewResult {
   prompt: string;
-  /** Whether the rendered prompt actually included the thinking suffix.
+  /** Whether the rendered prompt actually included the reasoning addendum.
    * Differs from the requested ``thinking`` flag when the active model
    * profile has ``thinking_level=off`` and the bridge clamped it. */
   thinking: boolean;
