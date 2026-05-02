@@ -20,7 +20,7 @@ InterfaceLanguage = Literal["en", "zh"]
 
 @dataclass(frozen=True)
 class AppSettings:
-    interface_language: InterfaceLanguage = "en"
+    interface_language: InterfaceLanguage = "zh"
     ui_scale: float = 1.0
     proxy_url: str = ""
     active_translation_model_id: str | None = None
