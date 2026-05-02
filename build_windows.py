@@ -110,6 +110,7 @@ def main() -> None:
     _require_frontend_dist()
     _require_pyinstaller()
     _require_runtime_imports()
+    _refresh_egg_info()
     _note_unbundled_local_state()
 
     DIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -249,6 +250,46 @@ def _require_runtime_imports() -> None:
             + ".\nRun `python -m pip install -e \".[gui,build]\"` on the "
             "build machine before retrying."
         )
+
+
+def _refresh_egg_info() -> None:
+    """Regenerate ``transoria.egg-info/`` so its bundled metadata matches
+    the current ``pyproject.toml`` version.
+
+    Why this matters: PyInstaller scoops up ``transoria.egg-info/`` and
+    drops it into ``_internal/`` of the bundled exe. At runtime,
+    ``transoria.bridge.handlers.app._read_app_version`` calls
+    ``importlib.metadata.version("transoria")`` which reads that bundled
+    metadata first. If the egg-info is stale (left over from an earlier
+    ``pip install -e .`` at a previous version), every consumer of
+    ``app.get_metadata`` will report the OLD version — including the
+    update modal's "current version", the About page, and the
+    ``current_version`` we send in update-check requests. We hit this
+    in production: a freshly-built 1.0.1 ZIP reported "1.0.0" because
+    egg-info was last regenerated when pyproject said 1.0.0.
+
+    Fix: blow away the directory and rebuild it via ``pip install -e .
+    --no-deps``. ``--no-deps`` keeps the runtime install state
+    untouched (other deps already there); the only side-effect is that
+    egg-info is rewritten to match current pyproject."""
+
+    egg_info = ROOT / "transoria.egg-info"
+    if egg_info.exists():
+        shutil.rmtree(egg_info, ignore_errors=True)
+    print("[build] regenerating transoria.egg-info to match pyproject.toml")
+    _run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--quiet",
+            "-e",
+            str(ROOT),
+        ],
+        cwd=ROOT,
+    )
 
 
 def _note_unbundled_local_state() -> None:
