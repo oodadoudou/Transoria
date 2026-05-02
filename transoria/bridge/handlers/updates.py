@@ -336,6 +336,19 @@ class GithubReleaseChecker:
                 with dest.open("wb") as fh:
                     for chunk in response.iter_bytes(chunk_size=65536):
                         fh.write(chunk)
+        # Defense-in-depth: a 0-byte file means the response body was
+        # empty even though the status said success. Most likely an
+        # unfollowed redirect (see ``_client`` follow_redirects note),
+        # but could also be a misconfigured upstream. Fail loudly here
+        # instead of letting ``zipfile.ZipFile`` produce the cryptic
+        # ``BadZipFile`` error.
+        if dest.stat().st_size == 0:
+            raise BridgeError(
+                "update.network_unavailable",
+                "download produced a 0-byte file (likely an unfollowed redirect).",
+                retryable=True,
+                details={"url": url},
+            )
 
     def _latest_tag(self) -> Mapping[str, object] | None:
         tags = self._get_json(f"{self._api_base()}/tags")
@@ -376,7 +389,17 @@ class GithubReleaseChecker:
     def _client(self, *, timeout: "float | httpx.Timeout"):
         if self.client_factory is not None:
             return self.client_factory(timeout=timeout)
-        kwargs: dict[str, object] = {"timeout": timeout}
+        # ``follow_redirects=True`` is mandatory: GitHub release-asset
+        # URLs (``releases/download/…``) are 302 redirects to the actual
+        # CDN host. Without redirect-following httpx happily returns the
+        # 302 with an empty body, which then writes a 0-byte file that
+        # blows up downstream as ``BadZipFile: Downloaded file is not a
+        # valid zip archive``. The same applies to ``/api/releases``
+        # responses on rare occasions when GitHub redirects them.
+        kwargs: dict[str, object] = {
+            "timeout": timeout,
+            "follow_redirects": True,
+        }
         if self.proxy_provider is not None:
             try:
                 proxy = (self.proxy_provider() or "").strip()
