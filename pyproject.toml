@@ -23,6 +23,14 @@ build = [
   "pyinstaller>=6.0",
 ]
 
+# Without this, setuptools' flat-layout auto-discovery aborts because
+# the repo root contains multiple top-level dirs (``assets/``,
+# ``frontend/``, ``transoria/``) — only ``transoria`` is the Python
+# package; the others are static assets bundled separately by the
+# build scripts.
+[tool.setuptools.packages.find]
+include = ["transoria*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
