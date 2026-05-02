@@ -690,6 +690,12 @@ class TaskService:
         # artifacts in the output folder.
         self._completed_snapshots: dict[str, TaskSnapshot] = {}
         self._completed_results: dict[str, dict[str, object]] = {}
+        # Replacement runs that finish cleanly have their cache wiped,
+        # which would also delete ``replacement-report.json``. Mirror
+        # the report into memory right before the wipe so the modal
+        # trigger keeps working until the user starts a new task or
+        # restarts the app — same lifecycle as the snapshot mirror.
+        self._completed_replacement_reports: dict[str, dict[str, object]] = {}
         # Per-kind start lock. Without this, two near-simultaneous
         # ``start_*`` calls (rapid double-click, re-run dialog firing
         # twice, frontend retry of a stuck request) race through
@@ -809,6 +815,18 @@ class TaskService:
         result_payload = self._read_result(task_id)
         if result_payload is not None:
             self._completed_results[task_id] = result_payload
+        # Same lifecycle for the replacement-report payload: read it
+        # before the wipe so ``read_replacement_report`` can fall back
+        # to memory after the disk is gone. Other kinds never write
+        # this file, so the missing branch is the common case.
+        report_path = self._replacement_report_path(task_id)
+        if report_path.exists():
+            try:
+                self._completed_replacement_reports[task_id] = json.loads(
+                    report_path.read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError):
+                pass
 
         # Wipe this task's directory under the cache root, then prune
         # the cache root itself if no other task is parked there. OS
@@ -1838,6 +1856,7 @@ class TaskService:
         for tid in stale:
             self._completed_snapshots.pop(tid, None)
             self._completed_results.pop(tid, None)
+            self._completed_replacement_reports.pop(tid, None)
 
     def _spawn_thread(
         self,
@@ -1997,24 +2016,29 @@ class TaskService:
 
     def read_replacement_report(self, *, task_id: str) -> dict[str, object]:
         """Return the per-rule replacement report for a finished
-        replacement task, or raise ``BridgeError.not_found`` if no
-        report exists (older tasks, or a task that never completed)."""
+        replacement task. Falls back to the in-memory mirror after the
+        disk cache has been wiped on a clean completion. Raises
+        ``BridgeError.not_found`` only when neither disk nor mirror
+        has the report (older runs, or a task that never completed)."""
 
         path = self._replacement_report_path(task_id)
-        if not path.exists():
-            raise BridgeError.not_found(
-                f"replacement report not found for {task_id!r}",
-                details={"task_id": task_id},
-            )
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise BridgeError(
-                "bridge.io_error",
-                f"cannot read replacement report: {exc}",
-                retryable=False,
-                details={"task_id": task_id, "path": str(path)},
-            ) from exc
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise BridgeError(
+                    "bridge.io_error",
+                    f"cannot read replacement report: {exc}",
+                    retryable=False,
+                    details={"task_id": task_id, "path": str(path)},
+                ) from exc
+        mirrored = self._completed_replacement_reports.get(task_id)
+        if mirrored is not None:
+            return mirrored
+        raise BridgeError.not_found(
+            f"replacement report not found for {task_id!r}",
+            details={"task_id": task_id},
+        )
 
     def _write_result(
         self, task_id: str, payload: Mapping[str, object]
