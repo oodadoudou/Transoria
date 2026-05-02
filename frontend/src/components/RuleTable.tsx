@@ -62,8 +62,8 @@ interface RuleTableProps<T> {
   isEnabled: (rule: T) => boolean;
   columns: RuleTableColumn<T>[];
   emptyMessage: string;
-  editor: ReactNode;
-  toolbar: RuleTableAction[];
+  editor?: ReactNode;
+  toolbar?: RuleTableAction[];
   /** Right-click → "Delete N rules"; called with the rows the user
    *  acted on. When omitted, the context menu is suppressed. */
   onBulkDelete?: (indices: number[]) => void;
@@ -114,7 +114,7 @@ export function RuleTable<T>({
   columns,
   emptyMessage,
   editor,
-  toolbar,
+  toolbar = [],
   onBulkDelete,
   onBulkDuplicate,
   contextMenuLabels,
@@ -295,6 +295,8 @@ export function RuleTable<T>({
     );
   };
 
+  const hasSidebar = toolbar.length > 0 || editor !== undefined;
+
   return (
     <div className={styles.editorGrid}>
       <div ref={tableRef} className={styles.tableWrap} tabIndex={0} role="grid">
@@ -418,23 +420,25 @@ export function RuleTable<T>({
         )}
       </div>
 
-      <aside className={styles.sidebar}>
-        <div className={styles.toolbar}>
-          {toolbar.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              className={`${styles.toolbarBtn} ${action.primary ? styles.toolbarBtnPrimary : ""}`.trim()}
-              onClick={action.onClick}
-              disabled={action.disabled}
-            >
-              {action.primary ? "+ " : ""}
-              {action.label}
-            </button>
-          ))}
-        </div>
-        <div className={styles.editorBlock}>{editor}</div>
-      </aside>
+      {hasSidebar ? (
+        <aside className={styles.sidebar}>
+          <div className={styles.toolbar}>
+            {toolbar.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className={`${styles.toolbarBtn} ${action.primary ? styles.toolbarBtnPrimary : ""}`.trim()}
+                onClick={action.onClick}
+                disabled={action.disabled}
+              >
+                {action.primary ? "+ " : ""}
+                {action.label}
+              </button>
+            ))}
+          </div>
+          <div className={styles.editorBlock}>{editor}</div>
+        </aside>
+      ) : null}
 
       {contextMenu ? (
         <div
