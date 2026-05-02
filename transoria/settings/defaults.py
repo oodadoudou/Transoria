@@ -44,7 +44,11 @@ class TranslationSettings:
     bilingual_enabled: bool = False
     bilingual_dedupe_identical: bool = True
     bilingual_subfolder_name: str = "bilingual outputs"
-    context_lines: int = 25
+    # Number of preceding source lines bundled with each chunk as context
+    # for cross-chunk pronoun resolution and short-range narrative
+    # cohesion. 8 is enough for typical novel prose; larger values
+    # multiply input tokens without proportionate quality gain.
+    context_lines: int = 8
     low_confidence_max_retries: int = 3
     auto_open_output_folder: bool = False
     timeout_seconds: int = 120

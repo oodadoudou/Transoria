@@ -69,15 +69,6 @@ _FORMAT_RETRY_REMINDER = (
     "around the response, no extra lines."
 )
 
-_OUTPUT_CONTRACT_REMINDER = (
-    "Output JSONLINE only: one independent JSON object per source index "
-    'from [Translate], in the form {"<INDEX>":"<Translated Text>"}. '
-    "Return every source index exactly once. The first non-whitespace "
-    'character of the response must be "{". No prose, no Markdown headings, '
-    "no code fence around the response, no extra lines."
-)
-
-
 # Custom presets that say nothing about the wire format need a
 # system-side reminder so a long literary persona can't drown out the
 # user-message format contract. Mentions only the transport (JSONLINE
@@ -443,12 +434,14 @@ class TranslationSubtaskRunner:
         *,
         format_retry: bool,
     ) -> str:
-        parts: list[str] = []
+        # Format contract lives in the system prompt (built-in suffix or
+        # ``_augment_system_prompt``'s injected hint) so we don't repeat
+        # it in every user message — that overhead was 3-5x amplified
+        # by small chunk sizes. The retry banner still prepends here on
+        # the second-and-later attempts.
         if format_retry:
-            parts.append(_FORMAT_RETRY_REMINDER)
-        parts.append(body)
-        parts.append(_OUTPUT_CONTRACT_REMINDER)
-        return "\n\n".join(part for part in parts if part)
+            return f"{_FORMAT_RETRY_REMINDER}\n\n{body}"
+        return body
 
     def _apply_roster(self, prompt: str) -> str:
         roster = self.fake_name_roster

@@ -39,8 +39,14 @@ class TranslationConfig:
     bilingual_dedup_when_same: bool = True
     bilingual_subfolder: str = BILINGUAL_OUTPUT_FOLDER_EN
 
+    # Per-request line budget. Larger chunks amortize the fixed per-call
+    # boilerplate (system prompt, glossary) over more output lines, so
+    # token cost per source line drops. 24 is a balanced default — small
+    # enough that one bad response only loses 24 lines (and the
+    # ``failed_chunk_split_rounds`` mechanism halves further on failure),
+    # large enough to hit ~1/3 the per-line cost of the old chunk_size=8.
     context_line_count: int = 4
-    chunk_size: int = 8
+    chunk_size: int = 24
     chunk_token_limit: int = 0
     token_counter: Callable[[str], int] | None = None
 
