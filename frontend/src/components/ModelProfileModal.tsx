@@ -53,11 +53,39 @@ const PROVIDER_OPTIONS: Array<{ id: ProviderFormat; label: string }> = [
   { id: "custom", label: "Custom" },
 ];
 
-const THINKING_OPTIONS: Array<{ id: ThinkingLevel; label: string }> = [
+// Reasoning-default models honor LOW/MEDIUM/HIGH as graded thinking
+// budgets (the backend translates them to 384/768/1024 reasoning tokens
+// for Anthropic/Google, or just type=enabled for OpenAI-style). Other
+// models ignore the level field entirely — for them the meaningful UI
+// is a binary On/Off, where "On" tells the runner to inject the
+// system-prompt thinking hint without sending a provider thinking
+// payload. Mirrors the backend pattern in ``transoria/llm/client.py``.
+const REASONING_MODEL_PATTERNS: ReadonlyArray<RegExp> = [
+  /glm/i,
+  /kimi/i,
+  /deepseek/i,
+];
+
+function isReasoningModelId(modelId: string): boolean {
+  if (!modelId) return false;
+  return REASONING_MODEL_PATTERNS.some((p) => p.test(modelId));
+}
+
+const THINKING_OPTIONS_REASONING: Array<{ id: ThinkingLevel; label: string }> =
+  [
+    { id: "off", label: "Off" },
+    { id: "low", label: "Low" },
+    { id: "medium", label: "Medium" },
+    { id: "high", label: "High" },
+  ];
+
+// Non-reasoning models: collapse to a binary toggle. A persisted value
+// of low/medium/high all map back to the "On" position visually; we
+// store "low" when the user picks On so the wire payload stays well-
+// defined.
+const THINKING_OPTIONS_BINARY: Array<{ id: ThinkingLevel; label: string }> = [
   { id: "off", label: "Off" },
-  { id: "low", label: "Low" },
-  { id: "medium", label: "Medium" },
-  { id: "high", label: "High" },
+  { id: "low", label: "On" },
 ];
 
 interface Draft {
@@ -759,8 +787,18 @@ function FormStep({
             <span className={styles.formatLabel}>{model.thinkingLevel}</span>
             <Segmented<ThinkingLevel>
               ariaLabel={model.thinkingLevel}
-              options={THINKING_OPTIONS}
-              value={draft.thinking_level}
+              options={
+                isReasoningModelId(draft.model_id)
+                  ? THINKING_OPTIONS_REASONING
+                  : THINKING_OPTIONS_BINARY
+              }
+              value={
+                isReasoningModelId(draft.model_id)
+                  ? draft.thinking_level
+                  : draft.thinking_level === "off"
+                    ? "off"
+                    : "low"
+              }
               onChange={(v) => update("thinking_level", v)}
             />
           </div>
