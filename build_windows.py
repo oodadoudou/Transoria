@@ -249,6 +249,10 @@ Transoria 启动说明（中文）
   2) 解压后：在 Transoria 目录中点 Transoria.exe → 右键 → 属性 →
      若有「解除锁定」选项请勾选并应用。
 
+请把 ZIP 解压到一个普通可写目录（如「文档」「桌面」或自建文件夹），
+不要解压到 C:\\Program Files、C:\\Windows、C:\\ 根目录这类受系统保护
+的位置；否则首次启动时 User Data 文件夹会因为权限不足写入失败。
+
 【二、目录结构】
 
   Transoria/
@@ -309,6 +313,11 @@ A ZIP downloaded from GitHub Releases is tagged by Windows as
      check "Unblock" -> Apply -> then extract.
   2) After extracting: right-click Transoria.exe -> Properties ->
      check "Unblock" if shown.
+
+Extract the ZIP to a regular writable folder (e.g. Documents, Desktop,
+or a folder you create). Do not extract into C:\\Program Files,
+C:\\Windows, or the root of C:\\ — those are system-protected and the
+User Data folder will fail to write on first launch.
 
 [2] Folder layout
 
