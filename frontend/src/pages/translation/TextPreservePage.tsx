@@ -13,6 +13,7 @@ import {
   type RuleTableSelection,
   ruleTableStyles,
 } from "@/components/RuleTable";
+import { useSearchShortcut } from "@/components/useSearchShortcut";
 
 const EMPTY_RULES: PersistedTextPreserveRule[] = [];
 
@@ -28,8 +29,18 @@ export function TextPreservePage() {
   const [selection, setSelection] =
     useState<RuleTableSelection>(EMPTY_SELECTION);
   const selectedIndex = selection.last;
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  useSearchShortcut(() => setSearchOpen(true));
 
-  const rules = draft?.text_preserve_rules ?? EMPTY_RULES;
+  const allRules = draft?.text_preserve_rules ?? EMPTY_RULES;
+  const rules = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!searchOpen || !q) return allRules;
+    return allRules.filter((r) =>
+      [r.pattern, r.note].some((field) => field.toLowerCase().includes(q)),
+    );
+  })();
 
   const setRules = useCallback(
     (next: PersistedTextPreserveRule[]) => {
@@ -38,36 +49,46 @@ export function TextPreservePage() {
     [moduleSettings],
   );
 
+  // Filter view → master operations: we look up the actual item by
+  // reference in ``allRules`` rather than by index in the filtered
+  // ``rules`` view, so bulk delete / duplicate stay correct while a
+  // search is active. ``rules.filter`` preserves object identity, so
+  // a Set of refs is enough.
   const addRule = () => {
-    const next = [...rules, emptyRule()];
+    const next = [...allRules, emptyRule()];
     setRules(next);
     const newIndex = next.length - 1;
     setSelection({ indices: [newIndex], last: newIndex });
   };
   const updateRule = (
-    index: number,
+    filteredIndex: number,
     patch: Partial<PersistedTextPreserveRule>,
-  ) =>
-    setRules(
-      rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
+  ) => {
+    const item = rules[filteredIndex];
+    if (!item) return;
+    setRules(allRules.map((r) => (r === item ? { ...r, ...patch } : r)));
+  };
+  const deleteRule = (filteredIndex: number) => {
+    const item = rules[filteredIndex];
+    if (!item) return;
+    setRules(allRules.filter((r) => r !== item));
+    setSelection(EMPTY_SELECTION);
+  };
+  const handleBulkDelete = (filteredIndices: number[]) => {
+    const dropRefs = new Set(
+      filteredIndices.map((i) => rules[i]).filter(Boolean),
     );
-  const deleteRule = (index: number) => {
-    setRules(rules.filter((_, i) => i !== index));
+    setRules(allRules.filter((r) => !dropRefs.has(r)));
     setSelection(EMPTY_SELECTION);
   };
-  const handleBulkDelete = (indices: number[]) => {
-    const drop = new Set(indices);
-    setRules(rules.filter((_, i) => !drop.has(i)));
-    setSelection(EMPTY_SELECTION);
-  };
-  const handleBulkDuplicate = (indices: number[]) => {
-    const sources = indices
+  const handleBulkDuplicate = (filteredIndices: number[]) => {
+    const sources = filteredIndices
       .map((i) => rules[i])
       .filter((r): r is PersistedTextPreserveRule => Boolean(r));
     if (sources.length === 0) return;
     const copies = sources.map((rule) => ({ ...rule }));
-    setRules([...rules, ...copies]);
-    const startIndex = rules.length;
+    setRules([...allRules, ...copies]);
+    const startIndex = allRules.length;
     const newIndices = copies.map((_, i) => startIndex + i);
     setSelection({
       indices: newIndices,
@@ -75,7 +96,7 @@ export function TextPreservePage() {
     });
   };
 
-  const enabledCount = rules.filter((r) => r.enabled).length;
+  const enabledCount = allRules.filter((r) => r.enabled).length;
 
   if (!draft) {
     return <Panel title={m.title} subtitle={m.sub} />;
@@ -118,9 +139,27 @@ export function TextPreservePage() {
       <Panel title={m.title} subtitle={m.sub} />
 
       <Panel
-        label={format(m.stats.total, { n: rules.length })}
+        label={format(m.stats.total, { n: allRules.length })}
         labelExtra={<span>{format(m.stats.enabled, { n: enabledCount })}</span>}
       >
+        {searchOpen ? (
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoFocus
+            style={{
+              width: "100%",
+              marginTop: 8,
+              padding: "8px 12px",
+              border: "1px solid var(--hairline-strong)",
+              borderRadius: 8,
+              font: "inherit",
+              fontSize: 13,
+              background: "var(--panel)",
+            }}
+          />
+        ) : null}
         <RuleTable
           rules={rules}
           selection={selection}
@@ -152,7 +191,10 @@ export function TextPreservePage() {
             { label: m.actions.add, onClick: addRule, primary: true },
             { label: m.actions.import, onClick: () => undefined },
             { label: m.actions.export, onClick: () => undefined },
-            { label: m.actions.search, onClick: () => undefined },
+            {
+              label: m.actions.search,
+              onClick: () => setSearchOpen((v) => !v),
+            },
             { label: m.actions.statistics, onClick: () => undefined },
             { label: m.actions.preset, onClick: () => undefined },
           ]}

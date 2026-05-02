@@ -21,6 +21,13 @@ import { Pill } from "@/components/Pill";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FailedSubtaskList } from "@/components/FailedSubtaskList";
+import {
+  EMPTY_SELECTION,
+  RuleTable,
+  type RuleTableColumn,
+  type RuleTableSelection,
+} from "@/components/RuleTable";
+import { useSearchShortcut } from "@/components/useSearchShortcut";
 import styles from "./BatchReplacementPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -36,6 +43,24 @@ export function BatchReplacementPage() {
   const moduleSettings = useModuleSettings("replacement");
   const draft = moduleSettings.draft;
   const [rules, setRules] = useState<ReplacementRule[]>([]);
+  const [ruleSelection, setRuleSelection] =
+    useState<RuleTableSelection>(EMPTY_SELECTION);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  useSearchShortcut(() => setSearchOpen(true));
+  const visibleRules = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!searchOpen || !q) return rules;
+    return rules.filter((r) =>
+      [r.src, r.dst].some((field) => field.toLowerCase().includes(q)),
+    );
+  })();
+  const updateRule = (filteredIndex: number, patch: Partial<ReplacementRule>) =>
+    setRules((prev) => {
+      const item = visibleRules[filteredIndex];
+      if (!item) return prev;
+      return prev.map((rule) => (rule === item ? { ...rule, ...patch } : rule));
+    });
   const [warnings, setWarnings] = useState<
     Array<{ line_number: number; message: string }>
   >([]);
@@ -233,26 +258,34 @@ export function BatchReplacementPage() {
             {messages.batchReplacement.noRules}
           </div>
         ) : (
-          <table className={styles.rulesTable}>
-            <thead>
-              <tr>
-                <th>{messages.batchReplacementHeaders.src}</th>
-                <th>{messages.batchReplacementHeaders.dst}</th>
-                <th>{messages.batchReplacementHeaders.regex}</th>
-                <th>{messages.batchReplacementHeaders.caseSensitive}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.slice(0, 50).map((rule, i) => (
-                <tr key={i}>
-                  <td>{rule.src}</td>
-                  <td>{rule.dst}</td>
-                  <td>{rule.regex ? "yes" : "no"}</td>
-                  <td>{rule.case_sensitive ? "yes" : "no"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            {searchOpen ? (
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                  padding: "8px 12px",
+                  border: "1px solid var(--hairline-strong)",
+                  borderRadius: 8,
+                  font: "inherit",
+                  fontSize: 13,
+                  background: "var(--panel)",
+                }}
+              />
+            ) : null}
+            <RuleTable
+              rules={visibleRules}
+              selection={ruleSelection}
+              onSelectionChange={setRuleSelection}
+              isEnabled={() => true}
+              columns={replacementColumns(messages, updateRule)}
+              emptyMessage={messages.batchReplacement.noRules}
+            />
+          </>
         )}
         {warnings.length > 0 ? (
           <div className={styles.warnings}>
@@ -406,4 +439,69 @@ function Stat({ label, value }: StatProps) {
       <span className={styles.statValue}>{value}</span>
     </div>
   );
+}
+
+// Minimal columns for the imported rules: ``src`` / ``dst`` are
+// double-click editable text; ``regex`` and ``case_sensitive`` are
+// click-to-toggle booleans rendered as a plain checkbox so the user
+// can fix import-time mistakes without re-importing the whole file.
+// Deliberately no toolbar / editor sidebar / sort / bulk actions —
+// that level of complexity belongs to the Glossary page.
+function replacementColumns(
+  messages: ReturnType<typeof useMessages>,
+  updateRule: (index: number, patch: Partial<ReplacementRule>) => void,
+): RuleTableColumn<ReplacementRule>[] {
+  const labels = messages.batchReplacementHeaders;
+  return [
+    {
+      key: "src",
+      label: labels.src,
+      width: "1.5fr",
+      render: (rule) => <span>{rule.src}</span>,
+      edit: {
+        getValue: (rule) => rule.src,
+        onCommit: (idx, value) => updateRule(idx, { src: value }),
+      },
+    },
+    {
+      key: "dst",
+      label: labels.dst,
+      width: "1.5fr",
+      render: (rule) => <span>{rule.dst}</span>,
+      edit: {
+        getValue: (rule) => rule.dst,
+        onCommit: (idx, value) => updateRule(idx, { dst: value }),
+      },
+    },
+    {
+      key: "regex",
+      label: labels.regex,
+      width: "0.6fr",
+      align: "center",
+      render: (rule, index) => (
+        <input
+          type="checkbox"
+          checked={rule.regex}
+          onChange={() => updateRule(index, { regex: !rule.regex })}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
+    {
+      key: "case_sensitive",
+      label: labels.caseSensitive,
+      width: "0.7fr",
+      align: "center",
+      render: (rule, index) => (
+        <input
+          type="checkbox"
+          checked={rule.case_sensitive}
+          onChange={() =>
+            updateRule(index, { case_sensitive: !rule.case_sensitive })
+          }
+          onClick={(e) => e.stopPropagation()}
+        />
+      ),
+    },
+  ];
 }

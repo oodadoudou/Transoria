@@ -14,6 +14,7 @@ import {
   type RuleTableSelection,
   ruleTableStyles,
 } from "@/components/RuleTable";
+import { useSearchShortcut } from "@/components/useSearchShortcut";
 
 type Group = "pre" | "post";
 
@@ -39,11 +40,21 @@ export function TranslationReplacementPage() {
   const [selection, setSelection] =
     useState<RuleTableSelection>(EMPTY_SELECTION);
   const selectedIndex = selection.last;
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  useSearchShortcut(() => setSearchOpen(true));
 
   const fieldName: "pre_replacements" | "post_replacements" =
     group === "pre" ? "pre_replacements" : "post_replacements";
-  const rules = (draft?.[fieldName] ??
+  const allRules = (draft?.[fieldName] ??
     EMPTY_RULES) as PersistedTranslationReplacementRule[];
+  const rules = (() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!searchOpen || !q) return allRules;
+    return allRules.filter((r) =>
+      [r.src, r.dst, r.note].some((field) => field.toLowerCase().includes(q)),
+    );
+  })();
 
   const setRules = useCallback(
     (next: PersistedTranslationReplacementRule[]) => {
@@ -52,36 +63,43 @@ export function TranslationReplacementPage() {
     [moduleSettings, fieldName],
   );
 
+  // Operations resolve the filtered index to the actual rule by
+  // reference so search-active state doesn't misalign bulk actions.
   const addRule = () => {
-    const next = [...rules, emptyRule()];
+    const next = [...allRules, emptyRule()];
     setRules(next);
     const newIndex = next.length - 1;
     setSelection({ indices: [newIndex], last: newIndex });
   };
   const updateRule = (
-    index: number,
+    filteredIndex: number,
     patch: Partial<PersistedTranslationReplacementRule>,
-  ) =>
-    setRules(
-      rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)),
+  ) => {
+    const item = rules[filteredIndex];
+    if (!item) return;
+    setRules(allRules.map((r) => (r === item ? { ...r, ...patch } : r)));
+  };
+  const deleteRule = (filteredIndex: number) => {
+    const item = rules[filteredIndex];
+    if (!item) return;
+    setRules(allRules.filter((r) => r !== item));
+    setSelection(EMPTY_SELECTION);
+  };
+  const handleBulkDelete = (filteredIndices: number[]) => {
+    const dropRefs = new Set(
+      filteredIndices.map((i) => rules[i]).filter(Boolean),
     );
-  const deleteRule = (index: number) => {
-    setRules(rules.filter((_, i) => i !== index));
+    setRules(allRules.filter((r) => !dropRefs.has(r)));
     setSelection(EMPTY_SELECTION);
   };
-  const handleBulkDelete = (indices: number[]) => {
-    const drop = new Set(indices);
-    setRules(rules.filter((_, i) => !drop.has(i)));
-    setSelection(EMPTY_SELECTION);
-  };
-  const handleBulkDuplicate = (indices: number[]) => {
-    const sources = indices
+  const handleBulkDuplicate = (filteredIndices: number[]) => {
+    const sources = filteredIndices
       .map((i) => rules[i])
       .filter((r): r is PersistedTranslationReplacementRule => Boolean(r));
     if (sources.length === 0) return;
     const copies = sources.map((rule) => ({ ...rule }));
-    setRules([...rules, ...copies]);
-    const startIndex = rules.length;
+    setRules([...allRules, ...copies]);
+    const startIndex = allRules.length;
     const newIndices = copies.map((_, i) => startIndex + i);
     setSelection({
       indices: newIndices,
@@ -89,7 +107,7 @@ export function TranslationReplacementPage() {
     });
   };
 
-  const enabledCount = rules.filter((r) => r.enabled).length;
+  const enabledCount = allRules.filter((r) => r.enabled).length;
 
   if (!draft) {
     return <Panel title={m.title} subtitle={m.sub} />;
@@ -171,7 +189,7 @@ export function TranslationReplacementPage() {
       />
 
       <Panel
-        label={format(m.stats.total, { n: rules.length })}
+        label={format(m.stats.total, { n: allRules.length })}
         labelExtra={
           <span>
             {group === "pre" ? m.preHint : m.postHint} ·{" "}
@@ -179,6 +197,24 @@ export function TranslationReplacementPage() {
           </span>
         }
       >
+        {searchOpen ? (
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoFocus
+            style={{
+              width: "100%",
+              marginTop: 8,
+              padding: "8px 12px",
+              border: "1px solid var(--hairline-strong)",
+              borderRadius: 8,
+              font: "inherit",
+              fontSize: 13,
+              background: "var(--panel)",
+            }}
+          />
+        ) : null}
         <RuleTable
           rules={rules}
           selection={selection}
@@ -210,7 +246,10 @@ export function TranslationReplacementPage() {
             { label: m.actions.add, onClick: addRule, primary: true },
             { label: m.actions.import, onClick: () => undefined },
             { label: m.actions.export, onClick: () => undefined },
-            { label: m.actions.search, onClick: () => undefined },
+            {
+              label: m.actions.search,
+              onClick: () => setSearchOpen((v) => !v),
+            },
             { label: m.actions.statistics, onClick: () => undefined },
             { label: m.actions.preset, onClick: () => undefined },
           ]}

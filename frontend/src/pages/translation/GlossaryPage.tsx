@@ -18,6 +18,7 @@ import {
 } from "@/components/RuleTable";
 import { GlossaryStatsModal } from "@/components/GlossaryStatsModal";
 import { GlossaryPresetModal } from "@/components/GlossaryPresetModal";
+import { useSearchShortcut } from "@/components/useSearchShortcut";
 import {
   GlossaryExportModal,
   type GlossaryExportFormat,
@@ -109,6 +110,7 @@ export function GlossaryPage() {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  useSearchShortcut(() => setSearchOpen(true));
   const [statsOpen, setStatsOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
