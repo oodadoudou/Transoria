@@ -311,7 +311,8 @@ export const en: Messages = {
       settings: "Settings",
       glossary: "Glossary",
       textPreserve: "Text Preserve",
-      replacement: "Replacement",
+      preReplacement: "Pre-Replacement",
+      postReplacement: "Post-Replacement",
       prompt: "Prompt",
     },
     glossary: {

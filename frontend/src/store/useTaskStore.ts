@@ -24,7 +24,8 @@ export type TranslationPage =
   | "settings"
   | "glossary"
   | "textPreserve"
-  | "replacement"
+  | "preReplacement"
+  | "postReplacement"
   | "prompt";
 
 export type GlossaryPage = "run" | "settings" | "prompt";

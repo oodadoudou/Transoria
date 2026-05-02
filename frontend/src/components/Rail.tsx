@@ -44,7 +44,8 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
           { page: "prompt", label: t.prompt },
           { page: "settings", label: t.settings },
           { page: "textPreserve", label: t.textPreserve },
-          { page: "replacement", label: t.replacement },
+          { page: "preReplacement", label: t.preReplacement },
+          { page: "postReplacement", label: t.postReplacement },
         ],
       },
       {

@@ -4,7 +4,6 @@ import { useModuleSettings } from "@/store/useSettingsStore";
 import type { PersistedTranslationReplacementRule } from "@/bridge";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
-import { Segmented } from "@/components/Segmented";
 import { TextField } from "@/components/TextField";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import {
@@ -31,12 +30,20 @@ function emptyRule(): PersistedTranslationReplacementRule {
   };
 }
 
-export function TranslationReplacementPage() {
+interface TranslationReplacementPageProps {
+  /** Which side of the translation pipeline this page edits.
+   * Each side renders as its own rail nav entry; the component is
+   * shared so the editing logic stays in one place. */
+  group: Group;
+}
+
+export function TranslationReplacementPage({
+  group,
+}: TranslationReplacementPageProps) {
   const messages = useMessages();
   const m = messages.translation.replacementPage;
   const moduleSettings = useModuleSettings("translation");
   const draft = moduleSettings.draft;
-  const [group, setGroup] = useState<Group>("pre");
   const [selection, setSelection] =
     useState<RuleTableSelection>(EMPTY_SELECTION);
   const selectedIndex = selection.last;
@@ -167,26 +174,12 @@ export function TranslationReplacementPage() {
       ? rules[selectedIndex]
       : null;
 
+  const pageTitle = group === "pre" ? m.preLabel : m.postLabel;
+  const pageHint = group === "pre" ? m.preHint : m.postHint;
+
   return (
     <>
-      <Panel
-        title={m.title}
-        subtitle={m.sub}
-        labelExtra={
-          <Segmented<Group>
-            ariaLabel={`${m.preLabel} / ${m.postLabel}`}
-            options={[
-              { id: "pre", label: m.preLabel },
-              { id: "post", label: m.postLabel },
-            ]}
-            value={group}
-            onChange={(v) => {
-              setGroup(v);
-              setSelection(EMPTY_SELECTION);
-            }}
-          />
-        }
-      />
+      <Panel title={pageTitle} subtitle={pageHint} />
 
       <Panel
         label={format(m.stats.total, { n: allRules.length })}

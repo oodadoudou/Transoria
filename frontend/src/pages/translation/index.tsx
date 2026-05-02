@@ -19,6 +19,9 @@ export function TranslationModule({ page }: TranslationModuleProps) {
   if (page === "prompt") return <PromptConfigPage owner="translation" />;
   if (page === "glossary") return <GlossaryPage />;
   if (page === "textPreserve") return <TextPreservePage />;
-  if (page === "replacement") return <TranslationReplacementPage />;
+  if (page === "preReplacement")
+    return <TranslationReplacementPage group="pre" />;
+  if (page === "postReplacement")
+    return <TranslationReplacementPage group="post" />;
   return <PlaceholderPage title={messages.pages.translation[page]} />;
 }

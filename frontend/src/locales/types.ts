@@ -250,7 +250,8 @@ export interface Messages {
       settings: string;
       glossary: string;
       textPreserve: string;
-      replacement: string;
+      preReplacement: string;
+      postReplacement: string;
       prompt: string;
     };
     glossary: {

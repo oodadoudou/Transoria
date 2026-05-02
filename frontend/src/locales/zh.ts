@@ -301,7 +301,8 @@ export const zh: Messages = {
       settings: "设置",
       glossary: "术语表",
       textPreserve: "保留文本",
-      replacement: "替换",
+      preReplacement: "译前替换",
+      postReplacement: "译后替换",
       prompt: "提示词",
     },
     glossary: {
