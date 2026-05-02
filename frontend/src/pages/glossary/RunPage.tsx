@@ -4,11 +4,14 @@ import { glossaryBridge, BridgeError } from "@/bridge";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
   hasDismissedCompletionWithFailures,
+  hasShownCleanCompletionToast,
+  markCleanCompletionToastShown,
   markCompletionWithFailuresDismissed,
   useRunSnapshot,
   usePollRunSnapshot,
   useRuntimeStore,
 } from "@/store/useRuntimeStore";
+import { useToastStore } from "@/store/useToastStore";
 import {
   useModelProfiles,
   useModelProfilesStore,
@@ -76,6 +79,25 @@ export function RunPage() {
     snapshot.status,
     snapshot.progress.failed,
     snapshot.progress.completed,
+  ]);
+
+  useEffect(() => {
+    if (!activeTaskId) return;
+    if (snapshot.status !== "completed") return;
+    if (snapshot.progress.failed > 0) return;
+    if (snapshot.progress.completed <= 0) return;
+    if (hasShownCleanCompletionToast(activeTaskId)) return;
+    markCleanCompletionToastShown(activeTaskId);
+    useToastStore.getState().push({
+      variant: "success",
+      title: messages.runCompleted.title,
+    });
+  }, [
+    activeTaskId,
+    snapshot.status,
+    snapshot.progress.failed,
+    snapshot.progress.completed,
+    messages.runCompleted.title,
   ]);
 
   const handleAcceptCompletion = () => {

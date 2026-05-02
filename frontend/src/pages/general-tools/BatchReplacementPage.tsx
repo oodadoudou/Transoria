@@ -12,15 +12,18 @@ import {
 import { BatchReplacementReportModal } from "@/components/BatchReplacementReportModal";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import {
+  hasShownCleanCompletionToast,
+  markCleanCompletionToastShown,
   useRunSnapshot,
   usePollRunSnapshot,
   useRuntimeStore,
 } from "@/store/useRuntimeStore";
+import { useToastStore } from "@/store/useToastStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
-import { FailedSubtaskList } from "@/components/FailedSubtaskList";
+import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import {
   EMPTY_SELECTION,
   RuleTable,
@@ -80,6 +83,31 @@ export function BatchReplacementPage() {
   const activeTaskId = useRuntimeStore(
     (state) => state.replacement.activeTaskId,
   );
+  const [failedModalOpen, setFailedModalOpen] = useState(false);
+  const failedModalMessages = messages.failedSubtasksModal;
+
+  // Celebratory toast on truly clean completion. Replacement is
+  // single-pass (no continue/rerun), so the failure dialog isn't
+  // applicable here — only the modal-based failure surface and this
+  // success toast.
+  useEffect(() => {
+    if (!activeTaskId) return;
+    if (snapshot.status !== "completed") return;
+    if (snapshot.progress.failed > 0) return;
+    if (snapshot.progress.completed <= 0) return;
+    if (hasShownCleanCompletionToast(activeTaskId)) return;
+    markCleanCompletionToastShown(activeTaskId);
+    useToastStore.getState().push({
+      variant: "success",
+      title: messages.runCompleted.title,
+    });
+  }, [
+    activeTaskId,
+    snapshot.status,
+    snapshot.progress.failed,
+    snapshot.progress.completed,
+    messages.runCompleted.title,
+  ]);
 
   // Pull artifacts as soon as the task settles into a terminal state.
   useEffect(() => {
@@ -356,10 +384,20 @@ export function BatchReplacementPage() {
           </div>
           {snapshot.failures.length > 0 ? (
             <div className={styles.failures}>
-              <FailedSubtaskList failures={snapshot.failures} />
+              <Pill
+                variant="ghost"
+                onClick={() => setFailedModalOpen(true)}
+              >{`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}</Pill>
             </div>
           ) : null}
         </Panel>
+      ) : null}
+
+      {failedModalOpen ? (
+        <FailedSubtasksModal
+          failures={snapshot.failures}
+          onClose={() => setFailedModalOpen(false)}
+        />
       ) : null}
 
       {artifacts ? (

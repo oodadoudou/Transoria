@@ -46,6 +46,9 @@ const autoOpenedTaskIds = new Set<string>();
 // dialog. Module-level so navigating away and back doesn't re-open
 // the dialog the user already answered.
 const completionWithFailuresDismissed = new Set<string>();
+// Per-task-id tracking so the "fully successful run" toast only fires
+// once per task even as the RunPage re-mounts on tab switches.
+const cleanCompletionToastShown = new Set<string>();
 
 export function hasDismissedCompletionWithFailures(taskId: string): boolean {
   return completionWithFailuresDismissed.has(taskId);
@@ -53,6 +56,14 @@ export function hasDismissedCompletionWithFailures(taskId: string): boolean {
 
 export function markCompletionWithFailuresDismissed(taskId: string): void {
   completionWithFailuresDismissed.add(taskId);
+}
+
+export function hasShownCleanCompletionToast(taskId: string): boolean {
+  return cleanCompletionToastShown.has(taskId);
+}
+
+export function markCleanCompletionToastShown(taskId: string): void {
+  cleanCompletionToastShown.add(taskId);
 }
 
 const emptyRuntime: KindRuntime = {

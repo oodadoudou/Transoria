@@ -699,5 +699,8 @@ export interface Messages {
     rerunPending: string;
     acceptAction: string;
   };
+  runCompleted: {
+    title: string;
+  };
   common: { placeholder: string };
 }

@@ -789,6 +789,9 @@ export const en: Messages = {
     rerunPending: "Starting…",
     acceptAction: "Accept current result",
   },
+  runCompleted: {
+    title: "All done",
+  },
   common: {
     placeholder:
       "This page is part of the Phase 2 frontend scaffold and is wired to backend endpoints in a later phase.",

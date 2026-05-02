@@ -764,6 +764,9 @@ export const zh: Messages = {
     rerunPending: "正在启动…",
     acceptAction: "接受当前结果",
   },
+  runCompleted: {
+    title: "全部完成",
+  },
   common: {
     placeholder:
       "该页面是第二阶段前端脚手架的一部分,后续阶段将与后端接口对接。",
