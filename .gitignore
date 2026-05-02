@@ -27,13 +27,23 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+.envrc
 *.local
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
 # Belt-and-suspenders: API keys file is also under .transoria-cache/ but
 # this catches it even if someone moves it.
 **/model_profile_keys.json
 **/model_profile_keys*.json
+**/*api_key*.json
+**/*api-key*.json
+**/*secret*.json
+**/*token*.json
 
 # Python caches
 __pycache__/
@@ -83,6 +93,11 @@ coverage/
 *.exe
 *.msi
 *.AppImage
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
 
 # Application runtime data
 logs/
@@ -104,4 +119,3 @@ exports/
 AGENTS.md
 CLAUDE.md
 .claude/
-

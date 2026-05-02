@@ -8,6 +8,8 @@ interface PanelProps extends HTMLAttributes<HTMLElement> {
   title?: string;
   /** Body subtitle under the title. */
   subtitle?: string;
+  /** Keep subtitle to one visual line with ellipsis. */
+  subtitleSingleLine?: boolean;
   /** Optional inline-end slot rendered to the right of the section label. */
   labelExtra?: ReactNode;
   children?: ReactNode;
@@ -22,12 +24,19 @@ export function Panel({
   label,
   title,
   subtitle,
+  subtitleSingleLine = false,
   labelExtra,
   children,
   className,
   ...rest
 }: PanelProps) {
-  const composed = `${styles.section} ${className ?? ''}`.trim();
+  const composed = [
+    styles.section,
+    subtitleSingleLine ? styles.singleLineSubtitle : "",
+    className ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
     <section className={composed} {...rest}>
       {label ? (

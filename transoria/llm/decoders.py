@@ -244,13 +244,20 @@ def decode_translation_jsonl(raw: str) -> TranslationDecodeResult:
     line index and the value is the translated text. Index parsing is lenient:
     string keys that contain digits are coerced to ``int``; non-numeric keys
     are reported as issues and skipped.
+
+    When line-by-line parsing yields zero lines, the decoder falls back to
+    parsing the whole response as a single JSON value. This rescues the
+    common drift mode where the model emits one pretty-printed multi-line
+    object (``{\\n  "0": "..."\\n  "1": "..."\\n}``) — every individual line
+    fails to parse, but the whole response is valid JSON.
     """
 
     lines: list[TranslationLine] = []
     issues: list[DecodeIssue] = []
     seen_indices: set[int] = set()
 
-    for line in _preprocess(raw).splitlines():
+    preprocessed = _preprocess(raw)
+    for line in preprocessed.splitlines():
         stripped = line.strip().rstrip(",")
         if not stripped:
             continue
@@ -270,7 +277,67 @@ def decode_translation_jsonl(raw: str) -> TranslationDecodeResult:
         seen_indices.add(index)
         lines.append(TranslationLine(index=index, text=str(value)))
 
+    if not lines:
+        salvaged = _salvage_translation_object(preprocessed)
+        for sl in salvaged:
+            if sl.index in seen_indices:
+                continue
+            seen_indices.add(sl.index)
+            lines.append(sl)
+        if salvaged:
+            # The "not a single-key JSON object" issues all came from
+            # individual lines of the (now successfully parsed) outer
+            # JSON value — suppress them so the report reflects only
+            # genuine prose drift, not the per-line fragments of the
+            # rescued object.
+            issues = [
+                i for i in issues if i.reason != "not a single-key JSON object"
+            ]
+
     return TranslationDecodeResult(lines=tuple(lines), issues=tuple(issues))
+
+
+def _salvage_translation_object(text: str) -> list[TranslationLine]:
+    """Try to parse the whole response as one JSON value and harvest
+    translations.
+
+    Handles three common drift shapes the line decoder cannot:
+    - pretty-printed object ``{"0": "...", "1": "..."}``
+    - JSON array ``["...", "..."]`` (positions become indices)
+    - one-key wrapper ``{"translations": {...}}`` (drill in once)
+    """
+
+    parsed = _parse_json_line(text)
+    if parsed is None:
+        return []
+    return _harvest_translations(parsed)
+
+
+def _harvest_translations(obj: object) -> list[TranslationLine]:
+    if isinstance(obj, dict):
+        out: list[TranslationLine] = []
+        for key, value in obj.items():
+            if not isinstance(value, str):
+                continue
+            try:
+                index = int(str(key).strip())
+            except (TypeError, ValueError):
+                continue
+            out.append(TranslationLine(index=index, text=value))
+        if out:
+            return out
+        # Single-key wrapper like {"translations": {...}} — drill in.
+        if len(obj) == 1:
+            inner = next(iter(obj.values()))
+            return _harvest_translations(inner)
+        return []
+    if isinstance(obj, list):
+        return [
+            TranslationLine(index=i, text=v)
+            for i, v in enumerate(obj)
+            if isinstance(v, str)
+        ]
+    return []
 
 
 def decode_glossary_jsonl(raw: str) -> GlossaryDecodeResult:

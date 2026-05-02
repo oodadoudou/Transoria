@@ -3,10 +3,12 @@ import { create } from "zustand";
 
 import {
   BridgeError,
+  dialogsBridge,
   glossaryBridge,
   replacementBridge,
   translationBridge,
 } from "@/bridge";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import type {
   TaskFailure,
   TaskHeader,
@@ -39,6 +41,7 @@ interface KindRuntime {
 }
 
 const ERROR_HISTORY_CAP = 10;
+const autoOpenedTaskIds = new Set<string>();
 
 const emptyRuntime: KindRuntime = {
   activeTaskId: null,
@@ -165,6 +168,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         bridges[kind].readSnapshot(taskId),
         bridges[kind].listFailedSubtasks(taskId),
       ]);
+      void maybeOpenOutputFolder(kind, taskId, snapshot.header.status);
       set((state) =>
         withKind(state, kind, {
           snapshot,
@@ -262,4 +266,31 @@ export function usePollRunSnapshot(kind: RunKind, intervalMs = 2000): void {
       window.clearInterval(handle);
     };
   }, [kind, activeTaskId, status, intervalMs, pollSnapshot]);
+}
+
+async function maybeOpenOutputFolder(
+  kind: RunKind,
+  taskId: string,
+  status: TaskStatus,
+): Promise<void> {
+  if (status !== "completed") return;
+  if (autoOpenedTaskIds.has(taskId)) return;
+  const settings = useSettingsStore.getState();
+  if (kind === "replacement") return;
+  const enabled =
+    kind === "translation"
+      ? settings.translation.draft?.auto_open_output_folder
+      : settings.glossary.draft?.auto_open_output_folder;
+  if (!enabled) return;
+  autoOpenedTaskIds.add(taskId);
+  try {
+    const artifacts = await bridges[kind].readArtifacts(taskId);
+    if (artifacts.output_folder) {
+      await dialogsBridge.openDirectory(artifacts.output_folder);
+    }
+  } catch (error) {
+    useRuntimeStore
+      .getState()
+      .setLastError(kind, asBridgeError(error));
+  }
 }

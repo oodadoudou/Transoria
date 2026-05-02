@@ -10,6 +10,7 @@ preprocessed strings and translation results.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -75,6 +76,49 @@ _OUTPUT_CONTRACT_REMINDER = (
     'character of the response must be "{". No prose, no Markdown headings, '
     "no code fence around the response, no extra lines."
 )
+
+
+# Custom presets that say nothing about the wire format need a
+# system-side reminder so a long literary persona can't drown out the
+# user-message format contract. Mentions only the transport (JSONLINE
+# shape, line count), never style/voice/extraction policy — runtime
+# protocol is allowed to be enforced from runtime; user-authored
+# extraction or style preferences must continue to live entirely in the
+# preset.
+_SYSTEM_FORMAT_CONTRACT_HINT = (
+    "\n\n[Output transport — runtime protocol]\n"
+    "Respond as JSONLINE: one JSON object per source index, exactly "
+    'matching {"<INDEX>":"<translated text>"}. Return every index '
+    "exactly once and only those indices. Do not wrap the response in "
+    "Markdown, prose, headings, or a code fence."
+)
+
+
+_JSONL_KEYWORD_PATTERN = re.compile(
+    r"jsonl(?:ine)?|\{\s*\"\s*<\s*INDEX", re.IGNORECASE
+)
+
+
+def _augment_system_prompt(
+    system_prompt: str, preset: PromptPreset
+) -> str:
+    """Inject the runtime format-transport contract into a custom
+    preset's system message when the preset itself does not mention it.
+
+    System (built-in) presets already carry the JSONLINE suffix, so
+    they're left alone. User-authored presets focus on style/voice and
+    rarely include the wire format — without this nudge the model can
+    treat the long literary system prompt as the strongest signal and
+    return prose, even though the user message still asks for JSONLINE.
+
+    The hint is strictly about transport, not extraction policy.
+    """
+
+    if getattr(preset, "is_system", False):
+        return system_prompt
+    if _JSONL_KEYWORD_PATTERN.search(system_prompt):
+        return system_prompt
+    return system_prompt + _SYSTEM_FORMAT_CONTRACT_HINT
 
 
 @dataclass(frozen=True)
@@ -231,12 +275,17 @@ class TranslationSubtaskRunner:
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
         attempt_index = -1
+        max_attempt_index = max(0, self.model.retry_attempts)
 
         async def operation() -> SubtaskResult:
             nonlocal attempt_index
             attempt_index += 1
             return await self._attempt(
-                chunk, metadata, subtask.id, attempt_index=attempt_index
+                chunk,
+                metadata,
+                subtask.id,
+                attempt_index=attempt_index,
+                is_last_attempt=attempt_index >= max_attempt_index,
             )
 
         return await retry_async(operation, model=self.model)
@@ -248,14 +297,18 @@ class TranslationSubtaskRunner:
         subtask_id: str = "",
         *,
         attempt_index: int = 0,
+        is_last_attempt: bool = False,
     ) -> SubtaskResult:
-        system_prompt = build_prompt(
-            self.prompt_preset,
-            PromptContext(
-                source_language=self.source_language.value,
-                target_language=self.target_language.value,
+        system_prompt = _augment_system_prompt(
+            build_prompt(
+                self.prompt_preset,
+                PromptContext(
+                    source_language=self.source_language.value,
+                    target_language=self.target_language.value,
+                ),
+                thinking=self.model.thinking_prompt_enabled,
             ),
-            thinking=self.model.thinking_prompt_enabled,
+            self.prompt_preset,
         )
 
         initial_user_prompt = self._compose_user_prompt(
@@ -270,7 +323,9 @@ class TranslationSubtaskRunner:
         total_output = response.usage.output_tokens
 
         raw_content = self._restore_roster(response.content)
-        translations_by_index = self._decode_or_raise(raw_content, metadata)
+        translations_by_index, rescued_indices = self._decode_or_raise(
+            raw_content, metadata, allow_positional=is_last_attempt
+        )
 
         finalized: dict[str, str] = {}
         low_confidence: list[dict[str, object]] = []
@@ -279,13 +334,25 @@ class TranslationSubtaskRunner:
         for meta in metadata:
             final_text = self._postprocess(meta, translations_by_index[meta.chunk_index])
             verdict = self._evaluate_confidence(meta.original_text, final_text)
+            extra_reasons: list[str] = []
+            if meta.chunk_index in rescued_indices:
+                # Positional rescue is correct in line count but we have
+                # no proof the order matches segment intent. Surface as
+                # low_confidence so the user can review and re-translate
+                # the offending chunk if needed.
+                extra_reasons.append("positional_rescue_after_format_failure")
             if verdict.is_low_confidence and self.low_confidence_max_retries > 0:
-                pending.append((meta, final_text, verdict.reasons))
+                pending.append(
+                    (meta, final_text, tuple(extra_reasons) + verdict.reasons)
+                )
                 continue
             finalized[meta.segment_id] = final_text
-            if verdict.is_low_confidence:
+            if verdict.is_low_confidence or extra_reasons:
                 low_confidence.append(
-                    {"segment_id": meta.segment_id, "reasons": list(verdict.reasons)}
+                    {
+                        "segment_id": meta.segment_id,
+                        "reasons": extra_reasons + list(verdict.reasons),
+                    }
                 )
 
         retry_round = 0
@@ -424,14 +491,35 @@ class TranslationSubtaskRunner:
         return response
 
     def _decode_or_raise(
-        self, raw_content: str, metadata: tuple[_SegmentPayload, ...]
-    ) -> dict[int, str]:
+        self,
+        raw_content: str,
+        metadata: tuple[_SegmentPayload, ...],
+        *,
+        allow_positional: bool = False,
+    ) -> tuple[dict[int, str], frozenset[int]]:
+        """Decode the LLM response into ``{chunk_index: text}``.
+
+        Returns the mapping plus the set of indices recovered via the
+        positional rescue path (callers surface those as low_confidence).
+
+        Raises :class:`LlmRequestError` with code ``llm.line_count_mismatch``
+        when the response cannot be matched to the expected indices and
+        positional rescue is either disabled or its safety predicates
+        fail.
+        """
+
         decoded = decode_translation_jsonl(raw_content)
         translations_by_index = {line.index: line.text for line in decoded.lines}
         expected = {meta.chunk_index for meta in metadata}
         missing = expected - translations_by_index.keys()
         extra = translations_by_index.keys() - expected
+
+        rescued_indices: frozenset[int] = frozenset()
         if missing or extra:
+            if allow_positional:
+                rescued = _positional_rescue(raw_content, metadata)
+                if rescued is not None:
+                    return rescued, frozenset(rescued.keys())
             issue_summary = ""
             if decoded.issues:
                 issue_summary = "; decode_issues=" + " | ".join(
@@ -445,7 +533,7 @@ class TranslationSubtaskRunner:
                 + issue_summary,
                 code="llm.line_count_mismatch",
             )
-        return translations_by_index
+        return translations_by_index, rescued_indices
 
     def _postprocess(self, meta: _SegmentPayload, translated: str) -> str:
         return postprocess_segment(
@@ -475,6 +563,50 @@ def _chunk_log_id(chunk) -> str:  # noqa: ANN001 — accepts TranslationChunk
     if not chunk.segments:
         return "chunk"
     return f"chunk-{chunk.segments[0].segment_id.replace(':', '_')}"
+
+
+_THINKING_RESCUE_PATTERN = re.compile(
+    r"<(?:why|think)>.*?</(?:why|think)>", re.DOTALL | re.IGNORECASE
+)
+_FENCE_RESCUE_PATTERN = re.compile(
+    r"```(?:jsonline|jsonl|json|markdown|md)?\s*\n(.*?)\n```",
+    re.DOTALL | re.IGNORECASE,
+)
+_RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
+
+
+def _positional_rescue(
+    raw: str, metadata: tuple["_SegmentPayload", ...]
+) -> dict[int, str] | None:
+    """Last-resort accept of plain-text translations by source position.
+
+    Only triggers when the cleaned response has *exactly* one non-empty
+    line per expected segment AND none of those lines look like JSON
+    fragments. The strict shape predicate prevents silently aligning
+    against a half-broken JSON response (which would corrupt the result
+    instead of failing loudly).
+    """
+
+    if not metadata:
+        return None
+    cleaned = _THINKING_RESCUE_PATTERN.sub("", raw)
+    fence = _FENCE_RESCUE_PATTERN.search(cleaned)
+    if fence is not None:
+        cleaned = fence.group(1)
+    candidate_lines = [
+        line.strip() for line in cleaned.splitlines() if line.strip()
+    ]
+    if len(candidate_lines) != len(metadata):
+        return None
+    for line in candidate_lines:
+        if _RESCUE_PROSE_REJECT_PATTERN.match(line):
+            # Looks like a half-parsed JSON fragment — refuse to guess.
+            return None
+    ordered_meta = sorted(metadata, key=lambda m: m.chunk_index)
+    return {
+        meta.chunk_index: text
+        for meta, text in zip(ordered_meta, candidate_lines)
+    }
 
 
 __all__ = [

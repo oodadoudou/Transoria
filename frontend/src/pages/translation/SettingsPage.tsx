@@ -28,12 +28,18 @@ export function SettingsPage() {
   }, [localizedSubfolder, draft?.bilingual_subfolder_name]);
 
   if (!draft) {
-    return <Panel title={settings.title} subtitle={settings.sub} />;
+    return (
+      <Panel
+        title={settings.title}
+        subtitle={settings.sub}
+        subtitleSingleLine
+      />
+    );
   }
 
   return (
     <>
-      <Panel title={settings.title} subtitle={settings.sub}>
+      <Panel title={settings.title} subtitle={settings.sub} subtitleSingleLine>
         <div className={styles.fieldGrid}>
           <FolderPickerRow
             label={settings.inputFolder}

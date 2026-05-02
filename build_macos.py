@@ -16,6 +16,7 @@ FRONTEND_DIST = FRONTEND_DIR / "dist"
 DIST_DIR = ROOT / "dist" / "pyinstaller" / "macos"
 WORK_DIR = ROOT / "build" / "pyinstaller" / "macos"
 SPEC_DIR = ROOT / "build" / "pyinstaller" / "specs"
+DMG_STAGING_DIR = WORK_DIR / "dmg-root"
 
 
 def main() -> None:
@@ -29,6 +30,11 @@ def main() -> None:
         "--allow-non-macos",
         action="store_true",
         help="Allow command construction on non-macOS hosts for CI validation.",
+    )
+    parser.add_argument(
+        "--skip-dmg",
+        action="store_true",
+        help="Build only Transoria.app and skip DMG creation.",
     )
     args = parser.parse_args()
 
@@ -72,7 +78,11 @@ def main() -> None:
     ]
     _run(cmd, cwd=ROOT)
     _verify_spec_excludes_local_state()
-    print(f"[build] macOS app: {DIST_DIR / 'Transoria.app'}")
+    app_path = DIST_DIR / "Transoria.app"
+    print(f"[build] macOS app: {app_path}")
+    if not args.skip_dmg:
+        dmg_path = _create_dmg(app_path)
+        print(f"[build] macOS dmg: {dmg_path}")
 
 
 def _npm() -> str:
@@ -121,6 +131,42 @@ def _verify_spec_excludes_local_state() -> None:
     leaked = [item for item in forbidden if item in raw]
     if leaked:
         raise SystemExit(f"PyInstaller spec contains local state: {leaked}")
+
+
+def _create_dmg(app_path: Path) -> Path:
+    if shutil.which("hdiutil") is None:
+        raise SystemExit("hdiutil not found. DMG creation must run on macOS.")
+    if not app_path.is_dir():
+        raise SystemExit(f"app bundle not found: {app_path}")
+    if DMG_STAGING_DIR.exists():
+        shutil.rmtree(DMG_STAGING_DIR)
+    DMG_STAGING_DIR.mkdir(parents=True)
+    shutil.copytree(app_path, DMG_STAGING_DIR / "Transoria.app", symlinks=True)
+    applications_link = DMG_STAGING_DIR / "Applications"
+    if not applications_link.exists():
+        applications_link.symlink_to("/Applications")
+    dmg_path = DIST_DIR / "Transoria.dmg"
+    tmp_dmg = DIST_DIR / "Transoria.tmp.dmg"
+    for path in (dmg_path, tmp_dmg):
+        if path.exists():
+            path.unlink()
+    _run(
+        [
+            "hdiutil",
+            "create",
+            "-volname",
+            "Transoria",
+            "-srcfolder",
+            str(DMG_STAGING_DIR),
+            "-ov",
+            "-format",
+            "UDZO",
+            str(tmp_dmg),
+        ],
+        cwd=ROOT,
+    )
+    tmp_dmg.replace(dmg_path)
+    return dmg_path
 
 
 def _run(cmd: list[str], *, cwd: Path) -> None:

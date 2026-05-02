@@ -1,4 +1,5 @@
 import { BridgeError } from "./errors";
+import { getTransport } from "./transport";
 import type { DialogPathResult, GlossaryFileResult } from "./types";
 
 interface NativeApi {
@@ -84,18 +85,20 @@ export const nativeDialogs = {
   },
 
   async openDirectory(path: string): Promise<Record<string, never>> {
-    const handler = nativeApi().open_directory;
+    const handler = optionalNativeApi()?.open_directory;
     if (!handler) {
-      throw missing("open_directory");
+      await getTransport().call("dialogs.open_directory", { path });
+      return {};
     }
     await handler({ path });
     return {};
   },
 
   async revealFile(path: string): Promise<Record<string, never>> {
-    const handler = nativeApi().reveal_file;
+    const handler = optionalNativeApi()?.reveal_file;
     if (!handler) {
-      throw missing("reveal_file");
+      await getTransport().call("dialogs.reveal_file", { path });
+      return {};
     }
     await handler({ path });
     return {};
@@ -108,6 +111,10 @@ function missing(method: string): BridgeError {
     message: `Native method not registered: ${method}`,
     retryable: false,
   });
+}
+
+function optionalNativeApi(): NativeApi | null {
+  return window.pywebview?.api ?? null;
 }
 
 function inferGlossaryFormat(path: string | null): "xlsx" | "json" | null {

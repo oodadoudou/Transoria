@@ -42,3 +42,11 @@
   max-width: 64ch;
   margin: 0 0 6px;
 }
+
+.singleLineSubtitle .subtitle {
+  line-height: 1.35;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
