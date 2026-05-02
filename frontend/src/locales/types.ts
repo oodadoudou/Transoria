@@ -134,9 +134,7 @@ export interface Messages {
     descriptionPlaceholder: string;
     enabledLabel: string;
     systemTab: string;
-    thinkingTab: string;
     systemTabHelp: string;
-    thinkingTabHelp: string;
     saveAction: string;
     cancelAction: string;
     resetAction: string;

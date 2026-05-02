@@ -67,11 +67,13 @@ def load_replacement_rules_txt(path: Path) -> list[ReplacementRule]:
 
 
 def _split_rule_line(line: str) -> tuple[str, str] | None:
-    delimiter = "#->#" if "#->#" in line else "->"
-    if delimiter not in line:
+    if "->" not in line:
         return None
-    src, dst = line.split(delimiter, 1)
-    return src.strip(), dst.strip()
+    src, dst = (part.strip() for part in line.split("->", 1))
+    if src.endswith("#") and dst.startswith("#"):
+        src = src[:-1].rstrip()
+        dst = dst[1:].lstrip()
+    return src, dst
 
 
 def apply_rules(text: str, rules: list[ReplacementRule]) -> ReplacementApplyResult:
@@ -136,4 +138,3 @@ def replace_epub_file(source_path: Path, output_dir: Path, rules: list[Replaceme
 
 def _replaced_filename(source_path: Path) -> str:
     return f"{source_path.stem}{REPLACED_SUFFIX}{source_path.suffix}"
-

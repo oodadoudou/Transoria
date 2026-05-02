@@ -122,7 +122,7 @@ export const en: Messages = {
       "When more than one API key is set, every call rotates to the next key (spreads load to bypass per-key rate limits). Auth-rejected keys (HTTP 401/403) are dropped from the rotation for the rest of the task; 429 transient rate limits skip to the next key without dropping. When all keys fail, the task stops and you get an alert.",
     forceThinkingLabel: "Force-inject thinking guidance on non-thinking models",
     forceThinkingHelp:
-      "Only shown while thinking_level=off. When enabled, the active prompt preset's reasoning prefix is prepended to every user message so models without a native thinking mode still go through a structured reasoning pass. No provider-specific thinking API field is sent (those would 4xx on non-thinking models) — this is a prompt-level fake-thinking.",
+      "Adds built-in thinking guidance to each request. Prompt only; no thinking API field is sent.",
     runtimeTuningLabel: "Runtime tuning",
     samplingLabel: "Sampling",
     unsavedChangesConfirm: "You have unsaved changes. Close without saving?",
@@ -150,11 +150,8 @@ export const en: Messages = {
       "Short note for the picker — what this preset is for",
     enabledLabel: "Enabled",
     systemTab: "System prompt",
-    thinkingTab: "Thinking prompt",
     systemTabHelp:
       "Primary instructions: role, core rules, style baseline. Sent on every call — this is the bedrock of translation quality.",
-    thinkingTabHelp:
-      "Reasoning guidance. Active only when the model supports thinking mode — steers it through structured reasoning before producing the translation, improving fidelity on complex sentences.",
     saveAction: "Save",
     cancelAction: "Cancel",
     resetAction: "Reset to default",
@@ -689,7 +686,7 @@ export const en: Messages = {
       "How many times to retry on transient errors (5xx, 429, network). Each retry waits longer (exponential backoff).",
     reasoning: "Reasoning",
     reasoningHint:
-      "Engages the model's hidden chain-of-thought when supported. Increases latency and token cost; leave Off for plain models.",
+      "Controls native model reasoning. Has no effect on non-thinking models.",
     thinkingLevel: "Reasoning level",
     thinking: { off: "Off", low: "Low", medium: "Medium", high: "High" },
     advanced: "Advanced",

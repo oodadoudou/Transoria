@@ -80,7 +80,6 @@ def _body(preset: PromptPreset) -> dict[str, object]:
     return {
         **_summary(preset),
         "system_prompt": preset.system_prompt,
-        "thinking_prompt": preset.thinking_prompt,
     }
 
 
@@ -168,7 +167,7 @@ def _build_handlers(
                 kind=kind,
                 system_prompt=str(body.get("system_prompt", "")),
                 suffix_prompt="",
-                thinking_prompt=str(body.get("thinking_prompt", "")),
+                thinking_prompt="",
                 description=str(body.get("description", "")),
                 enabled=bool(body.get("enabled", True)),
             )
@@ -225,6 +224,7 @@ def _build_handlers(
                     id=copy_id,
                     name=str(new_name) if new_name else f"{preset.name} (copy)",
                     suffix_prompt="",
+                    thinking_prompt="",
                     is_system=False,
                 )
                 store.save([*presets, copied])
@@ -369,7 +369,6 @@ def _validate_preset_patch(
     valid = {
         "name",
         "system_prompt",
-        "thinking_prompt",
         "description",
         "enabled",
     }

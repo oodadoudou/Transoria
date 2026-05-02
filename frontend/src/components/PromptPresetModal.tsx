@@ -14,7 +14,6 @@ import { ToggleSwitch } from "./ToggleSwitch";
 import styles from "./PromptPresetModal.module.css";
 
 type Mode = "create" | "edit";
-type Tab = "system" | "thinking";
 
 interface PromptPresetModalProps {
   mode: Mode;
@@ -32,7 +31,6 @@ interface Draft {
   description: string;
   enabled: boolean;
   system_prompt: string;
-  thinking_prompt: string;
 }
 
 function bodyToDraft(body: PromptPresetBody): Draft {
@@ -41,7 +39,6 @@ function bodyToDraft(body: PromptPresetBody): Draft {
     description: body.description,
     enabled: body.enabled,
     system_prompt: body.system_prompt,
-    thinking_prompt: body.thinking_prompt,
   };
 }
 
@@ -51,7 +48,6 @@ function blankDraft(): Draft {
     description: "",
     enabled: true,
     system_prompt: "",
-    thinking_prompt: "",
   };
 }
 
@@ -78,7 +74,6 @@ export function PromptPresetModal({
   const [draft, setDraft] = useState<Draft>(() =>
     seed ? bodyToDraft(seed) : blankDraft(),
   );
-  const [tab, setTab] = useState<Tab>("system");
   const [error, setError] = useState<BridgeError | null>(null);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<PromptPreviewResult | null>(null);
@@ -149,7 +144,6 @@ export function PromptPresetModal({
           description: draft.description,
           enabled: draft.enabled,
           system_prompt: draft.system_prompt,
-          thinking_prompt: draft.thinking_prompt,
         });
         pushToast({
           variant: "success",
@@ -165,7 +159,6 @@ export function PromptPresetModal({
           enabled: draft.enabled,
           is_system: false,
           system_prompt: draft.system_prompt,
-          thinking_prompt: draft.thinking_prompt,
         });
         if (created) {
           pushToast({
@@ -244,7 +237,7 @@ export function PromptPresetModal({
           target_language: m.sampleTargetLanguage,
           input: m.sampleInput,
         },
-        true,
+        false,
       );
       if (seq === requestSeq.current && result) setPreview(result);
     } catch (err) {
@@ -252,14 +245,6 @@ export function PromptPresetModal({
     } finally {
       if (seq === requestSeq.current) setPreviewBusy(false);
     }
-  };
-
-  const tabValue =
-    tab === "system" ? draft.system_prompt : draft.thinking_prompt;
-
-  const setTabValue = (value: string) => {
-    if (tab === "system") update("system_prompt", value);
-    else update("thinking_prompt", value);
   };
 
   return (
@@ -320,27 +305,12 @@ export function PromptPresetModal({
             />
           )}
 
-          <div className={styles.tabs} role="tablist">
-            <TabButton
-              active={tab === "system"}
-              onClick={() => setTab("system")}
-            >
-              {m.systemTab}
-            </TabButton>
-            <TabButton
-              active={tab === "thinking"}
-              onClick={() => setTab("thinking")}
-            >
-              {m.thinkingTab}
-            </TabButton>
-          </div>
-          <div className={styles.tabHelp}>
-            {tab === "system" ? m.systemTabHelp : m.thinkingTabHelp}
-          </div>
+          <div className={styles.sectionLabel}>{m.systemTab}</div>
+          <div className={styles.tabHelp}>{m.systemTabHelp}</div>
           <TextField
             label=""
-            value={tabValue}
-            onChange={readOnly ? undefined : setTabValue}
+            value={draft.system_prompt}
+            onChange={readOnly ? undefined : (v) => update("system_prompt", v)}
             multiline
             rows={10}
             mono
@@ -412,8 +382,7 @@ function readOnlyDraftEquals(a: Draft, b: Draft): boolean {
     a.name === b.name &&
     a.description === b.description &&
     a.enabled === b.enabled &&
-    a.system_prompt === b.system_prompt &&
-    a.thinking_prompt === b.thinking_prompt
+    a.system_prompt === b.system_prompt
   );
 }
 
@@ -423,26 +392,4 @@ function makeUnknownError(message: string): BridgeError {
     message,
     retryable: true,
   });
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      className={`${styles.tab} ${active ? styles.tabActive : ""}`.trim()}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
 }

@@ -117,7 +117,7 @@ export const zh: Messages = {
       "配置多个 API key 时，每次调用自动轮询到下一个 key（摊薄单 key 的速率限制）。返回 HTTP 401/403 的 key 立即从本次任务的轮询池剔除；429 限流则不剔除、跳到下一 key 重试。所有 key 都失败时任务自动停止并弹窗提醒。",
     forceThinkingLabel: "为非思考模型强制注入思考引导",
     forceThinkingHelp:
-      "仅当 thinking_level=off 时显示。开启后，每次调用会把当前 prompt 预设里的「思考引导」段拼到用户消息前面，让不支持原生思考的模型也走一遍结构化推理。注意：不会向 provider 发送任何思考相关 API 字段（避免 4xx），只是 prompt 层面的伪思考。",
+      "开启后，会把系统内置思考引导加入每次请求；只影响 prompt，不发送 thinking API 字段。",
     runtimeTuningLabel: "运行参数",
     samplingLabel: "采样",
     unsavedChangesConfirm: "当前修改尚未保存，确定要关闭吗？",
@@ -144,11 +144,8 @@ export const zh: Messages = {
     descriptionPlaceholder: "选择列表中的简短说明——本预设的用途",
     enabledLabel: "启用",
     systemTab: "系统提示词",
-    thinkingTab: "思考引导",
     systemTabHelp:
       "主提示词。设定模型的角色、核心规则、文风基线。每次调用都会发送，是翻译质量的根本依据。",
-    thinkingTabHelp:
-      "思考引导。仅当模型支持「思考模式」时生效，引导其先做结构化推理再产出译文，可提升复杂句的还原度。",
     saveAction: "保存",
     cancelAction: "取消",
     resetAction: "恢复默认",
@@ -668,7 +665,7 @@ export const zh: Messages = {
       "瞬时错误(5xx、429、网络)的重试次数。每次重试间隔指数退避增长。",
     reasoning: "推理",
     reasoningHint:
-      "在模型支持时启用隐式思维链;会增加延迟与token开销,普通模型保持「关」。",
+      "控制模型原生思考强度；非思考模型开启无效。",
     thinkingLevel: "推理强度",
     thinking: { off: "关", low: "低", medium: "中", high: "高" },
     advanced: "高级",

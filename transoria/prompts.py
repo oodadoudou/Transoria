@@ -107,21 +107,33 @@ def build_prompt(
 ) -> str:
     """Assemble the preset into a single prompt string.
 
-    Order: ``system_prompt`` → ``thinking_prompt`` (only when ``thinking`` is
-    ``True`` and the preset has one) → read-only system ``suffix_prompt``.
+    Order: ``system_prompt`` → system-level thinking guidance (only when
+    ``thinking`` is ``True``) → read-only system ``suffix_prompt``.
     Only the named placeholders in ``_PLACEHOLDER_NAMES`` are substituted, so
     literal braces in JSONL examples (e.g.
     ``{"<INDEX>":"<Translated Text>"}``) survive untouched.
     """
 
     parts: list[str] = [preset.system_prompt]
-    if thinking and preset.thinking_prompt:
-        parts.append(preset.thinking_prompt)
+    if thinking:
+        parts.append(_system_thinking_prompt(preset.kind))
     if preset.is_system and preset.suffix_prompt:
         parts.append(preset.suffix_prompt)
     raw = "\n\n".join(part for part in parts if part)
     values = context.as_mapping()
     return _PLACEHOLDER_PATTERN.sub(lambda match: values[match.group(1)], raw)
+
+
+def _system_thinking_prompt(kind: PromptKind) -> str:
+    if kind is PromptKind.GLOSSARY:
+        return (
+            "Before answering, internally check candidate terms, category "
+            "language, and output format. Output only the requested result."
+        )
+    return (
+        "Before answering, internally check meaning, context, terminology, "
+        "protected text, and output format. Output only the requested result."
+    )
 
 
 # ---------------------------------------------------------------------------

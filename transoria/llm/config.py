@@ -69,11 +69,8 @@ class ModelConfig:
     custom_headers: tuple[tuple[str, str], ...] = ()
     # Opt-in: when ``True`` and the model itself doesn't expose a
     # native thinking mode (``thinking_level == OFF``), the runner
-    # still injects the preset's ``thinking_prompt`` into the user
-    # message so the model is steered through structured reasoning
-    # before producing the final answer. We never send a provider-
-    # specific thinking API field for forced-thinking calls — those
-    # would 4xx on non-thinking models.
+    # injects built-in thinking guidance without sending a provider-
+    # specific thinking API field.
     force_thinking_enable: bool = False
 
     @property
@@ -86,10 +83,10 @@ class ModelConfig:
 
     @property
     def thinking_prompt_enabled(self) -> bool:
-        """True when the runner should inject the preset's
-        ``thinking_prompt`` into the user message — either because the
-        model has a native thinking mode, or because the user opted
-        into forced fake-thinking on a non-thinking model."""
+        """True when the runner should inject built-in thinking
+        guidance — either because the model has a native thinking mode,
+        or because the user opted into forced fake-thinking on a
+        non-thinking model."""
         return self.thinking_enabled or self.force_thinking_enable
 
     def with_api_keys(self, keys: tuple[str, ...]) -> ModelConfig:

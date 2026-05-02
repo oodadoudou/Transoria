@@ -179,8 +179,29 @@ class TaskExecutor:
     async def _handle_stop(
         self, task_id: str, workers: list[asyncio.Task[None]]
     ) -> None:
+        """Drain in-flight LLM calls before shutting down.
+
+        Stop semantics — agreed with the user:
+
+        - ``STOPPING`` flips immediately so the UI sees the transition.
+        - No new LLM call fires after this point: workers waiting at
+          the semaphore / pause gate / RPM limiter check
+          ``_stop_event`` after each gate and self-exit without
+          touching the runner. Workers that have already entered the
+          LLM call (``_active_runners > 0``) finish naturally — we
+          don't waste tokens the model already produced or roll those
+          subtasks back to ``PENDING``.
+        - Once every in-flight runner has settled, we cancel the
+          workers still queued at a gate so ``asyncio.gather()`` can
+          complete and ``run()`` returns. Those workers had not started
+          their LLM call, so cancellation rolls back nothing.
+        """
+
         await self._stop_event.wait()
         self._update_record_status(task_id, TaskStatus.STOPPING)
+        # Wait for in-flight LLM calls to settle naturally.
+        while self._active_runners > 0:
+            await asyncio.sleep(0.05)
         for worker in workers:
             if not worker.done():
                 worker.cancel()
