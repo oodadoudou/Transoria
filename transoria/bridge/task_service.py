@@ -85,6 +85,12 @@ LlmClientFactory = Callable[[], LlmClient]
 
 
 _RESULT_FILENAME = "result.json"
+_REPLACEMENT_REPORT_FILENAME = "replacement-report.json"
+# Hard cap on occurrences captured per rule across the whole task —
+# the per-file cap inside ``apply_rules`` already prevents pathological
+# files; this guards the aggregated report so a 100k-match rule cannot
+# blow up the JSON we ship to the frontend.
+_REPORT_MAX_OCCURRENCES_PER_RULE = 200
 _KIND_TO_TASKKIND: dict[str, TaskKind] = {
     "translation": TaskKind.TRANSLATION,
     "glossary": TaskKind.GLOSSARY,
@@ -1239,6 +1245,14 @@ class TaskService:
         total_replacements = 0
         was_stopped = False
         early_break = False
+        # Per-rule aggregation across files for the post-run report.
+        # Each rule has a budget; once full we keep counting matches
+        # but stop attaching new context snippets.
+        occurrences_by_rule: dict[int, list[dict[str, object]]] = {
+            i: [] for i in range(len(rules))
+        }
+        per_rule_total_count: dict[int, int] = {i: 0 for i in range(len(rules))}
+        per_file_replacements: list[dict[str, object]] = []
 
         for subtask in snapshot.subtasks:
             running.touch()
@@ -1260,11 +1274,42 @@ class TaskService:
             fmt = str(payload.get("format", "txt"))
             try:
                 if fmt == DocumentFormat.EPUB.value:
-                    result = replace_epub_file(source, output_dir, list(rules))
+                    result = replace_epub_file(
+                        source, output_dir, list(rules), collect_occurrences=True
+                    )
                 else:
-                    result = replace_txt_file(source, output_dir, list(rules))
+                    result = replace_txt_file(
+                        source, output_dir, list(rules), collect_occurrences=True
+                    )
                 outputs.append(result.output_path)
                 total_replacements += result.replacement_count
+                per_file_replacements.append(
+                    {
+                        "source_path": str(source),
+                        "output_path": str(result.output_path),
+                        "replacement_count": result.replacement_count,
+                    }
+                )
+                # Aggregate: tag each occurrence with the file it came
+                # from before persisting. Per-rule budget keeps the
+                # report bounded across many files.
+                for occ in result.occurrences:
+                    per_rule_total_count[occ.rule_index] = (
+                        per_rule_total_count.get(occ.rule_index, 0) + 1
+                    )
+                    bucket = occurrences_by_rule.setdefault(occ.rule_index, [])
+                    if len(bucket) >= _REPORT_MAX_OCCURRENCES_PER_RULE:
+                        continue
+                    bucket.append(
+                        {
+                            "file_path": str(source),
+                            "char_offset": occ.char_offset,
+                            "before_context": occ.before_context,
+                            "match_text": occ.match_text,
+                            "after_context": occ.after_context,
+                            "replacement_text": occ.replacement_text,
+                        }
+                    )
                 completed = replace(
                     running_state,
                     status=SubtaskStatus.COMPLETED,
@@ -1290,11 +1335,51 @@ class TaskService:
                     early_break = True
                     break
 
+        # The rule-level chunk of the report carries the rule's own
+        # parameters so the frontend can show "what was applied" without
+        # having to re-look-up the user's settings.
+        report_rules: list[dict[str, object]] = []
+        for index, rule in enumerate(rules):
+            captured = occurrences_by_rule.get(index, [])
+            total_for_rule = per_rule_total_count.get(index, 0)
+            report_rules.append(
+                {
+                    "rule_index": index,
+                    "src": rule.src,
+                    "dst": rule.dst,
+                    "regex": rule.regex,
+                    "case_sensitive": rule.case_sensitive,
+                    "enabled": rule.enabled,
+                    "total_count": total_for_rule,
+                    "occurrences": captured,
+                    "occurrences_truncated": total_for_rule > len(captured),
+                }
+            )
+
+        report_path = self._write_replacement_report(
+            task_id,
+            {
+                "task_id": task_id,
+                "generated_at": _utc_now_iso(),
+                "totals": {
+                    "rules_active": sum(1 for r in rules if r.enabled),
+                    "rules_with_matches": sum(
+                        1 for r in report_rules if r["total_count"] > 0
+                    ),
+                    "total_replacements": total_replacements,
+                    "files_processed": len(per_file_replacements),
+                },
+                "files": per_file_replacements,
+                "rules": report_rules,
+            },
+        )
+
         statistics = {
             "kind": "replacement",
             "output_folder": str(output_dir),
             "output_files": [str(p) for p in outputs],
             "statistics_json_path": None,
+            "replacement_report_path": str(report_path) if report_path else None,
             "total_replacements": total_replacements,
         }
         self._write_result(task_id, statistics)
@@ -1885,6 +1970,51 @@ class TaskService:
 
     def _result_path(self, task_id: str) -> Path:
         return self._cache_for_task(task_id).task_dir(task_id) / _RESULT_FILENAME
+
+    def _replacement_report_path(self, task_id: str) -> Path:
+        return (
+            self._cache_for_task(task_id).task_dir(task_id)
+            / _REPLACEMENT_REPORT_FILENAME
+        )
+
+    def _write_replacement_report(
+        self, task_id: str, payload: Mapping[str, object]
+    ) -> Path | None:
+        try:
+            path = self._replacement_report_path(task_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(
+                json.dumps(dict(payload), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(tmp, path)
+            return path
+        except OSError:
+            # The report is observability, not load-bearing — never let
+            # a write failure abort the task.
+            return None
+
+    def read_replacement_report(self, *, task_id: str) -> dict[str, object]:
+        """Return the per-rule replacement report for a finished
+        replacement task, or raise ``BridgeError.not_found`` if no
+        report exists (older tasks, or a task that never completed)."""
+
+        path = self._replacement_report_path(task_id)
+        if not path.exists():
+            raise BridgeError.not_found(
+                f"replacement report not found for {task_id!r}",
+                details={"task_id": task_id},
+            )
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BridgeError(
+                "bridge.io_error",
+                f"cannot read replacement report: {exc}",
+                retryable=False,
+                details={"task_id": task_id, "path": str(path)},
+            ) from exc
 
     def _write_result(
         self, task_id: str, payload: Mapping[str, object]

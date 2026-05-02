@@ -271,6 +271,28 @@ export const zh: Messages = {
     noArtifacts: "暂无产物——执行替换后此处会显示文件列表。",
     outputFiles: "输出文件",
     statisticsFile: "统计文件",
+    viewReport: "查看详细替换报告",
+  },
+  batchReplacementReport: {
+    title: "替换报告",
+    close: "关闭",
+    expandAll: "展开全部",
+    collapseAll: "折叠全部",
+    searchPlaceholder: "搜索原文、替换、上下文或文件…",
+    noRules: "无规则可显示。",
+    noResults: "未找到匹配「{query}」的规则。",
+    noMatchesForRule: "本规则未在任何文件中命中。",
+    noOccurrenceMatchesQuery: "本规则下没有匹配关键词的命中。",
+    matchCount: "{n} 处",
+    truncated: "已显示前 {shown} 处，共 {total} 处。",
+    disabledBadge: "已禁用",
+    fileLabel: "文件",
+    summary: {
+      totalReplacements: "总替换数",
+      rulesWithMatches: "命中规则 / 启用规则",
+      filesProcessed: "已处理文件",
+      generatedAt: "生成时间",
+    },
   },
   pages: {
     model: { general: "配置" },
@@ -662,8 +684,7 @@ export const zh: Messages = {
     retryAttemptsHelp:
       "瞬时错误(5xx、429、网络)的重试次数。每次重试间隔指数退避增长。",
     reasoning: "推理",
-    reasoningHint:
-      "控制模型原生思考强度；非思考模型开启无效。",
+    reasoningHint: "控制模型原生思考强度；非思考模型开启无效。",
     thinkingLevel: "推理强度",
     thinking: { off: "关", low: "低", medium: "中", high: "高" },
     advanced: "高级",

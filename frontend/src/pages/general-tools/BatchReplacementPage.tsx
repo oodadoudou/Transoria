@@ -5,9 +5,11 @@ import {
   dialogsBridge,
   replacementBridge,
   type ReplacementArtifacts,
+  type ReplacementReport,
   type ReplacementRule,
   type ReplacementValidationIssue,
 } from "@/bridge";
+import { BatchReplacementReportModal } from "@/components/BatchReplacementReportModal";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import {
   useRunSnapshot,
@@ -40,6 +42,12 @@ export function BatchReplacementPage() {
   const [issues, setIssues] = useState<ReplacementValidationIssue[]>([]);
   const [actionError, setActionError] = useState<BridgeError | null>(null);
   const [artifacts, setArtifacts] = useState<ReplacementArtifacts | null>(null);
+  // Loaded once after a task settles into a terminal state and held in
+  // memory so the user can re-open the modal without another fetch.
+  // Cleared on Execute (next run) and on app restart (component unmount).
+  const [report, setReport] = useState<ReplacementReport | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportError, setReportError] = useState<BridgeError | null>(null);
 
   const snapshot = useRunSnapshot("replacement");
   usePollRunSnapshot("replacement");
@@ -66,6 +74,41 @@ export function BatchReplacementPage() {
           error.code !== "bridge.not_found"
         ) {
           if (!cancelled) setActionError(error);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, snapshot.status]);
+
+  // Pull the per-rule report once the task is terminal so the user can
+  // open the modal without an extra round-trip. The fetched payload
+  // stays in component state — closing the modal does NOT discard it,
+  // matching the spec ("user can reopen freely until next replacement
+  // or app restart").
+  useEffect(() => {
+    if (!activeTaskId) {
+      setReport(null);
+      setReportError(null);
+      return;
+    }
+    if (!TERMINAL.has(snapshot.status)) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fetched =
+          await replacementBridge.readReplacementReport(activeTaskId);
+        if (!cancelled) {
+          setReport(fetched);
+          setReportError(null);
+        }
+      } catch (error) {
+        if (
+          BridgeError.isBridgeError(error) &&
+          error.code !== "bridge.not_found"
+        ) {
+          if (!cancelled) setReportError(error);
         }
       }
     })();
@@ -105,6 +148,12 @@ export function BatchReplacementPage() {
   const handleExecute = async () => {
     setActionError(null);
     setArtifacts(null);
+    // Drop the previous report so the modal trigger disappears until
+    // the new run completes — matches the spec ("cleared on next
+    // replacement").
+    setReport(null);
+    setReportError(null);
+    setReportOpen(false);
     try {
       const requestId = `replace-${Date.now().toString(36)}`;
       const { task_id } = await replacementBridge.startTask(requestId, rules);
@@ -307,7 +356,26 @@ export function BatchReplacementPage() {
               <code>{artifacts.statistics_json_path}</code>
             </div>
           ) : null}
+          {report ? (
+            <div className={styles.statsLine}>
+              <Pill variant="ghost" onClick={() => setReportOpen(true)}>
+                {messages.batchReplacement.viewReport}
+              </Pill>
+            </div>
+          ) : null}
+          {reportError ? (
+            <div className={styles.statsLine}>
+              <code>{reportError.code}</code> {reportError.message}
+            </div>
+          ) : null}
         </Panel>
+      ) : null}
+
+      {reportOpen && report ? (
+        <BatchReplacementReportModal
+          report={report}
+          onClose={() => setReportOpen(false)}
+        />
       ) : null}
 
       <SettingsToolbar

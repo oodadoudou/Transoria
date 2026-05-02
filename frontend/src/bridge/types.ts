@@ -444,7 +444,50 @@ export interface ReplacementArtifacts {
   output_folder: string;
   output_files: string[];
   statistics_json_path: string | null;
+  /** Path to the per-rule occurrence report JSON, when the task
+   * generated one. Read via ``replacementBridge.readReplacementReport``. */
+  replacement_report_path?: string | null;
   total_replacements: number;
+}
+
+export interface ReplacementReportOccurrence {
+  file_path: string;
+  char_offset: number;
+  before_context: string;
+  match_text: string;
+  after_context: string;
+  replacement_text: string;
+}
+
+export interface ReplacementReportRule {
+  rule_index: number;
+  src: string;
+  dst: string;
+  regex: boolean;
+  case_sensitive: boolean;
+  enabled: boolean;
+  total_count: number;
+  occurrences: ReplacementReportOccurrence[];
+  occurrences_truncated: boolean;
+}
+
+export interface ReplacementReportFile {
+  source_path: string;
+  output_path: string;
+  replacement_count: number;
+}
+
+export interface ReplacementReport {
+  task_id: string;
+  generated_at: string;
+  totals: {
+    rules_active: number;
+    rules_with_matches: number;
+    total_replacements: number;
+    files_processed: number;
+  };
+  files: ReplacementReportFile[];
+  rules: ReplacementReportRule[];
 }
 
 // --- Replacement rules ------------------------------------------------------

@@ -516,6 +516,28 @@ export interface Messages {
     noArtifacts: string;
     outputFiles: string;
     statisticsFile: string;
+    viewReport: string;
+  };
+  batchReplacementReport: {
+    title: string;
+    close: string;
+    expandAll: string;
+    collapseAll: string;
+    searchPlaceholder: string;
+    noRules: string;
+    noResults: string;
+    noMatchesForRule: string;
+    noOccurrenceMatchesQuery: string;
+    matchCount: string;
+    truncated: string;
+    disabledBadge: string;
+    fileLabel: string;
+    summary: {
+      totalReplacements: string;
+      rulesWithMatches: string;
+      filesProcessed: string;
+      generatedAt: string;
+    };
   };
   prompt: {
     pageTitle: string;

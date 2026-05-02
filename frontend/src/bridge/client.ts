@@ -21,6 +21,7 @@ import type {
   PromptPreviewContext,
   PromptPreviewResult,
   ReplacementArtifacts,
+  ReplacementReport,
   ReplacementRule,
   ReplacementRuleParseResult,
   ReplacementValidationIssue,
@@ -392,6 +393,11 @@ export const replacementBridge = {
   },
   readArtifacts(taskId: string): Promise<ReplacementArtifacts> {
     return call("replacement.read_artifacts", { task_id: taskId });
+  },
+  readReplacementReport(taskId: string): Promise<ReplacementReport> {
+    return call("replacement.read_replacement_report", {
+      task_id: taskId,
+    });
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("replacement.list_failed_subtasks", { task_id: taskId });

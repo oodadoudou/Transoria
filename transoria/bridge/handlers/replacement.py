@@ -286,6 +286,11 @@ def register_tasks(router: BridgeRouter, *, service: TaskService) -> None:
             kind="replacement", task_id=expect_string(payload, "task_id")
         )
 
+    def read_replacement_report(payload: Mapping[str, object]) -> dict[str, object]:
+        return service.read_replacement_report(
+            task_id=expect_string(payload, "task_id")
+        )
+
     router.register("replacement.start_task", start_task)
     router.register("replacement.stop_task", stop_task)
     router.register("replacement.pause_task", pause_task)
@@ -295,6 +300,7 @@ def register_tasks(router: BridgeRouter, *, service: TaskService) -> None:
     router.register("replacement.list_failed_subtasks", list_failed_subtasks)
     router.register("replacement.list_recent_tasks", list_recent_tasks)
     router.register("replacement.read_artifacts", read_artifacts)
+    router.register("replacement.read_replacement_report", read_replacement_report)
 
 
 __all__ = [
