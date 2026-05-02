@@ -43,6 +43,7 @@ def main() -> None:
         raise SystemExit("macOS builds must run on macOS.")
 
     if not args.skip_frontend:
+        _ensure_frontend_deps()
         _run([_npm(), "run", "build"], cwd=FRONTEND_DIR)
     _require_frontend_dist()
     _require_pyinstaller()
@@ -77,17 +78,15 @@ def main() -> None:
         "openpyxl",
         "--hidden-import",
         "webview.platforms.cocoa",
-        # Defensive: PyInstaller usually finds these via static analysis,
-        # but explicit hidden imports survive analyzer drift across
-        # PyInstaller / lxml / chardet upgrades.
-        "--hidden-import",
-        "lxml._elementpath",
-        "--hidden-import",
-        "lxml.etree",
-        "--hidden-import",
-        "chardet",
-        "--hidden-import",
+        # Lazy submodules invisible to the static analyzer — without
+        # collect-submodules the bundled app boots and dies the first
+        # time it touches one of these packages.
+        "--collect-submodules",
         "json_repair",
+        "--collect-submodules",
+        "chardet",
+        "--collect-submodules",
+        "lxml",
     ]
     if ICON_PATH.is_file():
         cmd.extend(["--icon", str(ICON_PATH)])
@@ -112,6 +111,13 @@ def _npm() -> str:
     if npm is None:
         raise SystemExit("npm not found. Install Node.js on the build machine.")
     return npm
+
+
+def _ensure_frontend_deps() -> None:
+    if (FRONTEND_DIR / "node_modules").is_dir():
+        return
+    print("[build] frontend/node_modules missing — running npm install")
+    _run([_npm(), "install"], cwd=FRONTEND_DIR)
 
 
 def _require_frontend_dist() -> None:

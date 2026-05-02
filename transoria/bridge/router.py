@@ -215,13 +215,15 @@ def build_default_router(
     register_replacement_parsers(router)
     register_replacement_tasks(router, service=task_service)
     register_glossary_imports(router, cache_root=cache_root)
-    # Bind the user's ``app.proxy_url`` to the supplied checker so its
-    # outbound HTTP calls (release list + asset download) honor the
-    # same proxy as LLM calls. Done with ``setattr`` (no static type
-    # check) because ``update_checker`` is typed as ``object`` here —
-    # this avoids forcing every dev-harness checker to grow the
-    # field.
-    if update_checker is not None and hasattr(update_checker, "proxy_provider"):
+    # Tests / dev harnesses default to ``NullUpdateChecker`` so the
+    # contract surface tests don't hit the GitHub API. Production
+    # callers (``app.py``) inject a ``GithubReleaseChecker``.
+    if update_checker is None:
+        update_checker = NullUpdateChecker(current_version=current_version)
+    # Bind the user's ``app.proxy_url`` to the checker so its outbound
+    # HTTP calls honor the same proxy as LLM calls. ``setattr`` keeps
+    # this a no-op for dev-harness checkers without the field.
+    if hasattr(update_checker, "proxy_provider"):
         try:
             setattr(
                 update_checker,
@@ -232,7 +234,7 @@ def build_default_router(
             pass
     register_updates(
         router,
-        checker=update_checker or NullUpdateChecker(current_version=current_version),
+        checker=update_checker,
         current_version=current_version,
     )
     return router

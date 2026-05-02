@@ -12,7 +12,9 @@ import { GeneralToolsModule } from "./pages/general-tools";
 import { AppSettingsModule } from "./pages/app-settings";
 import { AllKeysFailedDialog } from "./components/AllKeysFailedDialog";
 import { ToastHost } from "./components/ToastHost";
+import { UpdateAvailableModal } from "./components/UpdateAvailableModal";
 import { useSettingsSaveToast } from "./components/useSettingsSaveToast";
+import { useUpdatePrompt } from "./components/useUpdatePrompt";
 import styles from "./App.module.css";
 
 export function App() {
@@ -25,6 +27,7 @@ export function App() {
     (state) => state.app.draft?.interface_language,
   );
   useSettingsSaveToast();
+  const updatePrompt = useUpdatePrompt();
 
   useEffect(() => {
     void hydrateSettings();
@@ -57,6 +60,13 @@ export function App() {
         {onRunPage ? <StatusBar /> : null}
       </main>
       <AllKeysFailedDialog />
+      {updatePrompt.result ? (
+        <UpdateAvailableModal
+          result={updatePrompt.result}
+          onDismiss={updatePrompt.dismiss}
+          onUpdateNow={updatePrompt.goToReleasePage}
+        />
+      ) : null}
       <ToastHost />
     </div>
   );

@@ -758,6 +758,17 @@ export const en: Messages = {
     top: "Back to top",
     bottom: "Jump to bottom",
   },
+  updatePrompt: {
+    title: "Update available",
+    bodyPrefix: "Transoria ",
+    bodySuffix:
+      " has been released. Click “Update now” to open the GitHub download page.",
+    publishedAtLabel: "Released",
+    notesLabel: "Release notes",
+    notesEmpty: "(No release notes provided.)",
+    updateAction: "Update now",
+    laterAction: "Later",
+  },
   common: {
     placeholder:
       "This page is part of the Phase 2 frontend scaffold and is wired to backend endpoints in a later phase.",

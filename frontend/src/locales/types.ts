@@ -670,5 +670,15 @@ export interface Messages {
     top: string;
     bottom: string;
   };
+  updatePrompt: {
+    title: string;
+    bodyPrefix: string;
+    bodySuffix: string;
+    publishedAtLabel: string;
+    notesLabel: string;
+    notesEmpty: string;
+    updateAction: string;
+    laterAction: string;
+  };
   common: { placeholder: string };
 }

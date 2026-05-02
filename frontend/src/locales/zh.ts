@@ -734,6 +734,16 @@ export const zh: Messages = {
     top: "回到顶部",
     bottom: "跳到底部",
   },
+  updatePrompt: {
+    title: "新版本可用",
+    bodyPrefix: "Transoria ",
+    bodySuffix: " 已发布。点击「立即更新」前往 GitHub 下载页面。",
+    publishedAtLabel: "发布时间",
+    notesLabel: "更新说明",
+    notesEmpty: "（本次发布未提供更新说明。）",
+    updateAction: "立即更新",
+    laterAction: "稍后",
+  },
   common: {
     placeholder:
       "该页面是第二阶段前端脚手架的一部分,后续阶段将与后端接口对接。",

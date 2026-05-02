@@ -27,6 +27,11 @@ class AppSettings:
     active_glossary_model_id: str | None = None
     active_translation_prompt_id: str | None = None
     active_glossary_prompt_id: str | None = None
+    # Latest release tag the user clicked "later" or "update now" on.
+    # The startup update prompt suppresses itself until ``latest_version``
+    # diverges from this value, so a confirmed-or-dismissed release
+    # never re-nags. Empty = no version skipped yet.
+    skipped_update_version: str = ""
 
 
 @dataclass(frozen=True)

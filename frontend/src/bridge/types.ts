@@ -75,6 +75,10 @@ export interface AppSettings {
   active_glossary_model_id: string | null;
   active_translation_prompt_id: string | null;
   active_glossary_prompt_id: string | null;
+  /** Tag of the latest release the user has chosen to ignore. The
+   * startup update prompt only appears when ``latest_version`` differs
+   * from this value, so a confirmed-or-dismissed release never re-nags. */
+  skipped_update_version: string;
 }
 
 export interface PersistedGlossaryEntry {
