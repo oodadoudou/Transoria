@@ -277,6 +277,11 @@ def _refresh_egg_info() -> None:
     if egg_info.exists():
         shutil.rmtree(egg_info, ignore_errors=True)
     print("[build] regenerating transoria.egg-info to match pyproject.toml")
+    # ``--force-reinstall`` is what makes this reliable: without it,
+    # pip detects the editable install is already present at the same
+    # location and skips re-running setuptools, which means egg-info
+    # never gets regenerated. ``--no-deps`` keeps other packages
+    # untouched so the reinstall is fast.
     _run(
         [
             sys.executable,
@@ -284,12 +289,18 @@ def _refresh_egg_info() -> None:
             "pip",
             "install",
             "--no-deps",
+            "--force-reinstall",
             "--quiet",
             "-e",
             str(ROOT),
         ],
         cwd=ROOT,
     )
+    if not (egg_info / "PKG-INFO").exists():
+        raise SystemExit(
+            "egg-info regeneration failed: PKG-INFO not produced. "
+            "Run `pip install -e .` manually to diagnose."
+        )
 
 
 def _note_unbundled_local_state() -> None:
