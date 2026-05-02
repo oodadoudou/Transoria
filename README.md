@@ -17,6 +17,8 @@ Transoria 是一个面向小说翻译的桌面应用：把一个装着 EPUB / TX
 
 界面支持中英文切换。所有任务在本地运行，由你自己的 LLM API Key 调用模型。
 
+交流/问题反馈群qq：**1104197845**。欢迎加入，使用中遇到问题可以进群反馈。
+
 ### 下载安装包
 
 最新版下载：**[GitHub Releases](https://github.com/oodadoudou/Transoria/releases)**
