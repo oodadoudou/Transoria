@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
+from transoria.workflows.prefilter import is_translation_skippable
+
 
 @dataclass(frozen=True)
 class GlossaryChunk:
@@ -95,6 +97,11 @@ def build_glossary_chunks(
                 continue
             segment = clean_glossary_source_text(raw_segment)
             if not segment:
+                continue
+            # Lines made entirely of digits / punctuation / symbols
+            # carry no proper-noun candidates worth extracting; drop
+            # them before they pad chunks and inflate token cost.
+            if is_translation_skippable(segment):
                 continue
             join_cost = 1 if buffer else 0
             segment_cost = cost(segment)

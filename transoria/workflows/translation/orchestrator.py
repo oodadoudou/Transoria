@@ -54,6 +54,7 @@ from transoria.workflows.translation.chunker import (
     build_chunks,
 )
 from transoria.workflows.translation.config import TranslationConfig
+from transoria.workflows.prefilter import is_translation_skippable
 from transoria.workflows.translation.preprocessor import preprocess_segment
 from transoria.workflows.translation.runner import (
     TranslationSubtaskRunner,
@@ -419,14 +420,17 @@ def _prepare_segments(
     for parsed in parsed_files:
         bucket: list[PreparedSegment] = []
         for segment_index, source_text in parsed.source_segments:
-            if not source_text.strip():
+            # Skip empty / pure-numeric / pure-punctuation lines before
+            # the preprocessor so they never reach the LLM. The writer
+            # keeps the original line verbatim.
+            if is_translation_skippable(source_text):
                 continue
             preprocessed = preprocess_segment(
                 source_text,
                 text_preserve_rules=config.text_preserve_rules,
                 pre_replacements=config.pre_replacements,
             )
-            if not preprocessed.prompt_text.strip():
+            if is_translation_skippable(preprocessed.prompt_text):
                 continue
             prepared = PreparedSegment(
                 segment_id=f"{parsed.file_index}:{segment_index}",
