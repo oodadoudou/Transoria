@@ -140,9 +140,35 @@ def _file_key(segment_id: str) -> str:
     return segment_id.split(":", 1)[0]
 
 
+_CONTEXT_END_PUNCTUATION: tuple[str, ...] = (
+    ".",
+    "。",
+    "?",
+    "？",
+    "!",
+    "！",
+    "…",
+    "'",
+    '"',
+    "」",
+    "』",
+)
+
+
 def _context_window(
     prepared: Sequence[PreparedSegment], cursor: int, count: int
 ) -> tuple[str, ...]:
+    """Walk backwards collecting at most ``count`` preceding source lines
+    that form a clean sentence-bounded block.
+
+    The configured ``count`` is a **soft upper bound**: empty lines are
+    skipped without breaking the chain, but the moment a non-empty line
+    fails to end with sentence-final punctuation we stop and return what
+    we have. This keeps preceding context coherent (a continuous run of
+    completed sentences) and prevents preceding-context cost from
+    dominating the input even when the user dials the threshold high.
+    """
+
     if count <= 0 or cursor == 0:
         return ()
     current_file = _file_key(prepared[cursor].segment_id)
@@ -151,8 +177,15 @@ def _context_window(
         item = prepared[index]
         if _file_key(item.segment_id) != current_file:
             break
-        context.append(item.original_text)
+        text = item.original_text.strip()
+        if not text:
+            # Paragraph-break / blank line — skip but keep searching.
+            continue
         if len(context) >= count:
+            break
+        if text.endswith(_CONTEXT_END_PUNCTUATION):
+            context.append(item.original_text)
+        else:
             break
     return tuple(reversed(context))
 

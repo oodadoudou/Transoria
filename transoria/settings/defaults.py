@@ -44,11 +44,15 @@ class TranslationSettings:
     bilingual_enabled: bool = False
     bilingual_dedupe_identical: bool = True
     bilingual_subfolder_name: str = "bilingual outputs"
-    # Number of preceding source lines bundled with each chunk as context
-    # for cross-chunk pronoun resolution and short-range narrative
-    # cohesion. 8 is enough for typical novel prose; larger values
-    # multiply input tokens without proportionate quality gain.
-    context_lines: int = 8
+    # Soft upper bound on preceding source lines bundled with each
+    # chunk for cross-chunk pronoun resolution and narrative cohesion.
+    # The chunker walks backwards collecting at most this many lines,
+    # but stops as soon as a non-empty line doesn't end in sentence-
+    # final punctuation — which means in typical novel prose the
+    # actual count sent is far smaller than the cap. 25 is generous
+    # enough that quality-sensitive users see no clipping while the
+    # heuristic keeps token cost bounded.
+    context_lines: int = 25
     low_confidence_max_retries: int = 3
     auto_open_output_folder: bool = False
     timeout_seconds: int = 120
