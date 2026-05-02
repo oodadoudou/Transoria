@@ -50,8 +50,9 @@ REQUIRED_RUNTIME_IMPORTS = (
 WEBVIEW2_BOOTSTRAPPER_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 WEBVIEW2_BOOTSTRAPPER_NAME = "MicrosoftEdgeWebview2Setup.exe"
 
-# Smoke-test port. Picked high to avoid collision with services running
-# on the build machine; the launcher retries port+1 if this is taken.
+# Smoke-test port. Picked high to avoid collision with services on
+# the build machine. If this single port is already taken, the smoke
+# test will fail loudly — pick a different number and rebuild.
 SMOKE_TEST_BRIDGE_PORT = 64577
 SMOKE_TEST_TIMEOUT_SECONDS = 8
 
@@ -327,7 +328,7 @@ Transoria 启动说明（中文）
 
 【三、使用流程】
 
-  1) 双击 Transoria.exe 启动应用。
+  1) 双击 Launch_Transoria.bat（推荐）或 Transoria.exe 启动应用。
   2) 在「模型管理」页面填好 LLM API Key。
   3) 在「翻译 / 术语提取 / 批量替换」对应页面里点「输入文件夹 / 输出
      文件夹」选择路径。可以选用同目录下提供的 Input/ 和 Output/，
@@ -401,7 +402,7 @@ User Data folder will fail to write on first launch.
 
 [3] Usage
 
-  1) Double-click Transoria.exe.
+  1) Double-click Launch_Transoria.bat (recommended) or Transoria.exe.
   2) On the Model page, configure your LLM API key.
   3) On the Translation / Glossary / Batch Replacement pages, click
      the input/output folder pickers. You can use the bundled Input/
@@ -624,6 +625,12 @@ def _smoke_test_built_exe() -> None:
     for catching ``ModuleNotFoundError`` and DLL-load failures *here*
     instead of in the user's hands."""
 
+    if sys.platform != "win32":
+        # ``--allow-non-windows`` is a CI / dry-run convenience; the
+        # exe we just produced is a Windows PE binary and won't run
+        # on the host kernel.
+        print("[build] smoke test skipped: non-Windows host (CI dry-run mode)")
+        return
     exe = APP_DIR / "Transoria.exe"
     if not exe.is_file():
         print("[build] smoke test skipped: exe not found")
