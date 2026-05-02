@@ -748,13 +748,6 @@ function FormStep({
               onChange={(v) => update("max_output_tokens", v)}
             />
           </FieldRow>
-          <FieldRow hint={renderHint("temperature")}>
-            <NumberField
-              label={model.temperature}
-              value={draft.temperature ?? 0}
-              onChange={(v) => update("temperature", v)}
-            />
-          </FieldRow>
           <div className={styles.formatRow}>
             <span className={styles.formatLabel}>{model.thinkingLevel}</span>
             <Segmented<ThinkingLevel>
@@ -774,6 +767,14 @@ function FormStep({
           ) : null}
         </div>
 
+        <OptionalNumberRow
+          label={model.temperature}
+          help={model.temperatureHelp}
+          value={draft.temperature}
+          onChange={(v) => update("temperature", v)}
+          step={0.1}
+          defaultValue={1}
+        />
         <OptionalNumberRow
           label={model.topP}
           help={model.topPHelp}
@@ -885,15 +886,28 @@ function CustomHeadersEditor({
   placeholder,
   help,
 }: CustomHeadersEditorProps) {
-  const headersObj = Object.fromEntries(value);
-  const initialText = value.length > 0 ? JSON.stringify(headersObj) : "";
-  const [text, setText] = useState(initialText);
+  const propJson =
+    value.length > 0 ? JSON.stringify(Object.fromEntries(value)) : "";
+  const [text, setText] = useState(propJson);
   const [parseError, setParseError] = useState<string | null>(null);
+  // Track our last-emitted JSON so we can distinguish "parent state
+  // is just echoing what we already typed" (skip) from "parent state
+  // changed externally — e.g. profile switch or template apply"
+  // (re-seed the textarea so it doesn't show stale content).
+  const lastEmittedRef = useRef<string>(propJson);
+
+  useEffect(() => {
+    if (propJson === lastEmittedRef.current) return;
+    lastEmittedRef.current = propJson;
+    setText(propJson);
+    setParseError(null);
+  }, [propJson]);
 
   const apply = (raw: string) => {
     setText(raw);
     if (raw.trim() === "") {
       setParseError(null);
+      lastEmittedRef.current = "";
       onChange([]);
       return;
     }
@@ -911,6 +925,8 @@ function CustomHeadersEditor({
         .filter(([k]) => typeof k === "string" && k.length > 0)
         .map(([k, v]) => [k, String(v)]);
       setParseError(null);
+      lastEmittedRef.current =
+        pairs.length > 0 ? JSON.stringify(Object.fromEntries(pairs)) : "";
       onChange(pairs);
     } catch (error) {
       setParseError(error instanceof Error ? error.message : "invalid JSON");
