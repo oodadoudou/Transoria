@@ -574,7 +574,7 @@ for %%K in (
 )
 
 if not defined WEBVIEW2_OK (
-    echo [Transoria] Microsoft Edge WebView2 Runtime is missing — required to render the UI.
+    echo [Transoria] Microsoft Edge WebView2 Runtime is missing - required to render the UI.
     if exist "%~dp0__BOOTSTRAPPER__" (
         echo [Transoria] Installing it from the bundled setup ^(may prompt for UAC^)...
         "%~dp0__BOOTSTRAPPER__" /silent /install
@@ -610,10 +610,21 @@ def _write_launch_bat() -> None:
 
     bat_path = APP_DIR / "Launch_Transoria.bat"
     body = _LAUNCH_BAT.replace("__BOOTSTRAPPER__", WEBVIEW2_BOOTSTRAPPER_NAME)
-    # ``encoding="ascii"`` enforces that we never accidentally drop a
-    # non-ASCII char into a .bat that runs under cp936/cp1252; cmd.exe
-    # is famously brittle around codepage mismatches.
-    bat_path.write_text(body, encoding="ascii", newline="\r\n")
+    # cmd.exe is brittle around codepage mismatches (cp936/cp1252).
+    # First try strict ASCII so a stray smart-quote or em-dash fails
+    # loudly here instead of silently corrupting the .bat. If that
+    # ever happens, fall back to UTF-8-BOM (``utf-8-sig``) which cmd
+    # tolerates, and surface a warning so the offending char gets
+    # cleaned up in the next edit.
+    try:
+        bat_path.write_text(body, encoding="ascii", newline="\r\n")
+    except UnicodeEncodeError as exc:
+        print(
+            f"[build] WARNING: launcher contains non-ASCII char ({exc!r}); "
+            "writing as UTF-8 with BOM. Replace the char with an ASCII "
+            "equivalent in _LAUNCH_BAT to silence this."
+        )
+        bat_path.write_text(body, encoding="utf-8-sig", newline="\r\n")
     print(f"[build] wrote launcher: {bat_path.name}")
 
 
