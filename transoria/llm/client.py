@@ -8,7 +8,6 @@ a fake :class:`ChatTransport`; production uses :class:`HttpxChatTransport`.
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol
@@ -243,38 +242,17 @@ class HttpxChatTransport:
 # HTTP statuses that warrant rotating to the next API key.
 _ROTATABLE_STATUSES: frozenset[int] = frozenset({401, 403, 429})
 
-# Model IDs whose default behavior is "reasoning ON" — these models
-# emit ``<think>...</think>`` blocks (billed as output tokens) unless
-# the request explicitly says ``thinking={"type": "disabled"}``.
-# Without the explicit disable, setting ``thinking_level=OFF`` in our
-# config does NOT turn off thinking on the wire: the provider keeps
-# emitting reasoning, the user keeps paying, and we strip the
-# ``<think>`` block before returning the visible response. The list
-# matches the provider docs as of 2026 — extend if a new reasoning
-# family lands on an OpenAI-compatible endpoint.
-_REASONING_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"glm", re.IGNORECASE),
-    re.compile(r"kimi", re.IGNORECASE),
-    re.compile(r"deepseek", re.IGNORECASE),
-)
-
-
-def _is_reasoning_model(model_id: str) -> bool:
-    return any(pattern.search(model_id) for pattern in _REASONING_MODEL_PATTERNS)
-
-
-# Build the OpenAI-compatible thinking payload. For reasoning-default
-# models we always speak explicitly (enabled or disabled) so the
-# user's ``thinking_level=OFF`` actually stops the provider from
-# burning thinking tokens. For non-reasoning models we only send a
-# field when the user explicitly opted in.
-def _thinking_payload(model: ModelConfig) -> dict[str, object] | None:
-    if _is_reasoning_model(model.model_id):
-        if model.thinking_level is ThinkingLevel.OFF:
-            return {"type": "disabled"}
-        return {"type": "enabled"}
-    if model.thinking_level is ThinkingLevel.OFF:
-        return None
+# OpenAI-compatible thinking flag. We always state our intent
+# explicitly: ``disabled`` when the user wants OFF, ``enabled``
+# otherwise. Reasoning-default providers (DeepSeek-V3.2, GLM-Zero,
+# Kimi-K, etc.) honor ``disabled`` and stop burning reasoning tokens;
+# non-reasoning providers ignore unknown body fields and behave
+# normally. This keeps the runtime free of any hard-coded model-id
+# allowlist — users decide whether to engage reasoning by the level
+# they pick, and the provider applies whatever default budget it has.
+def _thinking_payload(level: ThinkingLevel) -> dict[str, object] | None:
+    if level is ThinkingLevel.OFF:
+        return {"type": "disabled"}
     return {"type": "enabled"}
 
 
@@ -368,7 +346,7 @@ class LlmClient:
             payload["frequency_penalty"] = request.model.frequency_penalty
         if request.stream:
             payload["stream"] = True
-        thinking = _thinking_payload(request.model)
+        thinking = _thinking_payload(request.model.thinking_level)
         if thinking is not None:
             payload["thinking"] = thinking
 
