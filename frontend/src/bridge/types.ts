@@ -1,4 +1,4 @@
-// Types mirror docs/active/frontend-backend-bridge-contract.md.
+// Types mirror docs/bridge-contract.md.
 // Keep wire format snake_case here; component code uses these directly.
 
 export type Language =

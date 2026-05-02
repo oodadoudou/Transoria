@@ -2,7 +2,7 @@
 
 Defines a JSON-in / JSON-out RPC surface that the desktop shell exposes to
 the React frontend. The contract lives at
-``docs/active/frontend-backend-bridge-contract.md``; this package implements
+``docs/bridge-contract.md``; this package implements
 it.
 
 Public API:

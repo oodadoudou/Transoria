@@ -4,7 +4,7 @@ Public surface:
 
 - :class:`AppSettings`, :class:`TranslationSettings`,
   :class:`GlossarySettings`, :class:`ReplacementSettings` — typed module
-  schemas matching ``docs/active/frontend-backend-bridge-contract.md``.
+  schemas matching ``docs/bridge-contract.md``.
 - :class:`AllSettings` — bundle of all four.
 - :class:`SettingsStore` — atomic JSON-backed loader/saver.
 - :func:`default_settings` — frozen defaults used by both load-empty and

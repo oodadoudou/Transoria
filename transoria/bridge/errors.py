@@ -2,7 +2,7 @@
 
 The frontend branches on :attr:`BridgeError.code`; the human-readable
 ``message`` is fallback text for unrecognized codes and log lines. Codes
-match the contract in ``docs/active/frontend-backend-bridge-contract.md``.
+match the contract in ``docs/bridge-contract.md``.
 """
 
 from __future__ import annotations
