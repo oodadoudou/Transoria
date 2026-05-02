@@ -831,6 +831,11 @@ function OptionalNumberRow({
   defaultValue,
 }: OptionalNumberRowProps) {
   const enabled = value !== null;
+  // Local draft mirrors the NumberField pattern: lets the user clear /
+  // pause mid-edit without the controlled input snapping back to 0 on
+  // every keystroke.
+  const [draft, setDraft] = useState<string | null>(null);
+  const display = draft ?? (value ?? "").toString();
   return (
     <div className={styles.optionalRow}>
       <div className={styles.optionalText}>
@@ -841,18 +846,25 @@ function OptionalNumberRow({
         <ToggleSwitch
           label=""
           checked={enabled}
-          onChange={(next) => onChange(next ? defaultValue : null)}
+          onChange={(next) => {
+            setDraft(null);
+            onChange(next ? defaultValue : null);
+          }}
         />
         {enabled ? (
           <input
             type="number"
             className={styles.optionalInput}
-            value={value ?? 0}
+            value={display}
             step={step}
             onChange={(e) => {
-              const parsed = Number(e.target.value);
-              onChange(Number.isFinite(parsed) ? parsed : 0);
+              const raw = e.target.value;
+              setDraft(raw);
+              if (raw === "" || raw === "-" || raw === ".") return;
+              const parsed = Number(raw);
+              if (Number.isFinite(parsed)) onChange(parsed);
             }}
+            onBlur={() => setDraft(null)}
           />
         ) : null}
       </div>
