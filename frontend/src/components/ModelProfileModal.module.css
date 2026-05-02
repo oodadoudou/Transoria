@@ -222,7 +222,11 @@
 }
 
 .details {
-  padding: 12px 0;
+  /* Slightly more bottom padding than top so short controls
+   * (ToggleSwitch, segmented row) don't sit flush against the
+   * divider — NumberFields have intrinsic height that already
+   * gives the section visual room, but compact rows need help. */
+  padding: 12px 0 18px;
   border-bottom: 1px solid var(--hairline, #ece8e2);
 }
 
