@@ -132,8 +132,16 @@ export function BatchReplacementPage() {
     }
   };
 
+  // ``snapshot.status`` falls back to ``"pending"`` when no task has
+  // ever run for this kind (the snapshot store has no record yet).
+  // Treating that as in-flight would lock the Execute button on cold
+  // start. Anchor the predicate on ``activeTaskId`` first: no active
+  // id means nothing is in flight regardless of the placeholder
+  // status, and only an active id with a non-terminal status counts
+  // as actually running.
   const isRunning =
-    snapshot.status === "running" || snapshot.status === "pending";
+    activeTaskId !== null &&
+    (snapshot.status === "running" || snapshot.status === "pending");
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
   const failed = snapshot.progress.failed;
