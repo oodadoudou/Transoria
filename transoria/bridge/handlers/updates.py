@@ -412,23 +412,61 @@ def _select_release(
 
 
 def _matching_asset(release: Mapping[str, object]) -> dict[str, object] | None:
+    """Pick the release asset that fits the running host.
+
+    Priority:
+    1. Name explicitly contains the platform marker (``windows`` / ``win32``
+       / ``mac`` / ``darwin`` / ``linux``).
+    2. File extension is the platform's conventional package format
+       (``.zip``/``.exe`` for Windows, ``.dmg`` for macOS, ``.tar.gz`` /
+       ``.AppImage`` for Linux). This catches the common case where a
+       release uploads only one asset per platform with a generic name
+       (e.g. ``Transoria.zip`` for Windows).
+    3. First asset of any shape (last-resort fallback).
+    """
+
     assets = release.get("assets")
     if not isinstance(assets, list):
         return None
     platform = _platform_key()
+    alias = _platform_alias(platform)
+    explicit: Mapping[str, object] | None = None
+    by_extension: Mapping[str, object] | None = None
     fallback: Mapping[str, object] | None = None
     for asset in assets:
         if not isinstance(asset, Mapping):
             continue
-        name = str(asset.get("name") or "")
+        name = str(asset.get("name") or "").strip()
+        if not name:
+            continue
         lowered = name.lower()
-        if platform in lowered or _platform_alias(platform) in lowered:
-            return _asset_payload(asset, platform=platform)
+        if platform in lowered or alias in lowered:
+            explicit = asset
+            break
+        if by_extension is None and _extension_matches_platform(
+            lowered, platform
+        ):
+            by_extension = asset
         if fallback is None:
             fallback = asset
-    if fallback is None:
+    chosen = explicit or by_extension or fallback
+    if chosen is None:
         return None
-    return _asset_payload(fallback, platform=platform)
+    return _asset_payload(chosen, platform=platform)
+
+
+def _extension_matches_platform(name_lower: str, platform: str) -> bool:
+    if platform == "win32":
+        return name_lower.endswith(".zip") or name_lower.endswith(".exe")
+    if platform == "darwin":
+        return name_lower.endswith(".dmg") or name_lower.endswith(".app.zip")
+    if platform == "linux":
+        return (
+            name_lower.endswith(".tar.gz")
+            or name_lower.endswith(".tgz")
+            or name_lower.endswith(".appimage")
+        )
+    return False
 
 
 def _asset_payload(asset: Mapping[str, object], *, platform: str) -> dict[str, object]:

@@ -67,9 +67,13 @@ def main() -> None:
         help="Reuse existing frontend/dist instead of running npm run build.",
     )
     parser.add_argument(
-        "--skip-zip",
+        "--make-zip",
         action="store_true",
-        help="Build only the onedir output and skip the release ZIP.",
+        help=(
+            "Also produce dist/Transoria-windows.zip from the onedir output. "
+            "Off by default — you will typically zip the dist/Transoria/ "
+            "folder yourself with whatever name your release uses."
+        ),
     )
     parser.add_argument(
         "--no-webview2-bootstrapper",
@@ -178,12 +182,17 @@ def main() -> None:
     if not args.no_smoke_test:
         _smoke_test_built_exe()
     print(f"[build] Windows portable app: {APP_DIR}")
-    if not args.skip_zip:
+    if args.make_zip:
         zip_path = _create_release_zip()
         print(f"[build] Windows release zip: {zip_path}")
         print(
             "[build] distribute the ZIP — users extract the whole folder, "
             "double-click Launch_Transoria.bat (or Transoria.exe directly)."
+        )
+    else:
+        print(
+            "[build] zip step skipped — package "
+            f"{APP_DIR} yourself with the release filename of your choice."
         )
 
 
