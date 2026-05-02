@@ -253,9 +253,9 @@ class TranslationSubtaskRunner:
     target_language: Language
     post_replacements: tuple[ReplacementRule, ...] = ()
     enable_confidence_check: bool = False
-    min_length_ratio: float = 0.3
-    max_length_ratio: float = 3.0
-    max_punctuation_delta: int = 4
+    min_length_ratio: float = 0.25
+    max_length_ratio: float = 4.0
+    max_punctuation_delta: int = 12
     low_confidence_max_retries: int = 0
     tpm_limiter: TpmLimiter | None = None
     key_pool: KeyPool | None = None

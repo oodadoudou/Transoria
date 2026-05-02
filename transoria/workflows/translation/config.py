@@ -51,9 +51,21 @@ class TranslationConfig:
     token_counter: Callable[[str], int] | None = None
 
     enable_confidence_check: bool = True
-    min_length_ratio: float = 0.3
-    max_length_ratio: float = 3.0
-    max_punctuation_delta: int = 4
+    # Length-ratio bounds widened for cross-language asymmetry. EN→CJK
+    # commonly drops to 0.25-0.30 because Chinese/Japanese pack more
+    # meaning per character; CJK→EN can stretch above 3.0 for the
+    # opposite reason. Tighter bounds were producing false-positive
+    # low-confidence flags on legitimate translations.
+    min_length_ratio: float = 0.25
+    max_length_ratio: float = 4.0
+    # Punctuation delta widened from 4 → 12 after real KO→ZH data
+    # showed the average legitimate delta sits at ~8 (Korean uses more
+    # `…`/`?!` clusters; Chinese adds quote marks 「」 / fullwidth 。).
+    # The old threshold flagged 10% of segments as low-confidence even
+    # when the translation was correct, triggering wasted retries.
+    # 12 still catches genuine sentence-merge / drop failures (delta
+    # 15+) while letting normal punctuation drift through.
+    max_punctuation_delta: int = 12
     low_confidence_max_retries: int = 3
 
     stream: bool = False
