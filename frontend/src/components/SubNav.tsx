@@ -3,6 +3,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import type { Route } from "@/store/useTaskStore";
 import { Pill } from "./Pill";
 import { PlayIcon, StopIcon } from "./Icon";
+import { useTypewriter } from "./useTypewriter";
 import styles from "./SubNav.module.css";
 
 interface SubNavProps {
@@ -61,13 +62,28 @@ export function SubNav({
     }
   };
 
+  const wordmark = useTypewriter(messages.brand.name, {
+    loops: 1,
+    typeMs: 160,
+    eraseMs: 90,
+    holdFullMs: 1800,
+    holdEmptyMs: 380,
+  });
+
   return (
     <header className={styles.bar}>
       <div className={styles.brand}>
         <span className={styles.logo} aria-hidden>
           T
         </span>
-        <span className={styles.wordmark}>{messages.brand.name}</span>
+        <span className={styles.wordmark} aria-label={messages.brand.name}>
+          <span className={styles.wordmarkText}>{wordmark.text}</span>
+          {wordmark.done ? null : (
+            <span className={styles.wordmarkCursor} aria-hidden>
+              |
+            </span>
+          )}
+        </span>
       </div>
 
       <nav className={styles.crumb} aria-label={messages.topbar.breadcrumb}>

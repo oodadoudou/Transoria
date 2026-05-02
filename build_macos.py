@@ -17,6 +17,7 @@ DIST_DIR = ROOT / "dist" / "pyinstaller" / "macos"
 WORK_DIR = ROOT / "build" / "pyinstaller" / "macos"
 SPEC_DIR = ROOT / "build" / "pyinstaller" / "specs"
 DMG_STAGING_DIR = WORK_DIR / "dmg-root"
+ICON_PATH = ROOT / "assets" / "icon.icns"
 
 
 def main() -> None:
@@ -87,8 +88,16 @@ def main() -> None:
         "chardet",
         "--hidden-import",
         "json_repair",
-        str(ROOT / "app.py"),
     ]
+    if ICON_PATH.is_file():
+        cmd.extend(["--icon", str(ICON_PATH)])
+        print(f"[build] using icon: {ICON_PATH}")
+    else:
+        print(
+            f"[build] no icon at {ICON_PATH} — using PyInstaller default. "
+            "Run scripts/make_app_icons.py to generate one."
+        )
+    cmd.append(str(ROOT / "app.py"))
     _run(cmd, cwd=ROOT)
     _verify_spec_excludes_local_state()
     app_path = DIST_DIR / "Transoria.app"

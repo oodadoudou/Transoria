@@ -50,14 +50,13 @@ def load_replacement_rules_txt(path: Path) -> list[ReplacementRule]:
         line = segment.text.strip()
         if line == "" or line.startswith("#"):
             continue
-        if "->" not in line:
+        parsed = _split_rule_line(line)
+        if parsed is None:
             raise ValueError(
                 f"Malformed replacement rule at line {line_number}: expected `original phrase->new phrase`"
             )
 
-        src, dst = line.split("->", 1)
-        src = src.strip()
-        dst = dst.strip()
+        src, dst = parsed
         if src == "":
             raise ValueError(
                 f"Malformed replacement rule at line {line_number}: src cannot be empty"
@@ -65,6 +64,14 @@ def load_replacement_rules_txt(path: Path) -> list[ReplacementRule]:
 
         rules.append(ReplacementRule(src=src, dst=dst))
     return rules
+
+
+def _split_rule_line(line: str) -> tuple[str, str] | None:
+    delimiter = "#->#" if "#->#" in line else "->"
+    if delimiter not in line:
+        return None
+    src, dst = line.split(delimiter, 1)
+    return src.strip(), dst.strip()
 
 
 def apply_rules(text: str, rules: list[ReplacementRule]) -> ReplacementApplyResult:
@@ -129,5 +136,4 @@ def replace_epub_file(source_path: Path, output_dir: Path, rules: list[Replaceme
 
 def _replaced_filename(source_path: Path) -> str:
     return f"{source_path.stem}{REPLACED_SUFFIX}{source_path.suffix}"
-
 

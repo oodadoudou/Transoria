@@ -16,6 +16,7 @@ FRONTEND_DIST = FRONTEND_DIR / "dist"
 DIST_DIR = ROOT / "dist" / "pyinstaller" / "windows"
 WORK_DIR = ROOT / "build" / "pyinstaller" / "windows"
 SPEC_DIR = ROOT / "build" / "pyinstaller" / "specs"
+ICON_PATH = ROOT / "assets" / "icon.ico"
 
 
 def main() -> None:
@@ -89,8 +90,16 @@ def main() -> None:
         "chardet",
         "--hidden-import",
         "json_repair",
-        str(ROOT / "app.py"),
     ]
+    if ICON_PATH.is_file():
+        cmd.extend(["--icon", str(ICON_PATH)])
+        print(f"[build] using icon: {ICON_PATH}")
+    else:
+        print(
+            f"[build] no icon at {ICON_PATH} — using PyInstaller default. "
+            "Run scripts/make_app_icons.py to generate one."
+        )
+    cmd.append(str(ROOT / "app.py"))
     _run(cmd, cwd=ROOT)
     _verify_spec_excludes_local_state()
     exe_path = DIST_DIR / "Transoria.exe"

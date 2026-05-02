@@ -36,6 +36,42 @@
   font-size: 14px;
   letter-spacing: -0.01em;
   color: var(--ink);
+  display: inline-flex;
+  align-items: baseline;
+  /* Reserve enough horizontal room for the full word so neighboring
+   * elements don't reflow as the typewriter types in characters. The
+   * cursor is positioned absolutely so it doesn't add width. */
+  min-width: 7ch;
+}
+
+.wordmarkText {
+  white-space: pre;
+}
+
+.wordmarkCursor {
+  display: inline-block;
+  margin-left: 1px;
+  font-weight: 400;
+  color: var(--accent);
+  animation: subnavCursorBlink 880ms steps(1, end) infinite;
+}
+
+@keyframes subnavCursorBlink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wordmarkCursor {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .crumb {
