@@ -58,6 +58,14 @@ class TaskExecutor:
     rpm_limit: int = 60
     progress: ProgressListener | None = None
     clock: Callable[[], str] = _utc_now_iso
+    # Maximum seconds to wait for in-flight LLM calls to finish
+    # naturally after Stop is requested. ``0`` = cancel immediately
+    # (rolls in-flight subtasks back to PENDING, wastes any tokens
+    # already produced — the historical default for tests). Production
+    # orchestrators pass a real timeout so paid work can settle before
+    # cancellation kicks in. The wait is bounded so a wedged HTTP call
+    # cannot block Stop forever.
+    stop_drain_seconds: float = 0.0
 
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
     _pause_request: asyncio.Event = field(
@@ -199,8 +207,21 @@ class TaskExecutor:
 
         await self._stop_event.wait()
         self._update_record_status(task_id, TaskStatus.STOPPING)
-        # Wait for in-flight LLM calls to settle naturally.
+        # Wait up to ``stop_drain_seconds`` for in-flight LLM calls to
+        # settle naturally. Once the deadline passes (or the count hits
+        # zero) we cancel any remaining worker tasks so ``gather()`` can
+        # complete and ``run()`` returns. Cancelled in-flight runners
+        # roll back to PENDING so resume re-runs them.
+        deadline = (
+            asyncio.get_event_loop().time() + max(0.0, self.stop_drain_seconds)
+            if self.stop_drain_seconds > 0
+            else 0.0
+        )
         while self._active_runners > 0:
+            if self.stop_drain_seconds <= 0:
+                break
+            if asyncio.get_event_loop().time() >= deadline:
+                break
             await asyncio.sleep(0.05)
         for worker in workers:
             if not worker.done():

@@ -144,8 +144,6 @@ export const zh: Messages = {
     descriptionPlaceholder: "选择列表中的简短说明——本预设的用途",
     enabledLabel: "启用",
     systemTab: "系统提示词",
-    systemTabHelp:
-      "主提示词。设定模型的角色、核心规则、文风基线。每次调用都会发送，是翻译质量的根本依据。",
     saveAction: "保存",
     cancelAction: "取消",
     resetAction: "恢复默认",

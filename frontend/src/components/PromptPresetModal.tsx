@@ -306,7 +306,6 @@ export function PromptPresetModal({
           )}
 
           <div className={styles.sectionLabel}>{m.systemTab}</div>
-          <div className={styles.tabHelp}>{m.systemTabHelp}</div>
           <TextField
             label=""
             value={draft.system_prompt}

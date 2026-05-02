@@ -150,8 +150,6 @@ export const en: Messages = {
       "Short note for the picker — what this preset is for",
     enabledLabel: "Enabled",
     systemTab: "System prompt",
-    systemTabHelp:
-      "Primary instructions: role, core rules, style baseline. Sent on every call — this is the bedrock of translation quality.",
     saveAction: "Save",
     cancelAction: "Cancel",
     resetAction: "Reset to default",

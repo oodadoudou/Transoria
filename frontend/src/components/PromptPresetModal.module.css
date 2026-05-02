@@ -70,16 +70,6 @@
   border-radius: 4px;
 }
 
-.tabHelp {
-  margin: -6px 0 4px;
-  padding: 8px 10px;
-  background: var(--panel-soft, #f5f0e9);
-  border-radius: 6px;
-  color: var(--muted, #7a7166);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .sectionLabel {
   margin-top: 4px;
   color: var(--ink, #2c2620);

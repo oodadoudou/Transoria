@@ -208,6 +208,11 @@ class TranslationOrchestrator:
             rpm_limit=max(0, config.model.rpm_limit),
             progress=self.progress,
             clock=self.clock,
+            # Drain in-flight LLM calls naturally on stop instead of
+            # cancelling mid-call. Bound by the model's per-request
+            # timeout (with headroom) so a wedged HTTP call still
+            # eventually unsticks Stop.
+            stop_drain_seconds=max(5.0, float(config.model.timeout_seconds) + 5.0),
         )
         if self.on_executor_created is not None:
             self.on_executor_created(executor)
