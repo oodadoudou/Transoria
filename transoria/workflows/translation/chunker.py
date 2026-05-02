@@ -203,18 +203,18 @@ def format_glossary_section(entries: Iterable[GlossaryEntry]) -> str:
 
 
 def format_context_section(context_lines: Iterable[str]) -> str:
-    """Format preceding source lines as a small JSONL block.
+    """Format preceding source lines as plain text, one per line.
 
-    Negative indices distinguish context lines from the main translation
-    block in the same envelope.
+    The model only needs to *read* the context for narrative continuity
+    — it never needs to parse it back to indices, so JSON wrapping was
+    pure tokens-on-the-wire overhead (~10 tokens per line). Joining with
+    newlines and stripping any embedded line breaks keeps the section
+    visually distinct from the JSONL ``[Translate]`` block below it
+    while costing the minimum tokens.
     """
 
-    lines: list[str] = []
-    materialized = list(context_lines)
-    for offset, text in enumerate(materialized, start=1):
-        index = offset - len(materialized) - 1  # ..., -3, -2, -1
-        lines.append(json.dumps({str(index): text}, ensure_ascii=False))
-    return "\n".join(lines)
+    cleaned = (line.replace("\n", " ").rstrip() for line in context_lines)
+    return "\n".join(line for line in cleaned if line)
 
 
 def assemble_user_prompt(chunk: TranslationChunk) -> str:
