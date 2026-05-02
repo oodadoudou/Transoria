@@ -152,6 +152,7 @@ _TRANSLATION_SYSTEM_ZH = """\
 要求：
 - 保持原文含义、信息与可见结构。
 - 保留变量、占位符、转义、HTML/XML 标签、ID、URL、文件路径、代码片段等不可译内容。
+- 标点忠实原文：保留原引号/括号家族，不替换，也不补全原文没有的句尾标点。
 - 遵循当前预设中的用户指令；不要添加当前预设未要求的风格、解释或评价。"""
 
 _TRANSLATION_SYSTEM_EN = """\
@@ -160,6 +161,7 @@ Task: translate the source text into {target_language}.
 Requirements:
 - Preserve the source meaning, information, and visible structure.
 - Preserve non-translatable content verbatim, including variables, placeholders, escapes, HTML/XML tags, IDs, URLs, file paths, and code fragments.
+- Preserve source punctuation: keep its quote/bracket family; do not substitute, and do not add closing punctuation the source does not have.
 - Follow the active preset's user instructions; do not add style, explanation, or judgment that the active preset did not request."""
 
 _TRANSLATION_SUFFIX_ZH = """\
