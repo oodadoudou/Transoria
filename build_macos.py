@@ -72,8 +72,21 @@ def main() -> None:
         f"{ROOT / 'pyproject.toml'}:.",
         "--collect-data",
         "webview",
+        "--collect-data",
+        "openpyxl",
         "--hidden-import",
         "webview.platforms.cocoa",
+        # Defensive: PyInstaller usually finds these via static analysis,
+        # but explicit hidden imports survive analyzer drift across
+        # PyInstaller / lxml / chardet upgrades.
+        "--hidden-import",
+        "lxml._elementpath",
+        "--hidden-import",
+        "lxml.etree",
+        "--hidden-import",
+        "chardet",
+        "--hidden-import",
+        "json_repair",
         str(ROOT / "app.py"),
     ]
     _run(cmd, cwd=ROOT)

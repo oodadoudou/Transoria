@@ -45,12 +45,18 @@ def main() -> None:
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     SPEC_DIR.mkdir(parents=True, exist_ok=True)
 
+    # ``--onefile`` produces a single self-extracting Transoria.exe so
+    # the user can drop the file anywhere and run it without keeping a
+    # surrounding folder. Cold-start cost is one-time per launch
+    # (~3-5s on typical SSDs) — acceptable for a translation app that
+    # runs for minutes-to-hours per session.
     cmd = [
         sys.executable,
         "-m",
         "PyInstaller",
         "--noconfirm",
         "--clean",
+        "--onefile",
         "--windowed",
         "--name",
         "Transoria",
@@ -68,14 +74,31 @@ def main() -> None:
         "webview",
         "--collect-binaries",
         "webview",
+        "--collect-data",
+        "openpyxl",
         "--hidden-import",
         "webview.platforms.edgechromium",
+        # Defensive: PyInstaller usually finds these via static analysis,
+        # but explicit hidden imports survive analyzer drift across
+        # PyInstaller / lxml / chardet upgrades.
+        "--hidden-import",
+        "lxml._elementpath",
+        "--hidden-import",
+        "lxml.etree",
+        "--hidden-import",
+        "chardet",
+        "--hidden-import",
+        "json_repair",
         str(ROOT / "app.py"),
     ]
     _run(cmd, cwd=ROOT)
     _verify_spec_excludes_local_state()
-    print(f"[build] Windows app folder: {DIST_DIR / 'Transoria'}")
-    print(f"[build] Windows executable: {DIST_DIR / 'Transoria' / 'Transoria.exe'}")
+    exe_path = DIST_DIR / "Transoria.exe"
+    print(f"[build] Windows portable executable: {exe_path}")
+    print(
+        "[build] distribute this single file — no installer, no "
+        "surrounding folder required."
+    )
 
 
 def _npm() -> str:

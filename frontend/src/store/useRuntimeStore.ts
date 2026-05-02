@@ -138,16 +138,28 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     try {
       const { tasks } = await bridges[kind].listRecentTasks(1);
       const header = pickActive(tasks);
+      let recoveredTaskId: string | null = null;
+      if (!header) {
+        const probe = await bridges[kind].probeContinuable();
+        recoveredTaskId = probe.continuable ? probe.task_id : null;
+      }
+      const activeTaskId = header?.id ?? recoveredTaskId;
       set((state) =>
         withKind(state, kind, {
           loading: false,
           header,
-          activeTaskId: header?.id ?? null,
-          snapshot: header ? state[kind].snapshot : null,
-          failures: header ? state[kind].failures : [],
+          activeTaskId,
+          snapshot:
+            activeTaskId === state[kind].activeTaskId
+              ? state[kind].snapshot
+              : null,
+          failures:
+            activeTaskId === state[kind].activeTaskId
+              ? state[kind].failures
+              : [],
         }),
       );
-      if (header) {
+      if (activeTaskId) {
         await get().pollSnapshot(kind);
       }
     } catch (error) {
