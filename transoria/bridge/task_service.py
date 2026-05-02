@@ -137,15 +137,15 @@ def _utc_now_iso() -> str:
 
 
 # Per-request line budget derived from the model's ``input_token_limit``.
-# Larger chunks amortize the fixed per-request boilerplate (system
-# prompt, preceding context, glossary) over more output lines, so cost
-# per source line drops sharply. The /16 divisor matches the
-# tokens-per-line ratio observed across Korean/Chinese novel text and
-# mirrors the formula used by mature translation pipelines. Capped at
-# 64 to keep one request's JSONL response small enough that a single
-# token-attention drift doesn't take down the whole batch.
+# The /16 divisor approximates the average token-per-line ratio for
+# Korean/Chinese novel text plus per-request overhead (system prompt,
+# preceding context, glossary). Trusting the user's configured
+# ``input_token_limit`` here means a model with a 4 K input ceiling
+# yields ~250-line chunks, an 8 K ceiling yields ~500. Failure
+# recovery — binary chunk-split (3 rounds) + per-attempt retries +
+# positional rescue + low-confidence re-translate — covers the cases
+# where the model can't reliably emit a giant JSONL response.
 _CHUNK_SIZE_FLOOR = 8
-_CHUNK_SIZE_CEILING = 64
 _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED = 32
 
 
@@ -155,8 +155,6 @@ def _derive_chunk_size(input_token_limit: int) -> int:
     derived = input_token_limit // 16
     if derived < _CHUNK_SIZE_FLOOR:
         return _CHUNK_SIZE_FLOOR
-    if derived > _CHUNK_SIZE_CEILING:
-        return _CHUNK_SIZE_CEILING
     return derived
 
 
