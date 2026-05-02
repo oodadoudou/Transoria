@@ -4,9 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import platform
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -23,7 +27,7 @@ APP_DIR = DIST_DIR / "Transoria"
 # cannot see (the public API hides them behind runtime imports). Without
 # `--collect-submodules` the bundled exe boots and then dies with
 # `ModuleNotFoundError` on the first call into the package.
-SUBMODULE_PACKAGES = ("json_repair", "chardet", "lxml")
+SUBMODULE_PACKAGES = ("json_repair", "chardet", "lxml", "httpx")
 
 # Top-level packages required at runtime. Verified before invoking
 # PyInstaller so a missing pip dep fails fast with a clear message
@@ -36,6 +40,20 @@ REQUIRED_RUNTIME_IMPORTS = (
     "openpyxl",
     "webview",
 )
+
+# Microsoft's Edge WebView2 Evergreen Bootstrapper — a ~150 KB stub that
+# downloads + installs the actual runtime. We bundle this next to the
+# exe so ``Launch_Transoria.bat`` can install WebView2 silently on Win10
+# LTSC / Server SKUs / stripped images that don't ship it. The link
+# below is Microsoft's permanent fwlink and is permitted to redistribute
+# under the WebView2 Runtime distribution terms.
+WEBVIEW2_BOOTSTRAPPER_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+WEBVIEW2_BOOTSTRAPPER_NAME = "MicrosoftEdgeWebview2Setup.exe"
+
+# Smoke-test port. Picked high to avoid collision with services running
+# on the build machine; the launcher retries port+1 if this is taken.
+SMOKE_TEST_BRIDGE_PORT = 64577
+SMOKE_TEST_TIMEOUT_SECONDS = 8
 
 
 def main() -> None:
@@ -53,6 +71,24 @@ def main() -> None:
         help="Build only the onedir output and skip the release ZIP.",
     )
     parser.add_argument(
+        "--no-webview2-bootstrapper",
+        action="store_true",
+        help=(
+            "Skip downloading + bundling Microsoft's WebView2 Evergreen "
+            "Bootstrapper. By default the build downloads it (~150 KB) "
+            "from go.microsoft.com so the launcher can install WebView2 "
+            "on machines that don't already have it."
+        ),
+    )
+    parser.add_argument(
+        "--no-smoke-test",
+        action="store_true",
+        help=(
+            "Skip the post-build smoke test that boots the exe in "
+            "--bridge-only mode to verify all imports load cleanly."
+        ),
+    )
+    parser.add_argument(
         "--allow-non-windows",
         action="store_true",
         help="Allow command construction on non-Windows hosts for CI validation.",
@@ -62,6 +98,7 @@ def main() -> None:
     if sys.platform != "win32" and not args.allow_non_windows:
         raise SystemExit("Windows builds must run on Windows.")
 
+    _print_platform_banner()
     if not args.skip_frontend:
         _ensure_frontend_deps()
         _run([_npm(), "run", "build"], cwd=FRONTEND_DIR)
@@ -101,14 +138,24 @@ def main() -> None:
         f"{FRONTEND_DIST};frontend/dist",
         "--add-data",
         f"{ROOT / 'pyproject.toml'};.",
-        "--collect-data",
-        "webview",
-        "--collect-binaries",
+        # ``--collect-all webview`` is the union of ``--collect-data``,
+        # ``--collect-binaries``, ``--collect-submodules`` and
+        # ``--copy-metadata``. pywebview discovers its platform backends
+        # by importing them lazily at runtime; without metadata + every
+        # submodule, the exe boots into an empty window or raises
+        # ``ImportError: cannot import name 'guilib'``.
+        "--collect-all",
         "webview",
         "--collect-data",
         "openpyxl",
+        # Edge Chromium is the primary backend on Windows; winforms is
+        # kept as a defensive fallback so pywebview's platform-selection
+        # logic still has somewhere to land if WebView2 is absent at
+        # runtime (the launcher will normally install it first).
         "--hidden-import",
         "webview.platforms.edgechromium",
+        "--hidden-import",
+        "webview.platforms.winforms",
     ]
     for package in SUBMODULE_PACKAGES:
         cmd.extend(["--collect-submodules", package])
@@ -124,13 +171,18 @@ def main() -> None:
     _run(cmd, cwd=ROOT)
     _verify_spec_excludes_local_state()
     _write_distribution_artifacts()
+    if not args.no_webview2_bootstrapper:
+        _bundle_webview2_bootstrapper()
+    _write_launch_bat()
+    if not args.no_smoke_test:
+        _smoke_test_built_exe()
     print(f"[build] Windows portable app: {APP_DIR}")
     if not args.skip_zip:
         zip_path = _create_release_zip()
         print(f"[build] Windows release zip: {zip_path}")
         print(
-            "[build] distribute the ZIP — users extract the whole folder "
-            "before running Transoria.exe."
+            "[build] distribute the ZIP — users extract the whole folder, "
+            "double-click Launch_Transoria.bat (or Transoria.exe directly)."
         )
 
 
@@ -240,14 +292,20 @@ _README_CN = """\
 Transoria 启动说明（中文）
 ==========================
 
-【一、首次运行：解除 Mark-of-the-Web】
+【一、推荐启动方式：双击 Launch_Transoria.bat】
 
-从 GitHub Release 下载的 ZIP 在 Windows 上会被打上来源标记，可能导致
-启动时被系统拦截。请按以下任一种方式处理：
+我们在文件夹里放了一个一键启动脚本 Launch_Transoria.bat，它会自动
+帮你做三件事，避免在干净 Windows 机器上首次启动时踩坑：
 
-  1) 解压前：右键 ZIP 文件 → 属性 → 勾选「解除锁定」→ 应用 → 再解压。
-  2) 解压后：在 Transoria 目录中点 Transoria.exe → 右键 → 属性 →
-     若有「解除锁定」选项请勾选并应用。
+  1) 解除 Mark-of-the-Web 锁定（解决从 ZIP 解压后 _internal\\*.dll
+     加载失败「找不到指定的模块」的问题）。
+  2) 检测 Microsoft Edge WebView2 Runtime 是否安装；若缺失，自动
+     调用同目录下的 MicrosoftEdgeWebview2Setup.exe 静默安装
+     （Win10 LTSC / Server / 精简版镜像通常不自带 WebView2）。
+  3) 启动 Transoria.exe。
+
+如果你的 Windows 已经装好 WebView2，并且 ZIP 是右键属性「解除锁定」
+之后再解压的，那么直接双击 Transoria.exe 也能正常打开。
 
 请把 ZIP 解压到一个普通可写目录（如「文档」「桌面」或自建文件夹），
 不要解压到 C:\\Program Files、C:\\Windows、C:\\ 根目录这类受系统保护
@@ -256,14 +314,16 @@ Transoria 启动说明（中文）
 【二、目录结构】
 
   Transoria/
-    Transoria.exe          主程序，双击启动
-    README_CN.txt          本文件
-    README_EN.txt          English version
-    VERSION.txt            当前版本号
-    Input/                 示例输入目录（可用可不用）
-    Output/                示例输出目录（可用可不用）
-    User Data/             首次启动后自动生成；存放设置 / API Key / 任务缓存
-    _internal/             运行时依赖（请勿修改或删除）
+    Launch_Transoria.bat              推荐入口（解锁 + 检测 WebView2 + 启动）
+    Transoria.exe                     主程序
+    MicrosoftEdgeWebview2Setup.exe    WebView2 离线安装引导（约 150 KB）
+    README_CN.txt                     本文件
+    README_EN.txt                     English version
+    VERSION.txt                       当前版本号
+    Input/                            示例输入目录（可用可不用）
+    Output/                           示例输出目录（可用可不用）
+    User Data/                        首次启动后自动生成；存放设置 / API Key / 任务缓存
+    _internal/                        运行时依赖（请勿修改或删除）
 
 【三、使用流程】
 
@@ -304,15 +364,21 @@ _README_EN = """\
 Transoria Quick Start (English)
 ================================
 
-[1] First launch: clear the Mark-of-the-Web
+[1] Recommended: double-click Launch_Transoria.bat
 
-A ZIP downloaded from GitHub Releases is tagged by Windows as
-"from the Internet", which can block DLL loading on launch. Choose one:
+The folder includes a one-shot launcher that takes care of the three
+things that bite users on fresh Windows machines:
 
-  1) Before extracting: right-click the ZIP -> Properties ->
-     check "Unblock" -> Apply -> then extract.
-  2) After extracting: right-click Transoria.exe -> Properties ->
-     check "Unblock" if shown.
+  1) Clears the Mark-of-the-Web on every file in the folder (without
+     this, _internal\\*.dll fail to load with "module not found"
+     after a ZIP extracted from the internet).
+  2) Detects whether Microsoft Edge WebView2 Runtime is installed,
+     and silently installs it from the bundled bootstrapper if not.
+     Win10 LTSC / Server / minimal images often ship without WebView2.
+  3) Launches Transoria.exe.
+
+If your Windows already has WebView2 and you unblocked the ZIP before
+extracting, double-clicking Transoria.exe directly also works.
 
 Extract the ZIP to a regular writable folder (e.g. Documents, Desktop,
 or a folder you create). Do not extract into C:\\Program Files,
@@ -322,14 +388,16 @@ User Data folder will fail to write on first launch.
 [2] Folder layout
 
   Transoria/
-    Transoria.exe          Main program, double-click to launch
-    README_CN.txt          Chinese version
-    README_EN.txt          This file
-    VERSION.txt            Current version
-    Input/                 Example input folder (optional)
-    Output/                Example output folder (optional)
-    User Data/             Auto-created on first launch; settings, API keys, task cache
-    _internal/             Runtime dependencies (do not modify)
+    Launch_Transoria.bat              Recommended entry (unblock + WebView2 + launch)
+    Transoria.exe                     Main program
+    MicrosoftEdgeWebview2Setup.exe    WebView2 offline bootstrapper (~150 KB)
+    README_CN.txt                     Chinese version
+    README_EN.txt                     This file
+    VERSION.txt                       Current version
+    Input/                            Example input folder (optional)
+    Output/                           Example output folder (optional)
+    User Data/                        Auto-created on first launch; settings, API keys, task cache
+    _internal/                        Runtime dependencies (do not modify)
 
 [3] Usage
 
@@ -422,6 +490,191 @@ def _create_release_zip() -> Path:
 def _run(cmd: list[str], *, cwd: Path) -> None:
     print("[build]", " ".join(cmd))
     subprocess.run(cmd, cwd=cwd, check=True)
+
+
+def _print_platform_banner() -> None:
+    """Surface the build host's Python + arch up front so the operator
+    notices x64 vs ARM64 mismatches before shipping a wrong-arch
+    portable. PyInstaller produces an exe that matches the host's
+    architecture; cross-arch builds need a separate machine."""
+
+    arch = platform.machine() or "unknown"
+    print(
+        f"[build] host: Python {platform.python_version()} on "
+        f"{platform.system()} {platform.release()} ({arch})"
+    )
+    print(
+        f"[build] producing a {arch} Windows portable. "
+        "Users on a different CPU architecture (e.g. ARM64) will need "
+        "a build from a matching host."
+    )
+
+
+def _bundle_webview2_bootstrapper() -> None:
+    """Download Microsoft's WebView2 Evergreen Bootstrapper (~150 KB)
+    into the app folder. ``Launch_Transoria.bat`` runs it silently when
+    the runtime is missing so the user never sees a blank window on
+    Win10 LTSC / Server / minimal images that ship without WebView2.
+    Network failures degrade gracefully — the launcher falls back to
+    sending the user to Microsoft's download page."""
+
+    target = APP_DIR / WEBVIEW2_BOOTSTRAPPER_NAME
+    if target.exists() and target.stat().st_size > 0:
+        print(f"[build] WebView2 bootstrapper already present: {target.name}")
+        return
+    print(f"[build] downloading WebView2 bootstrapper from {WEBVIEW2_BOOTSTRAPPER_URL}")
+    try:
+        urllib.request.urlretrieve(WEBVIEW2_BOOTSTRAPPER_URL, target)
+    except (urllib.error.URLError, OSError) as exc:
+        print(
+            f"[build] WARNING: WebView2 bootstrapper download failed: {exc}\n"
+            "        The launcher will fall back to opening the MS download page."
+        )
+        # Drop a stub the launcher can detect-as-missing reliably.
+        if target.exists():
+            target.unlink()
+        return
+    size = target.stat().st_size
+    print(f"[build] bundled WebView2 bootstrapper ({size:,} bytes)")
+
+
+_LAUNCH_BAT = """@echo off
+setlocal EnableDelayedExpansion
+
+REM ============================================================
+REM  Transoria portable launcher
+REM
+REM  Steps (in order):
+REM    1) cd to the script's own directory so paths work no matter
+REM       where the user dropped the folder.
+REM    2) Unblock files via PowerShell. Windows tags everything
+REM       extracted from an internet-downloaded ZIP with the
+REM       Mark-of-the-Web. Without this, _internal\\python312.dll
+REM       and friends refuse to load on first launch.
+REM    3) Verify Microsoft Edge WebView2 Runtime is present. The
+REM       UI won't render without it. Install from the bundled
+REM       bootstrapper (preferred) or send the user to MS download.
+REM    4) Launch Transoria.exe.
+REM ============================================================
+
+cd /d "%~dp0"
+
+echo [Transoria] Preparing files (clearing Mark-of-the-Web)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path '%~dp0' -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue" >nul 2>&1
+
+set "WEBVIEW2_OK="
+for %%K in (
+    "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    "HKLM\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    "HKCU\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+) do (
+    reg query %%K /v pv >nul 2>&1
+    if !errorlevel! == 0 set "WEBVIEW2_OK=1"
+)
+
+if not defined WEBVIEW2_OK (
+    echo [Transoria] Microsoft Edge WebView2 Runtime is missing — required to render the UI.
+    if exist "%~dp0__BOOTSTRAPPER__" (
+        echo [Transoria] Installing it from the bundled setup ^(may prompt for UAC^)...
+        "%~dp0__BOOTSTRAPPER__" /silent /install
+        if errorlevel 1 (
+            echo [Transoria] WebView2 install failed.
+            echo            Install manually from:
+            echo            https://go.microsoft.com/fwlink/p/?LinkId=2124703
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo [Transoria] Opening the Microsoft download page in your browser...
+        start "" "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+        echo [Transoria] After installing WebView2, run Launch_Transoria.bat again.
+        pause
+        exit /b 1
+    )
+)
+
+start "" "%~dp0Transoria.exe"
+endlocal
+"""
+
+
+def _write_launch_bat() -> None:
+    """Drop ``Launch_Transoria.bat`` next to the exe. This is the
+    recommended entry point for end users — it papers over the two
+    most common "fresh Windows machine" failures (Mark-of-the-Web
+    locking files, WebView2 runtime missing) before invoking the exe.
+    Users who ignore it and double-click ``Transoria.exe`` directly
+    will still work fine on most Win10/Win11 machines that already
+    have WebView2 and unblocked files."""
+
+    bat_path = APP_DIR / "Launch_Transoria.bat"
+    body = _LAUNCH_BAT.replace("__BOOTSTRAPPER__", WEBVIEW2_BOOTSTRAPPER_NAME)
+    # ``encoding="ascii"`` enforces that we never accidentally drop a
+    # non-ASCII char into a .bat that runs under cp936/cp1252; cmd.exe
+    # is famously brittle around codepage mismatches.
+    bat_path.write_text(body, encoding="ascii", newline="\r\n")
+    print(f"[build] wrote launcher: {bat_path.name}")
+
+
+def _smoke_test_built_exe() -> None:
+    """Boot the freshly-built exe in ``--bridge-only`` mode for a few
+    seconds and verify it doesn't crash. Bridge-only loads the entire
+    Python import graph (json_repair, chardet, lxml, httpx, openpyxl,
+    transoria internals) without needing a GUI / WebView2 — perfect
+    for catching ``ModuleNotFoundError`` and DLL-load failures *here*
+    instead of in the user's hands."""
+
+    exe = APP_DIR / "Transoria.exe"
+    if not exe.is_file():
+        print("[build] smoke test skipped: exe not found")
+        return
+    print(
+        f"[build] smoke test: launching {exe.name} --bridge-only on port "
+        f"{SMOKE_TEST_BRIDGE_PORT}"
+    )
+    proc = subprocess.Popen(
+        [str(exe), "--bridge-only", "--bridge-port", str(SMOKE_TEST_BRIDGE_PORT)],
+        cwd=APP_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    try:
+        # If the exe crashes due to missing imports / DLLs, it exits in
+        # < 1s. If imports succeed, ``serve_forever`` blocks indefinitely
+        # — we wait the timeout and treat "still alive" as success.
+        try:
+            stdout, _ = proc.communicate(timeout=SMOKE_TEST_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            print(
+                f"[build] smoke test passed (process alive after "
+                f"{SMOKE_TEST_TIMEOUT_SECONDS}s)"
+            )
+            return
+        # Process exited within the timeout — that's a packaging bug.
+        # Surface stdout/stderr verbatim; users will need to add the
+        # missing module to SUBMODULE_PACKAGES or hidden imports.
+        raise SystemExit(
+            f"[build] smoke test FAILED: exe exited with code {proc.returncode}.\n"
+            "--- captured output ---\n"
+            f"{stdout}"
+            "--- end output ---\n"
+            "Common causes: missing hidden import, missing DLL, PyInstaller "
+            "analyzer drift. Add the missing module to SUBMODULE_PACKAGES "
+            "or to --hidden-import in the PyInstaller invocation."
+        )
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        # Give the OS a beat to release the bound port before any
+        # follow-up step (e.g. ZIP creation walks the same folder).
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
