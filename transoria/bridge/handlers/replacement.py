@@ -27,21 +27,39 @@ def _parse_rule_line(
     stripped = line.strip()
     if not stripped:
         return None, None
-    if stripped.startswith("#"):
+    # Comment lines start with `#` AND have no rule separator. A real
+    # rule line that happens to begin with `#` (some community formats
+    # use leading `#` as a context anchor on the source phrase) is not
+    # a comment and must still parse.
+    if stripped.startswith("#") and "->" not in stripped:
         return None, None
     if "->" not in stripped:
         return None, f"line {line_number}: missing '->' separator"
     src, _, dst = stripped.partition("->")
     src = src.strip()
     dst = dst.strip()
+    # Some replacement-rule conventions wrap the phrase in ``#`` as a
+    # context anchor (``src#->#dst``); these markers are not part of
+    # the actual text and must be stripped before the rule reaches
+    # ``apply_rules``, otherwise the literal ``#`` would never match
+    # in the user's source text. Only strip when both sides carry the
+    # marker — a one-sided ``#`` is more likely intentional content.
+    if src.endswith("#") and dst.startswith("#"):
+        src = src[:-1].rstrip()
+        dst = dst[1:].lstrip()
     if not src:
         return None, f"line {line_number}: empty source phrase"
     return (
         {
             "src": src,
             "dst": dst,
+            # Imported rules default to literal exact match — users
+            # writing ``original->replacement`` lines expect the source
+            # phrase to match verbatim, not as a regex. Anyone who
+            # wants regex / case-insensitive can flip those flags per
+            # rule afterwards in the UI.
             "regex": False,
-            "case_sensitive": False,
+            "case_sensitive": True,
             "enabled": True,
         },
         None,
