@@ -113,3 +113,9 @@
   gap: 14px 36px;
   margin-top: 6px;
 }
+
+.failuresPillRow {
+  display: flex;
+  justify-content: flex-start;
+  margin: 4px 0 2px;
+}

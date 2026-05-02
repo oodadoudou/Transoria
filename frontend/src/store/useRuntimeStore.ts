@@ -42,6 +42,18 @@ interface KindRuntime {
 
 const ERROR_HISTORY_CAP = 10;
 const autoOpenedTaskIds = new Set<string>();
+// Per-task-id dismissal tracking for the completion-with-failures
+// dialog. Module-level so navigating away and back doesn't re-open
+// the dialog the user already answered.
+const completionWithFailuresDismissed = new Set<string>();
+
+export function hasDismissedCompletionWithFailures(taskId: string): boolean {
+  return completionWithFailuresDismissed.has(taskId);
+}
+
+export function markCompletionWithFailuresDismissed(taskId: string): void {
+  completionWithFailuresDismissed.add(taskId);
+}
 
 const emptyRuntime: KindRuntime = {
   activeTaskId: null,
@@ -301,8 +313,6 @@ async function maybeOpenOutputFolder(
       await dialogsBridge.openDirectory(artifacts.output_folder);
     }
   } catch (error) {
-    useRuntimeStore
-      .getState()
-      .setLastError(kind, asBridgeError(error));
+    useRuntimeStore.getState().setLastError(kind, asBridgeError(error));
   }
 }

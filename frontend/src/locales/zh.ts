@@ -745,6 +745,25 @@ export const zh: Messages = {
     updateAction: "立即更新",
     laterAction: "稍后",
   },
+  failedSubtasksModal: {
+    triggerPrefix: "查看失败 (",
+    triggerSuffix: ")",
+    title: "失败分块",
+    fileLabel: "文件",
+    affectedLabel: "受影响",
+    noMessage: "（未提供错误描述）",
+    empty: "暂无失败分块。",
+    close: "关闭",
+  },
+  completionWithFailures: {
+    title: "本次运行存在失败分块",
+    bodyPrefix: "已结束的运行中有 ",
+    bodySuffix:
+      " 个分块失败。已写出部分结果（缺失段落保留原文）。可选择重跑失败分块以补齐，或直接接受当前结果。",
+    rerunAction: "重跑失败分块",
+    rerunPending: "正在启动…",
+    acceptAction: "接受当前结果",
+  },
   common: {
     placeholder:
       "该页面是第二阶段前端脚手架的一部分,后续阶段将与后端接口对接。",

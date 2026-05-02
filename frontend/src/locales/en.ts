@@ -770,6 +770,25 @@ export const en: Messages = {
     updateAction: "Update now",
     laterAction: "Later",
   },
+  failedSubtasksModal: {
+    triggerPrefix: "View failures (",
+    triggerSuffix: ")",
+    title: "Failed subtasks",
+    fileLabel: "File",
+    affectedLabel: "Affected",
+    noMessage: "(no error description)",
+    empty: "No failed subtasks.",
+    close: "Close",
+  },
+  completionWithFailures: {
+    title: "Run finished with failures",
+    bodyPrefix: "This run had ",
+    bodySuffix:
+      " failed chunk(s). A partial translation was written (missing segments fall back to the source text). You can rerun the failed chunks to fill in the gap, or accept the current result.",
+    rerunAction: "Rerun failed chunks",
+    rerunPending: "Starting…",
+    acceptAction: "Accept current result",
+  },
   common: {
     placeholder:
       "This page is part of the Phase 2 frontend scaffold and is wired to backend endpoints in a later phase.",

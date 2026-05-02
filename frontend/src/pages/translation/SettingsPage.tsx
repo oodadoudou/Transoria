@@ -156,7 +156,6 @@ export function SettingsPage() {
             onChange={(v) => moduleSettings.update("timeout_seconds", v)}
             help={settings.timeoutSecondsHelp}
             min={5}
-            max={600}
           />
         </Row>
       </Panel>

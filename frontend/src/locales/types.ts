@@ -681,5 +681,23 @@ export interface Messages {
     updateAction: string;
     laterAction: string;
   };
+  failedSubtasksModal: {
+    triggerPrefix: string;
+    triggerSuffix: string;
+    title: string;
+    fileLabel: string;
+    affectedLabel: string;
+    noMessage: string;
+    empty: string;
+    close: string;
+  };
+  completionWithFailures: {
+    title: string;
+    bodyPrefix: string;
+    bodySuffix: string;
+    rerunAction: string;
+    rerunPending: string;
+    acceptAction: string;
+  };
   common: { placeholder: string };
 }

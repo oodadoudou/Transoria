@@ -1,0 +1,190 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 110;
+}
+
+.modal {
+  background: var(--panel, #fff);
+  border-radius: 14px;
+  border: 1px solid var(--hairline, #ece8e2);
+  width: 100%;
+  max-width: 640px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink, #2c2620);
+}
+
+.countBadge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-warn, #6b3a1f);
+  background: var(--surface-warn, #fdf2ec);
+  border: 1px solid var(--surface-warn-border, #e0b0a0);
+  padding: 2px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.body {
+  padding: 4px 20px 12px;
+  overflow-y: auto;
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink, #2c2620);
+}
+
+.empty {
+  font-style: italic;
+  color: var(--muted, #7a7166);
+  margin: 8px 0;
+}
+
+.groupList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group {
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: var(--panel-soft, #fbf8f3);
+  overflow: hidden;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.groupHead:hover {
+  background: rgba(0, 0, 0, 0.025);
+}
+
+.groupCode {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.groupMessage {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--ink, #2c2620);
+  word-break: break-word;
+  min-width: 0;
+}
+
+.groupCount {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-warn, #6b3a1f);
+  flex-shrink: 0;
+}
+
+.chevron {
+  color: var(--muted, #7a7166);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.groupBody {
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--hairline, #ece8e2);
+  padding-top: 10px;
+}
+
+.fileList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.fileLabel {
+  font-size: 11px;
+  color: var(--muted, #7a7166);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.filePath {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11.5px;
+  color: var(--ink, #2c2620);
+  word-break: break-all;
+}
+
+.affectedRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.affectedLabel {
+  font-size: 11px;
+  color: var(--muted, #7a7166);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.chunkIds {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 11.5px;
+  color: var(--ink, #2c2620);
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--hairline, #ece8e2);
+}

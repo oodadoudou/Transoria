@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMessages, useI18n } from "@/locales";
+import { glossaryBridge, BridgeError } from "@/bridge";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
+  hasDismissedCompletionWithFailures,
+  markCompletionWithFailuresDismissed,
   useRunSnapshot,
   usePollRunSnapshot,
   useRuntimeStore,
@@ -13,11 +16,13 @@ import {
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
+import { Pill } from "@/components/Pill";
 import { ProgressRing } from "@/components/ProgressRing";
 import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
 import { LiveRequestCounter } from "@/components/LiveRequestCounter";
 import { RunErrorBanner } from "@/components/RunErrorBanner";
-import { FailedSubtaskList } from "@/components/FailedSubtaskList";
+import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
+import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailuresDialog";
 import { RunControls } from "@/components/RunControls";
 import {
   QuickSwitchModal,
@@ -36,12 +41,14 @@ function formatDuration(seconds: number): string {
 export function RunPage() {
   const messages = useMessages();
   const { run } = messages.glossary;
+  const failedModalMessages = messages.failedSubtasksModal;
   const navigate = useTaskStore((state) => state.navigate);
   const profiles = useModelProfiles();
   const prompts = usePromptPresets("glossary");
   const promptSlice = prompts.glossary;
   const appSettings = useModuleSettings("app");
   const snapshot = useRunSnapshot("glossary");
+  const activeTaskId = useRuntimeStore((state) => state.glossary.activeTaskId);
   usePollRunSnapshot("glossary");
 
   // Refresh active-task state on mount so re-entering the page after
@@ -50,6 +57,47 @@ export function RunPage() {
   useEffect(() => {
     void useRuntimeStore.getState().refreshActiveTask("glossary");
   }, []);
+
+  const [failedModalOpen, setFailedModalOpen] = useState(false);
+  const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
+  const [rerunPending, setRerunPending] = useState(false);
+
+  useEffect(() => {
+    if (!activeTaskId) return;
+    if (snapshot.status !== "completed" && snapshot.status !== "failed") {
+      return;
+    }
+    if (snapshot.progress.failed <= 0) return;
+    if (snapshot.progress.completed <= 0) return;
+    if (hasDismissedCompletionWithFailures(activeTaskId)) return;
+    setCompletionPromptOpen(true);
+  }, [
+    activeTaskId,
+    snapshot.status,
+    snapshot.progress.failed,
+    snapshot.progress.completed,
+  ]);
+
+  const handleAcceptCompletion = () => {
+    if (activeTaskId) markCompletionWithFailuresDismissed(activeTaskId);
+    setCompletionPromptOpen(false);
+  };
+
+  const handleRerunFailed = async () => {
+    if (!activeTaskId || rerunPending) return;
+    setRerunPending(true);
+    try {
+      await glossaryBridge.continueTask(activeTaskId);
+      setCompletionPromptOpen(false);
+      await useRuntimeStore.getState().refreshActiveTask("glossary");
+    } catch (error) {
+      if (BridgeError.isBridgeError(error)) {
+        useRuntimeStore.getState().setLastError("glossary", error);
+      }
+    } finally {
+      setRerunPending(false);
+    }
+  };
 
   const activeModelId = appSettings.draft?.active_glossary_model_id ?? null;
   const activeModel = activeModelId
@@ -152,9 +200,28 @@ export function RunPage() {
       ) : null}
 
       {snapshot.failures.length > 0 ? (
-        <Panel label={run.failedSubtasks}>
-          <FailedSubtaskList failures={snapshot.failures} />
-        </Panel>
+        <div className={styles.failuresPillRow}>
+          <Pill
+            variant="ghost"
+            onClick={() => setFailedModalOpen(true)}
+          >{`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}</Pill>
+        </div>
+      ) : null}
+
+      {failedModalOpen ? (
+        <FailedSubtasksModal
+          failures={snapshot.failures}
+          onClose={() => setFailedModalOpen(false)}
+        />
+      ) : null}
+
+      {completionPromptOpen ? (
+        <CompletionWithFailuresDialog
+          failedCount={snapshot.progress.failed}
+          rerunPending={rerunPending}
+          onRerun={handleRerunFailed}
+          onAccept={handleAcceptCompletion}
+        />
       ) : null}
 
       <Panel label={run.progress}>
