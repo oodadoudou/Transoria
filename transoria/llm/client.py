@@ -242,14 +242,17 @@ class HttpxChatTransport:
 # HTTP statuses that warrant rotating to the next API key.
 _ROTATABLE_STATUSES: frozenset[int] = frozenset({401, 403, 429})
 
-# Thinking-level keyword sent to OpenAI-compatible reasoning models.
-# Volcengine Ark and DeepSeek hybrid models accept ``thinking.type=enabled``;
-# the ``effort`` field mirrors OpenAI's ``reasoning_effort`` for providers that
-# expose graded reasoning. Providers ignore unknown sub-fields in practice.
+# OpenAI-compatible reasoning toggle. We send only ``{"type": "enabled"}``
+# so the provider applies its own thinking budget — DeepSeek-v4-pro and
+# Volcengine Ark will use a modest default, whereas an explicit
+# ``effort=high`` would force the model into its most expensive
+# reasoning tier (4x the token cost on real workloads). Users who want
+# explicit graded reasoning can configure ``custom_headers`` /
+# provider-specific overrides directly on the model.
 def _thinking_payload(level: ThinkingLevel) -> dict[str, object] | None:
     if level is ThinkingLevel.OFF:
         return None
-    return {"type": "enabled", "effort": level.value}
+    return {"type": "enabled"}
 
 
 # Anthropic's ``/v1/messages`` requires a non-zero ``max_tokens``; sending
@@ -386,7 +389,7 @@ class LlmClient:
         if request.model.thinking_enabled:
             payload["thinking"] = {
                 "type": "enabled",
-                "budget_tokens": request.model.thinking_budget_tokens,
+                "budget_tokens": request.model.effective_thinking_budget(),
             }
 
         url = request.model.base_url.rstrip("/") + "/v1/messages"
@@ -431,7 +434,7 @@ class LlmClient:
             generation_config["temperature"] = request.temperature
         if request.model.thinking_enabled:
             generation_config["thinkingConfig"] = {
-                "thinkingBudget": request.model.thinking_budget_tokens
+                "thinkingBudget": request.model.effective_thinking_budget()
             }
         if generation_config:
             payload["generationConfig"] = generation_config

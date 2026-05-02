@@ -136,6 +136,30 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
+# Per-request line budget derived from the model's ``input_token_limit``.
+# Larger chunks amortize the fixed per-request boilerplate (system
+# prompt, preceding context, glossary) over more output lines, so cost
+# per source line drops sharply. The /16 divisor matches the
+# tokens-per-line ratio observed across Korean/Chinese novel text and
+# mirrors the formula used by mature translation pipelines. Capped at
+# 64 to keep one request's JSONL response small enough that a single
+# token-attention drift doesn't take down the whole batch.
+_CHUNK_SIZE_FLOOR = 8
+_CHUNK_SIZE_CEILING = 64
+_CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED = 32
+
+
+def _derive_chunk_size(input_token_limit: int) -> int:
+    if input_token_limit <= 0:
+        return _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED
+    derived = input_token_limit // 16
+    if derived < _CHUNK_SIZE_FLOOR:
+        return _CHUNK_SIZE_FLOOR
+    if derived > _CHUNK_SIZE_CEILING:
+        return _CHUNK_SIZE_CEILING
+    return derived
+
+
 def _new_task_id(kind: str) -> str:
     return f"{kind}-{uuid4().hex[:12]}"
 
@@ -913,6 +937,7 @@ class TaskService:
                 translation.bilingual_subfolder_name or "bilingual outputs"
             ),
             context_line_count=max(0, int(translation.context_lines)),
+            chunk_size=_derive_chunk_size(model.input_token_limit),
             low_confidence_max_retries=max(
                 0, int(translation.low_confidence_max_retries)
             ),

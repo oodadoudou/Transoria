@@ -60,7 +60,14 @@ class ModelConfig:
     retry_initial_backoff_seconds: float = 1.0
     retry_max_backoff_seconds: float = 30.0
     max_output_tokens: int = 4096
-    thinking_budget_tokens: int = 4096
+    # Upper bound on the provider-native reasoning token budget. Acts
+    # as a ceiling when ``thinking_level`` maps to a smaller value (LOW
+    # =384, MEDIUM=768, HIGH=1024). Lowering this from the historical
+    # 4096 default cut translation cost ~4x for users running providers
+    # whose thinking tokens are billed as output (DeepSeek-v4-pro,
+    # Claude, Gemini). Power users can raise it back when they want
+    # deeper reasoning at proportional cost.
+    thinking_budget_tokens: int = 1024
     input_token_limit: int = 0
     top_p: float | None = None
     temperature: float | None = None
@@ -88,6 +95,26 @@ class ModelConfig:
         or because the user opted into forced fake-thinking on a
         non-thinking model."""
         return self.thinking_enabled or self.force_thinking_enable
+
+    def effective_thinking_budget(self) -> int:
+        """Token budget actually sent to the provider, scaled by
+        ``thinking_level``. Mirrors the LOW=384 / MEDIUM=768 / HIGH=1024
+        ladder that mature translation pipelines use — these values
+        produce meaningfully different reasoning depth without burning
+        4x the tokens of a flat cap. Capped by the user-configured
+        ``thinking_budget_tokens`` so power users can override upward.
+        """
+        if self.thinking_level is ThinkingLevel.OFF:
+            return 0
+        ladder = {
+            ThinkingLevel.LOW: 384,
+            ThinkingLevel.MEDIUM: 768,
+            ThinkingLevel.HIGH: 1024,
+        }
+        scaled = ladder[self.thinking_level]
+        if self.thinking_budget_tokens > 0:
+            return min(scaled, self.thinking_budget_tokens)
+        return scaled
 
     def with_api_keys(self, keys: tuple[str, ...]) -> ModelConfig:
         return replace(self, api_keys=tuple(keys))
