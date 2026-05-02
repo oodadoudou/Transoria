@@ -194,7 +194,9 @@ export function BatchReplacementPage() {
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
   const failed = snapshot.progress.failed;
-  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  // Floor (not round) so near-finished runs like 400/402 stay at 99%
+  // instead of misleadingly showing 100% before all subtasks settle.
+  const percent = total > 0 ? Math.floor((completed / total) * 100) : 0;
 
   return (
     <>

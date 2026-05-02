@@ -96,7 +96,9 @@ export function RunPage() {
   const completed = snapshot.progress.completed;
   const failed = snapshot.progress.failed;
   const remaining = snapshot.progress.pending + snapshot.progress.running;
-  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  // Floor (not round) so a near-finished run like 400/402 renders 99%,
+  // not a misleading 100%, until every subtask actually completes.
+  const percent = total > 0 ? Math.floor((completed / total) * 100) : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
 
