@@ -680,6 +680,13 @@ export interface Messages {
     notesEmpty: string;
     updateAction: string;
     laterAction: string;
+    autoUpdateAction: string;
+    autoPreparingAction: string;
+    autoReadyAction: string;
+    autoPreparing: string;
+    autoReadyPrefix: string;
+    autoReadySuffix: string;
+    autoFailed: string;
   };
   failedSubtasksModal: {
     triggerPrefix: string;

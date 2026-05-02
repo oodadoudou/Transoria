@@ -63,8 +63,15 @@ export function App() {
       {updatePrompt.result ? (
         <UpdateAvailableModal
           result={updatePrompt.result}
+          canAutoUpdate={updatePrompt.canAutoUpdate}
+          autoUpdateState={updatePrompt.autoUpdateState}
+          autoUpdateError={updatePrompt.autoUpdateError}
+          shutdownInSeconds={updatePrompt.shutdownInSeconds}
           onDismiss={updatePrompt.dismiss}
           onUpdateNow={updatePrompt.goToReleasePage}
+          onAutoUpdate={() => {
+            void updatePrompt.applyAutoUpdate();
+          }}
         />
       ) : null}
       <ToastHost />

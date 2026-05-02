@@ -744,6 +744,14 @@ export const zh: Messages = {
     notesEmpty: "（本次发布未提供更新说明。）",
     updateAction: "立即更新",
     laterAction: "稍后",
+    autoUpdateAction: "下载并自动更新",
+    autoPreparingAction: "正在下载…",
+    autoReadyAction: "更新已就绪",
+    autoPreparing: "正在下载并准备更新文件，请稍候。",
+    autoReadyPrefix: "更新已就绪，App 将在 ",
+    autoReadySuffix:
+      " 秒后自动关闭。完成后请双击 Launch_Transoria.bat 启动新版（设置与密钥已自动保留）。",
+    autoFailed: "自动更新失败",
   },
   failedSubtasksModal: {
     triggerPrefix: "查看失败 (",

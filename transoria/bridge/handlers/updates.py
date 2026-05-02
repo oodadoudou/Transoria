@@ -10,8 +10,14 @@ clean state.
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
+import threading
+import time
 import webbrowser
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Protocol
@@ -33,6 +39,14 @@ class UpdateChecker(Protocol):
     def download_asset(
         self, *, url: str, suggested_filename: str
     ) -> str: ...
+
+    def apply_update_windows(
+        self,
+        *,
+        url: str,
+        suggested_filename: str,
+        target_version: str,
+    ) -> Mapping[str, object]: ...
 
 
 @dataclass(frozen=True)
@@ -76,6 +90,20 @@ class NullUpdateChecker:
         raise BridgeError(
             "bridge.io_error",
             "asset download is unavailable in this build.",
+            retryable=False,
+            details={"url": url, "filename": suggested_filename},
+        )
+
+    def apply_update_windows(
+        self,
+        *,
+        url: str,
+        suggested_filename: str,
+        target_version: str,
+    ) -> Mapping[str, object]:
+        raise BridgeError(
+            "bridge.io_error",
+            "Windows auto-update is unavailable in this build.",
             retryable=False,
             details={"url": url, "filename": suggested_filename},
         )
@@ -160,6 +188,155 @@ class GithubReleaseChecker:
         path.write_bytes(response.content)
         return str(path)
 
+    def apply_update_windows(
+        self,
+        *,
+        url: str,
+        suggested_filename: str,
+        target_version: str,
+    ) -> Mapping[str, object]:
+        """Stage a Windows update and spawn a helper batch script.
+
+        Steps:
+        1. Refuse if not on Windows or not packaged (PyInstaller frozen).
+        2. Locate install root from ``sys.executable``; sanity-check that
+           ``Transoria.exe`` lives there.
+        3. Create a per-PID staging dir under the OS temp area so cleanup
+           never touches the install tree even if it crashes.
+        4. Stream-download the zip (long timeout for slow networks).
+        5. Validate (zipfile open) and extract to staging.
+        6. Locate the inner ``Transoria/`` payload.
+        7. Materialize ``apply.bat`` with PID + paths interpolated.
+        8. Spawn it detached in a fresh console so the user sees progress.
+        9. Schedule a graceful App shutdown ~2 s later so the bridge HTTP
+           response can flush back to the renderer first.
+
+        The bat preserves user-owned dirs (``User Data``, ``Input``,
+        ``Output``) via robocopy ``/XD``. The user must relaunch via
+        ``Launch_Transoria.bat`` after the helper finishes.
+        """
+
+        if sys.platform != "win32":
+            raise BridgeError(
+                "update.unsupported_platform",
+                "Windows auto-update is only available on Windows.",
+                retryable=False,
+                details={"platform": sys.platform},
+            )
+        if not getattr(sys, "frozen", False):
+            raise BridgeError(
+                "update.not_packaged",
+                "Auto-update requires the packaged build; running from source must update via git.",
+                retryable=False,
+            )
+
+        install_root = Path(sys.executable).resolve().parent
+        if not (install_root / "Transoria.exe").exists():
+            raise BridgeError(
+                "update.unexpected_install_layout",
+                "Could not locate Transoria.exe next to the running executable.",
+                retryable=False,
+                details={"install_root": str(install_root)},
+            )
+
+        staging = Path(tempfile.gettempdir()) / f"transoria-updater-{os.getpid()}"
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True, exist_ok=True)
+
+        zip_path = staging / _safe_filename(suggested_filename)
+        self._stream_download(url, zip_path)
+
+        try:
+            with zipfile.ZipFile(zip_path) as archive:
+                members = archive.namelist()
+            if not members:
+                raise BridgeError(
+                    "update.malformed_archive",
+                    "Downloaded zip is empty.",
+                    retryable=True,
+                )
+        except zipfile.BadZipFile as exc:
+            raise BridgeError(
+                "update.malformed_archive",
+                "Downloaded file is not a valid zip archive.",
+                retryable=True,
+            ) from exc
+
+        extracted = staging / "extracted"
+        extracted.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(extracted)
+
+        payload_root: Path | None = None
+        for child in extracted.iterdir():
+            if child.is_dir() and (child / "Transoria.exe").exists():
+                payload_root = child
+                break
+        if payload_root is None:
+            raise BridgeError(
+                "update.malformed_archive",
+                "Downloaded archive does not contain a Transoria/ payload with Transoria.exe.",
+                retryable=False,
+                details={"members_sampled": members[:5]},
+            )
+
+        apply_bat = staging / "apply.bat"
+        # Force backslashes so the bat text is valid Windows syntax
+        # regardless of which OS the substitution runs on. In production
+        # (sys.platform=="win32") this is already the form Path emits;
+        # in tests that monkeypatch sys.platform on a POSIX host it
+        # ensures the rendered bat is what Windows would actually run.
+        apply_bat.write_text(
+            _APPLY_BAT_TEMPLATE.format(
+                target_pid=os.getpid(),
+                payload_root=_as_windows_path(payload_root),
+                install_root=_as_windows_path(install_root),
+                staging_root=_as_windows_path(staging),
+                target_version=target_version or "(unknown)",
+            ),
+            encoding="utf-8",
+        )
+
+        # CREATE_NEW_CONSOLE makes the helper's progress visible to the
+        # user; CREATE_NEW_PROCESS_GROUP detaches it from the parent so
+        # the App can exit independently. close_fds + DEVNULL pipes
+        # ensure no inherited handles keep file locks alive.
+        CREATE_NEW_CONSOLE = 0x00000010
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        subprocess.Popen(
+            ["cmd.exe", "/c", str(apply_bat)],
+            cwd=str(staging),
+            creationflags=CREATE_NEW_CONSOLE | CREATE_NEW_PROCESS_GROUP,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        _schedule_app_shutdown_for_update()
+
+        return {
+            "staging_root": str(staging),
+            "install_root": str(install_root),
+            "shutdown_in_seconds": _SHUTDOWN_DELAY_SECONDS,
+        }
+
+    def _stream_download(self, url: str, dest: Path) -> None:
+        timeout = httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)
+        with self._client(timeout=timeout) as client:
+            with client.stream("GET", url) as response:
+                if response.status_code >= 400:
+                    raise BridgeError(
+                        "update.network_unavailable",
+                        f"download failed with HTTP {response.status_code}.",
+                        retryable=True,
+                        details={"url": url},
+                    )
+                with dest.open("wb") as fh:
+                    for chunk in response.iter_bytes(chunk_size=65536):
+                        fh.write(chunk)
+
     def _latest_tag(self) -> Mapping[str, object] | None:
         tags = self._get_json(f"{self._api_base()}/tags")
         if isinstance(tags, list) and tags and isinstance(tags[0], Mapping):
@@ -196,7 +373,7 @@ class GithubReleaseChecker:
                 retryable=True,
             ) from exc
 
-    def _client(self, *, timeout: float):
+    def _client(self, *, timeout: "float | httpx.Timeout"):
         if self.client_factory is not None:
             return self.client_factory(timeout=timeout)
         kwargs: dict[str, object] = {"timeout": timeout}
@@ -292,6 +469,111 @@ def _version_parts(value: str) -> tuple[int, ...]:
     return tuple(parts)
 
 
+# Curly-brace placeholders are str.format()-substituted at write time.
+# Batch syntax has no literal `{` / `}`, so no escaping is needed.
+# Excluded dirs (``User Data``, ``Input``, ``Output``) are matched by
+# name against both the source and destination trees by robocopy.
+_APPLY_BAT_TEMPLATE = """@echo off
+setlocal EnableDelayedExpansion
+title Transoria Updater
+
+set "TARGET_PID={target_pid}"
+set "PAYLOAD_ROOT={payload_root}"
+set "INSTALL_ROOT={install_root}"
+set "STAGING_ROOT={staging_root}"
+set /a "WAIT_COUNT=0"
+
+echo.
+echo Transoria updater - applying {target_version}
+echo Waiting for the running app to close...
+:wait
+tasklist /NH /FI "PID eq %TARGET_PID%" 2>nul | find /I "exe" >nul
+if %errorlevel% equ 0 (
+  set /a "WAIT_COUNT+=1"
+  if !WAIT_COUNT! gtr 60 (
+    echo.
+    echo ERROR: Transoria did not close within 60 seconds.
+    echo The downloaded update is staged at:
+    echo   %STAGING_ROOT%
+    echo You can apply it manually by copying the extracted Transoria folder
+    echo over your install while Transoria is closed.
+    pause
+    exit /b 1
+  )
+  timeout /t 1 /nobreak >nul
+  goto wait
+)
+
+echo App closed. Releasing file handles...
+timeout /t 2 /nobreak >nul
+
+echo Replacing files (preserving User Data, Input, Output)...
+robocopy "%PAYLOAD_ROOT%" "%INSTALL_ROOT%" /E /XD "User Data" Input Output /R:5 /W:2
+set "RC=%errorlevel%"
+
+REM robocopy: 0 = no copy needed, 1-7 = success-with-info, 8+ = error
+if %RC% gtr 7 (
+  echo.
+  echo ERROR: file replacement failed (robocopy code %RC%).
+  echo The downloaded update is staged at:
+  echo   %STAGING_ROOT%
+  pause
+  exit /b %RC%
+)
+
+echo Cleaning up staging files...
+rmdir /S /Q "%STAGING_ROOT%" 2>nul
+
+echo.
+echo Update applied successfully!
+echo Please double-click Launch_Transoria.bat to start the new version.
+echo This window will close in 5 seconds.
+timeout /t 5 /nobreak >nul
+exit /b 0
+"""
+
+
+_SHUTDOWN_DELAY_SECONDS = 2
+
+
+def _schedule_app_shutdown_for_update() -> None:
+    """Trigger a graceful App shutdown a couple of seconds after we
+    return, so the bridge HTTP response has time to flush back to the
+    renderer (which then shows the "App is closing" countdown).
+
+    Tries a clean ``webview.windows[*].destroy()`` first; falls back
+    to ``os._exit`` so the helper bat is never left waiting on a
+    hung process.
+    """
+
+    def _do_shutdown() -> None:
+        time.sleep(_SHUTDOWN_DELAY_SECONDS)
+        try:
+            import webview  # noqa: PLC0415
+        except ImportError:
+            os._exit(0)
+            return
+        try:
+            for window in list(getattr(webview, "windows", []) or []):
+                try:
+                    window.destroy()
+                except Exception:  # noqa: BLE001
+                    pass
+        finally:
+            # Belt-and-suspenders: the helper bat polls for our PID, so
+            # the process MUST exit. ``destroy()`` returns control to
+            # ``webview.start`` which then unwinds — but if pywebview
+            # gets stuck, hard-exit anyway.
+            time.sleep(1.0)
+            os._exit(0)
+
+    threading.Thread(target=_do_shutdown, daemon=True).start()
+
+
+def _as_windows_path(path: Path) -> str:
+    return str(path).replace("/", "\\")
+
+
 def _safe_filename(value: str) -> str:
     name = Path(value).name
     if not name or name in {".", ".."}:
@@ -342,10 +624,23 @@ def _build_handlers(
         saved = checker.download_asset(url=asset_url, suggested_filename=filename)
         return {"saved_path": saved}
 
+    def apply_update_windows(payload: Mapping[str, object]) -> dict[str, object]:
+        asset_url = expect_string(payload, "asset_url")
+        filename = expect_string(payload, "suggested_filename")
+        target_version = str(payload.get("target_version") or "")
+        return dict(
+            checker.apply_update_windows(
+                url=asset_url,
+                suggested_filename=filename,
+                target_version=target_version,
+            )
+        )
+
     return {
         "updates.check_latest": check_latest,
         "updates.open_release_page": open_release_page,
         "updates.download_asset": download_asset,
+        "updates.apply_update_windows": apply_update_windows,
     }
 
 

@@ -1,15 +1,28 @@
 import { useEffect, useState } from "react";
 
-import { BridgeError, updatesBridge, type UpdateCheckResult } from "@/bridge";
+import {
+  BridgeError,
+  appBridge,
+  updatesBridge,
+  type AppMetadata,
+  type UpdateCheckResult,
+} from "@/bridge";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useRuntimeStore } from "@/store/useRuntimeStore";
 
 const STARTUP_DELAY_MS = 2500;
 
+export type AutoUpdateState = "idle" | "preparing" | "ready" | "error";
+
 interface UpdatePromptApi {
   result: UpdateCheckResult | null;
+  canAutoUpdate: boolean;
+  autoUpdateState: AutoUpdateState;
+  autoUpdateError: string | null;
+  shutdownInSeconds: number | null;
   dismiss: () => void;
   goToReleasePage: () => void;
+  applyAutoUpdate: () => Promise<void>;
 }
 
 /** Startup-only update probe: 2.5s after first hydration, asks the
@@ -35,6 +48,13 @@ export function useUpdatePrompt(): UpdatePromptApi {
 
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
   const [checked, setChecked] = useState(false);
+  const [metadata, setMetadata] = useState<AppMetadata | null>(null);
+  const [autoUpdateState, setAutoUpdateState] =
+    useState<AutoUpdateState>("idle");
+  const [autoUpdateError, setAutoUpdateError] = useState<string | null>(null);
+  const [shutdownInSeconds, setShutdownInSeconds] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!hydrated || checked) return;
@@ -52,9 +72,16 @@ export function useUpdatePrompt(): UpdatePromptApi {
       void (async () => {
         try {
           const requestId = `update-prompt-${Date.now()}`;
-          const data = await updatesBridge.checkLatest(requestId, "stable");
+          // Fetch metadata in parallel so the modal can render the
+          // right button (auto-update vs open-release-page) the moment
+          // it appears, without a second round-trip.
+          const [data, meta] = await Promise.all([
+            updatesBridge.checkLatest(requestId, "stable"),
+            appBridge.getMetadata().catch(() => null),
+          ]);
           if (cancelled) return;
           setChecked(true);
+          if (meta) setMetadata(meta);
           if (
             data.is_newer_available &&
             data.latest_version &&
@@ -86,14 +113,43 @@ export function useUpdatePrompt(): UpdatePromptApi {
     replacementActive,
   ]);
 
+  // Tick the shutdown countdown so the modal can show "App will
+  // close in N seconds" while the backend's daemon thread is sleeping
+  // before tearing down the webview.
+  useEffect(() => {
+    if (shutdownInSeconds === null || shutdownInSeconds <= 0) return;
+    const handle = window.setTimeout(() => {
+      setShutdownInSeconds((current) =>
+        current === null ? null : Math.max(0, current - 1),
+      );
+    }, 1000);
+    return () => window.clearTimeout(handle);
+  }, [shutdownInSeconds]);
+
   const persistSkip = (latest: string): void => {
     if (!latest) return;
     updateField("app", "skipped_update_version", latest);
   };
 
+  const canAutoUpdate =
+    metadata?.platform === "win32" &&
+    metadata?.build_mode === "packaged" &&
+    !!result?.asset &&
+    result.asset.platform === "win32" &&
+    !!result.asset.download_url;
+
   return {
     result,
+    canAutoUpdate,
+    autoUpdateState,
+    autoUpdateError,
+    shutdownInSeconds,
     dismiss: () => {
+      if (autoUpdateState === "preparing" || autoUpdateState === "ready") {
+        // Mid-flight or already-staged: the App is about to close;
+        // the user dismissing the modal must not abort the shutdown.
+        return;
+      }
       if (result) persistSkip(result.latest_version);
       setResult(null);
     },
@@ -107,6 +163,37 @@ export function useUpdatePrompt(): UpdatePromptApi {
           // Already closed; if the open fails the user can still hit
           // GitHub manually. Silent by design.
         });
+      }
+    },
+    applyAutoUpdate: async () => {
+      if (!canAutoUpdate || !result?.asset) return;
+      if (autoUpdateState === "preparing" || autoUpdateState === "ready") {
+        return;
+      }
+      setAutoUpdateState("preparing");
+      setAutoUpdateError(null);
+      try {
+        const response = await updatesBridge.applyUpdateWindows(
+          result.asset.download_url,
+          result.asset.name,
+          result.latest_version,
+        );
+        // Persist skip BEFORE the App tears down so the next launch
+        // (after manual relaunch) doesn't re-prompt for the same
+        // version we just installed.
+        persistSkip(result.latest_version);
+        setShutdownInSeconds(
+          Math.max(1, Math.floor(response.shutdown_in_seconds || 2)),
+        );
+        setAutoUpdateState("ready");
+      } catch (error) {
+        const message = BridgeError.isBridgeError(error)
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : String(error);
+        setAutoUpdateError(message);
+        setAutoUpdateState("error");
       }
     },
   };

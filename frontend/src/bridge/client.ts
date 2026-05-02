@@ -427,4 +427,19 @@ export const updatesBridge = {
       suggested_filename: suggestedFilename,
     });
   },
+  applyUpdateWindows(
+    assetUrl: string,
+    suggestedFilename: string,
+    targetVersion: string,
+  ): Promise<{
+    staging_root: string;
+    install_root: string;
+    shutdown_in_seconds: number;
+  }> {
+    return call("updates.apply_update_windows", {
+      asset_url: assetUrl,
+      suggested_filename: suggestedFilename,
+      target_version: targetVersion,
+    });
+  },
 };

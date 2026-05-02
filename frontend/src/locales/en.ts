@@ -769,6 +769,14 @@ export const en: Messages = {
     notesEmpty: "(No release notes provided.)",
     updateAction: "Update now",
     laterAction: "Later",
+    autoUpdateAction: "Download and auto-update",
+    autoPreparingAction: "Downloading…",
+    autoReadyAction: "Update ready",
+    autoPreparing: "Downloading and staging the update, please wait.",
+    autoReadyPrefix: "Update ready. The app will close in ",
+    autoReadySuffix:
+      " seconds. After it closes, double-click Launch_Transoria.bat to start the new version (your settings and API keys are preserved).",
+    autoFailed: "Auto-update failed",
   },
   failedSubtasksModal: {
     triggerPrefix: "View failures (",

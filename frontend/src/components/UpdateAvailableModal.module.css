@@ -100,6 +100,34 @@
   margin: 4px 0 0;
 }
 
+.autoStatus {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--muted, #7a7166);
+  font-style: italic;
+}
+
+.autoStatusReady {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--text-warn, #6b3a1f);
+  background: var(--surface-warn, #fdf2ec);
+  border: 1px solid var(--surface-warn-border, #e0b0a0);
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.autoStatusError {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--text-warn, #6b3a1f);
+  background: var(--surface-warn, #fdf2ec);
+  border: 1px solid var(--surface-warn-border, #e0b0a0);
+  padding: 8px 10px;
+  border-radius: 6px;
+  word-break: break-word;
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;

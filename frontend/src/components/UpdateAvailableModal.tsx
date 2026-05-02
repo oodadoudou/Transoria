@@ -1,24 +1,37 @@
 import { useMessages } from "@/locales";
 import type { UpdateCheckResult } from "@/bridge";
 import { Pill } from "./Pill";
+import type { AutoUpdateState } from "./useUpdatePrompt";
 import styles from "./UpdateAvailableModal.module.css";
 
 const MAX_NOTE_LINES = 12;
 
 interface UpdateAvailableModalProps {
   result: UpdateCheckResult;
+  canAutoUpdate: boolean;
+  autoUpdateState: AutoUpdateState;
+  autoUpdateError: string | null;
+  shutdownInSeconds: number | null;
   onDismiss: () => void;
   onUpdateNow: () => void;
+  onAutoUpdate: () => void;
 }
 
 export function UpdateAvailableModal({
   result,
+  canAutoUpdate,
+  autoUpdateState,
+  autoUpdateError,
+  shutdownInSeconds,
   onDismiss,
   onUpdateNow,
+  onAutoUpdate,
 }: UpdateAvailableModalProps) {
   const messages = useMessages().updatePrompt;
   const trimmedNotes = clampNotes(result.release_notes_markdown);
   const publishedAt = formatPublishedAt(result.published_at);
+  const inFlight =
+    autoUpdateState === "preparing" || autoUpdateState === "ready";
 
   return (
     <div
@@ -54,12 +67,37 @@ export function UpdateAvailableModal({
           ) : (
             <p className={styles.notesEmpty}>{messages.notesEmpty}</p>
           )}
+          {autoUpdateState === "preparing" ? (
+            <p className={styles.autoStatus}>{messages.autoPreparing}</p>
+          ) : null}
+          {autoUpdateState === "ready" ? (
+            <p className={styles.autoStatusReady}>
+              {messages.autoReadyPrefix}
+              <strong>{shutdownInSeconds ?? 0}</strong>
+              {messages.autoReadySuffix}
+            </p>
+          ) : null}
+          {autoUpdateState === "error" && autoUpdateError ? (
+            <p className={styles.autoStatusError}>
+              {messages.autoFailed}: {autoUpdateError}
+            </p>
+          ) : null}
         </div>
         <div className={styles.footer}>
-          <Pill variant="ghost" onClick={onDismiss}>
+          <Pill variant="ghost" onClick={onDismiss} disabled={inFlight}>
             {messages.laterAction}
           </Pill>
-          <Pill onClick={onUpdateNow}>{messages.updateAction}</Pill>
+          {canAutoUpdate && autoUpdateState !== "error" ? (
+            <Pill onClick={onAutoUpdate} disabled={inFlight}>
+              {autoUpdateState === "preparing"
+                ? messages.autoPreparingAction
+                : autoUpdateState === "ready"
+                  ? messages.autoReadyAction
+                  : messages.autoUpdateAction}
+            </Pill>
+          ) : (
+            <Pill onClick={onUpdateNow}>{messages.updateAction}</Pill>
+          )}
         </div>
       </div>
     </div>
