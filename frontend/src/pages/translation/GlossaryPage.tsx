@@ -26,6 +26,8 @@ import { GlossaryScrollNav } from "@/components/GlossaryScrollNav";
 
 type Toggle = "on" | "off";
 
+const SORT_STORAGE_KEY = "transoria.glossary.sortState";
+
 interface PersistedEntry {
   src: string;
   dst: string;
@@ -110,7 +112,32 @@ export function GlossaryPage() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [presetOpen, setPresetOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [sortState, setSortState] = useState<SortState | null>(null);
+  // Persist sort across navigation so users who switch to another
+  // config tab and come back find their column ordering intact.
+  // localStorage is sufficient — a sort preference doesn't need to
+  // round-trip through backend settings.
+  const [sortState, setSortState] = useState<SortState | null>(() => {
+    try {
+      const raw = window.localStorage.getItem(SORT_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as SortState) : null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      if (sortState) {
+        window.localStorage.setItem(
+          SORT_STORAGE_KEY,
+          JSON.stringify(sortState),
+        );
+      } else {
+        window.localStorage.removeItem(SORT_STORAGE_KEY);
+      }
+    } catch {
+      // localStorage may be denied (private mode, etc.); ignore.
+    }
+  }, [sortState]);
 
   const filteredEntries = (() => {
     const query = searchQuery.trim().toLowerCase();

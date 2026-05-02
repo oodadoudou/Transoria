@@ -172,11 +172,16 @@ export const useTaskStore = create<TaskState>((set) => ({
         },
       };
     }),
+  // Replaces the full entries list. Callers that mean "append" must
+  // build the merged list themselves and pass it in as one snapshot
+  // (e.g. ``importEntries([...state.entries, ...incoming])``). Doing
+  // the append inside this reducer once also produced doubled rows
+  // every time the page rehydrated from saved settings.
   importTranslationGlossaryEntries: (entries) =>
     set((state) => ({
       translationGlossary: {
         ...state.translationGlossary,
-        entries: [...state.translationGlossary.entries, ...entries],
+        entries: [...entries],
       },
     })),
 }));
