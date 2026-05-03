@@ -13,15 +13,23 @@ Design decisions worth calling out:
   multiple files are present. Subtasks carry a stable ``segment_id`` of the
   form ``"<file_index>:<segment_index>"`` so the orchestrator can route each
   decoded result back to the right file at writeback time.
-- User-facing translated files are written **only after a clean COMPLETED
-  run** (every subtask succeeded, every prepared segment has a translation).
-  Any failure leaves the run as FAILED with no output files: producing a
-  partial output that mixes translated and untranslated lines is more
-  confusing than helpful, and writes that share the input layout would also
-  re-enter the scanner on the next run. Failed runs keep the cache so a
-  follow-up ``continue_task`` reruns the failed chunks; once that retry lands
-  in clean COMPLETED, the merged translations from the cumulative subtask
-  cache get written in one shot.
+- After the executor + split-failed-chunks loop finishes, if any FAILED
+  subtasks remain the orchestrator runs up to ``_AUTO_RETRY_MAX_ROUNDS``
+  (3) extra recovery rounds. Each round waits
+  ``_AUTO_RETRY_DELAY_SECONDS`` (60s — long enough for a typical RPM
+  rate-limit window to reset), resets the FAILED subtasks back to
+  PENDING, and re-runs the executor. The loop exits early once no
+  FAILED subtasks remain. This catches the common rate-limit /
+  transient-network case without forcing the user to manually click
+  "Continue".
+- User-facing translated files are written on any terminal status
+  (COMPLETED or FAILED) that produced at least one translated segment.
+  Missing segments fall back to original source text in the writers,
+  so a forever-broken API does not block the user from getting at
+  least the partial deliverable. ``_maybe_cleanup_cache`` still keeps
+  the cache when failures > 0 so the user can manually
+  ``continue_task`` to rerun the still-failed chunks beyond the
+  built-in auto-retry.
 - Bilingual output goes under a single shared subfolder (per design doc),
   not a per-file subfolder. The English and Chinese UI defaults are exposed
   as ``BILINGUAL_OUTPUT_FOLDER_EN`` / ``..._ZH`` constants.
@@ -29,6 +37,7 @@ Design decisions worth calling out:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -73,6 +82,13 @@ from transoria.workflows.translation.statistics import (
     TranslationStatistics,
     write_translation_statistics,
 )
+
+
+# Wait between automatic recovery rounds. Bounded by upstream API
+# rate-limit windows (RPM is the common case), not user preference,
+# so it stays a constant. The number of rounds itself is the
+# user-facing knob (``TranslationConfig.auto_retry_max_rounds``).
+_AUTO_RETRY_DELAY_SECONDS = 30.0
 
 
 class TranslationEmptyInputError(RuntimeError):
@@ -226,23 +242,51 @@ class TranslationOrchestrator:
             self.on_executor_created(executor)
 
         snapshot = await executor.run(task_id)
-        while self._split_failed_subtasks(task_id, snapshot.subtasks, config):
+        # All subsequent recovery loops must respect the stop signal —
+        # otherwise pressing Stop and waiting for in-flight requests to
+        # drain would just be followed by either a split-rerun or a
+        # 30-second sleep + auto-retry, defeating the user's intent.
+        while (
+            not executor.is_stopping
+            and self._split_failed_subtasks(task_id, snapshot.subtasks, config)
+        ):
+            snapshot = await executor.run(task_id)
+
+        # Auto-retry loop: rate-limit and other transient failures often
+        # clear in 30+ seconds. Reset still-FAILED subtasks back to
+        # PENDING and re-run, up to ``auto_retry_max_rounds`` times,
+        # waiting between rounds so the upstream limiter actually has a
+        # chance to reset. Stops early when no failures remain or the
+        # user pressed Stop (the sleep itself polls the stop flag every
+        # second so we abort the wait promptly).
+        for _ in range(max(0, config.auto_retry_max_rounds)):
+            if executor.is_stopping:
+                break
+            if not _has_failed_subtasks(snapshot.subtasks):
+                break
+            if not await _interruptible_sleep(
+                _AUTO_RETRY_DELAY_SECONDS, executor
+            ):
+                break
+            self._reset_failed_subtasks(snapshot.subtasks)
             snapshot = await executor.run(task_id)
 
         translations_by_segment, low_confidence_records = _collect_translations(
             snapshot.subtasks
         )
-        # Outputs are written only when every prepared segment has a
-        # translation AND every subtask landed cleanly. Partial writes
-        # would produce mixed translated / untranslated files that are
-        # easy to mistake for finished work; failure recovery instead
-        # goes through ``continue_task`` until a fully clean run lands.
-        clean_completion = _is_clean_completion(
-            snapshot,
-            expected_segments=len(prepared),
-            translations=translations_by_segment,
+        # Outputs are written on any terminal status that produced at
+        # least one translated segment. Missing segments fall back to
+        # original source text in the writers, so a forever-broken API
+        # still yields the partial deliverable. Cache cleanup
+        # (``_maybe_cleanup_cache``) only fires on clean COMPLETED
+        # with zero failures, so the user can still manually
+        # ``continue_task`` to fill in the remaining gaps after the
+        # built-in auto-retry rounds run out.
+        terminal_status = snapshot.record.status in (
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
         )
-        if clean_completion:
+        if terminal_status and translations_by_segment:
             translated_outputs, bilingual_outputs, failed_files = _write_outputs(
                 parsed_files,
                 translations_by_segment,
@@ -333,6 +377,27 @@ class TranslationOrchestrator:
         if self.on_result_finalized is not None:
             self.on_result_finalized(result)
         return result
+
+    def _reset_failed_subtasks(self, subtasks: tuple[Subtask, ...]) -> int:
+        """Flip every FAILED subtask back to PENDING for the auto-retry
+        loop. Mirrors the continue_task reset path so a clean re-run
+        can replace the prior failure record. Returns the count of
+        subtasks reset (callers can short-circuit when 0)."""
+
+        reset = 0
+        for subtask in subtasks:
+            if subtask.status is not SubtaskStatus.FAILED:
+                continue
+            self.cache.save_subtask(
+                replace(
+                    subtask,
+                    status=SubtaskStatus.PENDING,
+                    last_error="",
+                    last_error_at="",
+                )
+            )
+            reset += 1
+        return reset
 
     def _split_failed_subtasks(
         self,
@@ -556,20 +621,27 @@ def _collect_translations(
     return translations, low_confidence
 
 
-def _is_clean_completion(
-    snapshot,
-    *,
-    expected_segments: int,
-    translations: Mapping[str, str],
-) -> bool:
-    if snapshot.record.status is not TaskStatus.COMPLETED:
-        return False
-    if len(translations) != expected_segments:
-        return False
-    return all(
-        subtask.status in {SubtaskStatus.COMPLETED, SubtaskStatus.SKIPPED}
-        for subtask in snapshot.subtasks
-    )
+def _has_failed_subtasks(subtasks: tuple[Subtask, ...]) -> bool:
+    return any(s.status is SubtaskStatus.FAILED for s in subtasks)
+
+
+async def _interruptible_sleep(seconds: float, executor: TaskExecutor) -> bool:
+    """Sleep up to ``seconds`` while polling the executor's stop flag
+    every second. Returns True if the wait completed naturally,
+    False if the wait was cut short by a stop request — callers should
+    skip whatever was queued after the wait when the result is False.
+    """
+
+    if seconds <= 0:
+        return not executor.is_stopping
+    elapsed = 0.0
+    while elapsed < seconds:
+        if executor.is_stopping:
+            return False
+        step = min(1.0, seconds - elapsed)
+        await asyncio.sleep(step)
+        elapsed += step
+    return not executor.is_stopping
 
 
 def _failed_files_for_missing_translations(

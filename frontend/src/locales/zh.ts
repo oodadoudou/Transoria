@@ -340,6 +340,9 @@ export const zh: Messages = {
       lowConfidenceMaxRetries: "低置信度重试次数",
       lowConfidenceMaxRetriesHelp:
         "当某段译文异常时(长度差异过大、原文语言字符残留等),最多重译该段几次。设为 0 关闭重试。",
+      autoRetryMaxRounds: "自动重试轮数",
+      autoRetryMaxRoundsHelp:
+        "整次任务跑完后若仍有失败分块，自动 reset 重跑的最大轮数。每轮间隔 30 秒，足以让 API 的 RPM 限流窗口重置。设为 0 关闭自动重试（仍可手动「继续」）。最大 100。",
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。慢模型/长输出可调高，默认 120。",
@@ -771,12 +774,12 @@ export const zh: Messages = {
   },
   completionWithFailures: {
     title: "本次运行存在失败分块",
-    bodyPrefix: "已结束的运行中有 ",
+    bodyPrefix: "自动重试用尽后仍有 ",
     bodySuffix:
-      " 个分块失败，本次运行未生成译文文件（需全部分块成功后才会写出）。可选择重跑失败分块以补齐，或直接接受失败结果。",
-    rerunAction: "重跑失败分块",
+      " 个分块失败。已写出部分译文（缺失段落保留原文）。可选择继续重跑失败分块以补齐，或直接接受当前结果。",
+    rerunAction: "继续重跑失败分块",
     rerunPending: "正在启动…",
-    acceptAction: "接受失败结果",
+    acceptAction: "接受当前结果",
   },
   runCompleted: {
     title: "全部完成",

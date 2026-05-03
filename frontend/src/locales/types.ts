@@ -287,6 +287,8 @@ export interface Messages {
       precedingLinesHelp: string;
       lowConfidenceMaxRetries: string;
       lowConfidenceMaxRetriesHelp: string;
+      autoRetryMaxRounds: string;
+      autoRetryMaxRoundsHelp: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
       on: string;

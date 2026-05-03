@@ -120,6 +120,7 @@ export interface TranslationSettings {
   bilingual_subfolder_name: string;
   context_lines: number;
   low_confidence_max_retries: number;
+  auto_retry_max_rounds: number;
   auto_open_output_folder: boolean;
   timeout_seconds: number;
   translation_glossary: PersistedGlossaryEntry[];

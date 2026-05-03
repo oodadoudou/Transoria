@@ -350,6 +350,9 @@ export const en: Messages = {
       lowConfidenceMaxRetries: "Low-confidence retry attempts",
       lowConfidenceMaxRetriesHelp:
         "When a translated segment looks suspicious (length far off, source-language characters left over, etc.), retry that segment up to this many times. Set to 0 to disable retries.",
+      autoRetryMaxRounds: "Auto-retry rounds",
+      autoRetryMaxRoundsHelp:
+        "After the full run finishes, if any chunks still failed, automatically reset and rerun them up to this many rounds. Each round waits 30 seconds — long enough for typical RPM rate-limit windows to reset. Set to 0 to disable (manual Continue still works). Max 100.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 120.",
@@ -796,12 +799,12 @@ export const en: Messages = {
   },
   completionWithFailures: {
     title: "Run finished with failures",
-    bodyPrefix: "This run had ",
+    bodyPrefix: "After auto-retry exhausted, ",
     bodySuffix:
-      " failed chunk(s). No translated files were written this run — output is only produced when every chunk succeeds. You can rerun the failed chunks to retry, or accept the failure as-is.",
-    rerunAction: "Rerun failed chunks",
+      " chunk(s) still failed. A partial translation has been written (missing segments fall back to the source text). You can continue retrying the failed chunks, or accept the current result.",
+    rerunAction: "Retry failed chunks",
     rerunPending: "Starting…",
-    acceptAction: "Accept failure",
+    acceptAction: "Accept current result",
   },
   runCompleted: {
     title: "All done",
