@@ -305,6 +305,7 @@ def _require_distinct_translation_folders(
             "directories — writing translated files into the input would "
             "cause them to be re-scanned and re-translated on the next run.",
             field="output_folder",
+            message_key="translation.input_equals_output",
         )
     # Resolve to handle ``..`` / symlink edge cases before the descendant
     # check; bail silently if either side refuses to resolve so the
@@ -323,6 +324,7 @@ def _require_distinct_translation_folders(
         f"({resolved_out!s} is under {resolved_in!s}); the recursive "
         "scanner would pick up generated files on the next run.",
         field="output_folder",
+        message_key="translation.output_inside_input",
     )
 
 

@@ -60,6 +60,12 @@ export const zh: Messages = {
     loadFailureTitle: "加载失败",
     dismiss: "关闭",
     retry: "重试",
+    bridgeMessages: {
+      "translation.input_equals_output":
+        "翻译的输入文件夹和输出文件夹必须不同 —— 把译文写回输入会导致下次运行被重复扫描和重复翻译。",
+      "translation.output_inside_input":
+        "翻译的输出文件夹不能位于输入文件夹之内 —— 递归扫描会把上一次的输出当作下一次的输入。",
+    },
   },
   runControls: {
     start: "开始",

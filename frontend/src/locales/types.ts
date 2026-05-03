@@ -37,6 +37,10 @@ export interface Messages {
     loadFailureTitle: string;
     dismiss: string;
     retry: string;
+    /** Localized texts indexed by ``BridgeError.message_key``. Lookup
+     * with `bridgeMessages[messageKey]`; fall back to `error.message`
+     * (the backend's English text) when the key is absent. */
+    bridgeMessages: Record<string, string>;
   };
   rowMenu: {
     triggerLabel: string;

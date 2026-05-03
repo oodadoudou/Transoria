@@ -77,12 +77,18 @@ class BridgeError(Exception):
         message: str,
         *,
         field: str | None = None,
+        message_key: str | None = None,
         details: Mapping[str, object] | None = None,
     ) -> "BridgeError":
         merged: dict[str, object] = dict(details or {})
         if field is not None:
             merged["field"] = field
-        return cls("bridge.invalid_argument", message, details=merged)
+        return cls(
+            "bridge.invalid_argument",
+            message,
+            message_key=message_key,
+            details=merged,
+        )
 
     @classmethod
     def not_found(

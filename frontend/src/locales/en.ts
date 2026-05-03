@@ -41,6 +41,12 @@ export const en: Messages = {
     loadFailureTitle: "Failed to load",
     dismiss: "Dismiss",
     retry: "Retry",
+    bridgeMessages: {
+      "translation.input_equals_output":
+        "Translation input and output folders must be different — writing translated files back into the input would cause them to be re-scanned and re-translated on the next run.",
+      "translation.output_inside_input":
+        "Translation output folder must not live inside the input folder — the recursive scanner would pick up generated files on the next run.",
+    },
   },
   rowMenu: {
     triggerLabel: "More actions",

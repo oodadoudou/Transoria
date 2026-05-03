@@ -25,13 +25,24 @@ export function RunErrorBanner({ kind }: RunErrorBannerProps) {
 
   if (!error && !taskFailureReason) return null;
 
+  // Prefer the locale catalogue's translated text indexed by the
+  // backend's stable ``message_key``; fall back to the BridgeError's
+  // raw English ``message`` when no key is set or the catalogue lacks
+  // an entry. This keeps the Chinese UI Chinese without locking the
+  // backend into one language.
+  const localizedMessage = error
+    ? ((error.messageKey
+        ? messages.errors.bridgeMessages[error.messageKey]
+        : undefined) ?? error.message)
+    : null;
+
   return (
     <div className={styles.banner} role="alert">
       <div className={styles.body}>
         <span className={styles.title}>{messages.errors.runFailureTitle}</span>
         {error ? (
           <>
-            <span className={styles.message}>{error.message}</span>
+            <span className={styles.message}>{localizedMessage}</span>
             <span className={styles.code}>{error.code}</span>
             {earlierCount > 0 ? (
               <span
