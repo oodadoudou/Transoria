@@ -886,6 +886,7 @@ export const en: Messages = {
     autoFixingSuffix: ")",
     autoFixingHint:
       "Failed chunks detected — auto-splitting and retrying. No manual action needed.",
+    continueHint: "Click the Continue button below to rerun failed chunks.",
     title: "Failed subtasks",
     fileLabel: "File",
     affectedLabel: "Affected",

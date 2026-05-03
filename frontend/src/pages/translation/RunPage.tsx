@@ -255,15 +255,13 @@ export function RunPage() {
               ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
               : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
           </Pill>
-          {(snapshot.status === "failed" ||
-            snapshot.status === "stopped" ||
-            snapshot.status === "paused" ||
-            (snapshot.status === "completed" &&
-              snapshot.progress.failed > 0)) &&
-          !rerunPending ? (
-            <Pill onClick={handleRerunFailed}>
-              {messages.completionWithFailures.rerunAction}
-            </Pill>
+          {snapshot.status === "failed" ||
+          snapshot.status === "stopped" ||
+          snapshot.status === "paused" ||
+          (snapshot.status === "completed" && snapshot.progress.failed > 0) ? (
+            <span className={styles.failuresHint}>
+              {failedModalMessages.continueHint}
+            </span>
           ) : null}
         </div>
       ) : null}

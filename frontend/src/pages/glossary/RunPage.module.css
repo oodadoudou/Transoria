@@ -116,6 +116,13 @@
 
 .failuresPillRow {
   display: flex;
+  align-items: center;
+  gap: 10px;
   justify-content: flex-start;
   margin: 4px 0 2px;
+}
+
+.failuresHint {
+  font-size: 12px;
+  color: var(--muted);
 }

@@ -859,6 +859,7 @@ export const zh: Messages = {
     autoFixingSuffix: ")",
     autoFixingHint:
       "检测到失败分块，正在自动拆分重跑或等待 30 秒后重试。无需手动操作。",
+    continueHint: "点击下方「继续」可重跑失败分块。",
     title: "失败分块",
     fileLabel: "文件",
     affectedLabel: "受影响",

@@ -785,6 +785,7 @@ export interface Messages {
     autoFixingPrefix: string;
     autoFixingSuffix: string;
     autoFixingHint: string;
+    continueHint: string;
     title: string;
     fileLabel: string;
     affectedLabel: string;

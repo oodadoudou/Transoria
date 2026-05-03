@@ -327,21 +327,10 @@ function CachePanel() {
         <div className={styles.rowText}>
           <div className={styles.rowHint}>{labels.cacheHint}</div>
           {summary?.cache_root ? (
-            <div
-              className={styles.rowHint}
-              style={{
-                marginTop: 8,
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-              }}
-            >
+            <div className={styles.rowHint} style={{ marginTop: 8 }}>
               <code style={{ fontSize: "11.5px", wordBreak: "break-all" }}>
                 {summary.cache_root}
               </code>
-              <Pill variant="ghost" onClick={() => void handleOpenCacheRoot()}>
-                {labels.cacheOpenAction}
-              </Pill>
             </div>
           ) : null}
           {summaryText ? (
@@ -355,6 +344,13 @@ function CachePanel() {
             </div>
           ) : null}
         </div>
+        {summary?.cache_root ? (
+          <div className={styles.rowControl}>
+            <Pill variant="ghost" onClick={() => void handleOpenCacheRoot()}>
+              {labels.cacheOpenAction}
+            </Pill>
+          </div>
+        ) : null}
       </div>
       {error ? (
         <pre className={styles.error}>
