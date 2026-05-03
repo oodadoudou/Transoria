@@ -29,30 +29,16 @@ def _platform_key() -> str:
 
 
 def _read_app_version() -> str:
-    """Return the package version declared in ``pyproject.toml``.
+    """Return the package version.
 
-    Priority is platform-dependent:
-
-    * **Packaged (PyInstaller frozen) builds**: read ``pyproject.toml``
-      first. We bundle the file via ``--add-data`` and it is the
-      single source of truth for the *release* version. Reading
-      ``importlib.metadata`` here would pick up a stale ``egg-info``
-      directory captured at build time (this used to be the case
-      before ``build_windows._refresh_egg_info``), reporting the old
-      version after every update.
-    * **Source / dev runs**: prefer ``importlib.metadata`` because it
-      reflects the installed editable package and survives moves of
-      the working directory; fall back to ``pyproject.toml`` so the
-      bridge still works when the project is run without
-      ``pip install -e .``.
+    Frozen builds read pyproject.toml first to avoid stale egg-info
+    bundled at build time. Source runs prefer importlib.metadata.
     """
 
     if getattr(sys, "frozen", False):
         version_from_pyproject = _read_version_from_pyproject()
         if version_from_pyproject != "0.0.0":
             return version_from_pyproject
-        # Fall through to importlib.metadata when the bundled
-        # pyproject is missing for any reason.
 
     try:
         from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415

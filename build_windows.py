@@ -23,15 +23,12 @@ SPEC_DIR = ROOT / "build" / "pyinstaller" / "specs"
 ICON_PATH = ROOT / "assets" / "icon.ico"
 APP_DIR = DIST_DIR / "Transoria"
 
-# Lazy-importing packages whose submodules PyInstaller's static analyzer
-# cannot see (the public API hides them behind runtime imports). Without
-# `--collect-submodules` the bundled exe boots and then dies with
-# `ModuleNotFoundError` on the first call into the package.
+# Packages whose submodules PyInstaller's static analyzer misses
+# (lazy/runtime imports). Without --collect-submodules they fail at
+# first runtime use with ModuleNotFoundError.
 SUBMODULE_PACKAGES = ("json_repair", "chardet", "lxml", "httpx")
 
-# Top-level packages required at runtime. Verified before invoking
-# PyInstaller so a missing pip dep fails fast with a clear message
-# instead of producing an exe that crashes at startup.
+# Verified before PyInstaller so a missing pip dep fails fast.
 REQUIRED_RUNTIME_IMPORTS = (
     "json_repair",
     "chardet",
@@ -41,18 +38,11 @@ REQUIRED_RUNTIME_IMPORTS = (
     "webview",
 )
 
-# Microsoft's Edge WebView2 Evergreen Bootstrapper — a ~150 KB stub that
-# downloads + installs the actual runtime. We bundle this next to the
-# exe so ``Launch_Transoria.bat`` can install WebView2 silently on Win10
-# LTSC / Server SKUs / stripped images that don't ship it. The link
-# below is Microsoft's permanent fwlink and is permitted to redistribute
-# under the WebView2 Runtime distribution terms.
+# Microsoft's Edge WebView2 Evergreen Bootstrapper - bundled so the
+# launcher can silently install WebView2 on machines that lack it.
 WEBVIEW2_BOOTSTRAPPER_URL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 WEBVIEW2_BOOTSTRAPPER_NAME = "MicrosoftEdgeWebview2Setup.exe"
 
-# Smoke-test port. Picked high to avoid collision with services on
-# the build machine. If this single port is already taken, the smoke
-# test will fail loudly — pick a different number and rebuild.
 SMOKE_TEST_BRIDGE_PORT = 64577
 SMOKE_TEST_TIMEOUT_SECONDS = 8
 
@@ -69,29 +59,17 @@ def main() -> None:
     parser.add_argument(
         "--make-zip",
         action="store_true",
-        help=(
-            "Also produce dist/Transoria-windows.zip from the onedir output. "
-            "Off by default — you will typically zip the dist/Transoria/ "
-            "folder yourself with whatever name your release uses."
-        ),
+        help="Also produce dist/Transoria-windows.zip from the onedir output.",
     )
     parser.add_argument(
         "--no-webview2-bootstrapper",
         action="store_true",
-        help=(
-            "Skip downloading + bundling Microsoft's WebView2 Evergreen "
-            "Bootstrapper. By default the build downloads it (~150 KB) "
-            "from go.microsoft.com so the launcher can install WebView2 "
-            "on machines that don't already have it."
-        ),
+        help="Skip bundling the WebView2 Evergreen Bootstrapper.",
     )
     parser.add_argument(
         "--no-smoke-test",
         action="store_true",
-        help=(
-            "Skip the post-build smoke test that boots the exe in "
-            "--bridge-only mode to verify all imports load cleanly."
-        ),
+        help="Skip the post-build smoke tests.",
     )
     parser.add_argument(
         "--allow-non-windows",
@@ -117,13 +95,9 @@ def main() -> None:
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     SPEC_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ``--onedir`` ships a folder containing Transoria.exe alongside its
-    # Python runtime, native DLLs, and bundled data. The user gets the
-    # whole thing as a ZIP (see ``_create_release_zip``). Onefile mode
-    # was tried first but PyInstaller's static analyzer routinely missed
-    # lazily-imported submodules under the temp-extract layout, so the
-    # exe booted and crashed on first use. Onedir + ``--collect-submodules``
-    # is the reliable shape.
+    # --onedir + --collect-submodules; --onefile was unreliable because
+    # PyInstaller's analyzer missed lazy submodules under the temp-extract
+    # layout.
     cmd = [
         sys.executable,
         "-m",
@@ -144,33 +118,25 @@ def main() -> None:
         f"{FRONTEND_DIST};frontend/dist",
         "--add-data",
         f"{ROOT / 'pyproject.toml'};.",
-        # ``--collect-all webview`` is the union of ``--collect-data``,
-        # ``--collect-binaries``, ``--collect-submodules`` and
-        # ``--copy-metadata``. pywebview discovers its platform backends
-        # by importing them lazily at runtime; without metadata + every
-        # submodule, the exe boots into an empty window or raises
-        # ``ImportError: cannot import name 'guilib'``.
+        # ``--collect-all`` (data + binaries + submodules + metadata) for
+        # packages with lazy/runtime imports that PyInstaller's static
+        # analyzer misses.
         "--collect-all",
         "webview",
         "--collect-data",
         "openpyxl",
-        # Edge Chromium is the only Windows backend we ship: the
-        # launcher installs WebView2 Runtime before launch, and
-        # ``app.py`` passes ``gui="edgechromium"`` so pywebview never
-        # probes other backends. The ``winforms`` fallback (which
-        # pulls in ``pythonnet`` → ``Python.Runtime.dll`` → a system
-        # .NET runtime most user machines lack) is intentionally
-        # excluded so even an accidental probe cannot crash the exe.
+        # Windows backend chain: pywebview -> winforms -> pythonnet ->
+        # Python.Runtime.dll. ``edgechromium`` is a renderer module
+        # *inside* winforms, not a standalone backend; passing
+        # ``gui="edgechromium"`` to ``webview.start`` is a no-op.
+        "--collect-all",
+        "pythonnet",
+        "--collect-all",
+        "clr_loader",
+        "--hidden-import",
+        "webview.platforms.winforms",
         "--hidden-import",
         "webview.platforms.edgechromium",
-        "--exclude-module",
-        "webview.platforms.winforms",
-        "--exclude-module",
-        "pythonnet",
-        "--exclude-module",
-        "clr",
-        "--exclude-module",
-        "clr_loader",
     ]
     for package in SUBMODULE_PACKAGES:
         cmd.extend(["--collect-submodules", package])
@@ -262,35 +228,19 @@ def _require_runtime_imports() -> None:
 
 
 def _refresh_egg_info() -> None:
-    """Regenerate ``transoria.egg-info/`` so its bundled metadata matches
-    the current ``pyproject.toml`` version.
+    """Regenerate transoria.egg-info to match current pyproject.toml.
 
-    Why this matters: PyInstaller scoops up ``transoria.egg-info/`` and
-    drops it into ``_internal/`` of the bundled exe. At runtime,
-    ``transoria.bridge.handlers.app._read_app_version`` calls
-    ``importlib.metadata.version("transoria")`` which reads that bundled
-    metadata first. If the egg-info is stale (left over from an earlier
-    ``pip install -e .`` at a previous version), every consumer of
-    ``app.get_metadata`` will report the OLD version — including the
-    update modal's "current version", the About page, and the
-    ``current_version`` we send in update-check requests. We hit this
-    in production: a freshly-built 1.0.1 ZIP reported "1.0.0" because
-    egg-info was last regenerated when pyproject said 1.0.0.
-
-    Fix: blow away the directory and rebuild it via ``pip install -e .
-    --no-deps``. ``--no-deps`` keeps the runtime install state
-    untouched (other deps already there); the only side-effect is that
-    egg-info is rewritten to match current pyproject."""
+    PyInstaller bundles egg-info into the exe; at runtime,
+    importlib.metadata reads it before the bundled pyproject.toml.
+    Stale egg-info from an earlier `pip install -e .` causes the exe
+    to report the wrong version. --force-reinstall is required: pip
+    skips re-running setuptools otherwise.
+    """
 
     egg_info = ROOT / "transoria.egg-info"
     if egg_info.exists():
         shutil.rmtree(egg_info, ignore_errors=True)
     print("[build] regenerating transoria.egg-info to match pyproject.toml")
-    # ``--force-reinstall`` is what makes this reliable: without it,
-    # pip detects the editable install is already present at the same
-    # location and skips re-running setuptools, which means egg-info
-    # never gets regenerated. ``--no-deps`` keeps other packages
-    # untouched so the reinstall is fast.
     _run(
         [
             sys.executable,
@@ -334,9 +284,6 @@ def _verify_spec_excludes_local_state() -> None:
 
 
 def _write_distribution_artifacts() -> None:
-    """Drop bilingual READMEs, a VERSION marker, and the portable
-    Input/Output folder pair next to ``Transoria.exe``."""
-
     if not APP_DIR.is_dir():
         return
     version = _read_project_version()
@@ -352,7 +299,7 @@ def _write_distribution_artifacts() -> None:
 
 
 def _read_project_version() -> str:
-    import tomllib  # noqa: PLC0415 — 3.11+ stdlib
+    import tomllib  # noqa: PLC0415
 
     with (ROOT / "pyproject.toml").open("rb") as handle:
         data = tomllib.load(handle)
@@ -564,31 +511,14 @@ def _run(cmd: list[str], *, cwd: Path) -> None:
 
 
 def _print_platform_banner() -> None:
-    """Surface the build host's Python + arch up front so the operator
-    notices x64 vs ARM64 mismatches before shipping a wrong-arch
-    portable. PyInstaller produces an exe that matches the host's
-    architecture; cross-arch builds need a separate machine."""
-
     arch = platform.machine() or "unknown"
     print(
         f"[build] host: Python {platform.python_version()} on "
         f"{platform.system()} {platform.release()} ({arch})"
     )
-    print(
-        f"[build] producing a {arch} Windows portable. "
-        "Users on a different CPU architecture (e.g. ARM64) will need "
-        "a build from a matching host."
-    )
 
 
 def _bundle_webview2_bootstrapper() -> None:
-    """Download Microsoft's WebView2 Evergreen Bootstrapper (~150 KB)
-    into the app folder. ``Launch_Transoria.bat`` runs it silently when
-    the runtime is missing so the user never sees a blank window on
-    Win10 LTSC / Server / minimal images that ship without WebView2.
-    Network failures degrade gracefully — the launcher falls back to
-    sending the user to Microsoft's download page."""
-
     target = APP_DIR / WEBVIEW2_BOOTSTRAPPER_NAME
     if target.exists() and target.stat().st_size > 0:
         print(f"[build] WebView2 bootstrapper already present: {target.name}")
@@ -601,7 +531,6 @@ def _bundle_webview2_bootstrapper() -> None:
             f"[build] WARNING: WebView2 bootstrapper download failed: {exc}\n"
             "        The launcher will fall back to opening the MS download page."
         )
-        # Drop a stub the launcher can detect-as-missing reliably.
         if target.exists():
             target.unlink()
         return
@@ -612,21 +541,8 @@ def _bundle_webview2_bootstrapper() -> None:
 _LAUNCH_BAT = """@echo off
 setlocal EnableDelayedExpansion
 
-REM ============================================================
-REM  Transoria portable launcher
-REM
-REM  Steps (in order):
-REM    1) cd to the script's own directory so paths work no matter
-REM       where the user dropped the folder.
-REM    2) Unblock files via PowerShell. Windows tags everything
-REM       extracted from an internet-downloaded ZIP with the
-REM       Mark-of-the-Web. Without this, _internal\\python312.dll
-REM       and friends refuse to load on first launch.
-REM    3) Verify Microsoft Edge WebView2 Runtime is present. The
-REM       UI won't render without it. Install from the bundled
-REM       bootstrapper (preferred) or send the user to MS download.
-REM    4) Launch Transoria.exe.
-REM ============================================================
+REM Transoria portable launcher: unblock MotW, ensure WebView2,
+REM launch Transoria.exe.
 
 cd /d "%~dp0"
 
@@ -670,54 +586,68 @@ endlocal
 
 
 def _write_launch_bat() -> None:
-    """Drop ``Launch_Transoria.bat`` next to the exe. This is the
-    recommended entry point for end users — it papers over the two
-    most common "fresh Windows machine" failures (Mark-of-the-Web
-    locking files, WebView2 runtime missing) before invoking the exe.
-    Users who ignore it and double-click ``Transoria.exe`` directly
-    will still work fine on most Win10/Win11 machines that already
-    have WebView2 and unblocked files."""
-
     bat_path = APP_DIR / "Launch_Transoria.bat"
     body = _LAUNCH_BAT.replace("__BOOTSTRAPPER__", WEBVIEW2_BOOTSTRAPPER_NAME)
-    # cmd.exe is brittle around codepage mismatches (cp936/cp1252).
-    # First try strict ASCII so a stray smart-quote or em-dash fails
-    # loudly here instead of silently corrupting the .bat. If that
-    # ever happens, fall back to UTF-8-BOM (``utf-8-sig``) which cmd
-    # tolerates, and surface a warning so the offending char gets
-    # cleaned up in the next edit.
+    # ASCII first so cp936/cp1252 cmd.exe never sees a stray smart quote;
+    # fall back to utf-8-sig (which cmd tolerates) if a non-ASCII char
+    # slips into the template.
     try:
         bat_path.write_text(body, encoding="ascii", newline="\r\n")
     except UnicodeEncodeError as exc:
         print(
             f"[build] WARNING: launcher contains non-ASCII char ({exc!r}); "
-            "writing as UTF-8 with BOM. Replace the char with an ASCII "
-            "equivalent in _LAUNCH_BAT to silence this."
+            "writing as UTF-8 with BOM."
         )
         bat_path.write_text(body, encoding="utf-8-sig", newline="\r\n")
     print(f"[build] wrote launcher: {bat_path.name}")
 
 
 def _smoke_test_built_exe() -> None:
-    """Boot the freshly-built exe in ``--bridge-only`` mode for a few
-    seconds and verify it doesn't crash. Bridge-only loads the entire
-    Python import graph (json_repair, chardet, lxml, httpx, openpyxl,
-    transoria internals) without needing a GUI / WebView2 — perfect
-    for catching ``ModuleNotFoundError`` and DLL-load failures *here*
-    instead of in the user's hands."""
+    """Two-phase smoke: gui-imports (catches pythonnet/CLR wiring) +
+    bridge-only (catches missing submodules in the full import graph)."""
 
     if sys.platform != "win32":
-        # ``--allow-non-windows`` is a CI / dry-run convenience; the
-        # exe we just produced is a Windows PE binary and won't run
-        # on the host kernel.
         print("[build] smoke test skipped: non-Windows host (CI dry-run mode)")
         return
     exe = APP_DIR / "Transoria.exe"
     if not exe.is_file():
         print("[build] smoke test skipped: exe not found")
         return
+
+    _smoke_test_gui_imports(exe)
+    _smoke_test_bridge_only(exe)
+
+
+def _smoke_test_gui_imports(exe: Path) -> None:
+    print(f"[build] smoke test 1/2: {exe.name} --check-gui-imports")
+    result = subprocess.run(
+        [str(exe), "--check-gui-imports"],
+        cwd=APP_DIR,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"[build] gui-imports smoke test FAILED (exit {result.returncode}).\n"
+            "--- stdout ---\n"
+            f"{result.stdout}"
+            "--- stderr ---\n"
+            f"{result.stderr}"
+            "--- end ---\n"
+            "Check: pythonnet installed in build env; "
+            "webview.platforms.winforms in --hidden-import; "
+            "pythonnet/clr_loader in --collect-all; "
+            "Python.Runtime.dll present under _internal/pythonnet/runtime/."
+        )
+    print(f"[build] gui-imports OK ({(result.stdout or '').strip()})")
+
+
+def _smoke_test_bridge_only(exe: Path) -> None:
     print(
-        f"[build] smoke test: launching {exe.name} --bridge-only on port "
+        f"[build] smoke test 2/2: {exe.name} --bridge-only on port "
         f"{SMOKE_TEST_BRIDGE_PORT}"
     )
     proc = subprocess.Popen(
@@ -730,28 +660,21 @@ def _smoke_test_built_exe() -> None:
         errors="replace",
     )
     try:
-        # If the exe crashes due to missing imports / DLLs, it exits in
-        # < 1s. If imports succeed, ``serve_forever`` blocks indefinitely
-        # — we wait the timeout and treat "still alive" as success.
+        # serve_forever blocks; "still alive after timeout" == success.
         try:
             stdout, _ = proc.communicate(timeout=SMOKE_TEST_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             print(
-                f"[build] smoke test passed (process alive after "
+                f"[build] bridge-only OK (process alive after "
                 f"{SMOKE_TEST_TIMEOUT_SECONDS}s)"
             )
             return
-        # Process exited within the timeout — that's a packaging bug.
-        # Surface stdout/stderr verbatim; users will need to add the
-        # missing module to SUBMODULE_PACKAGES or hidden imports.
         raise SystemExit(
-            f"[build] smoke test FAILED: exe exited with code {proc.returncode}.\n"
+            f"[build] bridge-only smoke test FAILED: exe exited with code {proc.returncode}.\n"
             "--- captured output ---\n"
             f"{stdout}"
             "--- end output ---\n"
-            "Common causes: missing hidden import, missing DLL, PyInstaller "
-            "analyzer drift. Add the missing module to SUBMODULE_PACKAGES "
-            "or to --hidden-import in the PyInstaller invocation."
+            "Check: missing module in SUBMODULE_PACKAGES or --hidden-import."
         )
     finally:
         if proc.poll() is None:
@@ -760,9 +683,7 @@ def _smoke_test_built_exe() -> None:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
-        # Give the OS a beat to release the bound port before any
-        # follow-up step (e.g. ZIP creation walks the same folder).
-        time.sleep(0.5)
+        time.sleep(0.5)  # let the bound port release before next step
 
 
 if __name__ == "__main__":

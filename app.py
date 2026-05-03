@@ -68,6 +68,30 @@ def _reconfigure_stdio_utf8() -> None:
 _reconfigure_stdio_utf8()
 
 
+def _strip_motw_from_install_root() -> None:
+    """Strip NTFS ``Zone.Identifier`` from bundled files.
+
+    .NET CLR refuses to load Mark-of-the-Web-tagged assemblies, which
+    breaks ``pythonnet`` → ``Python.Runtime.dll`` when users extract
+    the ZIP and double-click ``Transoria.exe`` instead of going through
+    ``Launch_Transoria.bat``.
+    """
+
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return
+    install_root = Path(sys.executable).resolve().parent
+    for path in install_root.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            os.unlink(f"{path}:Zone.Identifier")
+        except (FileNotFoundError, OSError):
+            continue
+
+
+_strip_motw_from_install_root()
+
+
 ROOT = resource_root()
 FRONTEND_DIR = ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
@@ -438,18 +462,11 @@ def _run_desktop(
     signal.signal(signal.SIGINT, lambda *_: (_shutdown(), sys.exit(0)))
 
     try:
-        # Force ``edgechromium`` on Windows so pywebview never falls
-        # through to the ``winforms`` backend, which pulls in pythonnet
-        # and tries to load ``Python.Runtime.dll`` against a system
-        # .NET runtime that most user machines do not have installed.
-        # The launcher (``Launch_Transoria.bat``) ensures WebView2
-        # Runtime is present before reaching here, so EdgeChromium is
-        # always available. macOS / Linux keep pywebview's default
-        # backend selection.
-        start_kwargs: dict[str, object] = {"debug": dev}
-        if sys.platform == "win32":
-            start_kwargs["gui"] = "edgechromium"
-        webview.start(_on_shown, **start_kwargs)
+        try:
+            webview.start(_on_shown, debug=dev)
+        except Exception as exc:  # noqa: BLE001
+            _show_windows_startup_error(exc)
+            raise
     finally:
         _shutdown()
 
@@ -583,6 +600,54 @@ def _run_browser(*, vite_port: int, bridge_port: int, bridge_host: str) -> None:
         bridge_server.server_close()
 
 
+def _show_windows_startup_error(exc: BaseException) -> None:
+    """Replace PyInstaller's bare-traceback dialog with actionable text."""
+
+    if sys.platform != "win32":
+        return
+    message = (
+        "Transoria failed to start.\n\n"
+        f"Error: {exc!s}\n\n"
+        "Most likely causes:\n"
+        "  1. You double-clicked Transoria.exe directly. Please use\n"
+        "     Launch_Transoria.bat instead - it unblocks files and\n"
+        "     installs WebView2 Runtime if missing.\n"
+        "  2. Microsoft .NET Framework 4.7.2 or higher is required.\n"
+        "     https://dotnet.microsoft.com/download/dotnet-framework\n"
+        "  3. Microsoft Edge WebView2 Runtime is required.\n"
+        "     https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+    )
+    try:
+        import ctypes  # noqa: PLC0415
+
+        # MB_ICONERROR | MB_TOPMOST
+        ctypes.windll.user32.MessageBoxW(
+            None, message, "Transoria startup error", 0x10 | 0x40000
+        )
+    except Exception:  # noqa: BLE001
+        print(message, file=sys.stderr, flush=True)
+
+
+def _check_gui_imports() -> int:
+    """Import the GUI stack and exit. Used by build_windows.py to verify
+    pythonnet / Python.Runtime.dll wiring at build time."""
+
+    try:
+        import webview  # noqa: F401, PLC0415
+
+        if sys.platform == "win32":
+            # ``import clr`` triggers ``pythonnet.load()`` which loads
+            # ``Python.Runtime.dll`` into the .NET CLR — the runtime
+            # path that fails when bundling is wrong.
+            import webview.platforms.winforms  # noqa: F401, PLC0415
+            import clr  # noqa: F401, PLC0415
+        print("[transoria] gui-imports OK", flush=True)
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        print(f"[transoria] gui-imports FAILED: {exc!r}", file=sys.stderr, flush=True)
+        return 1
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -625,6 +690,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "No pywebview required. Recommended for active frontend dev."
         ),
     )
+    mode.add_argument(
+        "--check-gui-imports",
+        dest="mode",
+        action="store_const",
+        const="check-gui",
+        help=(
+            "Build-time smoke: import the GUI stack (pywebview + winforms "
+            "+ clr) and exit. Used by build_windows.py to catch pythonnet "
+            "/ Python.Runtime.dll wiring problems before release."
+        ),
+    )
     parser.add_argument(
         "--vite-port",
         type=int,
@@ -653,6 +729,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     print(f"[transoria] mode: {args.mode}", flush=True)
+    if args.mode == "check-gui":
+        sys.exit(_check_gui_imports())
     if args.mode == "bridge":
         _run_bridge_only(port=args.bridge_port, host=args.bridge_host)
     elif args.mode == "browser":
