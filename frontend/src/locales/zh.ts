@@ -773,10 +773,10 @@ export const zh: Messages = {
     title: "本次运行存在失败分块",
     bodyPrefix: "已结束的运行中有 ",
     bodySuffix:
-      " 个分块失败。已写出部分结果（缺失段落保留原文）。可选择重跑失败分块以补齐，或直接接受当前结果。",
+      " 个分块失败，本次运行未生成译文文件（需全部分块成功后才会写出）。可选择重跑失败分块以补齐，或直接接受失败结果。",
     rerunAction: "重跑失败分块",
     rerunPending: "正在启动…",
-    acceptAction: "接受当前结果",
+    acceptAction: "接受失败结果",
   },
   runCompleted: {
     title: "全部完成",

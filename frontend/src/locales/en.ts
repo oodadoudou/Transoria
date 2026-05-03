@@ -798,10 +798,10 @@ export const en: Messages = {
     title: "Run finished with failures",
     bodyPrefix: "This run had ",
     bodySuffix:
-      " failed chunk(s). A partial translation was written (missing segments fall back to the source text). You can rerun the failed chunks to fill in the gap, or accept the current result.",
+      " failed chunk(s). No translated files were written this run — output is only produced when every chunk succeeds. You can rerun the failed chunks to retry, or accept the failure as-is.",
     rerunAction: "Rerun failed chunks",
     rerunPending: "Starting…",
-    acceptAction: "Accept current result",
+    acceptAction: "Accept failure",
   },
   runCompleted: {
     title: "All done",

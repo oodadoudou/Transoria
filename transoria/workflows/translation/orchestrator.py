@@ -13,16 +13,15 @@ Design decisions worth calling out:
   multiple files are present. Subtasks carry a stable ``segment_id`` of the
   form ``"<file_index>:<segment_index>"`` so the orchestrator can route each
   decoded result back to the right file at writeback time.
-- User-facing translated files are written on any terminal status
-  (COMPLETED or FAILED) that produced at least one translated segment.
-  The executor downgrades any failure to FAILED — COMPLETED is reached
-  only when zero failures remain — so a partially-failed run lands in
-  FAILED with some completed translations and a partial output. Missing
-  segments fall back to original source text in the writers, and
-  ``_maybe_cleanup_cache`` preserves cache when failures exist so a
-  follow-up ``continue_task`` reruns only the failed chunks and merges
-  their translations into the same output files. STOPPED runs and
-  FAILED-with-zero-completed runs write no outputs.
+- User-facing translated files are written **only after a clean COMPLETED
+  run** (every subtask succeeded, every prepared segment has a translation).
+  Any failure leaves the run as FAILED with no output files: producing a
+  partial output that mixes translated and untranslated lines is more
+  confusing than helpful, and writes that share the input layout would also
+  re-enter the scanner on the next run. Failed runs keep the cache so a
+  follow-up ``continue_task`` reruns the failed chunks; once that retry lands
+  in clean COMPLETED, the merged translations from the cumulative subtask
+  cache get written in one shot.
 - Bilingual output goes under a single shared subfolder (per design doc),
   not a per-file subfolder. The English and Chinese UI defaults are exposed
   as ``BILINGUAL_OUTPUT_FOLDER_EN`` / ``..._ZH`` constants.
@@ -233,19 +232,17 @@ class TranslationOrchestrator:
         translations_by_segment, low_confidence_records = _collect_translations(
             snapshot.subtasks
         )
-        # Write outputs on any terminal state that produced at least one
-        # translated segment. The executor maps any failure to FAILED
-        # (not COMPLETED-with-failures), so partial outputs are reachable
-        # only via this branch. Missing segments fall back to original
-        # source text in the writers, and ``_maybe_cleanup_cache``
-        # preserves the cache when failures > 0 so the user can rerun
-        # failed chunks via ``continue_task`` and the next run merges
-        # into the same output files.
-        terminal_status = snapshot.record.status in (
-            TaskStatus.COMPLETED,
-            TaskStatus.FAILED,
+        # Outputs are written only when every prepared segment has a
+        # translation AND every subtask landed cleanly. Partial writes
+        # would produce mixed translated / untranslated files that are
+        # easy to mistake for finished work; failure recovery instead
+        # goes through ``continue_task`` until a fully clean run lands.
+        clean_completion = _is_clean_completion(
+            snapshot,
+            expected_segments=len(prepared),
+            translations=translations_by_segment,
         )
-        if terminal_status and translations_by_segment:
+        if clean_completion:
             translated_outputs, bilingual_outputs, failed_files = _write_outputs(
                 parsed_files,
                 translations_by_segment,
@@ -557,6 +554,22 @@ def _collect_translations(
             for segment_id, text in payload.items():
                 translations[str(segment_id)] = str(text)
     return translations, low_confidence
+
+
+def _is_clean_completion(
+    snapshot,
+    *,
+    expected_segments: int,
+    translations: Mapping[str, str],
+) -> bool:
+    if snapshot.record.status is not TaskStatus.COMPLETED:
+        return False
+    if len(translations) != expected_segments:
+        return False
+    return all(
+        subtask.status in {SubtaskStatus.COMPLETED, SubtaskStatus.SKIPPED}
+        for subtask in snapshot.subtasks
+    )
 
 
 def _failed_files_for_missing_translations(

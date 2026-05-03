@@ -1564,13 +1564,12 @@ class TaskService:
             mirrored = self._completed_snapshots.get(task_id)
             if mirrored is not None and mirrored.record.kind is record_kind:
                 # The disk cache was wiped because this task already
-                # finished cleanly (zero failures); reject with the same
-                # error code we'd return if the cache were still on disk
-                # so callers see consistent behavior. COMPLETED-with-
-                # failures keeps cache on disk, so it never lands here.
+                # finished cleanly; reject with the same error code we'd
+                # return if the cache were still on disk so callers see
+                # consistent behavior.
                 raise BridgeError(
                     "task.invalid_transition",
-                    f"continue requires status STOPPED, PAUSED, FAILED, or COMPLETED with failed subtasks; got {mirrored.record.status.value}.",
+                    f"continue requires status STOPPED, PAUSED, or FAILED; got {mirrored.record.status.value}.",
                     retryable=False,
                     details={"status": mirrored.record.status.value},
                 ) from exc
@@ -1587,25 +1586,18 @@ class TaskService:
         if existing is not None and not existing.is_done:
             self._raise_live_task_conflict(existing)
         snapshot = self._reconcile_zombie(snapshot, cache)
-        progress = snapshot.progress()
-        status = snapshot.record.status
-        # COMPLETED is allowed only when failed subtasks remain — the
-        # rerun path flips them back to PENDING so the user can recover
-        # a partial output without restarting the whole task.
-        completed_with_failures = (
-            status is TaskStatus.COMPLETED and progress.failed > 0
-        )
-        if status not in (
+        if snapshot.record.status not in (
             TaskStatus.STOPPED,
             TaskStatus.PAUSED,
             TaskStatus.FAILED,
-        ) and not completed_with_failures:
+        ):
             raise BridgeError(
                 "task.invalid_transition",
-                f"continue requires status STOPPED, PAUSED, FAILED, or COMPLETED with failed subtasks; got {status.value}.",
+                f"continue requires status STOPPED, PAUSED, or FAILED; got {snapshot.record.status.value}.",
                 retryable=False,
-                details={"status": status.value},
+                details={"status": snapshot.record.status.value},
             )
+        progress = snapshot.progress()
         if progress.pending == 0 and progress.failed == 0:
             raise BridgeError(
                 "task.invalid_transition",
@@ -1701,17 +1693,13 @@ class TaskService:
             except (TaskNotFoundError, ValueError, OSError):
                 continue
             snapshot = self._reconcile_zombie(snapshot, cache)
-            progress = snapshot.progress()
-            status = snapshot.record.status
-            completed_with_failures = (
-                status is TaskStatus.COMPLETED and progress.failed > 0
-            )
-            if status not in (
+            if snapshot.record.status not in (
                 TaskStatus.STOPPED,
                 TaskStatus.PAUSED,
                 TaskStatus.FAILED,
-            ) and not completed_with_failures:
+            ):
                 continue
+            progress = snapshot.progress()
             if progress.pending + progress.failed <= 0:
                 continue
             return {
