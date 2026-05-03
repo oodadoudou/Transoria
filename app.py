@@ -438,7 +438,18 @@ def _run_desktop(
     signal.signal(signal.SIGINT, lambda *_: (_shutdown(), sys.exit(0)))
 
     try:
-        webview.start(_on_shown, debug=dev)
+        # Force ``edgechromium`` on Windows so pywebview never falls
+        # through to the ``winforms`` backend, which pulls in pythonnet
+        # and tries to load ``Python.Runtime.dll`` against a system
+        # .NET runtime that most user machines do not have installed.
+        # The launcher (``Launch_Transoria.bat``) ensures WebView2
+        # Runtime is present before reaching here, so EdgeChromium is
+        # always available. macOS / Linux keep pywebview's default
+        # backend selection.
+        start_kwargs: dict[str, object] = {"debug": dev}
+        if sys.platform == "win32":
+            start_kwargs["gui"] = "edgechromium"
+        webview.start(_on_shown, **start_kwargs)
     finally:
         _shutdown()
 

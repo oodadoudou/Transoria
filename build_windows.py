@@ -154,14 +154,23 @@ def main() -> None:
         "webview",
         "--collect-data",
         "openpyxl",
-        # Edge Chromium is the primary backend on Windows; winforms is
-        # kept as a defensive fallback so pywebview's platform-selection
-        # logic still has somewhere to land if WebView2 is absent at
-        # runtime (the launcher will normally install it first).
+        # Edge Chromium is the only Windows backend we ship: the
+        # launcher installs WebView2 Runtime before launch, and
+        # ``app.py`` passes ``gui="edgechromium"`` so pywebview never
+        # probes other backends. The ``winforms`` fallback (which
+        # pulls in ``pythonnet`` → ``Python.Runtime.dll`` → a system
+        # .NET runtime most user machines lack) is intentionally
+        # excluded so even an accidental probe cannot crash the exe.
         "--hidden-import",
         "webview.platforms.edgechromium",
-        "--hidden-import",
+        "--exclude-module",
         "webview.platforms.winforms",
+        "--exclude-module",
+        "pythonnet",
+        "--exclude-module",
+        "clr",
+        "--exclude-module",
+        "clr_loader",
     ]
     for package in SUBMODULE_PACKAGES:
         cmd.extend(["--collect-submodules", package])
