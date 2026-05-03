@@ -141,8 +141,14 @@ def decode_text_bytes(raw: bytes) -> tuple[str, str]:
             import chardet  # type: ignore[import-not-found]
         except ImportError:
             chardet = None  # type: ignore[assignment]
+        detection: dict | None = None
         if chardet is not None:
-            detection = chardet.detect(raw)
+            try:
+                detection = chardet.detect(raw)
+            except (OSError, ValueError):
+                # AV quarantining chardet's idf.bin → fall through to Phase 3.
+                detection = None
+        if detection is not None:
             confidence = float(detection.get("confidence") or 0.0)
             detected = (detection.get("encoding") or "").lower()
             # Western single-byte encodings round-trip ANY byte sequence

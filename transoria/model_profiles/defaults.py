@@ -70,7 +70,7 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             id=GOOGLE_ID,
             display_name="Google",
             provider_format=ProviderFormat.GOOGLE,
-            base_url="https://generativelanguage.googleapis.com/v1beta",
+            base_url="https://generativelanguage.googleapis.com",
             model_id="gemini-2.5-flash",
             timeout_seconds=120.0,
             concurrency_limit=4,

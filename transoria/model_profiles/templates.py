@@ -375,7 +375,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         id="google",
         display_name="Google",
         provider_format=ProviderFormat.GOOGLE,
-        default_base_url="https://generativelanguage.googleapis.com/v1beta",
+        default_base_url="https://generativelanguage.googleapis.com",
         hint_models=(
             "gemini-2.5-flash",
             "gemini-2.5-pro",
