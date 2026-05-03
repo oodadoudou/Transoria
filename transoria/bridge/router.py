@@ -124,6 +124,9 @@ def build_default_router(
     from transoria.bridge.handlers.glossary_imports import (  # noqa: PLC0415
         register as register_glossary_imports,
     )
+    from transoria.bridge.handlers.translation_rules import (  # noqa: PLC0415
+        register as register_translation_rules,
+    )
     from transoria.bridge.handlers.replacement import (  # noqa: PLC0415
         register_parsers as register_replacement_parsers,
         register_tasks as register_replacement_tasks,
@@ -215,6 +218,7 @@ def build_default_router(
     register_replacement_parsers(router)
     register_replacement_tasks(router, service=task_service)
     register_glossary_imports(router, cache_root=cache_root)
+    register_translation_rules(router)
     # Tests / dev harnesses default to ``NullUpdateChecker`` so the
     # contract surface tests don't hit the GitHub API. Production
     # callers (``app.py``) inject a ``GithubReleaseChecker``.

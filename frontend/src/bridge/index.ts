@@ -10,7 +10,14 @@ export {
   translationBridge,
   glossaryBridge,
   replacementBridge,
+  rulesBridge,
   updatesBridge,
+} from "./client";
+export type {
+  TranslationRuleKind,
+  TextPreserveRulePayload,
+  ReplacementRulePayload,
+  TranslationRulePayload,
 } from "./client";
 export {
   getTransport,

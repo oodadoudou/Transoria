@@ -401,9 +401,9 @@ export interface Messages {
         export: string;
         search: string;
         statistics: string;
-        preset: string;
       };
       stats: { total: string; enabled: string };
+      importEmpty: string;
     };
     replacementPage: {
       title: string;
@@ -436,9 +436,9 @@ export interface Messages {
         export: string;
         search: string;
         statistics: string;
-        preset: string;
       };
       stats: { total: string; enabled: string };
+      importEmpty: string;
     };
   };
   glossary: {
@@ -672,6 +672,29 @@ export interface Messages {
     formatXlsx: string;
     formatXlsxHint: string;
     cancel: string;
+  };
+  ruleExport: {
+    title: string;
+    hint: string;
+    formatJson: string;
+    formatJsonHint: string;
+    formatXlsx: string;
+    formatXlsxHint: string;
+    cancel: string;
+  };
+  ruleStats: {
+    title: string;
+    close: string;
+    total: string;
+    enabled: string;
+    disabled: string;
+    regexCount: string;
+    caseSensitive: string;
+    avgPatternLen: string;
+    avgSrcDstLen: string;
+    topNote: string;
+    uncategorized: string;
+    empty: string;
   };
   glossaryScrollNav: {
     top: string;

@@ -350,6 +350,48 @@ export const glossaryBridge = {
   },
 };
 
+// --- Translation rules (text-preserve + pre/post replacement) --------------
+
+export type TranslationRuleKind =
+  | "text_preserve"
+  | "pre_replacement"
+  | "post_replacement";
+
+export interface TextPreserveRulePayload {
+  pattern: string;
+  note: string;
+  enabled: boolean;
+}
+
+export interface ReplacementRulePayload {
+  src: string;
+  dst: string;
+  regex: boolean;
+  case_sensitive: boolean;
+  note: string;
+  enabled: boolean;
+}
+
+export type TranslationRulePayload =
+  | TextPreserveRulePayload
+  | ReplacementRulePayload;
+
+export const rulesBridge = {
+  importRules(
+    kind: TranslationRuleKind,
+    path: string,
+  ): Promise<{ kind: TranslationRuleKind; rules: TranslationRulePayload[] }> {
+    return call("rules.import_rules", { kind, path });
+  },
+  exportRules(
+    kind: TranslationRuleKind,
+    path: string,
+    rules: TranslationRulePayload[],
+  ): Promise<{ kind: TranslationRuleKind; path: string; count: number }> {
+    return call("rules.export_rules", { kind, path, rules });
+  },
+};
+
 // --- Replacement ------------------------------------------------------------
 
 export const replacementBridge = {

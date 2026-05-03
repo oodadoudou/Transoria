@@ -1,7 +1,13 @@
 import { useCallback, useState } from "react";
 import { format, useMessages } from "@/locales";
 import { useModuleSettings } from "@/store/useSettingsStore";
-import type { PersistedTextPreserveRule } from "@/bridge";
+import {
+  BridgeError,
+  dialogsBridge,
+  rulesBridge,
+  type PersistedTextPreserveRule,
+  type TextPreserveRulePayload,
+} from "@/bridge";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { TextField } from "@/components/TextField";
@@ -14,6 +20,11 @@ import {
   ruleTableStyles,
 } from "@/components/RuleTable";
 import { useSearchShortcut } from "@/components/useSearchShortcut";
+import {
+  RuleExportModal,
+  type RuleExportFormat,
+} from "@/components/RuleExportModal";
+import { RuleStatsModal } from "@/components/RuleStatsModal";
 
 const EMPTY_RULES: PersistedTextPreserveRule[] = [];
 
@@ -31,6 +42,9 @@ export function TextPreservePage() {
   const selectedIndex = selection.last;
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
   useSearchShortcut(() => setSearchOpen(true));
 
   const allRules = draft?.text_preserve_rules ?? EMPTY_RULES;
@@ -97,6 +111,51 @@ export function TextPreservePage() {
   };
 
   const enabledCount = allRules.filter((r) => r.enabled).length;
+
+  const handleImport = async () => {
+    setImportError(null);
+    try {
+      const choice = await dialogsBridge.chooseGlossaryFile({
+        allowJson: true,
+        allowXlsx: true,
+      });
+      if (!choice.path) return;
+      const result = await rulesBridge.importRules(
+        "text_preserve",
+        choice.path,
+      );
+      const incoming = result.rules as TextPreserveRulePayload[];
+      if (incoming.length === 0) {
+        setImportError(m.importEmpty);
+        return;
+      }
+      setRules([...allRules, ...incoming]);
+    } catch (error) {
+      setImportError(
+        BridgeError.isBridgeError(error)
+          ? `${error.code}: ${error.message}`
+          : String(error),
+      );
+    }
+  };
+
+  const handleExport = async (fmt: RuleExportFormat) => {
+    setImportError(null);
+    try {
+      const choice = await dialogsBridge.chooseSavePath(
+        `text-preserve.${fmt}`,
+        [fmt],
+      );
+      if (!choice.path) return;
+      await rulesBridge.exportRules("text_preserve", choice.path, allRules);
+    } catch (error) {
+      setImportError(
+        BridgeError.isBridgeError(error)
+          ? `${error.code}: ${error.message}`
+          : String(error),
+      );
+    }
+  };
 
   if (!draft) {
     return <Panel title={m.title} subtitle={m.sub} />;
@@ -189,17 +248,37 @@ export function TextPreservePage() {
           }
           toolbar={[
             { label: m.actions.add, onClick: addRule, primary: true },
-            { label: m.actions.import, onClick: () => undefined },
-            { label: m.actions.export, onClick: () => undefined },
+            { label: m.actions.import, onClick: () => void handleImport() },
+            { label: m.actions.export, onClick: () => setExportOpen(true) },
             {
               label: m.actions.search,
               onClick: () => setSearchOpen((v) => !v),
             },
-            { label: m.actions.statistics, onClick: () => undefined },
-            { label: m.actions.preset, onClick: () => undefined },
+            { label: m.actions.statistics, onClick: () => setStatsOpen(true) },
           ]}
         />
+        {importError ? (
+          <div style={{ marginTop: 12, fontSize: 12, color: "#b04038" }}>
+            {importError}
+          </div>
+        ) : null}
       </Panel>
+      {exportOpen ? (
+        <RuleExportModal
+          onPick={(fmt) => {
+            setExportOpen(false);
+            void handleExport(fmt);
+          }}
+          onClose={() => setExportOpen(false)}
+        />
+      ) : null}
+      {statsOpen ? (
+        <RuleStatsModal
+          kind="text_preserve"
+          rules={allRules}
+          onClose={() => setStatsOpen(false)}
+        />
+      ) : null}
     </>
   );
 }
