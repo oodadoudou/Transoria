@@ -8,7 +8,8 @@ dependencies = [
   "httpx>=0.27",
   "json-repair>=0.30",
   "openpyxl>=3.1",
-  "chardet>=5.2",
+  # 6.x/7.x ship .bin ML models that Windows AV quarantines.
+  "chardet>=5.2,<6",
 ]
 
 [project.optional-dependencies]
