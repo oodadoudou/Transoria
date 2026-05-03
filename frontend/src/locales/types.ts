@@ -197,6 +197,7 @@ export interface Messages {
     savedTo: string;
     cacheLabel: string;
     cacheHint: string;
+    cacheOpenAction: string;
     cacheManageAction: string;
     cacheSummary: string;
     cacheSummaryEmpty: string;

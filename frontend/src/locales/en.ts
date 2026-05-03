@@ -220,6 +220,7 @@ export const en: Messages = {
     cacheLabel: "Task cache",
     cacheHint:
       "Per-task progress for translation, glossary, and batch replacement. Keeping caches lets you resume interrupted runs and open the proofreading view for completed runs. Clean up here when disk usage grows.",
+    cacheOpenAction: "Open folder",
     cacheManageAction: "Manage cache",
     cacheSummary: "{count} tasks · {size} on disk.",
     cacheSummaryEmpty: "No cached tasks.",

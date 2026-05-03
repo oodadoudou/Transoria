@@ -38,6 +38,8 @@ export function ProofreadingPage() {
     Record<string, string>
   >({});
   const tableBodyRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(600);
 
   // Initial: load task list.
   useEffect(() => {
@@ -128,6 +130,25 @@ export function ProofreadingPage() {
   }, [snapshot, search, onlyLowConf]);
 
   const dirty = selectedItem !== null && draftDst !== (selectedItem?.dst ?? "");
+
+  const ROW_HEIGHT = 48;
+  const OVERSCAN = 8;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(
+    filteredItems.length,
+    Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
+  );
+  const visibleItems = filteredItems.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    const el = tableBodyRef.current;
+    if (!el) return;
+    const update = () => setViewportHeight(el.clientHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const handleSave = async () => {
     if (!activeTaskId || !selectedItem || !dirty) return;
@@ -355,52 +376,69 @@ export function ProofreadingPage() {
             <span>{m.columns.dst}</span>
             <span>{m.columns.status}</span>
           </div>
-          <div className={styles.tableBody} ref={tableBodyRef}>
+          <div
+            className={styles.tableBody}
+            ref={tableBodyRef}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          >
             {loading ? (
               <div className={styles.empty}>{m.loading}</div>
             ) : filteredItems.length === 0 ? (
               <div className={styles.empty}>{m.empty}</div>
             ) : (
-              filteredItems.map((item) => {
-                const active = item.segment_id === selectedSegmentId;
-                const status = item.dst
-                  ? item.low_confidence
-                    ? "low"
-                    : "ok"
-                  : "empty";
-                return (
-                  <div
-                    key={item.segment_id}
-                    className={`${styles.row} ${active ? styles.rowActive : ""}`.trim()}
-                    onClick={() => setSelectedSegmentId(item.segment_id)}
-                  >
-                    <span
-                      className={`${styles.cell} ${styles.cellIndex}`.trim()}
+              <div
+                style={{
+                  height: filteredItems.length * ROW_HEIGHT,
+                  position: "relative",
+                }}
+              >
+                {visibleItems.map((item, i) => {
+                  const active = item.segment_id === selectedSegmentId;
+                  const status = item.dst
+                    ? item.low_confidence
+                      ? "low"
+                      : "ok"
+                    : "empty";
+                  return (
+                    <div
+                      key={item.segment_id}
+                      className={`${styles.row} ${active ? styles.rowActive : ""}`.trim()}
+                      style={{
+                        position: "absolute",
+                        top: (startIndex + i) * ROW_HEIGHT,
+                        left: 0,
+                        right: 0,
+                      }}
+                      onClick={() => setSelectedSegmentId(item.segment_id)}
                     >
-                      {item.segment_id}
-                    </span>
-                    <span className={styles.cell}>{item.src}</span>
-                    <span className={styles.cell}>{item.dst || "—"}</span>
-                    <span>
                       <span
-                        className={`${styles.statusChip} ${
-                          status === "low"
-                            ? styles.statusLow
-                            : status === "empty"
-                              ? styles.statusEmpty
-                              : styles.statusOk
-                        }`}
+                        className={`${styles.cell} ${styles.cellIndex}`.trim()}
                       >
-                        {status === "low"
-                          ? m.statusLowConfidence
-                          : status === "empty"
-                            ? m.statusEmpty
-                            : m.statusOk}
+                        {item.segment_id}
                       </span>
-                    </span>
-                  </div>
-                );
-              })
+                      <span className={styles.cell}>{item.src}</span>
+                      <span className={styles.cell}>{item.dst || "—"}</span>
+                      <span>
+                        <span
+                          className={`${styles.statusChip} ${
+                            status === "low"
+                              ? styles.statusLow
+                              : status === "empty"
+                                ? styles.statusEmpty
+                                : styles.statusOk
+                          }`}
+                        >
+                          {status === "low"
+                            ? m.statusLowConfidence
+                            : status === "empty"
+                              ? m.statusEmpty
+                              : m.statusOk}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

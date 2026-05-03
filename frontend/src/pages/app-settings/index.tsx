@@ -4,6 +4,7 @@ import type { AppSettingsPage } from "@/store/useTaskStore";
 import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
 import {
   appBridge,
+  dialogsBridge,
   tasksBridge,
   updatesBridge,
   BridgeError,
@@ -271,6 +272,7 @@ function CachePanel() {
   const [summary, setSummary] = useState<{
     task_count: number;
     total_bytes: number;
+    cache_root: string;
   } | null>(null);
   const [open, setOpen] = useState(false);
   const [resultText, setResultText] = useState<string | null>(null);
@@ -282,7 +284,17 @@ function CachePanel() {
       setSummary({
         task_count: next.task_count,
         total_bytes: next.total_bytes,
+        cache_root: next.cache_root,
       });
+    } catch (err) {
+      if (BridgeError.isBridgeError(err)) setError(err);
+    }
+  };
+
+  const handleOpenCacheRoot = async () => {
+    if (!summary?.cache_root) return;
+    try {
+      await dialogsBridge.openDirectory(summary.cache_root);
     } catch (err) {
       if (BridgeError.isBridgeError(err)) setError(err);
     }
@@ -314,6 +326,24 @@ function CachePanel() {
       <div className={styles.row}>
         <div className={styles.rowText}>
           <div className={styles.rowHint}>{labels.cacheHint}</div>
+          {summary?.cache_root ? (
+            <div
+              className={styles.rowHint}
+              style={{
+                marginTop: 8,
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <code style={{ fontSize: "11.5px", wordBreak: "break-all" }}>
+                {summary.cache_root}
+              </code>
+              <Pill variant="ghost" onClick={() => void handleOpenCacheRoot()}>
+                {labels.cacheOpenAction}
+              </Pill>
+            </div>
+          ) : null}
           {summaryText ? (
             <div className={styles.rowHint} style={{ marginTop: 8 }}>
               {summaryText}

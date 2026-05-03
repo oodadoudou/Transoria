@@ -202,8 +202,8 @@ def build_default_router(
         try:
             settings = settings_store.load_all()
         except Exception:  # noqa: BLE001
-            return []
-        roots: list[Path] = []
+            return [cache_root]
+        roots: list[Path] = [cache_root]
         for folder in (
             settings.translation.output_folder,
             settings.glossary.output_folder,

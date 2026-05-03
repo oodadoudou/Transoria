@@ -212,6 +212,7 @@ export const zh: Messages = {
     cacheLabel: "任务缓存",
     cacheHint:
       "翻译/术语提取/批量替换 任务的进度缓存。保留它们可以在重启后恢复未跑完的任务、进入校对页查看历史译文。可在此处一键清理。",
+    cacheOpenAction: "打开目录",
     cacheManageAction: "清理缓存",
     cacheSummary: "已保存 {count} 个任务，占用 {size}。",
     cacheSummaryEmpty: "暂无任务缓存。",

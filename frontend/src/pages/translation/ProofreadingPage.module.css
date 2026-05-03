@@ -80,7 +80,15 @@
   border-bottom: 1px solid var(--hairline-soft);
   font-size: 12.5px;
   cursor: pointer;
-  align-items: start;
+  align-items: center;
+  height: 48px;
+  box-sizing: border-box;
+}
+
+.cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row:hover {
@@ -93,11 +101,6 @@
   outline-offset: -2px;
 }
 
-.cell {
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.45;
-}
 
 .cellIndex {
   color: var(--muted);
