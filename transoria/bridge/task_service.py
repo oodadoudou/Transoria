@@ -643,9 +643,10 @@ def _glossary_artifact_payload(artifact: GlossaryArtifactSet) -> dict[str, objec
 
 
 def _partial_translation_payload(
-    snapshot: TaskSnapshot, *, output_dir: Path
+    snapshot: TaskSnapshot, *, output_dir: Path, statistics_dir: Path
 ) -> dict[str, object]:
-    stats = _read_json_file(output_dir / STATISTICS_FILENAME_JSON)
+    stats_path = statistics_dir / STATISTICS_FILENAME_JSON
+    stats = _read_json_file(stats_path)
     translated = _string_list(stats.get("translated_outputs")) if stats else []
     bilingual = _string_list(stats.get("bilingual_outputs")) if stats else []
     if not translated:
@@ -653,7 +654,6 @@ def _partial_translation_payload(
     if not bilingual:
         bilingual = _scan_bilingual_files(output_dir)
     progress = snapshot.progress()
-    stats_path = output_dir / STATISTICS_FILENAME_JSON
     bilingual_folder = str(Path(bilingual[0]).parent) if bilingual else None
     return {
         "kind": "translation",
@@ -2509,7 +2509,11 @@ class TaskService:
         metadata = record.metadata
         output_dir = Path(str(metadata.get("output_dir", "")))
         if record.kind is TaskKind.TRANSLATION:
-            return _partial_translation_payload(snapshot, output_dir=output_dir)
+            return _partial_translation_payload(
+                snapshot,
+                output_dir=output_dir,
+                statistics_dir=self._cache_for_kind("translation").task_dir(record.id),
+            )
         if record.kind is TaskKind.GLOSSARY:
             input_dir = Path(str(metadata.get("input_dir", "")))
             return _partial_glossary_payload(
