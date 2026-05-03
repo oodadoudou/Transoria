@@ -41,6 +41,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         children: [
           { page: "run", label: t.run },
           { page: "glossary", label: t.glossary },
+          { page: "proofreading", label: t.proofreading },
           { page: "prompt", label: t.prompt },
           { page: "settings", label: t.settings },
           { page: "textPreserve", label: t.textPreserve },

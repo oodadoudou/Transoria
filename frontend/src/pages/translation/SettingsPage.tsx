@@ -161,6 +161,18 @@ export function SettingsPage() {
         </Row>
         <Row label="" hint="">
           <NumberField
+            label={settings.failedChunkSplitRounds}
+            value={draft.failed_chunk_split_rounds}
+            onChange={(v) =>
+              moduleSettings.update("failed_chunk_split_rounds", v)
+            }
+            help={settings.failedChunkSplitRoundsHelp}
+            min={0}
+            max={8}
+          />
+        </Row>
+        <Row label="" hint="">
+          <NumberField
             label={settings.timeoutSeconds}
             value={draft.timeout_seconds}
             onChange={(v) => moduleSettings.update("timeout_seconds", v)}

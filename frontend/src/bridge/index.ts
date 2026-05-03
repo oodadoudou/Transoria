@@ -9,11 +9,13 @@ export {
   promptsBridge,
   translationBridge,
   glossaryBridge,
+  proofreadingBridge,
   replacementBridge,
   rulesBridge,
   tasksBridge,
   updatesBridge,
 } from "./client";
+export type { ProofreadingItem, ProofreadingSnapshot } from "./client";
 export type {
   TranslationRuleKind,
   TextPreserveRulePayload,

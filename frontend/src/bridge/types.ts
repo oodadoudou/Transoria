@@ -121,6 +121,7 @@ export interface TranslationSettings {
   context_lines: number;
   low_confidence_max_retries: number;
   auto_retry_max_rounds: number;
+  failed_chunk_split_rounds: number;
   auto_open_output_folder: boolean;
   timeout_seconds: number;
   translation_glossary: PersistedGlossaryEntry[];

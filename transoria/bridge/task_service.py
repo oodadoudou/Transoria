@@ -1000,6 +1000,9 @@ class TaskService:
             auto_retry_max_rounds=max(
                 0, min(100, int(translation.auto_retry_max_rounds))
             ),
+            failed_chunk_split_rounds=max(
+                0, min(8, int(translation.failed_chunk_split_rounds))
+            ),
         )
         return config, model, preset
 

@@ -272,6 +272,7 @@ export interface Messages {
       run: string;
       settings: string;
       glossary: string;
+      proofreading: string;
       textPreserve: string;
       preReplacement: string;
       postReplacement: string;
@@ -308,6 +309,8 @@ export interface Messages {
       lowConfidenceMaxRetriesHelp: string;
       autoRetryMaxRounds: string;
       autoRetryMaxRoundsHelp: string;
+      failedChunkSplitRounds: string;
+      failedChunkSplitRoundsHelp: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
       on: string;
@@ -458,6 +461,38 @@ export interface Messages {
       };
       stats: { total: string; enabled: string };
       importEmpty: string;
+    };
+    proofreadingPage: {
+      title: string;
+      sub: string;
+      noTasks: string;
+      taskPicker: string;
+      loading: string;
+      regenerateAction: string;
+      regenerating: string;
+      regenerateSuccess: string;
+      regenerateFailed: string;
+      columns: {
+        index: string;
+        src: string;
+        dst: string;
+        status: string;
+      };
+      statusLowConfidence: string;
+      statusOk: string;
+      statusEmpty: string;
+      editorEmpty: string;
+      editorSrcLabel: string;
+      editorDstLabel: string;
+      editorSaveAction: string;
+      editorSavedHint: string;
+      editorDirty: string;
+      empty: string;
+      stats: { total: string; lowConfidence: string };
+      filterPlaceholder: string;
+      filterOnlyLowConfidence: string;
+      filterAll: string;
+      taskFolderHint: string;
     };
   };
   glossary: {

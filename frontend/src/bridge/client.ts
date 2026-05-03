@@ -269,6 +269,51 @@ export const translationBridge = {
   },
 };
 
+// --- Proofreading -----------------------------------------------------------
+
+export interface ProofreadingItem {
+  segment_id: string;
+  src: string;
+  dst: string;
+  low_confidence: boolean;
+}
+
+export interface ProofreadingSnapshot {
+  task_id: string;
+  task_status: string;
+  input_dir: string;
+  output_dir: string;
+  items: ProofreadingItem[];
+}
+
+export const proofreadingBridge = {
+  listTasks(): Promise<{ tasks: TaskHeader[] }> {
+    return call("proofreading.list_tasks", {});
+  },
+  loadSnapshot(taskId: string): Promise<ProofreadingSnapshot> {
+    return call("proofreading.load_snapshot", { task_id: taskId });
+  },
+  updateSegment(
+    taskId: string,
+    segmentId: string,
+    dst: string,
+  ): Promise<{ updated: boolean; segment_id: string; dst: string }> {
+    return call("proofreading.update_segment", {
+      task_id: taskId,
+      segment_id: segmentId,
+      dst,
+    });
+  },
+  regenerateOutputs(taskId: string): Promise<{
+    task_id: string;
+    translated_files: string[];
+    bilingual_files: string[];
+    failed_files: Array<{ path: string; reason: string }>;
+  }> {
+    return call("proofreading.regenerate_outputs", { task_id: taskId });
+  },
+};
+
 // --- Glossary ---------------------------------------------------------------
 
 export const glossaryBridge = {

@@ -23,6 +23,7 @@ export type TranslationPage =
   | "run"
   | "settings"
   | "glossary"
+  | "proofreading"
   | "textPreserve"
   | "preReplacement"
   | "postReplacement"
