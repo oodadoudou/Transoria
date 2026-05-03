@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useI18n, useMessages, type Locale } from "@/locales";
+import { format, useI18n, useMessages, type Locale } from "@/locales";
 import type { AppSettingsPage } from "@/store/useTaskStore";
 import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
 import {
   appBridge,
+  tasksBridge,
   updatesBridge,
   BridgeError,
   type AppMetadata,
@@ -15,7 +16,17 @@ import { NumberField } from "@/components/NumberField";
 import { TextField } from "@/components/TextField";
 import { Segmented } from "@/components/Segmented";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
+import modalStyles from "@/components/GlossaryExportModal.module.css";
 import styles from "./index.module.css";
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}
 
 interface AppSettingsModuleProps {
   page: AppSettingsPage;
@@ -128,6 +139,8 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
           }
         />
       ) : null}
+
+      <CachePanel />
 
       <UpdatesPanel />
 
@@ -249,6 +262,242 @@ function UpdatesPanel() {
         </pre>
       ) : null}
     </Panel>
+  );
+}
+
+function CachePanel() {
+  const messages = useMessages();
+  const labels = messages.appSettingsExtra;
+  const [summary, setSummary] = useState<{
+    task_count: number;
+    total_bytes: number;
+  } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [resultText, setResultText] = useState<string | null>(null);
+  const [error, setError] = useState<BridgeError | null>(null);
+
+  const refresh = async () => {
+    try {
+      const next = await tasksBridge.summarizeCaches();
+      setSummary({
+        task_count: next.task_count,
+        total_bytes: next.total_bytes,
+      });
+    } catch (err) {
+      if (BridgeError.isBridgeError(err)) setError(err);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const summaryText =
+    summary === null
+      ? ""
+      : summary.task_count === 0
+        ? labels.cacheSummaryEmpty
+        : format(labels.cacheSummary, {
+            count: summary.task_count,
+            size: formatBytes(summary.total_bytes),
+          });
+
+  return (
+    <Panel
+      label={labels.cacheLabel}
+      labelExtra={
+        <Pill variant="ghost" onClick={() => setOpen(true)}>
+          {labels.cacheManageAction}
+        </Pill>
+      }
+    >
+      <div className={styles.row}>
+        <div className={styles.rowText}>
+          <div className={styles.rowHint}>{labels.cacheHint}</div>
+          {summaryText ? (
+            <div className={styles.rowHint} style={{ marginTop: 8 }}>
+              {summaryText}
+            </div>
+          ) : null}
+          {resultText ? (
+            <div className={styles.rowHint} style={{ marginTop: 8 }}>
+              {resultText}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {error ? (
+        <pre className={styles.error}>
+          <code>{error.code}</code> {error.message}
+        </pre>
+      ) : null}
+      {open ? (
+        <CacheCleanupModal
+          onClose={() => setOpen(false)}
+          onPurged={(text) => {
+            setResultText(text);
+            void refresh();
+          }}
+        />
+      ) : null}
+    </Panel>
+  );
+}
+
+interface CacheCleanupModalProps {
+  onClose: () => void;
+  onPurged: (text: string) => void;
+}
+
+function CacheCleanupModal({ onClose, onPurged }: CacheCleanupModalProps) {
+  const labels = useMessages().appSettingsExtra;
+  const [confirmingAll, setConfirmingAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<BridgeError | null>(null);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const purge = async (scope: "all" | "older_than_days", days?: number) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await tasksBridge.purgeCaches(scope, days);
+      const main = format(labels.cachePurgeResult, {
+        count: result.removed_count,
+      });
+      const skipped =
+        result.skipped_active_count > 0
+          ? ` ${format(labels.cachePurgeSkipped, {
+              count: result.skipped_active_count,
+            })}`
+          : "";
+      onPurged(`${main}${skipped}`);
+      onClose();
+    } catch (err) {
+      if (BridgeError.isBridgeError(err)) setError(err);
+      else throw err;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className={modalStyles.overlay}
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div className={modalStyles.modal} onClick={(e) => e.stopPropagation()}>
+        <div className={modalStyles.header}>
+          <h2 className={modalStyles.title}>{labels.cacheModalTitle}</h2>
+          <button
+            type="button"
+            className={modalStyles.close}
+            onClick={onClose}
+            aria-label={labels.cacheModalClose}
+          >
+            ×
+          </button>
+        </div>
+        <div className={modalStyles.body}>
+          <p className={modalStyles.hint}>
+            {confirmingAll
+              ? labels.cachePurgeAllConfirm
+              : labels.cacheModalHint}
+          </p>
+          {confirmingAll ? (
+            <div className={modalStyles.choices}>
+              <button
+                type="button"
+                className={modalStyles.choice}
+                disabled={busy}
+                onClick={() => void purge("all")}
+              >
+                <span className={modalStyles.choiceText}>
+                  <span className={modalStyles.choiceLabel}>
+                    {labels.cachePurgeAllConfirmYes}
+                  </span>
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div className={modalStyles.choices}>
+              <button
+                type="button"
+                className={modalStyles.choice}
+                disabled={busy}
+                onClick={() => setConfirmingAll(true)}
+              >
+                <span className={modalStyles.choiceText}>
+                  <span className={modalStyles.choiceLabel}>
+                    {labels.cachePurgeAll}
+                  </span>
+                  <span className={modalStyles.choiceHint}>
+                    {labels.cachePurgeAllHint}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={modalStyles.choice}
+                disabled={busy}
+                onClick={() => void purge("older_than_days", 30)}
+              >
+                <span className={modalStyles.choiceText}>
+                  <span className={modalStyles.choiceLabel}>
+                    {labels.cachePurgeMonth}
+                  </span>
+                  <span className={modalStyles.choiceHint}>
+                    {labels.cachePurgeMonthHint}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={modalStyles.choice}
+                disabled={busy}
+                onClick={() => void purge("older_than_days", 7)}
+              >
+                <span className={modalStyles.choiceText}>
+                  <span className={modalStyles.choiceLabel}>
+                    {labels.cachePurgeWeek}
+                  </span>
+                  <span className={modalStyles.choiceHint}>
+                    {labels.cachePurgeWeekHint}
+                  </span>
+                </span>
+              </button>
+            </div>
+          )}
+          {error ? (
+            <pre className={styles.error}>
+              <code>{error.code}</code> {error.message}
+            </pre>
+          ) : null}
+        </div>
+        <div className={modalStyles.footer}>
+          <button
+            type="button"
+            className={modalStyles.cancel}
+            onClick={() => {
+              if (confirmingAll) setConfirmingAll(false);
+              else onClose();
+            }}
+          >
+            {confirmingAll
+              ? labels.cachePurgeAllConfirmNo
+              : labels.cacheModalClose}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

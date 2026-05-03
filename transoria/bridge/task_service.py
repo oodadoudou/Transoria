@@ -17,11 +17,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import threading
 import traceback
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 from uuid import uuid4
@@ -115,21 +114,6 @@ _STOP_REQUEST_STALL_SECONDS = 90.0
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _is_os_metadata_file(path: Path) -> bool:
-    """OS-level metadata that should not block ``transoria-cache/``
-    cleanup. macOS Finder writes ``.DS_Store`` whenever the user
-    opens the folder; Windows Explorer writes ``Thumbs.db`` /
-    ``desktop.ini``; macOS network shares emit ``._*`` resource forks.
-    None of these are user data — if they're the only things left
-    after a clean COMPLETED run, the cache root should still be
-    removed."""
-
-    name = path.name
-    if name in {".DS_Store", "Thumbs.db", "desktop.ini"}:
-        return True
-    return name.startswith("._")
 
 
 def _utc_now_iso() -> str:
@@ -743,7 +727,7 @@ def _scan_bilingual_files(output_dir: Path) -> list[str]:
 class TaskService:
     """Bridge-facing facade over the runtime + workflow orchestrators."""
 
-    cache: TaskCache  # legacy fallback when settings.output_folder is unset
+    cache: TaskCache  # central task cache — <cache_root>/tasks/<task_id>/
     registry: TaskRegistry
     settings_store: SettingsStore
     profile_store: ModelProfileStore
@@ -785,56 +769,119 @@ class TaskService:
     # Per-task cache resolution
     # ------------------------------------------------------------------
     #
-    # Task records (record.json + subtasks/) live under the user's
-    # output folder so each book/run keeps its own progress cache and
-    # the user can manually wipe runs they no longer want. Falls back
-    # to the legacy app-level cache when the output folder is unset
-    # (e.g. early test fixtures, smoke probes).
+    # All task records live under a single central root
+    # (``<cache_root>/tasks/<task_id>/``). Records carry their kind
+    # internally so list_tasks can filter; storing them flat means
+    # output folder changes do not orphan caches and tasks survive
+    # regardless of the user's current output_folder setting. Required
+    # for "open app → resume last task" and the upcoming proofreading
+    # feature, both of which need cache that outlives a clean run.
 
-    _CACHE_DIRNAME = "transoria-cache"
-
-    def _cache_for_kind(self, kind: str) -> TaskCache:
-        settings = self.settings_store.load_all()
-        if kind == "translation":
-            output = settings.translation.output_folder
-        elif kind == "glossary":
-            output = settings.glossary.output_folder
-        elif kind == "replacement":
-            output = settings.replacement.output_folder
-        else:
-            return self.cache
-        if not output:
-            return self.cache
-        return TaskCache(root=Path(output) / self._CACHE_DIRNAME)
-
-    def _cache_for_task(self, task_id: str) -> TaskCache:
-        if task_id.startswith("translation-"):
-            return self._cache_for_kind("translation")
-        if task_id.startswith("glossary-"):
-            return self._cache_for_kind("glossary")
-        if task_id.startswith("replacement-"):
-            return self._cache_for_kind("replacement")
+    def _cache_for_kind(self, kind: str) -> TaskCache:  # noqa: ARG002
         return self.cache
 
+    def _cache_for_task(self, task_id: str) -> TaskCache:  # noqa: ARG002
+        return self.cache
+
+    # ------------------------------------------------------------------
+    # Public: cache management (Settings page)
+    # ------------------------------------------------------------------
+
+    def summarize_caches(self) -> dict[str, object]:
+        """Aggregate stats for the cache cleanup UI."""
+
+        records = self.cache.list_tasks()
+        total_bytes = 0
+        for record in records:
+            task_dir = self.cache.task_dir(record.id)
+            if not task_dir.exists():
+                continue
+            for path in task_dir.rglob("*"):
+                if path.is_file():
+                    try:
+                        total_bytes += path.stat().st_size
+                    except OSError:
+                        continue
+        return {
+            "task_count": len(records),
+            "total_bytes": total_bytes,
+            "cache_root": str(self.cache.root),
+        }
+
+    def purge_caches(
+        self, *, scope: str, days: int | None = None
+    ) -> dict[str, object]:
+        """Delete cache entries by scope.
+
+        ``scope`` values:
+          - ``"all"``                   — every entry (with active threads skipped)
+          - ``"older_than_days"``       — entries with ``updated_at`` older than
+                                          ``days`` days from now (active skipped)
+
+        Active in-flight tasks are never deleted regardless of scope —
+        their thread would keep writing to a now-gone directory and
+        corrupt the next start. The in-memory mirrors for any deleted
+        task are dropped too so the Run page does not surface stale
+        100% stats from the wiped run.
+        """
+
+        if scope not in {"all", "older_than_days"}:
+            raise BridgeError.invalid_argument(
+                f"unsupported purge scope: {scope!r}",
+                field="scope",
+                details={"scope": scope, "allowed": ["all", "older_than_days"]},
+            )
+        cutoff: datetime | None = None
+        if scope == "older_than_days":
+            if days is None or days < 0:
+                raise BridgeError.invalid_argument(
+                    "days must be a non-negative integer for older_than_days.",
+                    field="days",
+                )
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+        removed: list[str] = []
+        skipped_active: list[str] = []
+        for record in self.cache.list_tasks():
+            running = self.registry.get(record.id)
+            if running is not None and not running.is_done:
+                skipped_active.append(record.id)
+                continue
+            if cutoff is not None:
+                try:
+                    updated = datetime.fromisoformat(record.updated_at)
+                except ValueError:
+                    continue
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+                if updated > cutoff:
+                    continue
+            try:
+                self.cache.delete(record.id)
+            except TaskNotFoundError:
+                continue
+            removed.append(record.id)
+            self._completed_snapshots.pop(record.id, None)
+            self._completed_results.pop(record.id, None)
+            self._completed_replacement_reports.pop(record.id, None)
+        return {
+            "scope": scope,
+            "days": days,
+            "removed_count": len(removed),
+            "removed_ids": removed,
+            "skipped_active_count": len(skipped_active),
+        }
+
     def _maybe_cleanup_cache(self, kind: str, task_id: str) -> None:
-        """Wipe the entire ``transoria-cache/`` artifact for a clean run.
+        """Freeze final stats into in-memory mirrors for a clean run.
 
         ``Clean success`` = task status COMPLETED with zero failed
-        subtasks. After such a run the user only wants the actual
-        deliverables (translated files, glossary xlsx/json, references,
-        statistics) sitting in the output folder — the ``transoria-
-        cache/`` working directory is internal bookkeeping and should
-        not be visible.
-
-        Before the disk wipe, the snapshot is mirrored into
-        ``_completed_snapshots`` (in-memory, per-process) with progress
-        + token totals frozen into ``record.metadata``. ``read_snapshot``
-        falls back to that mirror so the Run page can keep showing
-        100% / completed-count / token totals until the user starts a
-        new task or restarts the app.
-
-        Stopped / paused / failed tasks keep their full cache so the
-        user can resume — only clean COMPLETED triggers the wipe.
+        subtasks. The on-disk cache is **no longer wiped** here — every
+        task survives in ``<cache_root>/tasks/`` until the user clears
+        it via the Settings cache cleanup UI. The in-memory mirrors
+        below remain populated so ``read_snapshot`` and
+        ``read_artifacts`` keep returning the run's final state without
+        re-loading from disk on every poll.
         """
 
         cache = self._cache_for_kind(kind)
@@ -849,11 +896,6 @@ class TaskService:
         if progress.failed > 0:
             return
 
-        # Freeze final stats into the in-memory mirror's record so
-        # `_format_snapshot` reads them back even after the on-disk
-        # subtasks have vanished. Subtasks list is intentionally empty
-        # in the mirrored TaskSnapshot — `_format_snapshot` already
-        # handles that branch.
         usage = snapshot.usage()
         frozen = dict(snapshot.record.metadata)
         frozen["final_progress"] = {
@@ -878,18 +920,9 @@ class TaskService:
         self._completed_snapshots[task_id] = TaskSnapshot(
             record=frozen_record, subtasks=()
         )
-        # Read result.json into the result mirror BEFORE wiping —
-        # otherwise read_artifacts would 404 right after a clean
-        # completion. Failures swallowed: if the result file is
-        # already gone or unreadable, the mirror just stays empty
-        # and read_artifacts falls back to its partial path.
         result_payload = self._read_result(task_id)
         if result_payload is not None:
             self._completed_results[task_id] = result_payload
-        # Same lifecycle for the replacement-report payload: read it
-        # before the wipe so ``read_replacement_report`` can fall back
-        # to memory after the disk is gone. Other kinds never write
-        # this file, so the missing branch is the common case.
         report_path = self._replacement_report_path(task_id)
         if report_path.exists():
             try:
@@ -898,31 +931,6 @@ class TaskService:
                 )
             except (OSError, json.JSONDecodeError):
                 pass
-
-        # Wipe this task's directory under the cache root, then prune
-        # the cache root itself if no other task is parked there. OS
-        # metadata files (Finder's ``.DS_Store``, Windows' ``Thumbs.db``,
-        # macOS resource forks ``._*``) are ignored so the cache root
-        # gets removed even after the user has opened the folder in
-        # Finder once — those artifacts are not user data and don't
-        # justify keeping the working dir visible.
-        task_dir = cache.task_dir(task_id)
-        if task_dir.exists():
-            try:
-                shutil.rmtree(task_dir)
-            except OSError:
-                return
-        if cache.root.exists():
-            try:
-                non_meta = [
-                    entry
-                    for entry in cache.root.iterdir()
-                    if not _is_os_metadata_file(entry)
-                ]
-                if not non_meta:
-                    shutil.rmtree(cache.root, ignore_errors=True)
-            except OSError:
-                return
 
     # ------------------------------------------------------------------
     # Public: translation
@@ -1892,47 +1900,25 @@ class TaskService:
     def _purge_kind_for_start(
         self, *, kind: str, task_kind: TaskKind, join_timeout: float = 30.0
     ) -> None:
-        """Make room for a fresh ``start`` on the given kind.
+        """Stop any in-flight task on this kind so a new ``start`` can
+        seed cache without colliding with a live writer thread.
 
-        Per architecture § 1.2, ``start`` is destructive: any prior
-        in-flight task of this kind is stopped (cooperatively) and any
-        prior cache record is deleted. Output files in the user's
-        ``output_dir`` are NOT touched — re-running subtasks
-        overwrites them naturally. The frontend is responsible for
-        showing a confirmation dialog before invoking start when a
-        prior task or cache exists; the bridge does not refuse.
+        ``start`` is **no longer destructive to prior cache**: every
+        run gets a fresh ``task_id`` so old runs coexist on disk and
+        remain available for resume / proofreading / inspection. Stale
+        runs are removed only via the user-driven cache cleanup UI.
+        The fresh start uses a new id, so its records never collide
+        with the prior one. Old in-memory completion mirrors are kept
+        too — read_snapshot keys by task_id so the new task sees an
+        empty mirror naturally.
         """
 
-        # 1) Cooperative stop on every live thread for this kind.
         live = [r for r in self.registry.list_by_kind(kind) if not r.is_done]
         for running in live:
             running.request_stop()
         for running in live:
             if running.thread is not None:
                 running.thread.join(timeout=join_timeout)
-
-        # 2) Delete every cache record of this kind, including the
-        #    just-stopped ones and stale completed/failed records.
-        cache = self._cache_for_kind(kind)
-        for record in cache.list_tasks():
-            if record.kind is task_kind:
-                try:
-                    cache.delete(record.id)
-                except TaskNotFoundError:
-                    continue
-
-        # 3) Drop any in-memory completion mirrors for this kind so a
-        #    fresh start doesn't see stale "completed 100%" stats from
-        #    the previous run.
-        stale = [
-            tid
-            for tid, snap in self._completed_snapshots.items()
-            if snap.record.kind is task_kind
-        ]
-        for tid in stale:
-            self._completed_snapshots.pop(tid, None)
-            self._completed_results.pop(tid, None)
-            self._completed_replacement_reports.pop(tid, None)
 
     def _spawn_thread(
         self,

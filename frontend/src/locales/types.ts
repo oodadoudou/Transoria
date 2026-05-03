@@ -195,6 +195,25 @@ export interface Messages {
     openReleasePage: string;
     download: string;
     savedTo: string;
+    cacheLabel: string;
+    cacheHint: string;
+    cacheManageAction: string;
+    cacheSummary: string;
+    cacheSummaryEmpty: string;
+    cacheModalTitle: string;
+    cacheModalHint: string;
+    cachePurgeAll: string;
+    cachePurgeAllHint: string;
+    cachePurgeMonth: string;
+    cachePurgeMonthHint: string;
+    cachePurgeWeek: string;
+    cachePurgeWeekHint: string;
+    cachePurgeAllConfirm: string;
+    cachePurgeAllConfirmYes: string;
+    cachePurgeAllConfirmNo: string;
+    cachePurgeResult: string;
+    cachePurgeSkipped: string;
+    cacheModalClose: string;
   };
   settingsToolbar: {
     save: string;
@@ -720,6 +739,9 @@ export interface Messages {
   failedSubtasksModal: {
     triggerPrefix: string;
     triggerSuffix: string;
+    autoFixingPrefix: string;
+    autoFixingSuffix: string;
+    autoFixingHint: string;
     title: string;
     fileLabel: string;
     affectedLabel: string;

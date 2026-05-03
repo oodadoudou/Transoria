@@ -11,6 +11,7 @@ export {
   glossaryBridge,
   replacementBridge,
   rulesBridge,
+  tasksBridge,
   updatesBridge,
 } from "./client";
 export type {

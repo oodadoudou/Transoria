@@ -350,6 +350,30 @@ export const glossaryBridge = {
   },
 };
 
+// --- Task-cache management (Settings page) --------------------------------
+
+export const tasksBridge = {
+  summarizeCaches(): Promise<{
+    task_count: number;
+    total_bytes: number;
+    cache_root: string;
+  }> {
+    return call("tasks.summarize_caches", {});
+  },
+  purgeCaches(
+    scope: "all" | "older_than_days",
+    days?: number,
+  ): Promise<{
+    scope: string;
+    days: number | null;
+    removed_count: number;
+    removed_ids: string[];
+    skipped_active_count: number;
+  }> {
+    return call("tasks.purge_caches", { scope, days: days ?? null });
+  },
+};
+
 // --- Translation rules (text-preserve + pre/post replacement) --------------
 
 export type TranslationRuleKind =

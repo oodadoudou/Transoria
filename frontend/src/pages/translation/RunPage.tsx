@@ -68,15 +68,17 @@ export function RunPage() {
   const [rerunPending, setRerunPending] = useState(false);
 
   // Auto-open the completion-with-failures dialog the first time we
-  // see a terminal status with failures for this task. Dismissal is
-  // tracked module-level so navigating away and back doesn't re-open.
+  // see a terminal status with failures for this task. Fires even when
+  // every chunk failed (progress.completed == 0) so the user is always
+  // offered a "continue rerun" path — they were getting silent dead
+  // ends previously. Dismissal is tracked module-level so navigating
+  // away and back doesn't re-open.
   useEffect(() => {
     if (!activeTaskId) return;
     if (snapshot.status !== "completed" && snapshot.status !== "failed") {
       return;
     }
     if (snapshot.progress.failed <= 0) return;
-    if (snapshot.progress.completed <= 0) return;
     if (hasDismissedCompletionWithFailures(activeTaskId)) return;
     setCompletionPromptOpen(true);
   }, [
@@ -243,7 +245,26 @@ export function RunPage() {
           <Pill
             variant="ghost"
             onClick={() => setFailedModalOpen(true)}
-          >{`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}</Pill>
+            title={
+              snapshot.status === "running"
+                ? failedModalMessages.autoFixingHint
+                : undefined
+            }
+          >
+            {snapshot.status === "running"
+              ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
+              : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
+          </Pill>
+          {(snapshot.status === "failed" ||
+            snapshot.status === "stopped" ||
+            snapshot.status === "paused" ||
+            (snapshot.status === "completed" &&
+              snapshot.progress.failed > 0)) &&
+          !rerunPending ? (
+            <Pill onClick={handleRerunFailed}>
+              {messages.completionWithFailures.rerunAction}
+            </Pill>
+          ) : null}
         </div>
       ) : null}
 

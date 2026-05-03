@@ -65,13 +65,14 @@ export function RunPage() {
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
   const [rerunPending, setRerunPending] = useState(false);
 
+  // Same as translation: fire even when every chunk failed so the
+  // user always gets a "continue rerun" offer.
   useEffect(() => {
     if (!activeTaskId) return;
     if (snapshot.status !== "completed" && snapshot.status !== "failed") {
       return;
     }
     if (snapshot.progress.failed <= 0) return;
-    if (snapshot.progress.completed <= 0) return;
     if (hasDismissedCompletionWithFailures(activeTaskId)) return;
     setCompletionPromptOpen(true);
   }, [
@@ -230,7 +231,26 @@ export function RunPage() {
           <Pill
             variant="ghost"
             onClick={() => setFailedModalOpen(true)}
-          >{`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}</Pill>
+            title={
+              snapshot.status === "running"
+                ? failedModalMessages.autoFixingHint
+                : undefined
+            }
+          >
+            {snapshot.status === "running"
+              ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
+              : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
+          </Pill>
+          {(snapshot.status === "failed" ||
+            snapshot.status === "stopped" ||
+            snapshot.status === "paused" ||
+            (snapshot.status === "completed" &&
+              snapshot.progress.failed > 0)) &&
+          !rerunPending ? (
+            <Pill onClick={handleRerunFailed}>
+              {messages.completionWithFailures.rerunAction}
+            </Pill>
+          ) : null}
         </div>
       ) : null}
 

@@ -99,12 +99,44 @@ def _build_handlers(
     }
 
 
+def _build_cache_management_handlers(
+    service: TaskService,
+) -> dict[str, object]:
+    """Kind-agnostic handlers exposed under the ``tasks.*`` namespace."""
+
+    def summarize_caches(_payload: Mapping[str, object]) -> dict[str, object]:
+        return service.summarize_caches()
+
+    def purge_caches(payload: Mapping[str, object]) -> dict[str, object]:
+        scope = expect_string(payload, "scope")
+        raw_days = payload.get("days")
+        days: int | None
+        if raw_days is None:
+            days = None
+        else:
+            try:
+                days = int(raw_days)  # type: ignore[arg-type]
+            except (TypeError, ValueError) as exc:
+                raise BridgeError.invalid_argument(
+                    "days must be an integer.",
+                    field="days",
+                ) from exc
+        return service.purge_caches(scope=scope, days=days)
+
+    return {
+        "tasks.summarize_caches": summarize_caches,
+        "tasks.purge_caches": purge_caches,
+    }
+
+
 def register(router: BridgeRouter, *, service: TaskService) -> None:
     """Register translation + glossary task handlers."""
 
     for kind in _LLM_DOMAINS:
         for method, handler in _build_handlers(service, kind=kind).items():
             router.register(method, handler)  # type: ignore[arg-type]
+    for method, handler in _build_cache_management_handlers(service).items():
+        router.register(method, handler)  # type: ignore[arg-type]
 
 
 __all__ = ["register"]
