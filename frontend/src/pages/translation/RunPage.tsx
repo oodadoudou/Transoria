@@ -176,10 +176,16 @@ export function RunPage() {
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
   const failed = snapshot.progress.failed;
+  const skipped = snapshot.progress.skipped;
   const remaining = snapshot.progress.pending + snapshot.progress.running;
   // Floor (not round) so a near-finished run like 400/402 renders 99%,
   // not a misleading 100%, until every subtask actually completes.
-  const percent = total > 0 ? Math.floor((completed / total) * 100) : 0;
+  // SKIPPED counts as "settled" for percent purposes — the failed-chunk
+  // split path turns the original failed parent into SKIPPED and runs
+  // the children, so a clean COMPLETED run with splits would otherwise
+  // display 91% instead of 100%.
+  const settled = completed + skipped;
+  const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
 
@@ -259,7 +265,7 @@ export function RunPage() {
 
       <Panel label={run.progress}>
         <div className={styles.progressCard}>
-          <ProgressRing percent={percent} completed={completed} total={total} />
+          <ProgressRing percent={percent} completed={settled} total={total} />
           <div className={styles.statGrid}>
             <Stat label={run.stats.completed} value={NUM.format(completed)} />
             <Stat label={run.stats.failed} value={NUM.format(failed)} />
