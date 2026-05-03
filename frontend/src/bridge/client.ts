@@ -312,6 +312,25 @@ export const proofreadingBridge = {
   }> {
     return call("proofreading.regenerate_outputs", { task_id: taskId });
   },
+  retranslateSegment(
+    taskId: string,
+    segmentId: string,
+  ): Promise<{ request_id: string; status: string }> {
+    return call("proofreading.retranslate_segment", {
+      task_id: taskId,
+      segment_id: segmentId,
+    });
+  },
+  retranslateStatus(requestId: string): Promise<{
+    request_id: string;
+    task_id: string;
+    segment_id: string;
+    status: "pending" | "running" | "completed" | "failed" | "stale";
+    result_dst: string;
+    error: string;
+  }> {
+    return call("proofreading.retranslate_status", { request_id: requestId });
+  },
 };
 
 // --- Glossary ---------------------------------------------------------------

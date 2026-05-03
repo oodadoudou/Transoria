@@ -576,6 +576,15 @@ export const en: Messages = {
       filterOnlyLowConfidence: "Only low confidence",
       filterAll: "All",
       taskFolderHint: "Output: {path}",
+      retranslateAction: "Retranslate",
+      retranslating: "Retranslating…",
+      retranslateSuccess: "Retranslated and saved to cache.",
+      retranslateFailed: "Retranslate failed: {reason}",
+      retranslateStale:
+        "You edited this segment manually; LLM result discarded.",
+      retranslateTimeout: "Retranslate timed out; try again later.",
+      retranslateRejectedRunning:
+        "Task is running; stop it before retranslating.",
     },
   },
   glossary: {

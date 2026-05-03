@@ -34,6 +34,9 @@ export function ProofreadingPage() {
   const [savedTick, setSavedTick] = useState(0);
   const [regenerating, setRegenerating] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [inflightRetranslates, setInflightRetranslates] = useState<
+    Record<string, string>
+  >({});
   const tableBodyRef = useRef<HTMLDivElement | null>(null);
 
   // Initial: load task list.
@@ -53,10 +56,9 @@ export function ProofreadingPage() {
         if (cancelled) return;
         setFeedback({
           kind: "error",
-          text:
-            BridgeError.isBridgeError(err)
-              ? `${err.code}: ${err.message}`
-              : String(err),
+          text: BridgeError.isBridgeError(err)
+            ? `${err.code}: ${err.message}`
+            : String(err),
         });
       })
       .finally(() => {
@@ -87,10 +89,9 @@ export function ProofreadingPage() {
         if (cancelled) return;
         setFeedback({
           kind: "error",
-          text:
-            BridgeError.isBridgeError(err)
-              ? `${err.code}: ${err.message}`
-              : String(err),
+          text: BridgeError.isBridgeError(err)
+            ? `${err.code}: ${err.message}`
+            : String(err),
         });
       })
       .finally(() => {
@@ -121,14 +122,12 @@ export function ProofreadingPage() {
       if (onlyLowConf && !item.low_confidence) return false;
       if (!q) return true;
       return (
-        item.src.toLowerCase().includes(q) ||
-        item.dst.toLowerCase().includes(q)
+        item.src.toLowerCase().includes(q) || item.dst.toLowerCase().includes(q)
       );
     });
   }, [snapshot, search, onlyLowConf]);
 
-  const dirty =
-    selectedItem !== null && draftDst !== (selectedItem?.dst ?? "");
+  const dirty = selectedItem !== null && draftDst !== (selectedItem?.dst ?? "");
 
   const handleSave = async () => {
     if (!activeTaskId || !selectedItem || !dirty) return;
@@ -156,10 +155,9 @@ export function ProofreadingPage() {
     } catch (err) {
       setFeedback({
         kind: "error",
-        text:
-          BridgeError.isBridgeError(err)
-            ? `${err.code}: ${err.message}`
-            : String(err),
+        text: BridgeError.isBridgeError(err)
+          ? `${err.code}: ${err.message}`
+          : String(err),
       });
     }
   };
@@ -187,6 +185,95 @@ export function ProofreadingPage() {
       });
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  const pollRetranslate = (segmentId: string, requestId: string) => {
+    const startedAt = Date.now();
+    const tick = async () => {
+      try {
+        const status = await proofreadingBridge.retranslateStatus(requestId);
+        if (status.status === "completed") {
+          setSnapshot((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  items: prev.items.map((it) =>
+                    it.segment_id === segmentId
+                      ? { ...it, dst: status.result_dst }
+                      : it,
+                  ),
+                }
+              : prev,
+          );
+          if (selectedSegmentId === segmentId) setDraftDst(status.result_dst);
+          setFeedback({ kind: "success", text: m.retranslateSuccess });
+          finish();
+          return;
+        }
+        if (status.status === "stale") {
+          setFeedback({ kind: "info", text: m.retranslateStale });
+          finish();
+          return;
+        }
+        if (status.status === "failed") {
+          setFeedback({
+            kind: "error",
+            text: format(m.retranslateFailed, { reason: status.error }),
+          });
+          finish();
+          return;
+        }
+      } catch (err) {
+        setFeedback({
+          kind: "error",
+          text: format(m.retranslateFailed, {
+            reason: BridgeError.isBridgeError(err)
+              ? `${err.code}: ${err.message}`
+              : String(err),
+          }),
+        });
+        finish();
+        return;
+      }
+      if (Date.now() - startedAt > 60_000) {
+        setFeedback({ kind: "error", text: m.retranslateTimeout });
+        finish();
+        return;
+      }
+      setTimeout(tick, 500);
+    };
+    const finish = () => {
+      setInflightRetranslates((prev) => {
+        const next = { ...prev };
+        delete next[segmentId];
+        return next;
+      });
+    };
+    void tick();
+  };
+
+  const handleRetranslate = async () => {
+    if (!activeTaskId || !selectedItem) return;
+    if (inflightRetranslates[selectedItem.segment_id]) return;
+    setFeedback(null);
+    try {
+      const { request_id } = await proofreadingBridge.retranslateSegment(
+        activeTaskId,
+        selectedItem.segment_id,
+      );
+      setInflightRetranslates((prev) => ({
+        ...prev,
+        [selectedItem.segment_id]: request_id,
+      }));
+      pollRetranslate(selectedItem.segment_id, request_id);
+    } catch (err) {
+      const text = BridgeError.isBridgeError(err)
+        ? err.code === "bridge.conflict"
+          ? m.retranslateRejectedRunning
+          : `${err.code}: ${err.message}`
+        : String(err);
+      setFeedback({ kind: "error", text });
     }
   };
 
@@ -340,9 +427,22 @@ export function ProofreadingPage() {
                   m.editorSavedHint
                 ) : null}
               </span>
-              <Pill onClick={() => void handleSave()} disabled={!dirty}>
-                {m.editorSaveAction}
-              </Pill>
+              <span style={{ display: "flex", gap: 8 }}>
+                <Pill
+                  variant="ghost"
+                  onClick={() => void handleRetranslate()}
+                  disabled={Boolean(
+                    inflightRetranslates[selectedItem.segment_id],
+                  )}
+                >
+                  {inflightRetranslates[selectedItem.segment_id]
+                    ? m.retranslating
+                    : m.retranslateAction}
+                </Pill>
+                <Pill onClick={() => void handleSave()} disabled={!dirty}>
+                  {m.editorSaveAction}
+                </Pill>
+              </span>
             </div>
           </div>
         ) : (

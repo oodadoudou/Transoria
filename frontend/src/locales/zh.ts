@@ -562,6 +562,13 @@ export const zh: Messages = {
       filterOnlyLowConfidence: "仅看低置信度",
       filterAll: "全部",
       taskFolderHint: "输出位置：{path}",
+      retranslateAction: "重翻此条",
+      retranslating: "重翻中…",
+      retranslateSuccess: "已重翻并写入缓存。",
+      retranslateFailed: "重翻失败：{reason}",
+      retranslateStale: "您已手动修改，本次重翻结果已丢弃。",
+      retranslateTimeout: "重翻超时，可稍后再试。",
+      retranslateRejectedRunning: "任务正在运行中，请先停止再重翻。",
     },
   },
   glossary: {

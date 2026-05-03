@@ -203,6 +203,46 @@ class TranslationOrchestrator:
                     "target_language": config.target_language.value,
                     "model_id": config.model.id,
                     "prompt_preset_id": config.prompt_preset.id,
+                    # Snapshot for proofreading retranslate — must use the
+                    # same prompt/glossary/rules the original run used.
+                    "prompt_preset": config.prompt_preset.to_dict(),
+                    "glossary": [
+                        {
+                            "src": entry.src,
+                            "dst": entry.dst,
+                            "info": entry.info,
+                            "regex": entry.regex,
+                            "case_sensitive": entry.case_sensitive,
+                            "enabled": entry.enabled,
+                        }
+                        for entry in config.glossary.entries
+                    ],
+                    "text_preserve_rules": [
+                        {"pattern": r.pattern, "note": r.note, "enabled": r.enabled}
+                        for r in config.text_preserve_rules
+                    ],
+                    "pre_replacements": [
+                        {
+                            "src": r.src,
+                            "dst": r.dst,
+                            "regex": r.regex,
+                            "case_sensitive": r.case_sensitive,
+                            "note": r.note,
+                            "enabled": r.enabled,
+                        }
+                        for r in config.pre_replacements
+                    ],
+                    "post_replacements": [
+                        {
+                            "src": r.src,
+                            "dst": r.dst,
+                            "regex": r.regex,
+                            "case_sensitive": r.case_sensitive,
+                            "note": r.note,
+                            "enabled": r.enabled,
+                        }
+                        for r in config.post_replacements
+                    ],
                 },
             )
 

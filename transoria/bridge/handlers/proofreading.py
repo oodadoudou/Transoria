@@ -327,11 +327,24 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             ],
         }
 
+    def retranslate_segment(payload: Mapping[str, object]) -> dict[str, object]:
+        return service.start_retranslate(
+            task_id=expect_string(payload, "task_id"),
+            segment_id=expect_string(payload, "segment_id"),
+        )
+
+    def retranslate_status(payload: Mapping[str, object]) -> dict[str, object]:
+        return service.read_retranslate_status(
+            request_id=expect_string(payload, "request_id"),
+        )
+
     return {
         "proofreading.list_tasks": list_tasks,
         "proofreading.load_snapshot": load_snapshot,
         "proofreading.update_segment": update_segment,
         "proofreading.regenerate_outputs": regenerate_outputs,
+        "proofreading.retranslate_segment": retranslate_segment,
+        "proofreading.retranslate_status": retranslate_status,
     }
 
 

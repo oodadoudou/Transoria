@@ -151,6 +151,10 @@ def _coerce_export_entries(raw: object) -> list[dict[str, object]]:
     for item in raw:
         if not isinstance(item, Mapping):
             continue
+        try:
+            frequency = max(0, int(item.get("frequency", 0) or 0))
+        except (TypeError, ValueError):
+            frequency = 0
         out.append(
             {
                 "src": str(item.get("src", "")),
@@ -159,6 +163,7 @@ def _coerce_export_entries(raw: object) -> list[dict[str, object]]:
                 "regex": bool(item.get("regex", False)),
                 "case_sensitive": bool(item.get("case_sensitive", False)),
                 "enabled": item.get("enabled", True) is not False,
+                "frequency": frequency,
             }
         )
     return out
@@ -182,7 +187,15 @@ def _write_xlsx(path: Path, entries: list[dict[str, object]]) -> None:
         ) from exc
     workbook = Workbook()
     sheet = workbook.active
-    headers = ("src", "dst", "info", "regex", "case_sensitive", "enabled")
+    headers = (
+        "src",
+        "dst",
+        "info",
+        "regex",
+        "case_sensitive",
+        "enabled",
+        "frequency",
+    )
     sheet.append(headers)
     for entry in entries:
         sheet.append(tuple(entry.get(key, "") for key in headers))

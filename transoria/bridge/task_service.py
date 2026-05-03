@@ -18,6 +18,7 @@ import asyncio
 import json
 import os
 import threading
+import time
 import traceback
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -109,6 +110,20 @@ _ZOMBIE_TASK_STATES: frozenset[TaskStatus] = frozenset(
 )
 _LIVE_TASK_STALL_SECONDS = 600.0
 _STOP_REQUEST_STALL_SECONDS = 90.0
+_MAX_RETRANSLATE_JOBS = 50
+_RETRANSLATE_TERMINAL_TTL_SECONDS = 300.0
+
+
+@dataclass
+class RetranslateJob:
+    request_id: str
+    task_id: str
+    segment_id: str
+    original_dst: str
+    status: str = "pending"
+    result_dst: str = ""
+    error: str = ""
+    created_at: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +159,67 @@ def _derive_chunk_size(input_token_limit: int) -> int:
 
 def _new_task_id(kind: str) -> str:
     return f"{kind}-{uuid4().hex[:12]}"
+
+
+def _find_segment_payload(
+    snapshot: TaskSnapshot, segment_id: str
+) -> Mapping[str, object] | None:
+    for subtask in snapshot.subtasks:
+        segments = subtask.request_payload.get("segments")
+        if not isinstance(segments, list):
+            continue
+        for seg in segments:
+            if isinstance(seg, Mapping) and seg.get("segment_id") == segment_id:
+                return seg
+    return None
+
+
+def _read_segment_dst(snapshot: TaskSnapshot, segment_id: str) -> str:
+    for subtask in snapshot.subtasks:
+        if not subtask.response_content:
+            continue
+        try:
+            payload = json.loads(subtask.response_content)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        translations = payload.get("translations", {})
+        if isinstance(translations, Mapping) and segment_id in translations:
+            return str(translations[segment_id])
+    return ""
+
+
+def _patch_segment_dst(
+    cache: TaskCache,
+    snapshot: TaskSnapshot,
+    segment_id: str,
+    new_dst: str,
+) -> None:
+    for subtask in snapshot.subtasks:
+        segments = subtask.request_payload.get("segments")
+        if not isinstance(segments, list):
+            continue
+        if not any(
+            isinstance(s, Mapping) and s.get("segment_id") == segment_id
+            for s in segments
+        ):
+            continue
+        try:
+            payload = json.loads(subtask.response_content) if subtask.response_content else {}
+        except json.JSONDecodeError:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        payload.setdefault("version", 2)
+        translations = payload.setdefault("translations", {})
+        if not isinstance(translations, dict):
+            translations = {}
+            payload["translations"] = translations
+        translations[segment_id] = new_dst
+        cache.save_subtask(
+            replace(subtask, response_content=json.dumps(payload, ensure_ascii=False))
+        )
 
 
 def _coerce_text_preserve_rules(
@@ -764,6 +840,8 @@ class TaskService:
             "glossary": threading.Lock(),
             "replacement": threading.Lock(),
         }
+        self._retranslate_jobs: dict[str, RetranslateJob] = {}
+        self._retranslate_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Per-task cache resolution
@@ -931,6 +1009,285 @@ class TaskService:
                 )
             except (OSError, json.JSONDecodeError):
                 pass
+
+    # ------------------------------------------------------------------
+    # Public: proofreading retranslate
+    # ------------------------------------------------------------------
+
+    def start_retranslate(
+        self, *, task_id: str, segment_id: str
+    ) -> dict[str, object]:
+        try:
+            snapshot = self.cache.load(task_id)
+        except TaskNotFoundError as exc:
+            raise BridgeError.not_found(
+                f"task {task_id!r} not found.",
+                details={"task_id": task_id},
+            ) from exc
+        if snapshot.record.kind is not TaskKind.TRANSLATION:
+            raise BridgeError.invalid_argument(
+                f"task {task_id!r} is not a translation task.",
+                details={"task_id": task_id},
+            )
+        if snapshot.record.status in _ZOMBIE_TASK_STATES:
+            running = self.registry.get(task_id)
+            if running is not None and not running.is_done:
+                raise BridgeError.conflict(
+                    "cannot retranslate while the task is running.",
+                    details={"task_id": task_id, "status": snapshot.record.status.value},
+                )
+
+        seg_data = _find_segment_payload(snapshot, segment_id)
+        if seg_data is None:
+            raise BridgeError.not_found(
+                f"segment {segment_id!r} not found in task {task_id!r}.",
+                details={"task_id": task_id, "segment_id": segment_id},
+            )
+        original_dst = _read_segment_dst(snapshot, segment_id)
+
+        with self._retranslate_lock:
+            for job in self._retranslate_jobs.values():
+                if (
+                    job.task_id == task_id
+                    and job.segment_id == segment_id
+                    and job.status in {"pending", "running"}
+                ):
+                    raise BridgeError.conflict(
+                        "a retranslate job is already running for this segment.",
+                        details={"request_id": job.request_id},
+                    )
+            request_id = f"retranslate-{uuid4().hex[:12]}"
+            job = RetranslateJob(
+                request_id=request_id,
+                task_id=task_id,
+                segment_id=segment_id,
+                original_dst=original_dst,
+                status="pending",
+                created_at=time.monotonic(),
+            )
+            self._retranslate_jobs[request_id] = job
+            self._gc_retranslate_jobs()
+
+        thread = threading.Thread(
+            target=self._run_retranslate,
+            args=(request_id, seg_data, dict(snapshot.record.metadata)),
+            daemon=True,
+        )
+        thread.start()
+        return {"request_id": request_id, "status": "pending"}
+
+    def read_retranslate_status(
+        self, *, request_id: str
+    ) -> dict[str, object]:
+        with self._retranslate_lock:
+            self._gc_retranslate_jobs()
+            job = self._retranslate_jobs.get(request_id)
+        if job is None:
+            raise BridgeError.not_found(
+                f"retranslate request {request_id!r} not found or expired.",
+                details={"request_id": request_id},
+            )
+        return {
+            "request_id": job.request_id,
+            "task_id": job.task_id,
+            "segment_id": job.segment_id,
+            "status": job.status,
+            "result_dst": job.result_dst,
+            "error": job.error,
+        }
+
+    def _gc_retranslate_jobs(self) -> None:
+        now = time.monotonic()
+        expired = [
+            rid
+            for rid, job in self._retranslate_jobs.items()
+            if job.status in {"completed", "failed", "stale"}
+            and now - job.created_at > _RETRANSLATE_TERMINAL_TTL_SECONDS
+        ]
+        for rid in expired:
+            self._retranslate_jobs.pop(rid, None)
+        overflow = len(self._retranslate_jobs) - _MAX_RETRANSLATE_JOBS
+        if overflow > 0:
+            ordered = sorted(
+                self._retranslate_jobs.items(), key=lambda kv: kv[1].created_at
+            )
+            for rid, _ in ordered[:overflow]:
+                self._retranslate_jobs.pop(rid, None)
+
+    def _run_retranslate(
+        self,
+        request_id: str,
+        seg_data: Mapping[str, object],
+        metadata: Mapping[str, object],
+    ) -> None:
+        job = self._retranslate_jobs.get(request_id)
+        if job is None:
+            return
+        job.status = "running"
+        try:
+            new_dst = asyncio.run(
+                self._call_runner_for_retranslate(seg_data, metadata)
+            )
+        except BridgeError as exc:
+            job.error = f"{exc.code}: {exc.payload.message}"
+            job.status = "failed"
+            return
+        except Exception as exc:  # noqa: BLE001
+            job.error = f"{type(exc).__name__}: {exc}"
+            job.status = "failed"
+            return
+
+        with self._retranslate_lock:
+            try:
+                snapshot = self.cache.load(job.task_id)
+            except (TaskNotFoundError, OSError, ValueError):
+                job.error = "task cache disappeared during retranslate."
+                job.status = "failed"
+                return
+            current_dst = _read_segment_dst(snapshot, job.segment_id)
+            if current_dst != job.original_dst:
+                job.status = "stale"
+                return
+            try:
+                _patch_segment_dst(self.cache, snapshot, job.segment_id, new_dst)
+            except (TaskNotFoundError, OSError) as exc:
+                job.error = f"failed to write cache: {exc}"
+                job.status = "failed"
+                return
+            job.result_dst = new_dst
+            job.status = "completed"
+
+    async def _call_runner_for_retranslate(
+        self,
+        seg_data: Mapping[str, object],
+        metadata: Mapping[str, object],
+    ) -> str:
+        from transoria.workflows.translation.chunker import (  # noqa: PLC0415
+            ChunkSegment,
+            TranslationChunk,
+        )
+        from transoria.workflows.translation.rules import (  # noqa: PLC0415
+            Glossary,
+            ReplacementRule,
+        )
+        from transoria.workflows.translation.runner import (  # noqa: PLC0415
+            TranslationSubtaskRunner,
+            encode_subtask_payload,
+        )
+
+        model_id = str(metadata.get("model_id", ""))
+        if not model_id:
+            raise BridgeError.invalid_argument(
+                "task metadata is missing model_id (cache predates B.5.1).",
+            )
+        model = self.profile_store.get(model_id)
+        if model is None:
+            raise BridgeError.not_found(
+                f"model profile {model_id!r} no longer exists.",
+                details={"model_id": model_id},
+            )
+        if not model.api_keys:
+            raise BridgeError.invalid_argument(
+                f"model profile {model_id!r} has no API key configured.",
+                details={"model_id": model_id},
+            )
+
+        preset_data = metadata.get("prompt_preset")
+        if not isinstance(preset_data, Mapping):
+            raise BridgeError.invalid_argument(
+                "task metadata is missing prompt_preset snapshot (cache predates B.5.1).",
+            )
+        preset = PromptPreset.from_dict(preset_data)
+
+        try:
+            source_language = Language(str(metadata.get("source_language", "")))
+            target_language = Language(str(metadata.get("target_language", "")))
+        except ValueError as exc:
+            raise BridgeError.invalid_argument(
+                f"task metadata has invalid language: {exc}",
+            ) from exc
+
+        glossary_records = metadata.get("glossary", [])
+        glossary = (
+            Glossary.from_records(glossary_records)
+            if isinstance(glossary_records, list)
+            else Glossary.empty()
+        )
+        post_records = metadata.get("post_replacements", [])
+        post_replacements: tuple[ReplacementRule, ...] = (
+            tuple(
+                ReplacementRule(
+                    src=str(r.get("src", "")),
+                    dst=str(r.get("dst", "")),
+                    regex=bool(r.get("regex", False)),
+                    case_sensitive=bool(r.get("case_sensitive", False)),
+                    note=str(r.get("note", "")),
+                    enabled=bool(r.get("enabled", True)),
+                )
+                for r in post_records
+                if isinstance(r, Mapping)
+            )
+            if isinstance(post_records, list)
+            else ()
+        )
+
+        segment_id = str(seg_data["segment_id"])
+        original_text = str(seg_data.get("original_text", ""))
+        chunk = TranslationChunk(
+            segments=(
+                ChunkSegment(
+                    segment_id=segment_id,
+                    chunk_index=0,
+                    prompt_text=str(seg_data.get("prompt_text", original_text)),
+                ),
+            ),
+            context_lines=(),
+            glossary_entries=glossary.match(original_text),
+        )
+        seg_meta = [
+            {
+                "original_text": original_text,
+                "protection_spans": list(seg_data.get("protection_spans", [])),
+                "leading_whitespace": str(seg_data.get("leading_whitespace", "")),
+                "trailing_whitespace": str(seg_data.get("trailing_whitespace", "")),
+            }
+        ]
+        payload = encode_subtask_payload(chunk, segment_metadata=seg_meta)
+        subtask = Subtask(
+            id=f"retranslate-{segment_id.replace(':', '_')}",
+            task_id="retranslate-virtual",
+            request_payload=payload,
+        )
+
+        runner = TranslationSubtaskRunner(
+            client=self.llm_client_factory(),
+            model=model,
+            prompt_preset=preset,
+            source_language=source_language,
+            target_language=target_language,
+            post_replacements=post_replacements,
+        )
+        result = await runner.run(subtask)
+        try:
+            response = json.loads(result.response_content)
+        except json.JSONDecodeError as exc:
+            raise BridgeError(
+                "bridge.io_error",
+                f"runner returned invalid JSON: {exc}",
+                retryable=True,
+            ) from exc
+        translations = (
+            response.get("translations", {})
+            if isinstance(response, Mapping)
+            else {}
+        )
+        if not isinstance(translations, Mapping) or segment_id not in translations:
+            raise BridgeError(
+                "bridge.io_error",
+                "runner returned no translation for the segment.",
+                retryable=True,
+            )
+        return str(translations[segment_id])
 
     # ------------------------------------------------------------------
     # Public: translation

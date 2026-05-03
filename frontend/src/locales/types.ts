@@ -493,6 +493,13 @@ export interface Messages {
       filterOnlyLowConfidence: string;
       filterAll: string;
       taskFolderHint: string;
+      retranslateAction: string;
+      retranslating: string;
+      retranslateSuccess: string;
+      retranslateFailed: string;
+      retranslateStale: string;
+      retranslateTimeout: string;
+      retranslateRejectedRunning: string;
     };
   };
   glossary: {
