@@ -380,7 +380,7 @@ export const en: Messages = {
         "When a chunk fails translation, automatically halve it into smaller sub-chunks and retry, up to this many rounds. Most line-count-mismatch failures recover within 2-3 rounds. Set to 0 to disable splitting. Max 8.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
-        "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 120.",
+        "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 600.",
       on: "On",
       off: "Off",
     },
@@ -617,7 +617,7 @@ export const en: Messages = {
         "Drop candidates whose display width exceeds this — guards against the LLM returning a whole sentence as a term. Default 32.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
-        "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 120.",
+        "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 600.",
       on: "On",
       off: "Off",
     },

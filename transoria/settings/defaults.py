@@ -68,7 +68,7 @@ class TranslationSettings:
     # round 2-3. 0 disables splitting entirely. Capped at 8.
     failed_chunk_split_rounds: int = 3
     auto_open_output_folder: bool = False
-    timeout_seconds: int = 120
+    timeout_seconds: int = 600
     # Glossary entries threaded into TranslationConfig.glossary at run
     # start. Each entry mirrors the backend `GlossaryEntry` shape:
     # ``{src, dst, info, regex, case_sensitive, enabled}``. JSON lists
@@ -103,7 +103,7 @@ class GlossarySettings:
     keep_identical_src_dst: bool = False
     normalize_widths: bool = True
     auto_open_output_folder: bool = False
-    timeout_seconds: int = 120
+    timeout_seconds: int = 600
 
 
 @dataclass(frozen=True)

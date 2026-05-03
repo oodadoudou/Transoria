@@ -58,11 +58,11 @@ class RecommendedDefaults:
     can splat into the dataclass without a translation table.
     """
 
-    timeout_seconds: float = 120.0
+    timeout_seconds: float = 600.0
     concurrency_limit: int = 4
     rpm_limit: int = 60
     tpm_limit: int = 0
-    retry_attempts: int = 2
+    retry_attempts: int = 10
     max_output_tokens: int = 4096
     temperature: float = 0.3
     top_p: float = 1.0
@@ -122,7 +122,7 @@ class ProviderTemplate:
 _OPENAI_HINTS: Mapping[str, FieldHint] = {
     "timeout_seconds": FieldHint(
         description_key="modelHints.timeout",
-        recommended_value="120 s",
+        recommended_value="600 s",
         source_url="https://platform.openai.com/docs/api-reference",
     ),
     "concurrency_limit": FieldHint(
@@ -142,7 +142,7 @@ _OPENAI_HINTS: Mapping[str, FieldHint] = {
     ),
     "retry_attempts": FieldHint(
         description_key="modelHints.retry",
-        recommended_value="2",
+        recommended_value="10",
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
@@ -157,7 +157,7 @@ _OPENAI_HINTS: Mapping[str, FieldHint] = {
 _ANTHROPIC_HINTS: Mapping[str, FieldHint] = {
     "timeout_seconds": FieldHint(
         description_key="modelHints.timeout",
-        recommended_value="120 s",
+        recommended_value="600 s",
         source_url="https://docs.anthropic.com/en/api/rate-limits",
     ),
     "concurrency_limit": FieldHint(
@@ -177,7 +177,7 @@ _ANTHROPIC_HINTS: Mapping[str, FieldHint] = {
     ),
     "retry_attempts": FieldHint(
         description_key="modelHints.retry",
-        recommended_value="2",
+        recommended_value="10",
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
@@ -192,7 +192,7 @@ _ANTHROPIC_HINTS: Mapping[str, FieldHint] = {
 _GOOGLE_HINTS: Mapping[str, FieldHint] = {
     "timeout_seconds": FieldHint(
         description_key="modelHints.timeout",
-        recommended_value="120 s",
+        recommended_value="600 s",
         source_url="https://ai.google.dev/gemini-api/docs/quota",
     ),
     "concurrency_limit": FieldHint(
@@ -211,7 +211,7 @@ _GOOGLE_HINTS: Mapping[str, FieldHint] = {
     ),
     "retry_attempts": FieldHint(
         description_key="modelHints.retry",
-        recommended_value="2",
+        recommended_value="10",
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
@@ -226,7 +226,7 @@ _GOOGLE_HINTS: Mapping[str, FieldHint] = {
 _DEEPSEEK_HINTS: Mapping[str, FieldHint] = {
     "timeout_seconds": FieldHint(
         description_key="modelHints.timeout",
-        recommended_value="120 s",
+        recommended_value="600 s",
         source_url="https://api-docs.deepseek.com/quick_start/rate_limit",
     ),
     "concurrency_limit": FieldHint(
@@ -244,7 +244,7 @@ _DEEPSEEK_HINTS: Mapping[str, FieldHint] = {
     ),
     "retry_attempts": FieldHint(
         description_key="modelHints.retry",
-        recommended_value="2",
+        recommended_value="10",
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
@@ -259,7 +259,7 @@ _DEEPSEEK_HINTS: Mapping[str, FieldHint] = {
 _VOLCENGINE_HINTS: Mapping[str, FieldHint] = {
     "timeout_seconds": FieldHint(
         description_key="modelHints.timeout",
-        recommended_value="120 s",
+        recommended_value="600 s",
         source_url="https://www.volcengine.com/docs/82379/1099475",
     ),
     "concurrency_limit": FieldHint(
@@ -277,7 +277,7 @@ _VOLCENGINE_HINTS: Mapping[str, FieldHint] = {
     ),
     "retry_attempts": FieldHint(
         description_key="modelHints.retry",
-        recommended_value="2",
+        recommended_value="10",
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
@@ -292,7 +292,7 @@ _VOLCENGINE_HINTS: Mapping[str, FieldHint] = {
 _SAKURA_HINTS: Mapping[str, FieldHint] = {
     "timeout_seconds": FieldHint(
         description_key="modelHints.timeout",
-        recommended_value="180 s",
+        recommended_value="600 s",
     ),
     "concurrency_limit": FieldHint(
         description_key="modelHints.concurrency",
@@ -308,7 +308,7 @@ _SAKURA_HINTS: Mapping[str, FieldHint] = {
     ),
     "retry_attempts": FieldHint(
         description_key="modelHints.retry",
-        recommended_value="2",
+        recommended_value="10",
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
@@ -343,7 +343,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         hint_models=("gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"),
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
-            timeout_seconds=120.0,
+            timeout_seconds=600.0,
             concurrency_limit=4,
             rpm_limit=60,
             max_output_tokens=4096,
@@ -363,7 +363,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         ),
         supports_fetch_model_list=False,
         recommended_defaults=RecommendedDefaults(
-            timeout_seconds=120.0,
+            timeout_seconds=600.0,
             concurrency_limit=4,
             rpm_limit=50,
             max_output_tokens=8192,
@@ -383,7 +383,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         ),
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
-            timeout_seconds=120.0,
+            timeout_seconds=600.0,
             concurrency_limit=4,
             rpm_limit=60,
             max_output_tokens=8192,
@@ -400,7 +400,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         hint_models=("deepseek-chat", "deepseek-reasoner"),
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
-            timeout_seconds=120.0,
+            timeout_seconds=600.0,
             concurrency_limit=4,
             rpm_limit=60,
             max_output_tokens=4096,
@@ -416,7 +416,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         hint_models=("deepseek-v3-2-251201", "deepseek-r1-250528"),
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
-            timeout_seconds=120.0,
+            timeout_seconds=600.0,
             concurrency_limit=4,
             rpm_limit=60,
             max_output_tokens=4096,
@@ -432,7 +432,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         hint_models=("Sakura-14B-Qwen2.5-v1.0",),
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
-            timeout_seconds=180.0,
+            timeout_seconds=600.0,
             concurrency_limit=2,
             rpm_limit=0,
             max_output_tokens=2048,
