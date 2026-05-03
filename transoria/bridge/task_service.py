@@ -279,6 +279,53 @@ def _require_input_with_supported_files(path: Path, *, field: str) -> None:
         )
 
 
+def _require_distinct_translation_folders(
+    input_dir: Path, output_dir: Path
+) -> None:
+    """Reject translation configs where output lives inside input.
+
+    The scanner is recursive (``rglob("*")``), so any ``.epub`` / ``.txt``
+    written under the input tree gets picked up on the next run. The
+    pathological case is ``input == output``: ``translation-failed-
+    subtasks.txt`` and ``*-zh.epub`` from one run become "input files"
+    for the next, producing cascading suffix files like
+    ``translation-failed-subtasks-zh-kr-zh-kr-zh.txt`` and re-translating
+    already-translated novels.
+
+    Glossary tasks intentionally allow ``input == output`` — their outputs
+    are ``.xlsx`` / ``.json`` and never match the scanner's
+    ``.epub``/``.txt`` filter.
+    """
+
+    in_key = normalize_path_key(input_dir)
+    out_key = normalize_path_key(output_dir)
+    if in_key == out_key:
+        raise BridgeError.invalid_argument(
+            "Translation input_folder and output_folder must be different "
+            "directories — writing translated files into the input would "
+            "cause them to be re-scanned and re-translated on the next run.",
+            field="output_folder",
+        )
+    # Resolve to handle ``..`` / symlink edge cases before the descendant
+    # check; bail silently if either side refuses to resolve so the
+    # downstream IO error gives a clearer message than this guard would.
+    try:
+        resolved_in = input_dir.resolve()
+        resolved_out = output_dir.resolve()
+    except OSError:
+        return
+    try:
+        resolved_out.relative_to(resolved_in)
+    except ValueError:
+        return  # output is not inside input — OK.
+    raise BridgeError.invalid_argument(
+        f"Translation output_folder must not live inside input_folder "
+        f"({resolved_out!s} is under {resolved_in!s}); the recursive "
+        "scanner would pick up generated files on the next run.",
+        field="output_folder",
+    )
+
+
 def _ensure_output_dir(value: str, *, field: str) -> Path:
     if not value:
         raise BridgeError.invalid_argument(
@@ -891,6 +938,7 @@ class TaskService:
         output_dir = _ensure_output_dir(
             translation.output_folder, field="output_folder"
         )
+        _require_distinct_translation_folders(input_dir, output_dir)
         source_lang = _coerce_language(
             translation.source_language, field="source_language"
         )
