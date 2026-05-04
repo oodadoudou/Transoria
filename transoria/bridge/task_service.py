@@ -2111,6 +2111,14 @@ class TaskService:
                 field="task_id",
             )
         snapshot = self._reconcile_zombie(snapshot, cache)
+        # Close the race window where disk shows terminal but the runner
+        # thread hasn't flipped registry.is_done yet: the UI polls
+        # read_snapshot, sees FAILED, opens the failure dialog; if the
+        # user clicks Continue before the runner wrap-up completes,
+        # continue_task hits a phantom "already running" conflict.
+        # Force-clean here so by the time the UI sees terminal status
+        # the registry is already settled.
+        self._resolve_live_running(task_id, snapshot.record.status)
         return {"snapshot": _format_snapshot(snapshot)}
 
     def list_recent_tasks(

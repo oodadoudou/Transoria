@@ -16,13 +16,17 @@ export function ChunkStatusGrid({
   subtasks,
   itemLabel = "Chunk",
 }: ChunkStatusGridProps) {
-  if (subtasks.length === 0) return null;
-  if (subtasks.length > CANVAS_THRESHOLD) {
-    return <CanvasGrid subtasks={subtasks} itemLabel={itemLabel} />;
+  // SKIPPED subtasks are split-parent placeholders whose work is done
+  // by their child subtasks; rendering them leaves a stray gray cell
+  // in an otherwise-green grid even though every line is translated.
+  const visible = subtasks.filter((s) => s.status !== "skipped");
+  if (visible.length === 0) return null;
+  if (visible.length > CANVAS_THRESHOLD) {
+    return <CanvasGrid subtasks={visible} itemLabel={itemLabel} />;
   }
   return (
     <div className={styles.grid} role="list" aria-label={itemLabel}>
-      {subtasks.map((subtask, index) => (
+      {visible.map((subtask, index) => (
         <span
           key={subtask.id}
           role="listitem"

@@ -296,164 +296,197 @@ class TranslationSubtaskRunner:
         total_output = 0
         last_raw = ""
         first_user_prompt = ""
-
-        while True:
-            pending_meta = tuple(
-                metadata_by_index[i] for i in sorted(pending_indices)
-            )
-            sub_chunk = _build_subchunk_from_pending(chunk, pending_meta)
-            user_prompt = self._compose_user_prompt(
-                self._apply_roster(assemble_user_prompt(sub_chunk)),
-                format_retry=len(debug_attempts) > 0,
-            )
-            if not first_user_prompt:
-                first_user_prompt = user_prompt
-
-            async def _llm_call() -> object:
-                return await self._one_llm_call(
-                    system_prompt, user_prompt, log_label
-                )
-
-            response = await retry_async(_llm_call, model=self.model)
-            total_input += response.usage.input_tokens
-            total_output += response.usage.output_tokens
-            raw_content = self._restore_roster(response.content)
-            last_raw = raw_content
-            debug_attempts.append(
-                {"user_prompt": user_prompt, "raw_response": raw_content}
-            )
-
-            translations, missing = self._decode_partial(
-                raw_content, pending_meta
-            )
-            for idx, text in translations.items():
-                accumulated[idx] = text
-            pending_indices = set(missing)
-
-            if not pending_indices:
-                break
-            if retries_remaining <= 0:
-                rescued = _positional_rescue(last_raw, pending_meta)
-                if rescued is not None:
-                    for idx, text in rescued.items():
-                        accumulated[idx] = text
-                        rescued_indices.add(idx)
-                    pending_indices.clear()
-                    break
-                raise LlmRequestError(
-                    "Translation line count mismatch — could not recover "
-                    f"{sorted(pending_indices)} after "
-                    f"{len(debug_attempts)} attempt(s)",
-                    code="llm.line_count_mismatch",
-                )
-            retries_remaining -= 1
-
-        suspicious = _detect_duplicate_drift(accumulated, metadata)
-        if suspicious:
-            raise LlmRequestError(
-                "Translation duplicate drift — indices "
-                f"{suspicious} share identical translation across distinct sources",
-                code="llm.duplicate_translations",
-            )
-
         finalized: dict[str, str] = {}
         low_confidence: list[dict[str, object]] = []
-        pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
+        retry_round = 0
+        terminal_error: BaseException | None = None
 
-        for meta in metadata:
-            final_text = self._postprocess(
-                meta, accumulated[meta.chunk_index]
-            )
-            verdict = self._evaluate_confidence(meta.original_text, final_text)
-            extra_reasons: list[str] = []
-            if meta.chunk_index in rescued_indices:
-                extra_reasons.append("positional_rescue_after_format_failure")
-            if verdict.is_low_confidence and self.low_confidence_max_retries > 0:
-                pending.append(
-                    (meta, final_text, tuple(extra_reasons) + verdict.reasons)
+        try:
+            while True:
+                pending_meta = tuple(
+                    metadata_by_index[i] for i in sorted(pending_indices)
                 )
-                continue
-            finalized[meta.segment_id] = final_text
-            if verdict.is_low_confidence or extra_reasons:
+                sub_chunk = _build_subchunk_from_pending(chunk, pending_meta)
+                user_prompt = self._compose_user_prompt(
+                    self._apply_roster(assemble_user_prompt(sub_chunk)),
+                    format_retry=len(debug_attempts) > 0,
+                )
+                if not first_user_prompt:
+                    first_user_prompt = user_prompt
+
+                async def _llm_call() -> object:
+                    return await self._one_llm_call(
+                        system_prompt, user_prompt, log_label
+                    )
+
+                response = await retry_async(_llm_call, model=self.model)
+                total_input += response.usage.input_tokens
+                total_output += response.usage.output_tokens
+                raw_content = self._restore_roster(response.content)
+                last_raw = raw_content
+                debug_attempts.append(
+                    {"user_prompt": user_prompt, "raw_response": raw_content}
+                )
+
+                translations, missing = self._decode_partial(
+                    raw_content, pending_meta
+                )
+                for idx, text in translations.items():
+                    accumulated[idx] = text
+                pending_indices = set(missing)
+
+                if not pending_indices:
+                    # All asked-for indices present. Check duplicate drift
+                    # across the full accumulated set; if found, re-pend the
+                    # suspicious indices and ask the model again with a
+                    # narrow sub-chunk. The model with less context often
+                    # produces distinct translations on the retry, avoiding
+                    # the orchestrator-level chunk split which is much
+                    # more expensive.
+                    suspicious = _detect_duplicate_drift(accumulated, metadata)
+                    if not suspicious:
+                        break
+                    for idx in suspicious:
+                        accumulated.pop(idx, None)
+                    pending_indices = set(suspicious)
+
+                if retries_remaining <= 0:
+                    pending_meta = tuple(
+                        metadata_by_index[i] for i in sorted(pending_indices)
+                    )
+                    rescued = _positional_rescue(last_raw, pending_meta)
+                    if rescued is not None:
+                        for idx, text in rescued.items():
+                            accumulated[idx] = text
+                            rescued_indices.add(idx)
+                        pending_indices.clear()
+                        break
+                    # If everything that's pending is the duplicate-drift
+                    # set (no missing indices left), surface that as the
+                    # cause; otherwise the line-count-mismatch wins.
+                    if all(idx in metadata_by_index for idx in pending_indices) \
+                            and not missing:
+                        raise LlmRequestError(
+                            "Translation duplicate drift — indices "
+                            f"{sorted(pending_indices)} share identical "
+                            "translation across distinct sources",
+                            code="llm.duplicate_translations",
+                        )
+                    raise LlmRequestError(
+                        "Translation line count mismatch — could not recover "
+                        f"{sorted(pending_indices)} after "
+                        f"{len(debug_attempts)} attempt(s)",
+                        code="llm.line_count_mismatch",
+                    )
+                retries_remaining -= 1
+
+            pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
+
+            for meta in metadata:
+                final_text = self._postprocess(
+                    meta, accumulated[meta.chunk_index]
+                )
+                verdict = self._evaluate_confidence(meta.original_text, final_text)
+                extra_reasons: list[str] = []
+                if meta.chunk_index in rescued_indices:
+                    extra_reasons.append("positional_rescue_after_format_failure")
+                if verdict.is_low_confidence and self.low_confidence_max_retries > 0:
+                    pending.append(
+                        (meta, final_text, tuple(extra_reasons) + verdict.reasons)
+                    )
+                    continue
+                finalized[meta.segment_id] = final_text
+                if verdict.is_low_confidence or extra_reasons:
+                    low_confidence.append(
+                        {
+                            "segment_id": meta.segment_id,
+                            "reasons": extra_reasons + list(verdict.reasons),
+                        }
+                    )
+
+            while pending and retry_round < self.low_confidence_max_retries:
+                retry_round += 1
+                retry_chunk = TranslationChunk(
+                    segments=tuple(
+                        ChunkSegment(
+                            segment_id=meta.segment_id,
+                            chunk_index=meta.chunk_index,
+                            prompt_text=meta.prompt_text,
+                        )
+                        for meta, _, _ in pending
+                    ),
+                    context_lines=chunk.context_lines,
+                    glossary_entries=chunk.glossary_entries,
+                )
+                retry_user_prompt = self._compose_user_prompt(
+                    self._apply_roster(assemble_user_prompt(retry_chunk)),
+                    format_retry=False,
+                )
+                retry_response = await self._one_llm_call(
+                    system_prompt, retry_user_prompt, f"{log_label} retry"
+                )
+                total_input += retry_response.usage.input_tokens
+                total_output += retry_response.usage.output_tokens
+
+                retry_raw = self._restore_roster(retry_response.content)
+                debug_attempts.append(
+                    {"user_prompt": retry_user_prompt, "raw_response": retry_raw}
+                )
+                retry_decoded = decode_translation_jsonl(retry_raw)
+                retry_by_index = {line.index: line.text for line in retry_decoded.lines}
+
+                next_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
+                for meta, last_text, last_reasons in pending:
+                    retry_text = retry_by_index.get(meta.chunk_index)
+                    if retry_text is None:
+                        next_pending.append((meta, last_text, last_reasons))
+                        continue
+                    retry_final = self._postprocess(meta, retry_text)
+                    verdict = self._evaluate_confidence(meta.original_text, retry_final)
+                    if verdict.is_low_confidence:
+                        # Don't overwrite the initial candidate with a still-failing
+                        # retry — the model often hallucinates worse content the
+                        # second time around.
+                        next_pending.append((meta, last_text, last_reasons))
+                        continue
+                    finalized[meta.segment_id] = retry_final
+                pending = next_pending
+
+            for meta, _last_text, last_reasons in pending:
+                # No retry passed confidence: fall back to the source text so
+                # the user sees the original line in the output and can fix
+                # it in the proofreading page. Never silently store the
+                # low-confidence candidate as if it were a clean translation.
+                finalized[meta.segment_id] = meta.original_text
                 low_confidence.append(
                     {
                         "segment_id": meta.segment_id,
-                        "reasons": extra_reasons + list(verdict.reasons),
+                        "reasons": list(last_reasons) + ["fell_back_to_source_after_max_retries"],
                     }
                 )
 
-        retry_round = 0
-        while pending and retry_round < self.low_confidence_max_retries:
-            retry_round += 1
-            retry_chunk = TranslationChunk(
-                segments=tuple(
-                    ChunkSegment(
-                        segment_id=meta.segment_id,
-                        chunk_index=meta.chunk_index,
-                        prompt_text=meta.prompt_text,
-                    )
-                    for meta, _, _ in pending
-                ),
-                context_lines=chunk.context_lines,
-                glossary_entries=chunk.glossary_entries,
+            payload: dict[str, object] = {
+                "version": SUBTASK_RESPONSE_VERSION,
+                "translations": finalized,
+                "low_confidence": low_confidence,
+            }
+            return SubtaskResult(
+                response_content=json.dumps(payload, ensure_ascii=False),
+                input_tokens=total_input,
+                output_tokens=total_output,
             )
-            retry_user_prompt = self._compose_user_prompt(
-                self._apply_roster(assemble_user_prompt(retry_chunk)),
-                format_retry=False,
-            )
-            retry_response = await self._one_llm_call(
-                system_prompt, retry_user_prompt, f"{log_label} retry"
-            )
-            total_input += retry_response.usage.input_tokens
-            total_output += retry_response.usage.output_tokens
-
-            retry_raw = self._restore_roster(retry_response.content)
-            debug_attempts.append(
-                {"user_prompt": retry_user_prompt, "raw_response": retry_raw}
-            )
-            retry_decoded = decode_translation_jsonl(retry_raw)
-            retry_by_index = {line.index: line.text for line in retry_decoded.lines}
-
-            next_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
-            for meta, last_text, last_reasons in pending:
-                retry_text = retry_by_index.get(meta.chunk_index)
-                if retry_text is None:
-                    next_pending.append((meta, last_text, last_reasons))
-                    continue
-                retry_final = self._postprocess(meta, retry_text)
-                verdict = self._evaluate_confidence(meta.original_text, retry_final)
-                if verdict.is_low_confidence:
-                    # Don't overwrite the initial candidate with a still-failing
-                    # retry — the model often hallucinates worse content the
-                    # second time around.
-                    next_pending.append((meta, last_text, last_reasons))
-                    continue
-                finalized[meta.segment_id] = retry_final
-            pending = next_pending
-
-        for meta, _last_text, last_reasons in pending:
-            # No retry passed confidence: fall back to the source text so the
-            # user sees the original line in the output and can fix it in the
-            # proofreading page. Never silently store the low-confidence
-            # candidate as if it were a clean translation.
-            finalized[meta.segment_id] = meta.original_text
-            low_confidence.append(
-                {
-                    "segment_id": meta.segment_id,
-                    "reasons": list(last_reasons) + ["fell_back_to_source_after_max_retries"],
-                }
-            )
-
-        payload: dict[str, object] = {
-            "version": SUBTASK_RESPONSE_VERSION,
-            "translations": finalized,
-            "low_confidence": low_confidence,
-        }
-        if self.debug_log_dir is not None:
-            write_subtask_debug_log(
-                self.debug_log_dir,
-                _chunk_log_id(chunk),
-                {
+        except BaseException as exc:
+            terminal_error = exc
+            raise
+        finally:
+            if self.debug_log_dir is not None:
+                # subtask_id is unique per split child; _chunk_log_id from
+                # first segment_id collides between parent and child chunks.
+                # The finally clause means failures (including raises mid-
+                # loop or during low-conf retry) still preserve a debug log,
+                # so the cache snapshot a user ships always carries the
+                # full LLM-call trace even when the chunk ended in raise.
+                log_payload: dict[str, object] = {
                     "kind": "translation",
                     "system_prompt": system_prompt,
                     "user_prompt": first_user_prompt,
@@ -467,13 +500,16 @@ class TranslationSubtaskRunner:
                         "output_tokens": total_output,
                         "total_tokens": total_input + total_output,
                     },
-                },
-            )
-        return SubtaskResult(
-            response_content=json.dumps(payload, ensure_ascii=False),
-            input_tokens=total_input,
-            output_tokens=total_output,
-        )
+                }
+                if terminal_error is not None:
+                    log_payload["terminal_error"] = (
+                        f"{type(terminal_error).__name__}: {terminal_error}"
+                    )
+                write_subtask_debug_log(
+                    self.debug_log_dir,
+                    subtask_id or _chunk_log_id(chunk),
+                    log_payload,
+                )
 
     def _compose_user_prompt(
         self,
