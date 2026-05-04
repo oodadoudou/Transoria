@@ -299,6 +299,12 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 f"input folder {input_dir_str!r} no longer exists.",
                 details={"task_id": task_id, "input_dir": input_dir_str},
             ) from exc
+        if not parsed_files:
+            raise BridgeError.invalid_argument(
+                f"input folder {input_dir_str!r} contains no .epub or .txt files; "
+                "the original source may have been moved or renamed.",
+                details={"task_id": task_id, "input_dir": input_dir_str},
+            )
         _flat, prepared_per_file = _prepare_segments(parsed_files, config)
 
         translations_by_segment = _collect_translations_from_cache(snapshot)

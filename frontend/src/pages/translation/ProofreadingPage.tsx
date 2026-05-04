@@ -191,10 +191,20 @@ export function ProofreadingPage() {
       const result = await proofreadingBridge.regenerateOutputs(activeTaskId);
       const total =
         result.translated_files.length + result.bilingual_files.length;
-      setFeedback({
-        kind: "success",
-        text: format(m.regenerateSuccess, { n: total }),
-      });
+      if (total === 0 && result.failed_files.length > 0) {
+        const reason = result.failed_files
+          .map((f) => `${f.path}: ${f.reason}`)
+          .join("; ");
+        setFeedback({
+          kind: "error",
+          text: format(m.regenerateFailed, { reason }),
+        });
+      } else {
+        setFeedback({
+          kind: "success",
+          text: format(m.regenerateSuccess, { n: total }),
+        });
+      }
     } catch (err) {
       setFeedback({
         kind: "error",
