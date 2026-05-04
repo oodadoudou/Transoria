@@ -265,30 +265,13 @@ class TranslationSubtaskRunner:
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
-        attempt_index = -1
-        max_attempt_index = max(0, self.model.retry_attempts)
-
-        async def operation() -> SubtaskResult:
-            nonlocal attempt_index
-            attempt_index += 1
-            return await self._attempt(
-                chunk,
-                metadata,
-                subtask.id,
-                attempt_index=attempt_index,
-                is_last_attempt=attempt_index >= max_attempt_index,
-            )
-
-        return await retry_async(operation, model=self.model)
+        return await self._attempt(chunk, metadata, subtask.id)
 
     async def _attempt(
         self,
-        chunk,
+        chunk: TranslationChunk,
         metadata: tuple[_SegmentPayload, ...],
         subtask_id: str = "",
-        *,
-        attempt_index: int = 0,
-        is_last_attempt: bool = False,
     ) -> SubtaskResult:
         system_prompt = _augment_system_prompt(
             build_prompt(
@@ -301,36 +284,89 @@ class TranslationSubtaskRunner:
             ),
             self.prompt_preset,
         )
-
-        initial_user_prompt = self._compose_user_prompt(
-            self._apply_roster(assemble_user_prompt(chunk)),
-            format_retry=attempt_index > 0,
-        )
         log_label = f"translation {subtask_id}" if subtask_id else "translation"
-        response = await self._one_llm_call(
-            system_prompt, initial_user_prompt, log_label
-        )
-        total_input = response.usage.input_tokens
-        total_output = response.usage.output_tokens
 
-        raw_content = self._restore_roster(response.content)
-        translations_by_index, rescued_indices = self._decode_or_raise(
-            raw_content, metadata, allow_positional=is_last_attempt
-        )
+        accumulated: dict[int, str] = {}
+        rescued_indices: set[int] = set()
+        debug_attempts: list[dict[str, object]] = []
+        metadata_by_index = {m.chunk_index: m for m in metadata}
+        pending_indices: set[int] = set(metadata_by_index.keys())
+        retries_remaining = max(0, self.model.retry_attempts)
+        total_input = 0
+        total_output = 0
+        last_raw = ""
+        first_user_prompt = ""
+
+        while True:
+            pending_meta = tuple(
+                metadata_by_index[i] for i in sorted(pending_indices)
+            )
+            sub_chunk = _build_subchunk_from_pending(chunk, pending_meta)
+            user_prompt = self._compose_user_prompt(
+                self._apply_roster(assemble_user_prompt(sub_chunk)),
+                format_retry=len(debug_attempts) > 0,
+            )
+            if not first_user_prompt:
+                first_user_prompt = user_prompt
+
+            async def _llm_call() -> object:
+                return await self._one_llm_call(
+                    system_prompt, user_prompt, log_label
+                )
+
+            response = await retry_async(_llm_call, model=self.model)
+            total_input += response.usage.input_tokens
+            total_output += response.usage.output_tokens
+            raw_content = self._restore_roster(response.content)
+            last_raw = raw_content
+            debug_attempts.append(
+                {"user_prompt": user_prompt, "raw_response": raw_content}
+            )
+
+            translations, missing = self._decode_partial(
+                raw_content, pending_meta
+            )
+            for idx, text in translations.items():
+                accumulated[idx] = text
+            pending_indices = set(missing)
+
+            if not pending_indices:
+                break
+            if retries_remaining <= 0:
+                rescued = _positional_rescue(last_raw, pending_meta)
+                if rescued is not None:
+                    for idx, text in rescued.items():
+                        accumulated[idx] = text
+                        rescued_indices.add(idx)
+                    pending_indices.clear()
+                    break
+                raise LlmRequestError(
+                    "Translation line count mismatch — could not recover "
+                    f"{sorted(pending_indices)} after "
+                    f"{len(debug_attempts)} attempt(s)",
+                    code="llm.line_count_mismatch",
+                )
+            retries_remaining -= 1
+
+        suspicious = _detect_duplicate_drift(accumulated, metadata)
+        if suspicious:
+            raise LlmRequestError(
+                "Translation duplicate drift — indices "
+                f"{suspicious} share identical translation across distinct sources",
+                code="llm.duplicate_translations",
+            )
 
         finalized: dict[str, str] = {}
         low_confidence: list[dict[str, object]] = []
         pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
 
         for meta in metadata:
-            final_text = self._postprocess(meta, translations_by_index[meta.chunk_index])
+            final_text = self._postprocess(
+                meta, accumulated[meta.chunk_index]
+            )
             verdict = self._evaluate_confidence(meta.original_text, final_text)
             extra_reasons: list[str] = []
             if meta.chunk_index in rescued_indices:
-                # Positional rescue is correct in line count but we have
-                # no proof the order matches segment intent. Surface as
-                # low_confidence so the user can review and re-translate
-                # the offending chunk if needed.
                 extra_reasons.append("positional_rescue_after_format_failure")
             if verdict.is_low_confidence and self.low_confidence_max_retries > 0:
                 pending.append(
@@ -410,10 +446,11 @@ class TranslationSubtaskRunner:
                 {
                     "kind": "translation",
                     "system_prompt": system_prompt,
-                    "user_prompt": initial_user_prompt,
-                    "raw_response": raw_content,
+                    "user_prompt": first_user_prompt,
+                    "raw_response": last_raw,
                     "translations": finalized,
                     "low_confidence": low_confidence,
+                    "attempts": debug_attempts,
                     "retry_rounds": retry_round,
                     "usage": {
                         "input_tokens": total_input,
@@ -483,58 +520,30 @@ class TranslationSubtaskRunner:
         assert response is not None
         return response
 
-    def _decode_or_raise(
+    def _decode_partial(
         self,
         raw_content: str,
-        metadata: tuple[_SegmentPayload, ...],
-        *,
-        allow_positional: bool = False,
+        metadata: Sequence[_SegmentPayload],
     ) -> tuple[dict[int, str], frozenset[int]]:
-        """Decode the LLM response into ``{chunk_index: text}``.
+        """Decode the LLM response into ``{chunk_index: text}`` and the
+        set of expected indices that did not appear.
 
-        Returns the mapping plus the set of indices recovered via the
-        positional rescue path (callers surface those as low_confidence).
-
-        Raises :class:`LlmRequestError` with code ``llm.line_count_mismatch``
-        when the response cannot be matched to the expected indices and
-        positional rescue is either disabled or its safety predicates
-        fail.
+        Indices outside the expected set are silently dropped — happens
+        when a partial-retry call asks for a small subset and the model
+        echoes the full prior chunk; we accept the requested indices
+        and ignore the stale extras. Duplicate-drift detection runs on
+        the accumulated dict in the caller, not here.
         """
 
         decoded = decode_translation_jsonl(raw_content)
-        translations_by_index = {line.index: line.text for line in decoded.lines}
         expected = {meta.chunk_index for meta in metadata}
-        missing = expected - translations_by_index.keys()
-        extra = translations_by_index.keys() - expected
-
-        rescued_indices: frozenset[int] = frozenset()
-        if missing or extra:
-            if allow_positional:
-                rescued = _positional_rescue(raw_content, metadata)
-                if rescued is not None:
-                    return rescued, frozenset(rescued.keys())
-            issue_summary = ""
-            if decoded.issues:
-                issue_summary = "; decode_issues=" + " | ".join(
-                    issue.reason for issue in decoded.issues
-                )
-            raise LlmRequestError(
-                "Translation line count mismatch — "
-                f"expected {sorted(expected)}, "
-                f"got {sorted(translations_by_index.keys())}; "
-                f"missing={sorted(missing)} extra={sorted(extra)}"
-                + issue_summary,
-                code="llm.line_count_mismatch",
-            )
-
-        suspicious = _detect_duplicate_drift(translations_by_index, metadata)
-        if suspicious:
-            raise LlmRequestError(
-                "Translation duplicate drift — indices "
-                f"{suspicious} share identical translation across distinct sources",
-                code="llm.duplicate_translations",
-            )
-        return translations_by_index, rescued_indices
+        translations_by_index = {
+            line.index: line.text
+            for line in decoded.lines
+            if line.index in expected
+        }
+        missing = frozenset(expected - translations_by_index.keys())
+        return translations_by_index, missing
 
     def _postprocess(self, meta: _SegmentPayload, translated: str) -> str:
         return postprocess_segment(
@@ -610,6 +619,20 @@ def _detect_duplicate_drift(
         if len(sources) > 1:
             suspicious.update(indices)
     return sorted(suspicious)
+
+
+def _build_subchunk_from_pending(
+    original: TranslationChunk,
+    pending: Sequence[_SegmentPayload],
+) -> TranslationChunk:
+    pending_indices = {m.chunk_index for m in pending}
+    return TranslationChunk(
+        segments=tuple(
+            seg for seg in original.segments if seg.chunk_index in pending_indices
+        ),
+        context_lines=original.context_lines,
+        glossary_entries=original.glossary_entries,
+    )
 
 
 def _positional_rescue(
