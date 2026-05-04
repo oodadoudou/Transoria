@@ -135,26 +135,17 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
-# Per-request line budget derived from the model's ``input_token_limit``.
-# The /16 divisor approximates the average token-per-line ratio for
-# Korean/Chinese novel text plus per-request overhead (system prompt,
-# preceding context, glossary). Trusting the user's configured
-# ``input_token_limit`` here means a model with a 4 K input ceiling
-# yields ~250-line chunks, an 8 K ceiling yields ~500. Failure
-# recovery — binary chunk-split (3 rounds) + per-attempt retries +
-# positional rescue + low-confidence re-translate — covers the cases
-# where the model can't reliably emit a giant JSONL response.
+# Capped at 32: large chunks burn tokens on format-drift retries faster
+# than they save round-trips, and binary split + retry handles the rest.
 _CHUNK_SIZE_FLOOR = 8
+_CHUNK_SIZE_CEILING = 32
 _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED = 32
 
 
 def _derive_chunk_size(input_token_limit: int) -> int:
     if input_token_limit <= 0:
         return _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED
-    derived = input_token_limit // 16
-    if derived < _CHUNK_SIZE_FLOOR:
-        return _CHUNK_SIZE_FLOOR
-    return derived
+    return min(_CHUNK_SIZE_CEILING, max(_CHUNK_SIZE_FLOOR, input_token_limit // 16))
 
 
 def _new_task_id(kind: str) -> str:

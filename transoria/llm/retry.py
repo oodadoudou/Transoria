@@ -19,6 +19,25 @@ from transoria.llm.config import ModelConfig
 
 T = TypeVar("T")
 
+# Format-drift errors (line count mismatch / duplicates / malformed JSON) almost
+# never self-heal across retries — the model produced semantically wrong output,
+# not a transport blip. Cap retries at 2 to stop burning tokens on a class of
+# failure that ``model.retry_attempts`` (sized for transient 5xx/429/timeout)
+# was never meant to cover.
+_FORMAT_DRIFT_RETRY_BUDGET = 2
+
+
+def _is_format_drift_error(exc: BaseException) -> bool:
+    if isinstance(exc, json.JSONDecodeError):
+        return True
+    if isinstance(exc, LlmRequestError):
+        code = getattr(exc, "code", "")
+        if code in ("llm.line_count_mismatch", "llm.duplicate_translations"):
+            return True
+        if "line count mismatch" in str(exc).lower():
+            return True
+    return False
+
 
 def is_transient_llm_error(exc: BaseException) -> bool:
     """Default retryable-error policy.
@@ -70,13 +89,16 @@ async def retry_async(
 ) -> T:
     """Run ``operation`` with exponential-backoff retries.
 
-    Total attempts = ``1 + model.retry_attempts``. Backoff starts at
-    ``retry_initial_backoff_seconds`` and doubles each round, capped at
-    ``retry_max_backoff_seconds``. ``asyncio.CancelledError`` short-circuits
-    the loop and is re-raised verbatim.
+    Transport drift (5xx/429/timeout/transport_error) gets ``model.retry_attempts``
+    retries; format drift (line count mismatch / duplicates / JSONDecodeError)
+    is capped at ``min(2, model.retry_attempts)`` because more retries rarely
+    self-heal a model that already produced semantically wrong output. Backoff
+    doubles from ``retry_initial_backoff_seconds`` up to
+    ``retry_max_backoff_seconds``. ``asyncio.CancelledError`` is re-raised verbatim.
     """
 
-    attempts_remaining = max(0, model.retry_attempts)
+    transport_remaining = max(0, model.retry_attempts)
+    format_remaining = min(_FORMAT_DRIFT_RETRY_BUDGET, transport_remaining)
     backoff = max(0.0, model.retry_initial_backoff_seconds)
     max_backoff = max(backoff, model.retry_max_backoff_seconds)
 
@@ -86,9 +108,16 @@ async def retry_async(
         except asyncio.CancelledError:
             raise
         except BaseException as exc:
-            if attempts_remaining <= 0 or not should_retry(exc):
+            if not should_retry(exc):
                 raise
-            attempts_remaining -= 1
+            if _is_format_drift_error(exc):
+                if format_remaining <= 0:
+                    raise
+                format_remaining -= 1
+            else:
+                if transport_remaining <= 0:
+                    raise
+                transport_remaining -= 1
             await sleep(min(backoff, max_backoff))
             backoff = min(backoff * 2 if backoff > 0 else 1.0, max_backoff)
 

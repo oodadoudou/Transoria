@@ -153,7 +153,7 @@ _TRANSLATION_SYSTEM_ZH = """\
 - 原文与译文的行数必须严格一致，每个输入索引对应且仅对应一条译文，严禁合并行、拆分行、复用相邻索引的译文。
 - 保持原文含义、信息与可见结构。
 - 保留变量、占位符、转义、HTML/XML 标签、ID、URL、文件路径、代码片段等不可译内容。
-- 标点忠实原文：保留原引号/括号家族，不替换，也不补全原文没有的句尾标点。
+- 标点忠实原文：保留原引号/括号家族，不替换。
 - 遵循当前预设中的用户指令；不要添加当前预设未要求的风格、解释或评价。"""
 
 _TRANSLATION_SYSTEM_EN = """\
@@ -163,7 +163,7 @@ Requirements:
 - The line count of the translation must strictly match the source: each input index maps to exactly one translation, and merging lines, splitting lines, or reusing the translation of an adjacent index are all forbidden.
 - Preserve the source meaning, information, and visible structure.
 - Preserve non-translatable content verbatim, including variables, placeholders, escapes, HTML/XML tags, IDs, URLs, file paths, and code fragments.
-- Preserve source punctuation: keep its quote/bracket family; do not substitute, and do not add closing punctuation the source does not have.
+- Preserve source punctuation: keep its quote/bracket family; do not substitute.
 - Follow the active preset's user instructions; do not add style, explanation, or judgment that the active preset did not request."""
 
 _TRANSLATION_SUFFIX_ZH = """\
