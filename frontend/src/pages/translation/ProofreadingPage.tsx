@@ -17,6 +17,16 @@ interface Feedback {
   text: string;
 }
 
+// "Untranslated" covers two model failure shapes the user wants to spot
+// quickly: empty translation and verbatim source echo (terminal source-
+// fallback path). Trim before comparing so trailing whitespace doesn't
+// hide an otherwise-identical echo.
+function isUntranslated(item: ProofreadingItem): boolean {
+  const dst = item.dst.trim();
+  if (!dst) return true;
+  return dst === item.src.trim();
+}
+
 export function ProofreadingPage() {
   const messages = useMessages();
   const m = messages.translation.proofreadingPage;
@@ -30,7 +40,20 @@ export function ProofreadingPage() {
   );
   const [draftDst, setDraftDst] = useState<string>("");
   const [search, setSearch] = useState("");
-  const [onlyLowConf, setOnlyLowConf] = useState(false);
+  // Multi-select chip filters. Empty set = show all. Multiple chips
+  // AND together (e.g. "low_conf" + "untranslated" = low-confidence
+  // segments whose translation equals the source).
+  type FilterKey = "low_conf" | "source_residue" | "untranslated";
+  const [filters, setFilters] = useState<ReadonlySet<FilterKey>>(
+    () => new Set(),
+  );
+  const toggleFilter = (key: FilterKey) =>
+    setFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   const [savedTick, setSavedTick] = useState(0);
   const [regenerating, setRegenerating] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -121,13 +144,19 @@ export function ProofreadingPage() {
     if (!snapshot) return [] as ProofreadingItem[];
     const q = search.trim().toLowerCase();
     return snapshot.items.filter((item) => {
-      if (onlyLowConf && !item.low_confidence) return false;
+      if (filters.has("low_conf") && !item.low_confidence) return false;
+      if (
+        filters.has("source_residue") &&
+        !item.tags?.includes("source_residue")
+      )
+        return false;
+      if (filters.has("untranslated") && !isUntranslated(item)) return false;
       if (!q) return true;
       return (
         item.src.toLowerCase().includes(q) || item.dst.toLowerCase().includes(q)
       );
     });
-  }, [snapshot, search, onlyLowConf]);
+  }, [snapshot, search, filters]);
 
   const dirty = selectedItem !== null && draftDst !== (selectedItem?.dst ?? "");
 
@@ -318,6 +347,11 @@ export function ProofreadingPage() {
 
   const lowConfCount =
     snapshot?.items.filter((item) => item.low_confidence).length ?? 0;
+  const residueCount =
+    snapshot?.items.filter((item) => item.tags?.includes("source_residue"))
+      .length ?? 0;
+  const untranslatedCount =
+    snapshot?.items.filter((item) => isUntranslated(item)).length ?? 0;
   const totalCount = snapshot?.items.length ?? 0;
 
   return (
@@ -353,19 +387,36 @@ export function ProofreadingPage() {
       <div className={styles.toggleRow}>
         <span>
           {format(m.stats.total, { n: totalCount })} ·{" "}
-          {format(m.stats.lowConfidence, { n: lowConfCount })}
+          {format(m.stats.lowConfidence, { n: lowConfCount })} ·{" "}
+          {format(m.stats.sourceResidue, { n: residueCount })} ·{" "}
+          {format(m.stats.untranslated, { n: untranslatedCount })}
         </span>
-        <label
-          style={{ display: "flex", alignItems: "center", gap: 6 }}
-          title={m.filterOnlyLowConfidence}
-        >
-          <input
-            type="checkbox"
-            checked={onlyLowConf}
-            onChange={(e) => setOnlyLowConf(e.target.checked)}
-          />
-          {m.filterOnlyLowConfidence}
-        </label>
+        <span className={styles.filterChips}>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("low_conf") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("low_conf")}
+            onClick={() => toggleFilter("low_conf")}
+          >
+            {m.filterOnlyLowConfidence}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("source_residue") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("source_residue")}
+            onClick={() => toggleFilter("source_residue")}
+          >
+            {m.filterOnlySourceResidue}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("untranslated") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("untranslated")}
+            onClick={() => toggleFilter("untranslated")}
+          >
+            {m.filterOnlyUntranslated}
+          </button>
+        </span>
       </div>
 
       <div style={{ marginBottom: 8 }}>

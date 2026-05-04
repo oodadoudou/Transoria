@@ -312,11 +312,17 @@ class TranslationOrchestrator:
                 break
             if not _has_failed_subtasks(snapshot.subtasks):
                 break
+            # Flip RUNNING *before* the sleep so the 30s wait window
+            # does not show a stale FAILED status to pollers (which
+            # would stop them and hide the eventual COMPLETED). On
+            # stop during the sleep we restore STOPPED so user intent
+            # is honored — no executor.run will fire after this break.
+            self._mark_task_running(task_id)
             if not await _interruptible_sleep(
                 _AUTO_RETRY_DELAY_SECONDS, executor
             ):
+                self._mark_task_status(task_id, TaskStatus.STOPPED)
                 break
-            self._mark_task_running(task_id)
             self._reset_failed_subtasks(snapshot.subtasks)
             snapshot = await executor.run(task_id)
 
@@ -427,18 +433,21 @@ class TranslationOrchestrator:
             self.on_result_finalized(result)
         return result
 
+    def _mark_task_status(self, task_id: str, status: TaskStatus) -> None:
+        record = self.cache.load_record(task_id)
+        if record.status is status:
+            return
+        self.cache.save_task(
+            record.with_status(status).with_updated_at(self.clock())
+        )
+
     def _mark_task_running(self, task_id: str) -> None:
         # Between recovery rounds the executor's _finalize writes
         # FAILED to disk. Frontend polling treats FAILED as terminal
         # and stops, so the user never sees the eventual COMPLETED.
         # Flip the record back to RUNNING right before we commit more
         # work, so the transient FAILED does not leak to pollers.
-        record = self.cache.load_record(task_id)
-        if record.status is TaskStatus.RUNNING:
-            return
-        self.cache.save_task(
-            record.with_status(TaskStatus.RUNNING).with_updated_at(self.clock())
-        )
+        self._mark_task_status(task_id, TaskStatus.RUNNING)
 
     def _reset_failed_subtasks(self, subtasks: tuple[Subtask, ...]) -> int:
         """Flip every FAILED subtask back to PENDING for the auto-retry

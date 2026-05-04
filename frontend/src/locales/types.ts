@@ -497,9 +497,16 @@ export interface Messages {
       editorSavedHint: string;
       editorDirty: string;
       empty: string;
-      stats: { total: string; lowConfidence: string };
+      stats: {
+        total: string;
+        lowConfidence: string;
+        sourceResidue: string;
+        untranslated: string;
+      };
       filterPlaceholder: string;
       filterOnlyLowConfidence: string;
+      filterOnlySourceResidue: string;
+      filterOnlyUntranslated: string;
       filterAll: string;
       taskFolderHint: string;
       retranslateAction: string;
