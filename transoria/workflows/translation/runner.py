@@ -641,15 +641,17 @@ class TranslationSubtaskRunner:
 
         Two decode paths, picked by line-count:
 
-        1. **Positional** — when the response has exactly one parsed
-           line per requested segment, zip by position (sorted by
-           ``chunk_index``) and ignore JSON keys. This recovers from
-           the common failure where the model emits content in correct
-           order but with stale or off-by-one keys; without this the
-           translations land under wrong indices and the proofreading
-           page shows segment-vs-translation mismatches.
+        1. **Key-complete** — when every requested ``chunk_index`` is
+           present exactly once, trust the keys even if the model
+           reordered the JSONL rows. Correct keys are stronger alignment
+           evidence than response order.
 
-        2. **Key-based fallback** — when the line count differs, the
+        2. **Positional** — when the response has exactly one parsed
+           line per requested segment and none of the emitted keys match
+           the request, zip by source position. This recovers from stale
+           labels / JSON arrays while avoiding mixed-key guesses.
+
+        3. **Key-based fallback** — when the line count differs, the
            response is partial / has extras, so we have to trust keys.
            Lines whose keys are outside the requested set are dropped
            silently; happens when a partial-retry call asks for a
@@ -661,7 +663,17 @@ class TranslationSubtaskRunner:
 
         decoded = decode_translation_jsonl(raw_content)
         expected = {meta.chunk_index for meta in metadata}
-        if len(decoded.lines) == len(metadata) and metadata:
+        decoded_indices = {line.index for line in decoded.lines}
+        if decoded_indices == expected and len(decoded.lines) == len(expected):
+            translations_by_index = {
+                line.index: line.text
+                for line in decoded.lines
+            }
+        elif (
+            len(decoded.lines) == len(metadata)
+            and metadata
+            and decoded_indices.isdisjoint(expected)
+        ):
             sorted_meta = sorted(metadata, key=lambda m: m.chunk_index)
             translations_by_index = {
                 meta.chunk_index: line.text
