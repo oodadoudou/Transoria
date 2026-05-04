@@ -93,21 +93,34 @@ def _count_punctuation(text: str) -> int:
     return sum(1 for char in text if char in _PUNCTUATION_CHARS)
 
 
-# Korean Hangul Syllables \u2014 full Korean words/phrases. Translation
-# output should never carry these; any occurrence = model laziness.
-#   U+AC00-U+D7AF  Hangul Syllables (\uc548\ub155\ud558\uc138\uc694 etc)
-_KOREAN_SYLLABLES_PATTERN = re.compile(r"[\uac00-\ud7af]")
+# CJK ideographs (kanji / \u6f22\u5b57 / \u6c49\u5b57). Used as proof that the model
+# did emit target-language content; presence of CJK in the output
+# signals "the model tried" and gates how strict the residue checks
+# get for legitimate emoji-fragment retention (\u314b\u314b\u314b / \u3160\u3160 alongside
+# Chinese prose is fine; \u314b\u314b\u314b alone is not). Covers the basic block
+# + Extension A + Compatibility Ideographs; skips Extension B (rare,
+# surrogate-pair regex complexity).
+_CJK_IDEOGRAPH_PATTERN = re.compile(
+    "[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]"
+)
 
-# Korean Jamo blocks \u2014 single letters used as cultural references in
-# Chinese text (sorting "from \u3131", shape "\u3137-shape", chat "\u314b\u314b").
-# Flag only when they saturate the line, not when sprinkled in long text.
+
+# Korean "hard" residue \u2014 these never appear legitimately in Chinese
+# text; their presence always means the model failed to translate.
+#   U+AC00-U+D7AF  Hangul Syllables (\uc548\ub155\ud558\uc138\uc694)
+#   U+FFA0-U+FFDC  Halfwidth Hangul Jamo (legacy game-text leakage)
+_KOREAN_HARD_RESIDUE_PATTERN = re.compile(r"[\uac00-\ud7af\uffa0-\uffdc]")
+
+# Korean "soft" residue \u2014 Jamo blocks that may legitimately appear as
+# emoji-fragment retention (\u314b\u314b\u314b / \u3160\u3160 in chat slang) when mixed
+# with translated Chinese prose. Flag only when output is saturated
+# AND has no CJK ideographs (= pure Korean = real laziness).
 #   U+1100-U+11FF  Hangul Jamo
 #   U+3130-U+318F  Hangul Compatibility Jamo
 #   U+A960-U+A97F  Hangul Jamo Extended-A
 #   U+D7B0-U+D7FF  Hangul Jamo Extended-B
-#   U+FFA0-U+FFDC  Halfwidth Hangul Jamo
-_KOREAN_JAMO_PATTERN = re.compile(
-    r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff\uffa0-\uffdc]"
+_KOREAN_SOFT_RESIDUE_PATTERN = re.compile(
+    r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]"
 )
 
 # Japanese kana \u2014 translation output should never contain these.
@@ -140,11 +153,20 @@ def _source_language_residue(
     translated_text: str, source_language: Language | None
 ) -> str | None:
     if source_language is Language.KOREAN:
-        # Hangul Syllables = real Korean words, never legitimate.
-        if _KOREAN_SYLLABLES_PATTERN.search(translated_text):
+        # Hard residue (real Korean words / halfwidth legacy) is always
+        # a problem.
+        if _KOREAN_HARD_RESIDUE_PATTERN.search(translated_text):
             return "Korean residue remains in translation"
-        # Compat-Jamo cluster = chat slang or saturating residue.
-        if _ratio(_KOREAN_JAMO_PATTERN, translated_text) > _JAMO_RATIO_THRESHOLD:
+        # Soft residue (chat-style jamo) is fine when the output also
+        # contains translated CJK content — the jamo are emoji-fragment
+        # retention (ㅋㅋ / ㅠㅠ alongside Chinese prose). Flag only when
+        # the output saturates with jamo AND has no CJK to back it up.
+        has_cjk = bool(_CJK_IDEOGRAPH_PATTERN.search(translated_text))
+        if (
+            not has_cjk
+            and _ratio(_KOREAN_SOFT_RESIDUE_PATTERN, translated_text)
+            > _JAMO_RATIO_THRESHOLD
+        ):
             return "Korean residue remains in translation"
     elif source_language is Language.JAPANESE:
         if _JAPANESE_KANA_PATTERN.search(translated_text):
