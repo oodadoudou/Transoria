@@ -238,6 +238,7 @@ class GithubReleaseChecker:
                 retryable=False,
                 details={"install_root": str(install_root)},
             )
+        _ensure_install_root_writable(install_root)
 
         staging = Path(tempfile.gettempdir()) / f"transoria-updater-{os.getpid()}"
         if staging.exists():
@@ -268,15 +269,11 @@ class GithubReleaseChecker:
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(extracted)
 
-        payload_root: Path | None = None
-        for child in extracted.iterdir():
-            if child.is_dir() and (child / "Transoria.exe").exists():
-                payload_root = child
-                break
+        payload_root = _locate_windows_payload_root(extracted)
         if payload_root is None:
             raise BridgeError(
                 "update.malformed_archive",
-                "Downloaded archive does not contain a Transoria/ payload with Transoria.exe.",
+                "Downloaded archive does not contain a Transoria payload with Transoria.exe and _internal.",
                 retryable=False,
                 details={"members_sampled": members[:5]},
             )
@@ -438,14 +435,18 @@ def _matching_asset(release: Mapping[str, object]) -> dict[str, object] | None:
     """Pick the release asset that fits the running host.
 
     Priority:
-    1. Name explicitly contains the platform marker (``windows`` / ``win32``
+    1. File extension is the platform's supported package format and the
+       name explicitly contains the platform marker (``windows`` / ``win32``
        / ``mac`` / ``darwin`` / ``linux``).
-    2. File extension is the platform's conventional package format
-       (``.zip``/``.exe`` for Windows, ``.dmg`` for macOS, ``.tar.gz`` /
+    2. File extension is the platform's supported package format
+       (``.zip`` for Windows, ``.dmg`` for macOS, ``.tar.gz`` /
        ``.AppImage`` for Linux). This catches the common case where a
        release uploads only one asset per platform with a generic name
        (e.g. ``Transoria.zip`` for Windows).
-    3. First asset of any shape (last-resort fallback).
+
+    No arbitrary fallback is returned. On Windows, the in-place updater
+    can only apply the portable ZIP layout; returning a DMG/EXE here
+    would make the UI offer auto-update and then fail during unzip.
     """
 
     assets = release.get("assets")
@@ -455,7 +456,6 @@ def _matching_asset(release: Mapping[str, object]) -> dict[str, object] | None:
     alias = _platform_alias(platform)
     explicit: Mapping[str, object] | None = None
     by_extension: Mapping[str, object] | None = None
-    fallback: Mapping[str, object] | None = None
     for asset in assets:
         if not isinstance(asset, Mapping):
             continue
@@ -463,16 +463,14 @@ def _matching_asset(release: Mapping[str, object]) -> dict[str, object] | None:
         if not name:
             continue
         lowered = name.lower()
+        if not _extension_matches_platform(lowered, platform):
+            continue
         if platform in lowered or alias in lowered:
             explicit = asset
             break
-        if by_extension is None and _extension_matches_platform(
-            lowered, platform
-        ):
+        if by_extension is None:
             by_extension = asset
-        if fallback is None:
-            fallback = asset
-    chosen = explicit or by_extension or fallback
+    chosen = explicit or by_extension
     if chosen is None:
         return None
     return _asset_payload(chosen, platform=platform)
@@ -480,7 +478,7 @@ def _matching_asset(release: Mapping[str, object]) -> dict[str, object] | None:
 
 def _extension_matches_platform(name_lower: str, platform: str) -> bool:
     if platform == "win32":
-        return name_lower.endswith(".zip") or name_lower.endswith(".exe")
+        return name_lower.endswith(".zip")
     if platform == "darwin":
         return name_lower.endswith(".dmg") or name_lower.endswith(".app.zip")
     if platform == "linux":
@@ -505,6 +503,46 @@ def _platform_alias(platform: str) -> str:
     return {"darwin": "mac", "win32": "windows", "linux": "linux"}.get(
         platform, platform
     )
+
+
+def _ensure_install_root_writable(install_root: Path) -> None:
+    probe = install_root / f".transoria-update-write-test-{os.getpid()}"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+    except OSError as exc:
+        raise BridgeError(
+            "update.install_not_writable",
+            "The Transoria install folder is not writable. Move it to a normal user-writable folder before auto-updating.",
+            retryable=False,
+            details={"install_root": str(install_root)},
+        ) from exc
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+
+
+def _locate_windows_payload_root(extracted: Path) -> Path | None:
+    if _is_windows_payload_root(extracted):
+        return extracted
+    direct_children = [child for child in extracted.iterdir() if child.is_dir()]
+    for child in direct_children:
+        if _is_windows_payload_root(child):
+            return child
+    candidates = [
+        exe.parent
+        for exe in extracted.rglob("Transoria.exe")
+        if _is_windows_payload_root(exe.parent)
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda path: (len(path.relative_to(extracted).parts), str(path)))
+    return candidates[0]
+
+
+def _is_windows_payload_root(path: Path) -> bool:
+    return (path / "Transoria.exe").is_file() and (path / "_internal").is_dir()
 
 
 def _is_newer(latest: str, current: str) -> bool:

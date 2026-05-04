@@ -36,6 +36,7 @@ export function useUpdatePrompt(): UpdatePromptApi {
     (state) => state.app.draft?.skipped_update_version ?? "",
   );
   const updateField = useSettingsStore((state) => state.updateField);
+  const saveNow = useSettingsStore((state) => state.saveNow);
   const translationActive = useRuntimeStore(
     (state) => state.translation.activeTaskId,
   );
@@ -126,9 +127,10 @@ export function useUpdatePrompt(): UpdatePromptApi {
     return () => window.clearTimeout(handle);
   }, [shutdownInSeconds]);
 
-  const persistSkip = (latest: string): void => {
+  const persistSkip = async (latest: string): Promise<void> => {
     if (!latest) return;
     updateField("app", "skipped_update_version", latest);
+    await saveNow("app");
   };
 
   const canAutoUpdate =
@@ -150,13 +152,13 @@ export function useUpdatePrompt(): UpdatePromptApi {
         // the user dismissing the modal must not abort the shutdown.
         return;
       }
-      if (result) persistSkip(result.latest_version);
+      if (result) void persistSkip(result.latest_version);
       setResult(null);
     },
     goToReleasePage: () => {
       if (!result) return;
       const url = result.release_url;
-      persistSkip(result.latest_version);
+      void persistSkip(result.latest_version);
       setResult(null);
       if (url) {
         void updatesBridge.openReleasePage(url).catch(() => {
@@ -181,7 +183,7 @@ export function useUpdatePrompt(): UpdatePromptApi {
         // Persist skip BEFORE the App tears down so the next launch
         // (after manual relaunch) doesn't re-prompt for the same
         // version we just installed.
-        persistSkip(result.latest_version);
+        await persistSkip(result.latest_version);
         setShutdownInSeconds(
           Math.max(1, Math.floor(response.shutdown_in_seconds || 2)),
         );
