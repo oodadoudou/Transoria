@@ -316,6 +316,7 @@ class TranslationOrchestrator:
                 _AUTO_RETRY_DELAY_SECONDS, executor
             ):
                 break
+            self._mark_task_running(task_id)
             self._reset_failed_subtasks(snapshot.subtasks)
             snapshot = await executor.run(task_id)
 
@@ -426,6 +427,19 @@ class TranslationOrchestrator:
             self.on_result_finalized(result)
         return result
 
+    def _mark_task_running(self, task_id: str) -> None:
+        # Between recovery rounds the executor's _finalize writes
+        # FAILED to disk. Frontend polling treats FAILED as terminal
+        # and stops, so the user never sees the eventual COMPLETED.
+        # Flip the record back to RUNNING right before we commit more
+        # work, so the transient FAILED does not leak to pollers.
+        record = self.cache.load_record(task_id)
+        if record.status is TaskStatus.RUNNING:
+            return
+        self.cache.save_task(
+            record.with_status(TaskStatus.RUNNING).with_updated_at(self.clock())
+        )
+
     def _reset_failed_subtasks(self, subtasks: tuple[Subtask, ...]) -> int:
         """Flip every FAILED subtask back to PENDING for the auto-retry
         loop. Mirrors the continue_task reset path so a clean re-run
@@ -466,6 +480,8 @@ class TranslationOrchestrator:
             )
             if not child_payloads:
                 continue
+            if created == 0:
+                self._mark_task_running(task_id)
             self.cache.save_subtask(
                 replace(
                     subtask,
