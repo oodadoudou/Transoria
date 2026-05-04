@@ -108,10 +108,6 @@ class ModelProfileStore:
         # Future: detect TRANSORIA_<ID>_API_KEY env vars and return "from_env".
         return "missing"
 
-    # ------------------------------------------------------------------ #
-    # Internals
-    # ------------------------------------------------------------------ #
-
     def _compose(self, profile_id: str) -> ModelConfig:
         bodies = self._load_bodies()
         index = self._find_index(bodies, profile_id)

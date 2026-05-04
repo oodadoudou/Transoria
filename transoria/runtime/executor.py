@@ -77,10 +77,6 @@ class TaskExecutor:
     _active_runners: int = field(default=0, init=False, repr=False)
     _pause_observed: bool = field(default=False, init=False, repr=False)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def request_stop(self) -> None:
         """Signal cooperative shutdown. Safe to call from any thread/coroutine."""
 
@@ -158,10 +154,6 @@ class TaskExecutor:
                     )
                 )
         return await self.run(task_id)
-
-    # ------------------------------------------------------------------
-    # Core loop
-    # ------------------------------------------------------------------
 
     async def _drive(self, task_id: str, pending: list[Subtask]) -> None:
         semaphore = asyncio.Semaphore(self.concurrency_limit)
@@ -338,10 +330,6 @@ class TaskExecutor:
                 self._fire_progress(task_id, completed.id)
             finally:
                 self._active_runners -= 1
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _update_record_status(self, task_id: str, status: TaskStatus) -> None:
         record = self.cache.load_record(task_id)

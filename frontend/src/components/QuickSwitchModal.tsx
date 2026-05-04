@@ -15,18 +15,9 @@ interface QuickSwitchModalProps {
   emptyMessage: string;
   onSelect: (itemId: string) => Promise<void> | void;
   onClose: () => void;
-  /** Optional "Manage…" link that takes the user to the full
-   *  configuration page (Model / Prompt). Closes the modal first. */
   onManage?: () => void;
 }
 
-/**
- * Compact modal that lists profiles or prompt presets and activates
- * one on click. Architecture § 3.4 G.5 — used by Run pages to switch
- * the active model / prompt without leaving the Run page. The modal
- * does not edit anything; full management still lives on the
- * dedicated config pages.
- */
 export function QuickSwitchModal({
   title,
   items,

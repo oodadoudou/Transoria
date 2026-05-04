@@ -70,10 +70,6 @@ def _make_handler(
                 flush=True,
             )
 
-        # ------------------------------------------------------------------
-        # CORS + JSON helpers
-        # ------------------------------------------------------------------
-
         def _add_cors_headers(self) -> None:
             origin = self.headers.get("Origin", "*")
             self.send_header("Access-Control-Allow-Origin", origin)
@@ -116,10 +112,6 @@ def _make_handler(
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(data)
-
-        # ------------------------------------------------------------------
-        # Verb handlers
-        # ------------------------------------------------------------------
 
         def do_OPTIONS(self) -> None:  # noqa: N802
             self.send_response(204)
@@ -232,10 +224,6 @@ def _make_handler(
                 )
                 return
             self._send_json(200, response)
-
-        # ------------------------------------------------------------------
-        # Static file resolution
-        # ------------------------------------------------------------------
 
         def _resolve_static(self, url_path: str) -> Path | None:
             """Map an HTTP path to a file under ``static_root``.

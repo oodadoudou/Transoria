@@ -2,24 +2,14 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import styles from './Panel.module.css';
 
 interface PanelProps extends HTMLAttributes<HTMLElement> {
-  /** Optional uppercase section label that sits above panel content. */
   label?: string;
-  /** Display title (sits above subtitle and children). */
   title?: string;
-  /** Body subtitle under the title. */
   subtitle?: string;
-  /** Keep subtitle to one visual line with ellipsis. */
   subtitleSingleLine?: boolean;
-  /** Optional inline-end slot rendered to the right of the section label. */
   labelExtra?: ReactNode;
   children?: ReactNode;
 }
 
-/**
- * Flat section. No card wrapper, no border, no fill — just a tracked label
- * (or display title) followed by the children, separated by spacing. Visual
- * structure across multiple Panels comes from the parent flex `gap`.
- */
 export function Panel({
   label,
   title,

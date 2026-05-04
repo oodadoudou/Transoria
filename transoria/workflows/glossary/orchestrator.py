@@ -449,11 +449,6 @@ class GlossaryOrchestrator:
         return result
 
 
-# ---------------------------------------------------------------------------
-# Scan + parse
-# ---------------------------------------------------------------------------
-
-
 def _scan_and_parse(input_dir: Path) -> dict[Path, tuple[str, ...]]:
     """Parse every supported file and return its non-empty source segments.
 
@@ -475,11 +470,7 @@ def _scan_and_parse(input_dir: Path) -> dict[Path, tuple[str, ...]]:
                 segment.text for segment in doc.segments if segment.text.strip()
             )
     return result
-
-
-# ---------------------------------------------------------------------------
 # Aggregate
-# ---------------------------------------------------------------------------
 
 
 def _aggregate_candidates(

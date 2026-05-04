@@ -11,7 +11,6 @@
  * only as horizontal dividers between log rows, never as box outlines.
  */
 :root {
-  /* === Color: Brand & Surface ============================================== */
   --canvas: #fafaf6;             /* cream — the page */
   --panel: #ffffff;              /* white — used sparingly (pop-overs, sticky) */
   --panel-soft: #f3f2ec;         /* slightly darker cream — subtle hover wash */
@@ -26,17 +25,13 @@
   --hairline: rgba(17, 17, 20, 0.09);
   --hairline-strong: rgba(17, 17, 20, 0.18);
 
-  /* === Status (productivity-app extensions) ================================ */
   --success: #2f7d57;
   --warn: #b6541b;
 
-  /* === Typography ========================================================== */
-  /* SF Pro on Apple platforms, Inter elsewhere. */
   --font-ui: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* === Spacing — 4 px base ================================================= */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 10px;
@@ -47,28 +42,19 @@
   --space-8: 28px;
   --space-9: 36px;
 
-  /* === Radius ============================================================== */
   --radius-pill: 999px;
   --radius-card: 14px;          /* legacy alias for inspector inner widgets */
   --radius-inset: 10px;
   --radius-avatar: 8px;
 
-  /* === Elevation =========================================================== */
   --shadow-pill: 0 4px 14px var(--action-shadow);
   --shadow-card: none;          /* flat — no card wrappers */
   --shadow-soft: none;
 
-  /* === Focus =============================================================== */
   --focus-ring: 0 0 0 2px rgba(61, 53, 48, 0.32);
 
-  /* === Top chrome height =================================================== */
   --topbar-height: 52px;
 
-  /* ----------------------------------------------------------------------- *
-   * Aliases kept for code that's transitioning from the prior Apple-spec
-   * naming to the Paper White names above. Do not introduce new references
-   * to these — they exist only so components compile during migration.
-   * ----------------------------------------------------------------------- */
   --primary: var(--action);
   --primary-focus: var(--action);
   --primary-on-dark: #d8c8a8;

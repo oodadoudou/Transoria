@@ -1,11 +1,3 @@
-/*
- * Desktop shell — flat. Cream canvas spans the whole window with no
- * card/box wrappers. Three columns when on a Run page (rail / main /
- * inspector + status pill); two columns elsewhere (rail / main).
- *
- * No responsive collapse — packaged app, fixed 1280×800 floor.
- */
-
 .shell {
   min-height: 100vh;
   padding: 18px 24px;
@@ -42,7 +34,6 @@
   flex-direction: column;
   gap: 36px;
   min-width: 0;
-  /* Editorial reading width on big monitors. */
   max-width: 980px;
   padding: 8px 0 32px;
 }

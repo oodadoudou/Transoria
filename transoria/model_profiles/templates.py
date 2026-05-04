@@ -114,11 +114,6 @@ class ProviderTemplate:
             },
         }
 
-
-# ---------------------------------------------------------------------------
-# Catalog
-# ---------------------------------------------------------------------------
-
 _OPENAI_HINTS: Mapping[str, FieldHint] = {
     "timeout_seconds": FieldHint(
         description_key="modelHints.timeout",

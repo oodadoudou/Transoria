@@ -4,6 +4,11 @@ import { format, useMessages } from "@/locales";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import styles from "./ReviewPage.module.css";
+import { ImportFinalGlossaryConfirmModal } from "./ImportFinalGlossaryConfirmModal";
+import {
+  importFinalGlossaryToTranslation,
+  type ImportFinalGlossaryMode,
+} from "./importFinalGlossary";
 
 type FeedbackKind = "error" | "success";
 type SortKey = "row_index" | "src" | "dst" | "info" | "frequency";
@@ -32,6 +37,7 @@ function rowToDraft(row: GlossaryReviewFinalRow): Draft {
 export function ReviewPage() {
   const messages = useMessages();
   const labels = messages.glossaryReview.review;
+  const runLabels = messages.glossaryReview.run;
   const [tasks, setTasks] = useState<TaskHeader[] | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<GlossaryReviewFinalSheet | null>(null);
@@ -45,6 +51,11 @@ export function ReviewPage() {
   const [sortState, setSortState] = useState<SortState | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importingFinal, setImportingFinal] = useState(false);
+  const [importDecision, setImportDecision] = useState<{
+    outputPath: string;
+    existingCount: number;
+  } | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   useEffect(() => {
@@ -295,6 +306,78 @@ export function ReviewPage() {
     }
   };
 
+  const importFinalFromPath = async (
+    outputPath: string,
+    mode?: ImportFinalGlossaryMode,
+  ) => {
+    setImportingFinal(true);
+    setFeedback(null);
+    try {
+      const result = await importFinalGlossaryToTranslation(outputPath, {
+        empty: runLabels.importFinalEmpty,
+      }, mode);
+      if (result.status === "needs_decision") {
+        setImportDecision({
+          outputPath,
+          existingCount: result.existingCount,
+        });
+        return;
+      }
+      setImportDecision(null);
+      setFeedback({
+        kind: "success",
+        text: format(runLabels.importFinalSuccess, { n: result.count }),
+      });
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        text: format(runLabels.importFinalFailed, {
+          reason: errorText(error),
+        }),
+      });
+    } finally {
+      setImportingFinal(false);
+    }
+  };
+
+  const handleImportFinal = async () => {
+    if (!activeTaskId || !sheet || importingFinal) return;
+    setImportingFinal(true);
+    setFeedback(null);
+    try {
+      let outputPath = sheet.path;
+      if (dirty && selected) {
+        const next = await glossaryReviewBridge.updateFinalRow(activeTaskId, {
+          row_index: selected.row_index,
+          src: draft.src,
+          dst: draft.dst,
+          info: draft.info,
+          delete: false,
+        });
+        setSheet(next);
+        outputPath = next.path;
+        const nextSelected =
+          next.rows.find((row) => row.row_index === selected.row_index) ??
+          next.rows[0] ??
+          null;
+        setSelectedRowIndex(nextSelected?.row_index ?? null);
+        setDraft(
+          nextSelected ? rowToDraft(nextSelected) : { src: "", dst: "", info: "" },
+        );
+      }
+      await importFinalFromPath(outputPath);
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        text: format(runLabels.importFinalFailed, {
+          reason: errorText(error),
+        }),
+      });
+    } finally {
+      setImportingFinal(false);
+    }
+  };
+
   const selectedCount = selectedRowIndices.size;
   const allVisibleSelected =
     rows.length > 0 && rows.every((row) => selectedRowIndices.has(row.row_index));
@@ -325,6 +408,14 @@ export function ReviewPage() {
         <span className={styles.hint}>
           {sheet ? format(labels.pathHint, { path: sheet.path }) : null}
         </span>
+        <Pill
+          disabled={!sheet || importingFinal || saving}
+          onClick={() => void handleImportFinal()}
+        >
+          {importingFinal
+            ? runLabels.importingFinal
+            : runLabels.importFinalToTranslation}
+        </Pill>
       </div>
 
       <input
@@ -490,6 +581,28 @@ export function ReviewPage() {
         >
           {feedback.text}
         </div>
+      ) : null}
+      {importDecision ? (
+        <ImportFinalGlossaryConfirmModal
+          existingCount={importDecision.existingCount}
+          labels={{
+            title: runLabels.importFinalDecisionTitle,
+            body: runLabels.importFinalDecisionBody,
+            replaceBadge: runLabels.importFinalReplaceBadge,
+            replaceAction: runLabels.importFinalReplaceAction,
+            replaceHint: runLabels.importFinalReplaceHint,
+            appendBadge: runLabels.importFinalAppendBadge,
+            appendAction: runLabels.importFinalAppendAction,
+            appendHint: runLabels.importFinalAppendHint,
+            cancelAction: runLabels.importFinalCancelAction,
+          }}
+          onPick={(mode) => {
+            const { outputPath } = importDecision;
+            setImportDecision(null);
+            void importFinalFromPath(outputPath, mode);
+          }}
+          onCancel={() => setImportDecision(null)}
+        />
       ) : null}
     </Panel>
   );

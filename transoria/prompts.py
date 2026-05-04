@@ -141,11 +141,6 @@ def _system_thinking_prompt(kind: PromptKind) -> str:
         "protected text, and output format. Output only the requested result."
     )
 
-
-# ---------------------------------------------------------------------------
-# Default presets
-# ---------------------------------------------------------------------------
-
 DEFAULT_TRANSLATION_PRESET_ID = "default-translation-zh"
 DEFAULT_GLOSSARY_PRESET_ID = "default-glossary-zh"
 DEFAULT_GLOSSARY_REVIEW_PRESET_ID = "default-glossary-review-zh"
@@ -361,12 +356,6 @@ def _default_preset_id(kind: PromptKind) -> str:
     if kind is PromptKind.GLOSSARY:
         return DEFAULT_GLOSSARY_PRESET_ID
     return DEFAULT_GLOSSARY_REVIEW_PRESET_ID
-
-
-# ---------------------------------------------------------------------------
-# Store
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class PromptPresetStore:

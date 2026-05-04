@@ -648,7 +648,15 @@ export interface Messages {
       importingFinal: string;
       importFinalUnavailable: string;
       importFinalEmpty: string;
-      importFinalReplaceConfirm: string;
+      importFinalDecisionTitle: string;
+      importFinalDecisionBody: string;
+      importFinalReplaceBadge: string;
+      importFinalReplaceAction: string;
+      importFinalReplaceHint: string;
+      importFinalAppendBadge: string;
+      importFinalAppendAction: string;
+      importFinalAppendHint: string;
+      importFinalCancelAction: string;
       importFinalSuccess: string;
       importFinalFailed: string;
       roundOverall: string;

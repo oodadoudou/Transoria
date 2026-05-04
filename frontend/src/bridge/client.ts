@@ -45,15 +45,11 @@ function call<TResponse>(
   return getTransport().call<TResponse>(method, payload);
 }
 
-// --- App ---------------------------------------------------------------------
-
 export const appBridge = {
   getMetadata(): Promise<AppMetadata> {
     return call("app.get_metadata");
   },
 };
-
-// --- Settings ----------------------------------------------------------------
 
 export const settingsBridge = {
   loadAll(): Promise<AllSettings> {
@@ -72,8 +68,6 @@ export const settingsBridge = {
     return call("settings.reset_module", { module });
   },
 };
-
-// --- Dialogs -----------------------------------------------------------------
 
 export const dialogsBridge = {
   chooseInputDirectory(initialPath?: string): Promise<DialogPathResult> {
@@ -111,8 +105,6 @@ export const dialogsBridge = {
     return nativeDialogs.revealFile(path);
   },
 };
-
-// --- Model profiles ---------------------------------------------------------
 
 export const modelProfilesBridge = {
   list(): Promise<{ profiles: ModelProfile[] }> {
@@ -179,16 +171,12 @@ export const modelProfilesBridge = {
   },
 };
 
-// --- Model templates --------------------------------------------------------
-
 export const modelTemplatesBridge = {
   /** Read-only catalog of provider templates (architecture § 3.4). */
   list(): Promise<{ templates: ProviderTemplate[] }> {
     return call("model_templates.list");
   },
 };
-
-// --- Prompts ----------------------------------------------------------------
 
 export const promptsBridge = {
   list(
@@ -238,8 +226,6 @@ export const promptsBridge = {
   },
 };
 
-// --- Translation ------------------------------------------------------------
-
 export const translationBridge = {
   startTask(
     requestId: string,
@@ -273,8 +259,6 @@ export const translationBridge = {
     return call("translation.list_failed_subtasks", { task_id: taskId });
   },
 };
-
-// --- Proofreading -----------------------------------------------------------
 
 export interface ProofreadingItem {
   segment_id: string;
@@ -349,8 +333,6 @@ export const proofreadingBridge = {
     return call("proofreading.retranslate_status", { request_id: requestId });
   },
 };
-
-// --- Glossary ---------------------------------------------------------------
 
 export const glossaryBridge = {
   startTask(
@@ -430,8 +412,6 @@ export const glossaryBridge = {
     return call("glossary.list_presets", {});
   },
 };
-
-// --- Glossary Review --------------------------------------------------------
 
 export const glossaryReviewBridge = {
   startTask(
@@ -534,8 +514,6 @@ export function importedGlossaryToPersisted(
   }));
 }
 
-// --- Task-cache management (Settings page) --------------------------------
-
 export const tasksBridge = {
   summarizeCaches(): Promise<{
     task_count: number;
@@ -557,8 +535,6 @@ export const tasksBridge = {
     return call("tasks.purge_caches", { scope, days: days ?? null });
   },
 };
-
-// --- Translation rules (text-preserve + pre/post replacement) --------------
 
 export type TranslationRuleKind =
   | "text_preserve"
@@ -599,8 +575,6 @@ export const rulesBridge = {
     return call("rules.export_rules", { kind, path, rules });
   },
 };
-
-// --- Replacement ------------------------------------------------------------
 
 export const replacementBridge = {
   importRules(path: string): Promise<ReplacementRuleParseResult> {
@@ -653,8 +627,6 @@ export const replacementBridge = {
     return call("replacement.list_failed_subtasks", { task_id: taskId });
   },
 };
-
-// --- Updates ----------------------------------------------------------------
 
 export const updatesBridge = {
   checkLatest(

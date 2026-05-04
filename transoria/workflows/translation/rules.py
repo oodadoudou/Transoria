@@ -50,11 +50,6 @@ class ReplacementRule:
     enabled: bool = True
 
 
-# ---------------------------------------------------------------------------
-# Glossary matching
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class Glossary:
     """A frozen, ordered collection of glossary entries.

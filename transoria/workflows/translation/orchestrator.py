@@ -511,11 +511,6 @@ class TranslationOrchestrator:
         return created
 
 
-# ---------------------------------------------------------------------------
-# Scan + parse
-# ---------------------------------------------------------------------------
-
-
 def _scan_and_parse(input_dir: Path, *, buffer_epub_archives: bool) -> tuple[_ParsedFile, ...]:
     discovered = scan_input_directory(input_dir)
     parsed: list[_ParsedFile] = []
@@ -549,11 +544,6 @@ def _scan_and_parse(input_dir: Path, *, buffer_epub_archives: bool) -> tuple[_Pa
                 )
             )
     return tuple(parsed)
-
-
-# ---------------------------------------------------------------------------
-# Preprocess
-# ---------------------------------------------------------------------------
 
 
 def _prepare_segments(
@@ -636,11 +626,6 @@ def _split_failed_payload(
         child_payload["split_index"] = split_index
         children.append(child_payload)
     return tuple(children)
-
-
-# ---------------------------------------------------------------------------
-# Collect + writeback
-# ---------------------------------------------------------------------------
 
 
 def _collect_translations(
@@ -818,11 +803,6 @@ def _write_outputs(
             )
 
     return translated_outputs, bilingual_outputs, failed_files
-
-
-# ---------------------------------------------------------------------------
-# Pluggable factories (for tests)
-# ---------------------------------------------------------------------------
 
 
 RunnerFactory = Callable[[LlmClient, TranslationConfig], SubtaskRunner]

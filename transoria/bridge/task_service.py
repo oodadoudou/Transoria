@@ -150,12 +150,6 @@ class RetranslateJob:
     error: str = ""
     created_at: float = 0.0
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
@@ -487,12 +481,6 @@ def _ensure_output_dir(value: str, *, field: str) -> Path:
         ) from exc
     return path
 
-
-# ---------------------------------------------------------------------------
-# Snapshot serialization (cache record → wire shape)
-# ---------------------------------------------------------------------------
-
-
 def _format_header(record: TaskRecord) -> dict[str, object]:
     return {
         "id": record.id,
@@ -714,11 +702,6 @@ def _format_failures(snapshot: TaskSnapshot) -> list[dict[str, object]]:
             }
         )
     return failures
-
-
-# ---------------------------------------------------------------------------
-# Result payload formatters
-# ---------------------------------------------------------------------------
 
 
 def _translation_result_payload(
@@ -962,11 +945,6 @@ def _scan_bilingual_files(output_dir: Path) -> list[str]:
     return files
 
 
-# ---------------------------------------------------------------------------
-# TaskService
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class TaskService:
     """Bridge-facing facade over the runtime + workflow orchestrators."""
@@ -1012,10 +990,6 @@ class TaskService:
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
 
-    # ------------------------------------------------------------------
-    # Per-task cache resolution
-    # ------------------------------------------------------------------
-    #
     # All task records live under a single central root
     # (``<cache_root>/tasks/<task_id>/``). Records carry their kind
     # internally so list_tasks can filter; storing them flat means
@@ -1029,10 +1003,6 @@ class TaskService:
 
     def _cache_for_task(self, task_id: str) -> TaskCache:  # noqa: ARG002
         return self.cache
-
-    # ------------------------------------------------------------------
-    # Public: cache management (Settings page)
-    # ------------------------------------------------------------------
 
     def summarize_caches(self) -> dict[str, object]:
         """Aggregate stats for the cache cleanup UI."""
@@ -1195,10 +1165,6 @@ class TaskService:
                 )
             except (OSError, json.JSONDecodeError):
                 pass
-
-    # ------------------------------------------------------------------
-    # Public: proofreading retranslate
-    # ------------------------------------------------------------------
 
     def start_retranslate(
         self, *, task_id: str, segment_id: str
@@ -1475,10 +1441,6 @@ class TaskService:
             )
         return str(translations[segment_id])
 
-    # ------------------------------------------------------------------
-    # Public: translation
-    # ------------------------------------------------------------------
-
     def _build_translation_config(
         self,
     ) -> tuple[TranslationConfig, ModelConfig, PromptPreset]:
@@ -1625,10 +1587,6 @@ class TaskService:
         await orchestrator.run(config)
         self._maybe_cleanup_cache("translation", task_id)
 
-    # ------------------------------------------------------------------
-    # Public: glossary
-    # ------------------------------------------------------------------
-
     def _build_glossary_config(
         self,
     ) -> tuple[GlossaryConfig, ModelConfig, PromptPreset]:
@@ -1754,10 +1712,6 @@ class TaskService:
         )
         await orchestrator.run(config)
         self._maybe_cleanup_cache("glossary", task_id)
-
-    # ------------------------------------------------------------------
-    # Public: glossary review
-    # ------------------------------------------------------------------
 
     def _build_glossary_review_config(
         self,
@@ -1901,10 +1855,6 @@ class TaskService:
         )
         await orchestrator.run(config)
         self._maybe_cleanup_cache("glossary_review", task_id)
-
-    # ------------------------------------------------------------------
-    # Public: replacement
-    # ------------------------------------------------------------------
 
     def start_replacement(
         self, *, request_id: str, rules: Sequence[ReplacementRule]
@@ -2191,10 +2141,6 @@ class TaskService:
         self._mark_status(task_id, final)
         self._maybe_cleanup_cache("replacement", task_id)
 
-    # ------------------------------------------------------------------
-    # Public: lifecycle controls
-    # ------------------------------------------------------------------
-
     def stop_task(self, *, kind: str, task_id: str) -> dict[str, object]:
         running = self.registry.get(task_id)
         if running is None:
@@ -2443,10 +2389,6 @@ class TaskService:
             "failed": 0,
         }
 
-    # ------------------------------------------------------------------
-    # Public: read endpoints
-    # ------------------------------------------------------------------
-
     def read_snapshot(self, *, kind: str, task_id: str) -> dict[str, object]:
         record_kind = self._kind(kind)
         cache = self._cache_for_task(task_id)
@@ -2570,10 +2512,6 @@ class TaskService:
             snapshot = cache.load(task_id)
             return self._partial_result(record=record, snapshot=snapshot)
         return result
-
-    # ------------------------------------------------------------------
-    # Internals
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _kind(kind: str) -> TaskKind:

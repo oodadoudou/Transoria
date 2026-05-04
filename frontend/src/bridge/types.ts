@@ -60,8 +60,6 @@ export type SettingsModule =
 
 export type PromptKind = "translation" | "glossary" | "glossary_review";
 
-// --- App ---------------------------------------------------------------------
-
 export interface AppMetadata {
   app_version: string;
   platform: Platform;
@@ -69,8 +67,6 @@ export interface AppMetadata {
   python_version: string;
   cache_root: string;
 }
-
-// --- Settings ----------------------------------------------------------------
 
 export interface AppSettings {
   interface_language: "en" | "zh";
@@ -190,8 +186,6 @@ export type ModuleSettings =
   | GlossaryReviewSettings
   | ReplacementSettings;
 
-// --- Dialogs -----------------------------------------------------------------
-
 export interface DialogPathResult {
   path: string | null;
 }
@@ -199,8 +193,6 @@ export interface DialogPathResult {
 export interface GlossaryFileResult extends DialogPathResult {
   format: "xlsx" | "json" | null;
 }
-
-// --- Model profiles ---------------------------------------------------------
 
 export type ApiKeyStatus = "missing" | "present" | "from_env";
 
@@ -261,8 +253,6 @@ export interface ModelListResult {
   models: ModelListEntry[];
 }
 
-// --- Prompt presets ---------------------------------------------------------
-
 export interface PromptPresetSummary {
   id: string;
   name: string;
@@ -303,8 +293,6 @@ export interface PromptPreviewResult {
    * or null when no model is selected / the saved profile is gone. */
   active_thinking_level: "off" | "low" | "medium" | "high" | null;
 }
-
-// --- Tasks (translation, glossary, replacement) -----------------------------
 
 export type TaskKind =
   | "translation"
@@ -585,8 +573,6 @@ export interface ReplacementReport {
   rules: ReplacementReportRule[];
 }
 
-// --- Replacement rules ------------------------------------------------------
-
 export interface ReplacementRule {
   src: string;
   dst: string;
@@ -606,8 +592,6 @@ export interface ReplacementValidationIssue {
   message: string;
 }
 
-// --- Updates ----------------------------------------------------------------
-
 export interface UpdateCheckResult {
   current_version: string;
   latest_version: string;
@@ -623,15 +607,11 @@ export interface UpdateCheckResult {
   } | null;
 }
 
-// --- Task events (push channel) ---------------------------------------------
-
 export type TaskEvent =
   | { kind: "snapshot"; task_id: string; snapshot: TaskSnapshot }
   | { kind: "log"; task_id: string; line: TaskLogLine }
   | { kind: "completed"; task_id: string; outcome: TaskOutcome }
   | { kind: "failed"; task_id: string; error: BridgeErrorPayload };
-
-// --- Errors -----------------------------------------------------------------
 
 export interface BridgeErrorPayload {
   code: string;

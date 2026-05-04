@@ -108,11 +108,6 @@ def postprocess_segment(
     return f"{leading_whitespace}{rewritten}{trailing_whitespace}"
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _split_whitespace(text: str) -> tuple[str, str, str]:
     """Split into ``(leading, body, trailing)`` whitespace-free body."""
 

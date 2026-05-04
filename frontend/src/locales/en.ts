@@ -747,8 +747,18 @@ export const en: Messages = {
       importingFinal: "Importing…",
       importFinalUnavailable: "Final XLSX is missing.",
       importFinalEmpty: "Final XLSX contains no importable terms.",
-      importFinalReplaceConfirm:
-        "The translation glossary already has {n} entries. OK clears it before import; Cancel appends.",
+      importFinalDecisionTitle: "Import to translation glossary",
+      importFinalDecisionBody:
+        "The translation glossary already has {n} entries. Choose how to import.",
+      importFinalReplaceBadge: "CLEAR",
+      importFinalReplaceAction: "Replace glossary",
+      importFinalReplaceHint:
+        "Clear the existing translation glossary, then import this final XLSX.",
+      importFinalAppendBadge: "ADD",
+      importFinalAppendAction: "Append glossary",
+      importFinalAppendHint:
+        "Keep existing entries and append this final XLSX.",
+      importFinalCancelAction: "Cancel",
       importFinalSuccess: "Imported {n} entries into the translation glossary.",
       importFinalFailed: "Import failed: {reason}",
       roundOverall: "Round {current} / {total}",

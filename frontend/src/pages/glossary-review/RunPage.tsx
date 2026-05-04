@@ -2,14 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { format, useMessages, useI18n } from "@/locales";
 import {
   BridgeError,
-  glossaryBridge,
   glossaryReviewBridge,
-  importedGlossaryToPersisted,
   type GlossaryReviewReport,
   type GlossaryReviewReportRow,
 } from "@/bridge";
 import { useTaskStore } from "@/store/useTaskStore";
-import type { GlossaryEntry } from "@/store/useTaskStore";
 import {
   hasDismissedCompletionWithFailures,
   hasShownCleanCompletionToast,
@@ -26,7 +23,6 @@ import {
 } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
-import { useSettingsStore } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { ProgressRing } from "@/components/ProgressRing";
@@ -42,6 +38,11 @@ import {
 } from "@/components/QuickSwitchModal";
 import styles from "../glossary/RunPage.module.css";
 import reportStyles from "./ReportModal.module.css";
+import { ImportFinalGlossaryConfirmModal } from "./ImportFinalGlossaryConfirmModal";
+import {
+  importFinalGlossaryToTranslation,
+  type ImportFinalGlossaryMode,
+} from "./importFinalGlossary";
 
 const NUM = new Intl.NumberFormat("en");
 
@@ -56,15 +57,6 @@ export function RunPage() {
   const { run } = messages.glossaryReview;
   const failedModalMessages = messages.failedSubtasksModal;
   const navigate = useTaskStore((state) => state.navigate);
-  const translationGlossary = useTaskStore((state) => state.translationGlossary);
-  const importTranslationGlossaryEntries = useTaskStore(
-    (state) => state.importTranslationGlossaryEntries,
-  );
-  const setTranslationGlossaryEnabled = useTaskStore(
-    (state) => state.setTranslationGlossaryEnabled,
-  );
-  const updateSetting = useSettingsStore((state) => state.updateField);
-  const saveSettingsNow = useSettingsStore((state) => state.saveNow);
   const profiles = useModelProfiles();
   const prompts = usePromptPresets("glossary_review");
   const promptSlice = prompts.glossary_review;
@@ -85,6 +77,10 @@ export function RunPage() {
   const [report, setReport] = useState<GlossaryReviewReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [importingFinal, setImportingFinal] = useState(false);
+  const [importDecision, setImportDecision] = useState<{
+    outputPath: string;
+    existingCount: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -187,62 +183,31 @@ export function RunPage() {
     }
   };
 
-  const handleUseFinalGlossary = async () => {
-    if (!activeTaskId || importingFinal) return;
+  const importFinalFromPath = async (
+    outputPath: string,
+    mode?: ImportFinalGlossaryMode,
+  ) => {
     setImportingFinal(true);
     try {
-      const artifacts = await glossaryReviewBridge.readArtifacts(activeTaskId);
-      if (!artifacts.output_path) {
-        throw new Error(run.importFinalUnavailable);
-      }
-      const imported = await glossaryBridge.importRules(artifacts.output_path);
-      const incoming: GlossaryEntry[] = imported.entries.map((entry, idx) => ({
-        id: `g-review-${Date.now()}-${idx}`,
-        source: entry.src,
-        translation: entry.dst,
-        description: entry.info,
-        caseSensitive: entry.case_sensitive,
-        enabled: entry.enabled,
-        frequency: entry.frequency ?? 0,
-      }));
-      if (incoming.length === 0) {
-        throw new Error(run.importFinalEmpty);
-      }
-      const shouldReplace =
-        translationGlossary.entries.length > 0
-          ? window.confirm(
-              format(run.importFinalReplaceConfirm, {
-                n: translationGlossary.entries.length,
-              }),
-            )
-          : true;
-      const nextEntries = shouldReplace
-        ? incoming
-        : [...translationGlossary.entries, ...incoming];
-      importTranslationGlossaryEntries(nextEntries);
-      setTranslationGlossaryEnabled(true);
-      const persisted = importedGlossaryToPersisted(
-        shouldReplace
-          ? imported.entries
-          : [
-              ...translationGlossary.entries.map((entry) => ({
-                src: entry.source,
-                dst: entry.translation,
-                info: entry.description,
-                regex: false,
-                case_sensitive: entry.caseSensitive,
-                enabled: entry.enabled,
-                frequency: entry.frequency,
-              })),
-              ...imported.entries,
-            ],
+      const result = await importFinalGlossaryToTranslation(
+        outputPath,
+        {
+          empty: run.importFinalEmpty,
+        },
+        mode,
       );
-      updateSetting("translation", "translation_glossary", persisted);
-      await saveSettingsNow("translation");
+      if (result.status === "needs_decision") {
+        setImportDecision({
+          outputPath,
+          existingCount: result.existingCount,
+        });
+        return;
+      }
       useToastStore.getState().push({
         variant: "success",
-        title: format(run.importFinalSuccess, { n: incoming.length }),
+        title: format(run.importFinalSuccess, { n: result.count }),
       });
+      setImportDecision(null);
       navigate({ module: "translation", page: "glossary" });
     } catch (error) {
       useToastStore.getState().push({
@@ -255,6 +220,26 @@ export function RunPage() {
       });
     } finally {
       setImportingFinal(false);
+    }
+  };
+
+  const handleUseFinalGlossary = async () => {
+    if (!activeTaskId || importingFinal) return;
+    try {
+      const artifacts = await glossaryReviewBridge.readArtifacts(activeTaskId);
+      if (!artifacts.output_path) {
+        throw new Error(run.importFinalUnavailable);
+      }
+      await importFinalFromPath(artifacts.output_path);
+    } catch (error) {
+      useToastStore.getState().push({
+        variant: "error",
+        title: format(run.importFinalFailed, {
+          reason: BridgeError.isBridgeError(error)
+            ? `${error.code}: ${error.message}`
+            : String(error),
+        }),
+      });
     }
   };
 
@@ -478,6 +463,28 @@ export function RunPage() {
           report={report}
           onClose={() => setReportOpen(false)}
           onRestoreDelete={handleRestoreDeletedRow}
+        />
+      ) : null}
+      {importDecision ? (
+        <ImportFinalGlossaryConfirmModal
+          existingCount={importDecision.existingCount}
+          labels={{
+            title: run.importFinalDecisionTitle,
+            body: run.importFinalDecisionBody,
+            replaceBadge: run.importFinalReplaceBadge,
+            replaceAction: run.importFinalReplaceAction,
+            replaceHint: run.importFinalReplaceHint,
+            appendBadge: run.importFinalAppendBadge,
+            appendAction: run.importFinalAppendAction,
+            appendHint: run.importFinalAppendHint,
+            cancelAction: run.importFinalCancelAction,
+          }}
+          onPick={(mode) => {
+            const { outputPath } = importDecision;
+            setImportDecision(null);
+            void importFinalFromPath(outputPath, mode);
+          }}
+          onCancel={() => setImportDecision(null)}
         />
       ) : null}
     </>

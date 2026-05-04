@@ -1,17 +1,5 @@
 import { create } from "zustand";
 
-/* ------------------------------------------------------------------ *
- * Routing
- *
- * Route state lives client-side because it does not affect the backend
- * task graph. Runtime data (progress, tokens, status) lives in
- * `useRuntimeStore`. Settings, model profiles, prompt presets, and the
- * configuration libraries each live behind the bridge in their own
- * dedicated stores. Translation glossary entries are still in-memory
- * here pending the Step F.P0.1 redesign that threads them into
- * `TranslationConfig`.
- * ------------------------------------------------------------------ */
-
 export type ModuleId =
   | "model"
   | "translation"
@@ -73,15 +61,6 @@ export function defaultPageFor(module: ModuleId): Route {
   }
 }
 
-/* ------------------------------------------------------------------ *
- * Translation glossary edit buffer. Mirrors the backend `Glossary`
- * shape from `transoria/workflows/translation/rules.py`. Persistence
- * + threading into `TranslationConfig` happens through
- * `useModuleSettings('translation').translation_glossary`; this
- * store is the per-page edit buffer that syncs to settings on
- * change (see GlossaryPage.tsx).
- * ------------------------------------------------------------------ */
-
 export interface GlossaryEntry {
   id: string;
   source: string;
@@ -89,10 +68,7 @@ export interface GlossaryEntry {
   description: string;
   caseSensitive: boolean;
   enabled: boolean;
-  /** Occurrence count carried over from glossary-extraction artifacts.
-   * 0 when the row was hand-authored / imported from a source that
-   * doesn't track frequency. Drives the optional sort-by-frequency
-   * column in the rule table. */
+  /** 0 for hand-authored/imported rows that do not track frequency. */
   frequency: number;
 }
 

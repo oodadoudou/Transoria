@@ -4,24 +4,11 @@ import type { ProviderTemplateFieldHint } from "@/bridge";
 import styles from "./FieldHint.module.css";
 
 interface FieldHintProps {
-  /** When ``provider`` and the hint carries a ``recommended_value``,
-   *  the popover renders a "Recommended for X" line + optional source
-   *  link. ``custom`` renders only the description (architecture
-   *  § 3.4: Custom templates have no provider context). */
   mode: "provider" | "custom";
-  /** Display name of the template's provider, used in
-   *  "Recommended for {provider}". Falls back to "this provider" when
-   *  unset. */
   providerName?: string;
-  /** Hint payload from `ProviderTemplate.field_hints[name]`. */
   hint: ProviderTemplateFieldHint;
 }
 
-/**
- * Question-mark popover next to a labeled form field. Architecture
- * § 3.4 G.3 — used by `ModelProfileModal` to show provider-specific
- * recommendations or a generic field description.
- */
 export function FieldHint({ mode, providerName, hint }: FieldHintProps) {
   const messages = useMessages();
   const fieldHint = messages.fieldHint;
@@ -95,7 +82,6 @@ function resolveModelHint(
   modelHints: Record<string, string>,
   key: string,
 ): string {
-  // ``modelHints.rpm`` → look up ``rpm`` under modelHints, etc.
   const segments = key.split(".");
   if (segments.length === 2 && segments[0] === "modelHints") {
     return modelHints[segments[1]] ?? key;
