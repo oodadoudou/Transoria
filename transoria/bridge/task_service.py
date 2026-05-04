@@ -56,6 +56,13 @@ from transoria.tools.replacement import (
     replace_txt_file,
 )
 from transoria.workflows.glossary.config import GlossaryConfig
+from transoria.workflows.glossary_review.config import GlossaryReviewConfig
+from transoria.workflows.glossary_review.exporters import REPORT_FILENAME
+from transoria.workflows.glossary_review.loader import normalize_output_filename
+from transoria.workflows.glossary_review.orchestrator import (
+    GlossaryReviewOrchestrator,
+    GlossaryReviewResult,
+)
 from transoria.workflows.translation.rules import (
     Glossary,
     ReplacementRule as TranslationReplacementRule,
@@ -94,6 +101,7 @@ _REPORT_MAX_OCCURRENCES_PER_RULE = 200
 _KIND_TO_TASKKIND: dict[str, TaskKind] = {
     "translation": TaskKind.TRANSLATION,
     "glossary": TaskKind.GLOSSARY,
+    "glossary_review": TaskKind.GLOSSARY_REVIEW,
     "replacement": TaskKind.REPLACEMENT,
 }
 
@@ -665,6 +673,18 @@ def _glossary_result_payload(
     }
 
 
+def _glossary_review_result_payload(
+    result: GlossaryReviewResult, *, config: GlossaryReviewConfig
+) -> dict[str, object]:
+    return {
+        "kind": "glossary_review",
+        "output_folder": str(config.input_dir),
+        "output_path": str(result.output_path) if result.output_path else None,
+        "report_path": str(result.report_path) if result.report_path else None,
+        "changed_count": result.changed_count,
+    }
+
+
 def _glossary_artifact_payload(artifact: GlossaryArtifactSet) -> dict[str, object]:
     payload: dict[str, object] = {
         "novel_name": artifact.novel_name,
@@ -751,6 +771,20 @@ def _partial_glossary_payload(
         "combined_artifact": combined,
         "statistics_json_path": str(stats_path) if stats_path.exists() else None,
         "decode_issue_path": decode_paths[0] if decode_paths else None,
+    }
+
+
+def _partial_glossary_review_payload(
+    *, output_dir: Path, output_filename: str
+) -> dict[str, object]:
+    path = output_dir / normalize_output_filename(output_filename)
+    return {
+        "kind": "glossary_review",
+        "partial": True,
+        "output_folder": str(output_dir),
+        "output_path": str(path) if path.exists() else None,
+        "report_path": None,
+        "changed_count": 0,
     }
 
 
@@ -873,6 +907,7 @@ class TaskService:
         self._start_locks: dict[str, threading.Lock] = {
             "translation": threading.Lock(),
             "glossary": threading.Lock(),
+            "glossary_review": threading.Lock(),
             "replacement": threading.Lock(),
         }
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
@@ -1606,6 +1641,120 @@ class TaskService:
         self._maybe_cleanup_cache("glossary", task_id)
 
     # ------------------------------------------------------------------
+    # Public: glossary review
+    # ------------------------------------------------------------------
+
+    def _build_glossary_review_config(
+        self,
+    ) -> tuple[GlossaryReviewConfig, ModelConfig, PromptPreset]:
+        settings = self.settings_store.load_all()
+        review = settings.glossary_review
+        app = settings.app
+
+        input_dir = _require_directory(review.input_folder, field="input_folder")
+        try:
+            output_filename = normalize_output_filename(review.output_filename)
+        except ValueError as exc:
+            raise BridgeError.invalid_argument(
+                str(exc),
+                field="output_filename",
+            ) from exc
+        model = self._resolve_model_profile(
+            app.active_glossary_review_model_id,
+            field="active_glossary_review_model_id",
+        )
+        model = replace(model, timeout_seconds=float(review.timeout_seconds))
+        preset = self._resolve_prompt_preset(
+            app.active_glossary_review_prompt_id,
+            kind=PromptKind.GLOSSARY_REVIEW,
+        )
+        config = GlossaryReviewConfig(
+            input_dir=input_dir,
+            output_filename=output_filename,
+            novel_background=review.novel_background,
+            review_rounds=max(1, int(review.review_rounds)),
+            max_workers=max(1, int(review.max_workers)),
+            batch_size=max(1, int(review.batch_size)),
+            model=model,
+            prompt_preset=preset,
+        )
+        return config, model, preset
+
+    def start_glossary_review(self, request_id: str) -> dict[str, object]:
+        with self._start_locks["glossary_review"]:
+            return self._start_glossary_review_locked(request_id)
+
+    def _start_glossary_review_locked(self, request_id: str) -> dict[str, object]:
+        config, model, preset = self._build_glossary_review_config()
+
+        self._purge_kind_for_start(
+            kind="glossary_review", task_kind=TaskKind.GLOSSARY_REVIEW
+        )
+
+        task_id = _new_task_id("glossary-review")
+        started_at = _utc_now_iso()
+        self._seed_placeholder(
+            task_id,
+            kind=TaskKind.GLOSSARY_REVIEW,
+            started_at=started_at,
+            metadata={
+                "input_dir": str(config.input_dir),
+                "output_dir": str(config.input_dir),
+                "output_filename": config.output_filename,
+                "model_id": model.id,
+                "prompt_preset_id": preset.id,
+                "request_id": request_id,
+            },
+        )
+
+        cache = self._cache_for_kind("glossary_review")
+        running = RunningTask(
+            task_id=task_id,
+            kind="glossary_review",
+            cache=cache,
+            created_at=started_at,
+        )
+        self.registry.add(running)
+        self._mark_status(task_id, TaskStatus.RUNNING)
+
+        def _async_runner() -> None:
+            asyncio.run(self._glossary_review_thread(task_id, config, running))
+
+        self._spawn_thread(running, target=_async_runner, task_id=task_id)
+        return {"task_id": task_id, "started_at": started_at}
+
+    async def _glossary_review_thread(
+        self,
+        task_id: str,
+        config: GlossaryReviewConfig,
+        running: RunningTask,
+    ) -> None:
+        client = self.llm_client_factory()
+        cache = self._cache_for_kind("glossary_review")
+        config = replace(config, debug_log_dir=cache.task_dir(task_id) / "debug")
+
+        def _capture(executor: TaskExecutor) -> None:
+            running.set_executor(executor)
+
+        def _touch_progress(_event: object) -> None:
+            running.touch()
+
+        def _finalize(result: GlossaryReviewResult) -> None:
+            payload = _glossary_review_result_payload(result, config=config)
+            self._write_result(task_id, payload)
+
+        orchestrator = GlossaryReviewOrchestrator(
+            cache=cache,
+            client=client,
+            id_factory=lambda: task_id,
+            progress=_touch_progress,
+            on_executor_created=_capture,
+            on_result_finalized=_finalize,
+        )
+        await orchestrator.run(config)
+        self._maybe_cleanup_cache("glossary_review", task_id)
+
+    # ------------------------------------------------------------------
     # Public: replacement
     # ------------------------------------------------------------------
 
@@ -2014,7 +2163,9 @@ class TaskService:
 
         if kind == "translation":
             return self._continue_translation(task_id)
-        return self._continue_glossary(task_id)
+        if kind == "glossary":
+            return self._continue_glossary(task_id)
+        return self._continue_glossary_review(task_id)
 
     def _continue_translation(self, task_id: str) -> dict[str, object]:
         config, _model, _preset = self._build_translation_config()
@@ -2052,6 +2203,24 @@ class TaskService:
         self._spawn_thread(running, target=_async_runner, task_id=task_id)
         return {"task_id": task_id, "started_at": started_at}
 
+    def _continue_glossary_review(self, task_id: str) -> dict[str, object]:
+        config, _model, _preset = self._build_glossary_review_config()
+        started_at = _utc_now_iso()
+        running = RunningTask(
+            task_id=task_id,
+            kind="glossary_review",
+            cache=self._cache_for_kind("glossary_review"),
+            created_at=started_at,
+        )
+        self.registry.add(running)
+        self._mark_status(task_id, TaskStatus.RUNNING)
+
+        def _async_runner() -> None:
+            asyncio.run(self._glossary_review_thread(task_id, config, running))
+
+        self._spawn_thread(running, target=_async_runner, task_id=task_id)
+        return {"task_id": task_id, "started_at": started_at}
+
     def probe_continuable(self, *, kind: str) -> dict[str, object]:
         """Return whether a continuable cache exists for ``kind`` under
         the current settings (architecture § 1.3).
@@ -2073,9 +2242,12 @@ class TaskService:
         if kind == "translation":
             input_folder = settings.translation.input_folder
             output_folder = settings.translation.output_folder
-        else:
+        elif kind == "glossary":
             input_folder = settings.glossary.input_folder
             output_folder = settings.glossary.output_folder
+        else:
+            input_folder = settings.glossary_review.input_folder
+            output_folder = settings.glossary_review.input_folder
 
         cache = self._cache_for_kind(kind)
         candidates = sorted(
@@ -2526,6 +2698,37 @@ class TaskService:
             details={"task_id": task_id},
         )
 
+    def read_glossary_review_report(self, *, task_id: str) -> dict[str, object]:
+        record_kind = TaskKind.GLOSSARY_REVIEW
+        try:
+            record = self.cache.load_record(task_id)
+        except TaskNotFoundError as exc:
+            raise BridgeError.not_found(
+                f"task {task_id!r} not found.",
+                details={"task_id": task_id},
+            ) from exc
+        if record.kind is not record_kind:
+            raise BridgeError.invalid_argument(
+                f"task {task_id!r} kind mismatch.",
+                field="task_id",
+            )
+        path = self.cache.task_dir(task_id) / REPORT_FILENAME
+        if not path.exists():
+            raise BridgeError.not_found(
+                f"glossary review report not found for {task_id!r}",
+                details={"task_id": task_id},
+            )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BridgeError(
+                "bridge.io_error",
+                f"cannot read glossary review report: {exc}",
+                retryable=False,
+                details={"task_id": task_id, "path": str(path)},
+            ) from exc
+        return payload if isinstance(payload, dict) else {"rows": []}
+
     def _write_result(
         self, task_id: str, payload: Mapping[str, object]
     ) -> None:
@@ -2584,6 +2787,11 @@ class TaskService:
                 output_dir=output_dir,
                 input_folder_name=input_dir.name,
                 statistics_dir=self._cache_for_kind("glossary").task_dir(record.id),
+            )
+        if record.kind is TaskKind.GLOSSARY_REVIEW:
+            return _partial_glossary_review_payload(
+                output_dir=output_dir,
+                output_filename=str(metadata.get("output_filename", "")),
             )
         if record.kind is TaskKind.REPLACEMENT:
             return _partial_replacement_payload(snapshot, output_dir=output_dir)

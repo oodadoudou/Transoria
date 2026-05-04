@@ -16,6 +16,7 @@ export type ModuleId =
   | "model"
   | "translation"
   | "glossary"
+  | "glossary-review"
   | "general-tools"
   | "app-settings";
 
@@ -31,6 +32,8 @@ export type TranslationPage =
 
 export type GlossaryPage = "run" | "settings" | "prompt";
 
+export type GlossaryReviewPage = "run" | "settings" | "prompt";
+
 export type GeneralToolsPage = "batchReplacement";
 
 export type AppSettingsPage = "general";
@@ -41,13 +44,15 @@ export type Route =
   | { module: "model"; page: ModelPage }
   | { module: "translation"; page: TranslationPage }
   | { module: "glossary"; page: GlossaryPage }
+  | { module: "glossary-review"; page: GlossaryReviewPage }
   | { module: "general-tools"; page: GeneralToolsPage }
   | { module: "app-settings"; page: AppSettingsPage };
 
 export function isRunPage(route: Route): boolean {
   return (
     (route.module === "translation" && route.page === "run") ||
-    (route.module === "glossary" && route.page === "run")
+    (route.module === "glossary" && route.page === "run") ||
+    (route.module === "glossary-review" && route.page === "run")
   );
 }
 
@@ -59,6 +64,8 @@ export function defaultPageFor(module: ModuleId): Route {
       return { module: "translation", page: "run" };
     case "glossary":
       return { module: "glossary", page: "run" };
+    case "glossary-review":
+      return { module: "glossary-review", page: "run" };
     case "general-tools":
       return { module: "general-tools", page: "batchReplacement" };
     case "app-settings":

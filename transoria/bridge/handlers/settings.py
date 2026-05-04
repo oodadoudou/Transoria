@@ -21,6 +21,7 @@ VALID_MODULES: tuple[SettingsModule, ...] = (
     "app",
     "translation",
     "glossary",
+    "glossary_review",
     "replacement",
 )
 

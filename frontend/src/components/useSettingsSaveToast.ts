@@ -16,6 +16,7 @@ export function useSettingsSaveToast(): void {
   useModuleSaveToast("app");
   useModuleSaveToast("translation");
   useModuleSaveToast("glossary");
+  useModuleSaveToast("glossary_review");
   useModuleSaveToast("replacement");
 }
 

@@ -8,6 +8,7 @@ export interface Messages {
     model: string;
     translation: string;
     glossary: string;
+    glossaryReview: string;
     generalTools: string;
     appSettings: string;
     githubLink: string;
@@ -288,6 +289,11 @@ export interface Messages {
       prompt: string;
     };
     glossary: {
+      run: string;
+      settings: string;
+      prompt: string;
+    };
+    glossaryReview: {
       run: string;
       settings: string;
       prompt: string;
@@ -577,6 +583,74 @@ export interface Messages {
         minFrequency: string;
         referenceExamples: string;
         rpm: string;
+      };
+    };
+  };
+  glossaryReview: {
+    crumb: string;
+    settings: {
+      title: string;
+      sub: string;
+      inputFolder: string;
+      outputFilename: string;
+      outputFilenameHelp: string;
+      novelBackground: string;
+      novelBackgroundHelp: string;
+      reviewRounds: string;
+      reviewRoundsHelp: string;
+      maxWorkers: string;
+      maxWorkersHelp: string;
+      batchSize: string;
+      batchSizeHelp: string;
+      timeoutSeconds: string;
+      timeoutSecondsHelp: string;
+      openOutputOnComplete: string;
+      openOutputOnCompleteHint: string;
+      on: string;
+      off: string;
+    };
+    run: {
+      title: string;
+      sub: string;
+      progress: string;
+      activeConfig: string;
+      activeModel: string;
+      activePrompt: string;
+      switch: string;
+      viewReport: string;
+      reportUnavailable: string;
+      stats: {
+        completed: string;
+        failed: string;
+        remaining: string;
+        elapsed: string;
+        avgSpeed: string;
+      };
+      liveCounter: {
+        progressLabel: string;
+        inflightLabel: string;
+        chunksLabel: string;
+      };
+    };
+    report: {
+      title: string;
+      close: string;
+      searchPlaceholder: string;
+      actionAll: string;
+      actionModify: string;
+      actionDelete: string;
+      actionCategory: string;
+      actionModifyCategory: string;
+      empty: string;
+      columns: {
+        round: string;
+        action: string;
+        src: string;
+        originalDst: string;
+        suggestedDst: string;
+        originalInfo: string;
+        suggestedInfo: string;
+        reason: string;
       };
     };
   };

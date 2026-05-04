@@ -9,6 +9,7 @@ export {
   promptsBridge,
   translationBridge,
   glossaryBridge,
+  glossaryReviewBridge,
   proofreadingBridge,
   replacementBridge,
   rulesBridge,

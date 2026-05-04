@@ -19,7 +19,7 @@ from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.bridge.task_service import TaskService
 
-_LLM_DOMAINS: tuple[str, ...] = ("translation", "glossary")
+_LLM_DOMAINS: tuple[str, ...] = ("translation", "glossary", "glossary_review")
 
 
 def _expect_task_id(payload: Mapping[str, object]) -> str:
@@ -52,7 +52,12 @@ def _optional_limit(payload: Mapping[str, object]) -> int | None:
 def _build_handlers(
     service: TaskService, *, kind: str
 ) -> dict[str, object]:
-    starter = service.start_translation if kind == "translation" else service.start_glossary
+    starters = {
+        "translation": service.start_translation,
+        "glossary": service.start_glossary,
+        "glossary_review": service.start_glossary_review,
+    }
+    starter = starters[kind]
 
     def start_task(payload: Mapping[str, object]) -> dict[str, object]:
         request_id = _expect_request_id(payload)
@@ -86,7 +91,7 @@ def _build_handlers(
             kind=kind, task_id=_expect_task_id(payload)
         )
 
-    return {
+    handlers = {
         f"{kind}.start_task": start_task,
         f"{kind}.stop_task": stop_task,
         f"{kind}.pause_task": pause_task,
@@ -97,6 +102,11 @@ def _build_handlers(
         f"{kind}.list_failed_subtasks": list_failed_subtasks,
         f"{kind}.read_artifacts": read_artifacts,
     }
+    if kind == "glossary_review":
+        handlers[f"{kind}.read_report"] = lambda payload: service.read_glossary_review_report(
+            task_id=_expect_task_id(payload)
+        )
+    return handlers
 
 
 def _build_cache_management_handlers(

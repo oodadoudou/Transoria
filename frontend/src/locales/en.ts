@@ -9,6 +9,7 @@ export const en: Messages = {
     model: "Models",
     translation: "Translation",
     glossary: "Glossary Extraction",
+    glossaryReview: "Glossary Review",
     generalTools: "General Tools",
     appSettings: "App Settings",
     githubLink: "Enjoy your book",
@@ -356,6 +357,11 @@ export const en: Messages = {
       settings: "Settings",
       prompt: "Prompt",
     },
+    glossaryReview: {
+      run: "Run",
+      settings: "Settings",
+      prompt: "Prompt",
+    },
     generalTools: { batchReplacement: "Batch Replacement" },
     appSettings: { general: "General" },
   },
@@ -669,6 +675,82 @@ export const en: Messages = {
         referenceExamples:
           "Number of source lines attached as references for each glossary entry, sampled across the source files.",
         rpm: "Soft cap on requests per minute. The backend pre-throttles before each call to stay under this.",
+      },
+    },
+  },
+  glossaryReview: {
+    crumb: "Glossary Review",
+    settings: {
+      title: "Glossary Review Settings",
+      sub: "Choose the folder containing one glossary XLSX and reference TXT files. The reviewed XLSX is written back into the same folder.",
+      inputFolder: "Input folder",
+      outputFilename: "Final filename",
+      outputFilenameHelp:
+        "Default: glossary-review-final.xlsx. Only .xlsx is supported; missing suffix is appended automatically.",
+      novelBackground: "Novel background",
+      novelBackgroundHelp:
+        "Optional world, naming, or genre context that helps the model judge glossary entries.",
+      reviewRounds: "Review rounds",
+      reviewRoundsHelp:
+        "Each extra round reviews the glossary after prior changes. Default 1.",
+      maxWorkers: "Concurrent requests",
+      maxWorkersHelp:
+        "How many review requests can run at once. Higher values may hit rate limits.",
+      batchSize: "Terms per batch",
+      batchSizeHelp:
+        "How many terms each model request reviews. Smaller is steadier; larger uses fewer requests.",
+      timeoutSeconds: "Timeout threshold (s)",
+      timeoutSecondsHelp:
+        "Maximum seconds to wait for a model response before the call is treated as failed.",
+      openOutputOnComplete: "Open output folder on completion",
+      openOutputOnCompleteHint:
+        "Open the input/output folder in the system file browser after a successful run.",
+      on: "On",
+      off: "Off",
+    },
+    run: {
+      title: "Run Glossary Review",
+      sub: "Review an XLSX glossary, report only changed rows, and write the final XLSX.",
+      progress: "Progress",
+      activeConfig: "Active configuration",
+      activeModel: "Model",
+      activePrompt: "Prompt",
+      switch: "Switch",
+      viewReport: "View change report",
+      reportUnavailable: "No report available",
+      stats: {
+        completed: "Completed",
+        failed: "Failed",
+        remaining: "Remaining",
+        elapsed: "Elapsed",
+        avgSpeed: "Avg speed",
+      },
+      liveCounter: {
+        progressLabel: "Done {done} / {total}",
+        inflightLabel: "In-flight {n}",
+        chunksLabel: "Batch status",
+      },
+    },
+    report: {
+      title: "Glossary Review Change Report",
+      close: "Close",
+      searchPlaceholder:
+        "Search terms, translations, categories, reasons, or context...",
+      actionAll: "All",
+      actionModify: "Translation",
+      actionDelete: "Delete",
+      actionCategory: "Category",
+      actionModifyCategory: "Translation + category",
+      empty: "No changed rows to show.",
+      columns: {
+        round: "Round",
+        action: "Action",
+        src: "Source",
+        originalDst: "Old translation",
+        suggestedDst: "New translation",
+        originalInfo: "Old category",
+        suggestedInfo: "New category",
+        reason: "Reason",
       },
     },
   },

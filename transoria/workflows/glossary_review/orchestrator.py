@@ -1,0 +1,379 @@
+"""Glossary review orchestrator."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Mapping
+from uuid import uuid4
+
+from transoria.domain import SubtaskStatus, TaskKind, TaskStatus
+from transoria.llm.client import LlmClient
+from transoria.runtime.cache import TaskCache
+from transoria.runtime.executor import ProgressListener, SubtaskRunner, TaskExecutor
+from transoria.runtime.key_pool import KeyPool
+from transoria.runtime.rate_limit import TpmLimiter
+from transoria.runtime.subtask import Subtask
+from transoria.runtime.task_record import TaskRecord, TaskSnapshot
+from transoria.workflows.glossary_review.config import GlossaryReviewConfig
+from transoria.workflows.glossary_review.context import attach_reference_contexts
+from transoria.workflows.glossary_review.exporters import (
+    write_report,
+    write_reviewed_xlsx,
+)
+from transoria.workflows.glossary_review.loader import (
+    GlossaryReviewInputError,
+    GlossaryReviewRow,
+    LoadedGlossary,
+    load_review_input,
+)
+from transoria.workflows.glossary_review.runner import (
+    ReviewDecision,
+    decode_review_response,
+    encode_review_payload,
+    GlossaryReviewSubtaskRunner,
+)
+
+
+@dataclass(frozen=True)
+class GlossaryReviewResult:
+    task_id: str
+    output_path: Path | None
+    report_path: Path | None
+    changed_count: int
+    final_status: TaskStatus
+
+
+RunnerFactory = Callable[[LlmClient, GlossaryReviewConfig], SubtaskRunner]
+ClockFn = Callable[[], str]
+IdFactory = Callable[[], str]
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _default_id_factory() -> str:
+    return f"glossary-review-{uuid4().hex[:12]}"
+
+
+def _default_runner_factory(
+    client: LlmClient, config: GlossaryReviewConfig
+) -> SubtaskRunner:
+    tpm_limiter = (
+        TpmLimiter(limit=config.model.tpm_limit)
+        if config.model.tpm_limit > 0
+        else None
+    )
+    key_pool = (
+        KeyPool(config.model.api_keys)
+        if config.model.rotate_keys and len(config.model.api_keys) > 1
+        else None
+    )
+    return GlossaryReviewSubtaskRunner(
+        client=client,
+        model=config.model,
+        prompt_preset=config.prompt_preset,
+        tpm_limiter=tpm_limiter,
+        key_pool=key_pool,
+        stream=config.stream,
+        debug_log_dir=config.debug_log_dir,
+    )
+
+
+@dataclass
+class GlossaryReviewOrchestrator:
+    cache: TaskCache
+    client: LlmClient
+    runner_factory: RunnerFactory = field(default_factory=lambda: _default_runner_factory)
+    progress: ProgressListener | None = None
+    clock: ClockFn = _utc_now_iso
+    id_factory: IdFactory = field(default_factory=lambda: _default_id_factory)
+    on_executor_created: "Callable[[TaskExecutor], None] | None" = None
+    on_result_finalized: "Callable[[GlossaryReviewResult], None] | None" = None
+
+    async def run(self, config: GlossaryReviewConfig) -> GlossaryReviewResult:
+        started_at = self.clock()
+        task_id = self.id_factory()
+        review_input = load_review_input(
+            config.input_dir, output_filename=config.output_filename
+        )
+        loaded = review_input.glossary
+        rows = attach_reference_contexts(loaded.rows, review_input.reference_text)
+
+        if not self.cache.has_task(task_id) or not self.cache.load_subtasks(task_id):
+            self._seed_initial_task(
+                task_id,
+                started_at=started_at,
+                config=config,
+                loaded=loaded,
+                reference_files=review_input.reference_files,
+                rows=rows,
+            )
+
+        final_snapshot: TaskSnapshot | None = None
+        for round_index in range(1, config.review_rounds + 1):
+            rows, _report_rows = self._replay_completed(loaded.rows, self.cache.load(task_id))
+            rows = attach_reference_contexts(rows, review_input.reference_text)
+            self._ensure_round_seeded(
+                task_id,
+                round_index=round_index,
+                config=config,
+                rows=rows,
+            )
+            round_subtasks = [
+                subtask
+                for subtask in self.cache.load_subtasks(task_id)
+                if _subtask_round(subtask) == round_index
+            ]
+            if round_subtasks and all(
+                subtask.status is SubtaskStatus.COMPLETED
+                for subtask in round_subtasks
+            ):
+                continue
+            self._reset_failed_round_subtasks(task_id, round_index=round_index)
+
+            runner = self.runner_factory(self.client, config)
+            executor = TaskExecutor(
+                cache=self.cache,
+                runner=runner,
+                concurrency_limit=max(1, config.max_workers),
+                rpm_limit=max(0, config.model.rpm_limit),
+                progress=self.progress,
+                clock=self.clock,
+                stop_drain_seconds=max(5.0, float(config.model.timeout_seconds) + 5.0),
+            )
+            if self.on_executor_created is not None:
+                self.on_executor_created(executor)
+            final_snapshot = await executor.run(task_id)
+            if final_snapshot.record.status is not TaskStatus.COMPLETED:
+                return GlossaryReviewResult(
+                    task_id=task_id,
+                    output_path=None,
+                    report_path=None,
+                    changed_count=0,
+                    final_status=final_snapshot.record.status,
+                )
+
+        snapshot = self.cache.load(task_id)
+        rows, report_rows = self._replay_completed(
+            attach_reference_contexts(loaded.rows, review_input.reference_text),
+            snapshot,
+        )
+        output_path = write_reviewed_xlsx(
+            loaded,
+            rows,
+            output_dir=config.input_dir,
+            output_filename=config.output_filename,
+        )
+        report_payload = {
+            "task_id": task_id,
+            "generated_at": self.clock(),
+            "input_xlsx": str(loaded.workbook_path),
+            "output_path": str(output_path),
+            "changed_count": len(report_rows),
+            "rows": report_rows,
+        }
+        report_path = write_report(self.cache.task_dir(task_id), report_payload)
+        result = GlossaryReviewResult(
+            task_id=task_id,
+            output_path=output_path,
+            report_path=report_path,
+            changed_count=len(report_rows),
+            final_status=snapshot.record.status,
+        )
+        if self.on_result_finalized is not None:
+            self.on_result_finalized(result)
+        return result
+
+    def _seed_initial_task(
+        self,
+        task_id: str,
+        *,
+        started_at: str,
+        config: GlossaryReviewConfig,
+        loaded: LoadedGlossary,
+        reference_files: tuple[Path, ...],
+        rows: tuple[GlossaryReviewRow, ...],
+    ) -> None:
+        record = TaskRecord(
+            id=task_id,
+            kind=TaskKind.GLOSSARY_REVIEW,
+            status=TaskStatus.PENDING,
+            created_at=started_at,
+            updated_at=started_at,
+            metadata={
+                "input_dir": str(config.input_dir),
+                "output_dir": str(config.input_dir),
+                "output_filename": config.output_filename,
+                "input_xlsx": str(loaded.workbook_path),
+                "reference_files": [str(path) for path in reference_files],
+                "model_id": config.model.id,
+                "prompt_preset_id": config.prompt_preset.id,
+            },
+        )
+        subtasks = self._build_round_subtasks(
+            task_id, round_index=1, config=config, rows=rows
+        )
+        self.cache.write_seed(record, subtasks)
+
+    def _ensure_round_seeded(
+        self,
+        task_id: str,
+        *,
+        round_index: int,
+        config: GlossaryReviewConfig,
+        rows: tuple[GlossaryReviewRow, ...],
+    ) -> None:
+        if any(_subtask_round(subtask) == round_index for subtask in self.cache.load_subtasks(task_id)):
+            return
+        for subtask in self._build_round_subtasks(
+            task_id, round_index=round_index, config=config, rows=rows
+        ):
+            self.cache.save_subtask(subtask)
+
+    def _build_round_subtasks(
+        self,
+        task_id: str,
+        *,
+        round_index: int,
+        config: GlossaryReviewConfig,
+        rows: tuple[GlossaryReviewRow, ...],
+    ) -> list[Subtask]:
+        active_rows = [row for row in rows if not row.deleted]
+        batches = [
+            active_rows[index : index + config.batch_size]
+            for index in range(0, len(active_rows), config.batch_size)
+        ]
+        subtasks: list[Subtask] = []
+        for batch_index, batch in enumerate(batches):
+            payload_rows = tuple(_row_payload(row) for row in batch)
+            subtasks.append(
+                Subtask(
+                    id=f"round-{round_index:02d}-batch-{batch_index:04d}",
+                    task_id=task_id,
+                    request_payload=encode_review_payload(
+                        round_index=round_index,
+                        batch_index=batch_index,
+                        rows=payload_rows,
+                        novel_background=config.novel_background,
+                    ),
+                )
+            )
+        return subtasks
+
+    def _reset_failed_round_subtasks(self, task_id: str, *, round_index: int) -> None:
+        for subtask in self.cache.load_subtasks(task_id):
+            if _subtask_round(subtask) != round_index:
+                continue
+            if subtask.status is SubtaskStatus.FAILED:
+                self.cache.save_subtask(
+                    replace(
+                        subtask,
+                        status=SubtaskStatus.PENDING,
+                        last_error="",
+                        last_error_at="",
+                    )
+                )
+
+    def _replay_completed(
+        self, initial_rows: tuple[GlossaryReviewRow, ...], snapshot: TaskSnapshot
+    ) -> tuple[tuple[GlossaryReviewRow, ...], list[dict[str, object]]]:
+        rows = {row.row_index: row for row in initial_rows}
+        report_rows: list[dict[str, object]] = []
+        completed = sorted(
+            (s for s in snapshot.subtasks if s.status is SubtaskStatus.COMPLETED),
+            key=lambda s: (_subtask_round(s), int(s.request_payload.get("batch", 0))),
+        )
+        for subtask in completed:
+            round_index = _subtask_round(subtask)
+            for decision in decode_review_response(subtask.response_content):
+                current = rows.get(decision.row_index)
+                if current is None:
+                    continue
+                updated, report = _apply_decision(current, decision, round_index)
+                rows[decision.row_index] = updated
+                if report is not None:
+                    report_rows.append(report)
+        return tuple(rows[index] for index in sorted(rows)), report_rows
+
+
+def _row_payload(row: GlossaryReviewRow) -> Mapping[str, object]:
+    return {
+        "row_index": row.row_index,
+        "src": row.src,
+        "dst": row.dst,
+        "info": row.info,
+        "frequency": row.frequency,
+        "context": row.context,
+    }
+
+
+def _subtask_round(subtask: Subtask) -> int:
+    try:
+        return int(subtask.request_payload.get("round", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _apply_decision(
+    row: GlossaryReviewRow, decision: ReviewDecision, round_index: int
+) -> tuple[GlossaryReviewRow, dict[str, object] | None]:
+    if row.deleted:
+        return row, None
+    original_dst = row.dst
+    original_info = row.info
+    deleted = False
+    next_dst = row.dst
+    next_info = row.info
+
+    if decision.action == "delete":
+        deleted = True
+    if decision.action in {"modify", "modify_category"} and decision.suggested_dst:
+        next_dst = decision.suggested_dst
+    if decision.action in {"category", "modify_category"} and decision.suggested_info:
+        next_info = decision.suggested_info
+
+    changed_dst = next_dst != original_dst
+    changed_info = next_info != original_info
+    if not deleted and not changed_dst and not changed_info:
+        return row, None
+
+    updated = GlossaryReviewRow(
+        row_index=row.row_index,
+        src=row.src,
+        dst=next_dst,
+        info=next_info,
+        frequency=row.frequency,
+        context=row.context,
+        deleted=deleted,
+    )
+    if deleted:
+        action = "delete"
+    elif changed_dst and changed_info:
+        action = "modify_category"
+    elif changed_dst:
+        action = "modify"
+    else:
+        action = "category"
+    report = {
+        "round": round_index,
+        "action": action,
+        "row_index": row.row_index,
+        "src": row.src,
+        "original_dst": original_dst,
+        "suggested_dst": "" if deleted else next_dst,
+        "original_info": original_info,
+        "suggested_info": "" if deleted else next_info,
+        "reason": decision.reason,
+        "context_excerpt": row.context,
+    }
+    return updated, report
+
+
+__all__ = [
+    "GlossaryReviewInputError",
+    "GlossaryReviewOrchestrator",
+    "GlossaryReviewResult",
+]

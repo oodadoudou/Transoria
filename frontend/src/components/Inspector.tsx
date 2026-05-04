@@ -23,6 +23,7 @@ function formatTokens(value: number): string {
 }
 
 function moduleToRunKind(module: string): PromptKind {
+  if (module === "glossary-review") return "glossary_review";
   return module === "glossary" ? "glossary" : "translation";
 }
 
@@ -39,7 +40,9 @@ export function Inspector() {
     appSettings.draft?.[
       kind === "translation"
         ? "active_translation_model_id"
-        : "active_glossary_model_id"
+        : kind === "glossary"
+          ? "active_glossary_model_id"
+          : "active_glossary_review_model_id"
     ] ?? null;
   const activeProfile = profilesStore.profiles.find(
     (p) => p.id === activeModelId,
@@ -52,7 +55,9 @@ export function Inspector() {
     appSettings.draft?.[
       kind === "translation"
         ? "active_translation_prompt_id"
-        : "active_glossary_prompt_id"
+        : kind === "glossary"
+          ? "active_glossary_prompt_id"
+          : "active_glossary_review_prompt_id"
     ] ??
     (promptPresets[kind].presets.some((p) => p.id === localeDefaultPromptId)
       ? localeDefaultPromptId

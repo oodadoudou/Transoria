@@ -24,6 +24,7 @@ interface KindSlice {
 interface PromptPresetsState {
   translation: KindSlice;
   glossary: KindSlice;
+  glossary_review: KindSlice;
   mutationError: BridgeError | null;
 
   hydrate: (kind: PromptKind) => Promise<void>;
@@ -102,6 +103,7 @@ export const usePromptPresetsStore = create<PromptPresetsState>((set, get) => {
   return {
     translation: { ...emptySlice },
     glossary: { ...emptySlice },
+    glossary_review: { ...emptySlice },
     mutationError: null,
 
     hydrate: async (kind) => {
@@ -183,7 +185,9 @@ export const usePromptPresetsStore = create<PromptPresetsState>((set, get) => {
               app[
                 kind === "translation"
                   ? "active_translation_prompt_id"
-                  : "active_glossary_prompt_id"
+                  : kind === "glossary"
+                    ? "active_glossary_prompt_id"
+                    : "active_glossary_review_prompt_id"
               ] ?? null,
           },
         }));

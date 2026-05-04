@@ -8,6 +8,7 @@ import { StatusBar } from "./components/StatusBar";
 import { ModelModule } from "./pages/model";
 import { TranslationModule } from "./pages/translation";
 import { GlossaryModule } from "./pages/glossary";
+import { GlossaryReviewModule } from "./pages/glossary-review";
 import { GeneralToolsModule } from "./pages/general-tools";
 import { AppSettingsModule } from "./pages/app-settings";
 import { AllKeysFailedDialog } from "./components/AllKeysFailedDialog";
@@ -87,6 +88,8 @@ function PageBody({ route }: { route: Route }) {
       return <TranslationModule page={route.page} />;
     case "glossary":
       return <GlossaryModule page={route.page} />;
+    case "glossary-review":
+      return <GlossaryReviewModule page={route.page} />;
     case "general-tools":
       return <GeneralToolsModule page={route.page} />;
     case "app-settings":

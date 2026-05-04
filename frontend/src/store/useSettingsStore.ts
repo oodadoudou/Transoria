@@ -5,6 +5,7 @@ import {
   BridgeError,
   settingsBridge,
   type AppSettings,
+  type GlossaryReviewSettings,
   type GlossarySettings,
   type ReplacementSettings,
   type SettingsModule,
@@ -19,6 +20,7 @@ type ModuleSettingsMap = {
   app: AppSettings;
   translation: TranslationSettings;
   glossary: GlossarySettings;
+  glossary_review: GlossaryReviewSettings;
   replacement: ReplacementSettings;
 };
 
@@ -177,6 +179,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     app: { ...emptySlice } as ModuleSlice<"app">,
     translation: { ...emptySlice } as ModuleSlice<"translation">,
     glossary: { ...emptySlice } as ModuleSlice<"glossary">,
+    glossary_review: { ...emptySlice } as ModuleSlice<"glossary_review">,
     replacement: { ...emptySlice } as ModuleSlice<"replacement">,
     hydrated: false,
     hydrating: false,
@@ -205,6 +208,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
             draft: all.glossary,
             baseline: all.glossary,
           } as ModuleSlice<"glossary">,
+          glossary_review: {
+            ...state.glossary_review,
+            draft: all.glossary_review,
+            baseline: all.glossary_review,
+          } as ModuleSlice<"glossary_review">,
           replacement: {
             ...state.replacement,
             draft: all.replacement,

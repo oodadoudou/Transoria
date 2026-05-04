@@ -22,6 +22,7 @@ from typing import Mapping, Sequence
 class PromptKind(str, Enum):
     TRANSLATION = "translation"
     GLOSSARY = "glossary"
+    GLOSSARY_REVIEW = "glossary_review"
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,11 @@ def _system_thinking_prompt(kind: PromptKind) -> str:
             "Before answering, internally check candidate terms, category "
             "language, and output format. Output only the requested result."
         )
+    if kind is PromptKind.GLOSSARY_REVIEW:
+        return (
+            "Before answering, internally check term consistency, reference "
+            "evidence, category, and output format. Output only the requested result."
+        )
     return (
         "Before answering, internally check meaning, context, terminology, "
         "protected text, and output format. Output only the requested result."
@@ -142,8 +148,10 @@ def _system_thinking_prompt(kind: PromptKind) -> str:
 
 DEFAULT_TRANSLATION_PRESET_ID = "default-translation-zh"
 DEFAULT_GLOSSARY_PRESET_ID = "default-glossary-zh"
+DEFAULT_GLOSSARY_REVIEW_PRESET_ID = "default-glossary-review-zh"
 DEFAULT_TRANSLATION_EN_ID = "default-translation-en"
 DEFAULT_GLOSSARY_EN_ID = "default-glossary-en"
+DEFAULT_GLOSSARY_REVIEW_EN_ID = "default-glossary-review-en"
 
 
 _TRANSLATION_SYSTEM_ZH = """\
@@ -218,6 +226,37 @@ _GLOSSARY_THINKING_ZH = ""
 _GLOSSARY_THINKING_EN = ""
 
 
+_GLOSSARY_REVIEW_SYSTEM_ZH = """\
+任务：审查小说术语表，结合参考文本判断每个术语是否需要保留、修改译文、修改分类或删除。
+
+要求：
+- 只依据术语本身、已有译文、分类、出现频率、参考文本和小说背景判断。
+- 保留合理且无需修改的术语。
+- 译文明显错误、含义不完整或命名不稳定时，给出更合适的中文译文。
+- 分类不准确时，给出更合适的中文分类。
+- 非术语、噪音、乱码、普通语气词或不应进入术语表的条目应标记删除。
+- 理由必须简短、具体。"""
+
+_GLOSSARY_REVIEW_SYSTEM_EN = """\
+Task: review a novel glossary against reference text and decide whether each term should be kept, have its translation changed, have its category changed, or be removed.
+
+Requirements:
+- Judge only from the term, current translation, category, frequency, reference text, and novel background.
+- Keep entries that are reasonable and need no change.
+- Suggest a better Chinese translation when the current translation is wrong, incomplete, or inconsistent.
+- Suggest a better Chinese category when the category is inaccurate.
+- Mark non-terms, noise, corrupt text, generic particles, or entries that should not be in a glossary for deletion.
+- Reasons must be short and specific."""
+
+_GLOSSARY_REVIEW_SUFFIX_ZH = ""
+
+_GLOSSARY_REVIEW_SUFFIX_EN = ""
+
+_GLOSSARY_REVIEW_THINKING_ZH = ""
+
+_GLOSSARY_REVIEW_THINKING_EN = ""
+
+
 def _seeded_translation_zh() -> PromptPreset:
     return PromptPreset(
         id=DEFAULT_TRANSLATION_PRESET_ID,
@@ -274,11 +313,41 @@ def _seeded_glossary_en() -> PromptPreset:
     )
 
 
+def _seeded_glossary_review_zh() -> PromptPreset:
+    return PromptPreset(
+        id=DEFAULT_GLOSSARY_REVIEW_PRESET_ID,
+        name="默认",
+        kind=PromptKind.GLOSSARY_REVIEW,
+        system_prompt=_GLOSSARY_REVIEW_SYSTEM_ZH,
+        suffix_prompt=_GLOSSARY_REVIEW_SUFFIX_ZH,
+        thinking_prompt=_GLOSSARY_REVIEW_THINKING_ZH,
+        description="默认术语审查预设。",
+        enabled=True,
+        is_system=True,
+    )
+
+
+def _seeded_glossary_review_en() -> PromptPreset:
+    return PromptPreset(
+        id=DEFAULT_GLOSSARY_REVIEW_EN_ID,
+        name="Default",
+        kind=PromptKind.GLOSSARY_REVIEW,
+        system_prompt=_GLOSSARY_REVIEW_SYSTEM_EN,
+        suffix_prompt=_GLOSSARY_REVIEW_SUFFIX_EN,
+        thinking_prompt=_GLOSSARY_REVIEW_THINKING_EN,
+        description="Default glossary review preset.",
+        enabled=True,
+        is_system=True,
+    )
+
+
 def seeded_presets(kind: PromptKind) -> tuple[PromptPreset, ...]:
     """Return all presets seeded into a fresh prompts.<kind>.json."""
     if kind is PromptKind.TRANSLATION:
         return (_seeded_translation_zh(), _seeded_translation_en())
-    return (_seeded_glossary_zh(), _seeded_glossary_en())
+    if kind is PromptKind.GLOSSARY:
+        return (_seeded_glossary_zh(), _seeded_glossary_en())
+    return (_seeded_glossary_review_zh(), _seeded_glossary_review_en())
 
 
 def default_preset(kind: PromptKind) -> PromptPreset:
@@ -287,11 +356,11 @@ def default_preset(kind: PromptKind) -> PromptPreset:
 
 
 def _default_preset_id(kind: PromptKind) -> str:
-    return (
-        DEFAULT_TRANSLATION_PRESET_ID
-        if kind is PromptKind.TRANSLATION
-        else DEFAULT_GLOSSARY_PRESET_ID
-    )
+    if kind is PromptKind.TRANSLATION:
+        return DEFAULT_TRANSLATION_PRESET_ID
+    if kind is PromptKind.GLOSSARY:
+        return DEFAULT_GLOSSARY_PRESET_ID
+    return DEFAULT_GLOSSARY_REVIEW_PRESET_ID
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +476,8 @@ __all__ = [
     "seeded_presets",
     "DEFAULT_TRANSLATION_PRESET_ID",
     "DEFAULT_GLOSSARY_PRESET_ID",
+    "DEFAULT_GLOSSARY_REVIEW_PRESET_ID",
     "DEFAULT_TRANSLATION_EN_ID",
     "DEFAULT_GLOSSARY_EN_ID",
+    "DEFAULT_GLOSSARY_REVIEW_EN_ID",
 ]

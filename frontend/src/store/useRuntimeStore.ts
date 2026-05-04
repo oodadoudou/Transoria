@@ -5,6 +5,7 @@ import {
   BridgeError,
   dialogsBridge,
   glossaryBridge,
+  glossaryReviewBridge,
   replacementBridge,
   translationBridge,
 } from "@/bridge";
@@ -16,7 +17,11 @@ import type {
   TaskStatus,
 } from "@/bridge";
 
-export type RunKind = "translation" | "glossary" | "replacement";
+export type RunKind =
+  | "translation"
+  | "glossary"
+  | "glossary_review"
+  | "replacement";
 
 const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set([
   "completed",
@@ -96,6 +101,7 @@ const emptyRuntime: KindRuntime = {
 interface RuntimeState {
   translation: KindRuntime;
   glossary: KindRuntime;
+  glossary_review: KindRuntime;
   replacement: KindRuntime;
   refreshActiveTask: (kind: RunKind) => Promise<void>;
   pollSnapshot: (kind: RunKind) => Promise<void>;
@@ -107,6 +113,7 @@ interface RuntimeState {
 const bridges = {
   translation: translationBridge,
   glossary: glossaryBridge,
+  glossary_review: glossaryReviewBridge,
   replacement: replacementBridge,
 } as const;
 
@@ -144,6 +151,7 @@ function asBridgeError(error: unknown): BridgeError {
 export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   translation: emptyRuntime,
   glossary: emptyRuntime,
+  glossary_review: emptyRuntime,
   replacement: emptyRuntime,
 
   setActiveTaskId: (kind, taskId) =>
@@ -344,7 +352,9 @@ async function maybeOpenOutputFolder(
   const enabled =
     kind === "translation"
       ? settings.translation.draft?.auto_open_output_folder
-      : settings.glossary.draft?.auto_open_output_folder;
+      : kind === "glossary"
+        ? settings.glossary.draft?.auto_open_output_folder
+        : settings.glossary_review.draft?.auto_open_output_folder;
   if (!enabled) return;
   autoOpenedTaskIds.add(taskId);
   try {

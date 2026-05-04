@@ -3,6 +3,7 @@ import { useMessages } from "@/locales";
 import {
   BridgeError,
   glossaryBridge,
+  glossaryReviewBridge,
   translationBridge,
   type ProbeContinuable,
 } from "@/bridge";
@@ -56,7 +57,12 @@ export function RunControls({ kind }: RunControlsProps) {
   const status = snapshot.status;
   const idle = snapshot.isIdle;
 
-  const bridge = kind === "translation" ? translationBridge : glossaryBridge;
+  const bridge =
+    kind === "translation"
+      ? translationBridge
+      : kind === "glossary"
+        ? glossaryBridge
+        : glossaryReviewBridge;
 
   const [probe, setProbe] = useState<ProbeContinuable>(EMPTY_PROBE);
   const [confirmOpen, setConfirmOpen] = useState(false);

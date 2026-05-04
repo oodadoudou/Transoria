@@ -18,6 +18,7 @@ from transoria.settings.defaults import (
     AllSettings,
     AppSettings,
     GlossarySettings,
+    GlossaryReviewSettings,
     ReplacementSettings,
     SettingsModule,
     TranslationSettings,
@@ -37,7 +38,11 @@ _TUPLE_TO_SINGLE_APP_FIELDS: dict[str, str] = {
 }
 
 ModuleValue = (
-    AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings
+    AppSettings
+    | TranslationSettings
+    | GlossarySettings
+    | GlossaryReviewSettings
+    | ReplacementSettings
 )
 
 
@@ -120,6 +125,8 @@ def _module_value(settings: AllSettings, module: SettingsModule) -> ModuleValue:
         return settings.translation
     if module == "glossary":
         return settings.glossary
+    if module == "glossary_review":
+        return settings.glossary_review
     if module == "replacement":
         return settings.replacement
     raise ValueError(f"Unknown settings module: {module!r}")
@@ -142,6 +149,11 @@ def _from_dict(payload: Mapping[str, object]) -> AllSettings:
         ),
         glossary=_hydrate(
             GlossarySettings, payload.get("glossary"), defaults.glossary
+        ),
+        glossary_review=_hydrate(
+            GlossaryReviewSettings,
+            payload.get("glossary_review"),
+            defaults.glossary_review,
         ),
         replacement=_hydrate(
             ReplacementSettings, payload.get("replacement"), defaults.replacement

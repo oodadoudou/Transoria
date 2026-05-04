@@ -51,9 +51,14 @@ export type Platform = "darwin" | "win32" | "linux";
 
 export type ChineseOutputForm = "simplified" | "traditional";
 
-export type SettingsModule = "app" | "translation" | "glossary" | "replacement";
+export type SettingsModule =
+  | "app"
+  | "translation"
+  | "glossary"
+  | "glossary_review"
+  | "replacement";
 
-export type PromptKind = "translation" | "glossary";
+export type PromptKind = "translation" | "glossary" | "glossary_review";
 
 // --- App ---------------------------------------------------------------------
 
@@ -73,8 +78,10 @@ export interface AppSettings {
   proxy_url: string;
   active_translation_model_id: string | null;
   active_glossary_model_id: string | null;
+  active_glossary_review_model_id: string | null;
   active_translation_prompt_id: string | null;
   active_glossary_prompt_id: string | null;
+  active_glossary_review_prompt_id: string | null;
   /** Tag of the latest release the user has chosen to ignore. The
    * startup update prompt only appears when ``latest_version`` differs
    * from this value, so a confirmed-or-dismissed release never re-nags. */
@@ -146,6 +153,17 @@ export interface GlossarySettings {
   timeout_seconds: number;
 }
 
+export interface GlossaryReviewSettings {
+  input_folder: string;
+  output_filename: string;
+  novel_background: string;
+  review_rounds: number;
+  max_workers: number;
+  batch_size: number;
+  auto_open_output_folder: boolean;
+  timeout_seconds: number;
+}
+
 export interface ReplacementSettings {
   input_folder: string;
   output_folder: string;
@@ -160,6 +178,7 @@ export interface AllSettings {
   app: AppSettings;
   translation: TranslationSettings;
   glossary: GlossarySettings;
+  glossary_review: GlossaryReviewSettings;
   replacement: ReplacementSettings;
 }
 
@@ -167,6 +186,7 @@ export type ModuleSettings =
   | AppSettings
   | TranslationSettings
   | GlossarySettings
+  | GlossaryReviewSettings
   | ReplacementSettings;
 
 // --- Dialogs -----------------------------------------------------------------
@@ -285,7 +305,11 @@ export interface PromptPreviewResult {
 
 // --- Tasks (translation, glossary, replacement) -----------------------------
 
-export type TaskKind = "translation" | "glossary" | "replacement";
+export type TaskKind =
+  | "translation"
+  | "glossary"
+  | "glossary_review"
+  | "replacement";
 
 /** Inline-credential payload used by the Add API Profile modal to
  *  test_connection / fetch_model_list before persisting the profile.
@@ -448,6 +472,36 @@ export interface GlossaryArtifacts {
   } | null;
   statistics_json_path: string | null;
   decode_issue_path: string | null;
+}
+
+export interface GlossaryReviewArtifacts {
+  kind: "glossary_review";
+  output_folder: string;
+  output_path: string | null;
+  report_path: string | null;
+  changed_count: number;
+}
+
+export interface GlossaryReviewReportRow {
+  round: number;
+  action: "modify" | "delete" | "category" | "modify_category";
+  row_index: number;
+  src: string;
+  original_dst: string;
+  suggested_dst: string;
+  original_info: string;
+  suggested_info: string;
+  reason: string;
+  context_excerpt: string;
+}
+
+export interface GlossaryReviewReport {
+  task_id: string;
+  generated_at: string;
+  input_xlsx: string;
+  output_path: string;
+  changed_count: number;
+  rows: GlossaryReviewReportRow[];
 }
 
 export interface ReplacementArtifacts {

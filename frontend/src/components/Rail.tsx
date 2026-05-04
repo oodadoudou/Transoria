@@ -26,6 +26,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
 } {
   const t = messages.pages.translation;
   const g = messages.pages.glossary;
+  const gr = messages.pages.glossaryReview;
   const gt = messages.pages.generalTools;
 
   return {
@@ -56,6 +57,15 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
           { page: "run", label: g.run },
           { page: "prompt", label: g.prompt },
           { page: "settings", label: g.settings },
+        ],
+      },
+      {
+        id: "glossary-review",
+        label: messages.rail.glossaryReview,
+        children: [
+          { page: "run", label: gr.run },
+          { page: "prompt", label: gr.prompt },
+          { page: "settings", label: gr.settings },
         ],
       },
       {

@@ -12,7 +12,9 @@ from typing import Literal, Mapping
 
 from transoria.domain import Language
 
-SettingsModule = Literal["app", "translation", "glossary", "replacement"]
+SettingsModule = Literal[
+    "app", "translation", "glossary", "glossary_review", "replacement"
+]
 
 ChineseOutputForm = Literal["simplified", "traditional"]
 InterfaceLanguage = Literal["en", "zh"]
@@ -25,8 +27,10 @@ class AppSettings:
     proxy_url: str = ""
     active_translation_model_id: str | None = None
     active_glossary_model_id: str | None = None
+    active_glossary_review_model_id: str | None = None
     active_translation_prompt_id: str | None = None
     active_glossary_prompt_id: str | None = None
+    active_glossary_review_prompt_id: str | None = None
     # Latest release tag the user clicked "later" or "update now" on.
     # The startup update prompt suppresses itself until ``latest_version``
     # diverges from this value, so a confirmed-or-dismissed release
@@ -101,6 +105,18 @@ class GlossarySettings:
 
 
 @dataclass(frozen=True)
+class GlossaryReviewSettings:
+    input_folder: str = ""
+    output_filename: str = "glossary-review-final.xlsx"
+    novel_background: str = ""
+    review_rounds: int = 1
+    max_workers: int = 2
+    batch_size: int = 20
+    auto_open_output_folder: bool = False
+    timeout_seconds: int = 600
+
+
+@dataclass(frozen=True)
 class ReplacementSettings:
     input_folder: str = ""
     output_folder: str = ""
@@ -116,6 +132,7 @@ class AllSettings:
     app: AppSettings = AppSettings()
     translation: TranslationSettings = TranslationSettings()
     glossary: GlossarySettings = GlossarySettings()
+    glossary_review: GlossaryReviewSettings = GlossaryReviewSettings()
     replacement: ReplacementSettings = ReplacementSettings()
 
     def to_dict(self) -> dict[str, dict[str, object]]:
@@ -123,6 +140,7 @@ class AllSettings:
             "app": asdict(self.app),
             "translation": asdict(self.translation),
             "glossary": asdict(self.glossary),
+            "glossary_review": asdict(self.glossary_review),
             "replacement": asdict(self.replacement),
         }
 
@@ -132,6 +150,7 @@ class AllSettings:
         value: AppSettings
         | TranslationSettings
         | GlossarySettings
+        | GlossaryReviewSettings
         | ReplacementSettings,
     ) -> "AllSettings":
         if module == "app" and isinstance(value, AppSettings):
@@ -140,6 +159,8 @@ class AllSettings:
             return replace(self, translation=value)
         if module == "glossary" and isinstance(value, GlossarySettings):
             return replace(self, glossary=value)
+        if module == "glossary_review" and isinstance(value, GlossaryReviewSettings):
+            return replace(self, glossary_review=value)
         if module == "replacement" and isinstance(value, ReplacementSettings):
             return replace(self, replacement=value)
         raise ValueError(
@@ -157,6 +178,7 @@ _MODULE_TYPES: dict[SettingsModule, type] = {
     "app": AppSettings,
     "translation": TranslationSettings,
     "glossary": GlossarySettings,
+    "glossary_review": GlossaryReviewSettings,
     "replacement": ReplacementSettings,
 }
 
@@ -176,7 +198,13 @@ _TRANSLATION_LIST_OF_MAPPING_FIELDS: frozenset[str] = frozenset(
 
 def default_module_settings(
     module: SettingsModule,
-) -> AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings:
+) -> (
+    AppSettings
+    | TranslationSettings
+    | GlossarySettings
+    | GlossaryReviewSettings
+    | ReplacementSettings
+):
     """Return the default for one module."""
 
     cls = _MODULE_TYPES.get(module)
@@ -186,9 +214,13 @@ def default_module_settings(
 
 
 def merge_module(
-    current: AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings,
+    current: AppSettings
+    | TranslationSettings
+    | GlossarySettings
+    | GlossaryReviewSettings
+    | ReplacementSettings,
     patch: Mapping[str, object],
-) -> AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings:
+) -> AppSettings | TranslationSettings | GlossarySettings | GlossaryReviewSettings | ReplacementSettings:
     """Apply a partial patch onto the current module value.
 
     Unknown keys raise ``ValueError`` so the bridge can return
@@ -206,10 +238,18 @@ def merge_module(
 
 
 def merge_module_lenient(
-    current: AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings,
+    current: AppSettings
+    | TranslationSettings
+    | GlossarySettings
+    | GlossaryReviewSettings
+    | ReplacementSettings,
     patch: Mapping[str, object],
 ) -> tuple[
-    AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings,
+    AppSettings
+    | TranslationSettings
+    | GlossarySettings
+    | GlossaryReviewSettings
+    | ReplacementSettings,
     list[dict[str, str]],
 ]:
     """Apply each patch entry independently; return ``(merged, rejected)``.
@@ -256,7 +296,11 @@ def merge_module_lenient(
 
 
 def _coerce(
-    current: AppSettings | TranslationSettings | GlossarySettings | ReplacementSettings,
+    current: AppSettings
+    | TranslationSettings
+    | GlossarySettings
+    | GlossaryReviewSettings
+    | ReplacementSettings,
     key: str,
     value: object,
 ) -> object:
@@ -292,7 +336,6 @@ def _coerce(
             normalized.append(dict(entry))
         return tuple(normalized)
 
-
     field_type = current.__dataclass_fields__[key].type  # type: ignore[attr-defined]
     annotation = field_type if isinstance(field_type, str) else field_type.__name__
 
@@ -320,6 +363,7 @@ __all__ = [
     "AppSettings",
     "ChineseOutputForm",
     "GlossarySettings",
+    "GlossaryReviewSettings",
     "InterfaceLanguage",
     "ReplacementSettings",
     "SettingsModule",

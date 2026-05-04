@@ -19,6 +19,7 @@ from transoria.llm.config import ThinkingLevel
 from transoria.model_profiles import ModelProfileStore
 from transoria.prompts import (
     DEFAULT_GLOSSARY_PRESET_ID,
+    DEFAULT_GLOSSARY_REVIEW_PRESET_ID,
     DEFAULT_TRANSLATION_PRESET_ID,
     PromptContext,
     PromptKind,
@@ -32,11 +33,13 @@ from transoria.settings import SettingsStore
 ACTIVE_FIELD_BY_KIND = {
     "translation": "active_translation_prompt_id",
     "glossary": "active_glossary_prompt_id",
+    "glossary_review": "active_glossary_review_prompt_id",
 }
 
 ACTIVE_MODEL_FIELD_BY_KIND = {
     PromptKind.TRANSLATION: "active_translation_model_id",
     PromptKind.GLOSSARY: "active_glossary_model_id",
+    PromptKind.GLOSSARY_REVIEW: "active_glossary_review_model_id",
 }
 
 
@@ -46,18 +49,20 @@ def _expect_kind(payload: Mapping[str, object]) -> PromptKind:
         return PromptKind.TRANSLATION
     if raw == "glossary":
         return PromptKind.GLOSSARY
+    if raw == "glossary_review":
+        return PromptKind.GLOSSARY_REVIEW
     raise BridgeError.invalid_argument(
-        "kind must be 'translation' or 'glossary'.",
+        "kind must be 'translation', 'glossary', or 'glossary_review'.",
         field="kind",
     )
 
 
 def _default_id(kind: PromptKind) -> str:
-    return (
-        DEFAULT_TRANSLATION_PRESET_ID
-        if kind is PromptKind.TRANSLATION
-        else DEFAULT_GLOSSARY_PRESET_ID
-    )
+    if kind is PromptKind.TRANSLATION:
+        return DEFAULT_TRANSLATION_PRESET_ID
+    if kind is PromptKind.GLOSSARY:
+        return DEFAULT_GLOSSARY_PRESET_ID
+    return DEFAULT_GLOSSARY_REVIEW_PRESET_ID
 
 
 def _summary(preset: PromptPreset) -> dict[str, object]:
@@ -84,11 +89,7 @@ def _body(preset: PromptPreset) -> dict[str, object]:
 
 
 def _store_for(cache_root: Path, kind: PromptKind) -> PromptPresetStore:
-    filename = (
-        "prompts.translation.json"
-        if kind is PromptKind.TRANSLATION
-        else "prompts.glossary.json"
-    )
+    filename = f"prompts.{kind.value}.json"
     return PromptPresetStore(path=cache_root / filename, kind=kind)
 
 
@@ -123,10 +124,8 @@ def _build_handlers(
         kind = _expect_kind(payload)
         store = _store_for(cache_root, kind)
         presets = store.load()
-        active_id = (
-            settings_store.load_all().app.active_translation_prompt_id
-            if kind is PromptKind.TRANSLATION
-            else settings_store.load_all().app.active_glossary_prompt_id
+        active_id = getattr(
+            settings_store.load_all().app, ACTIVE_FIELD_BY_KIND[kind.value]
         )
         resolved = store.get_active(active_id).id
         return {
@@ -136,7 +135,7 @@ def _build_handlers(
 
     def read(payload: Mapping[str, object]) -> dict[str, object]:
         preset_id = expect_string(payload, "id")
-        for kind in (PromptKind.TRANSLATION, PromptKind.GLOSSARY):
+        for kind in PromptKind:
             store = _store_for(cache_root, kind)
             for preset in store.load():
                 if preset.id == preset_id:
@@ -187,7 +186,7 @@ def _build_handlers(
                 "patch object is required.",
                 field="patch",
             )
-        for kind in (PromptKind.TRANSLATION, PromptKind.GLOSSARY):
+        for kind in PromptKind:
             store = _store_for(cache_root, kind)
             presets = list(store.load())
             for index, preset in enumerate(presets):
@@ -210,7 +209,7 @@ def _build_handlers(
     def duplicate(payload: Mapping[str, object]) -> dict[str, object]:
         preset_id = expect_string(payload, "id")
         new_name = payload.get("new_name")
-        for kind in (PromptKind.TRANSLATION, PromptKind.GLOSSARY):
+        for kind in PromptKind:
             store = _store_for(cache_root, kind)
             presets = list(store.load())
             for preset in presets:
@@ -235,7 +234,7 @@ def _build_handlers(
 
     def delete(payload: Mapping[str, object]) -> dict[str, object]:
         preset_id = expect_string(payload, "id")
-        for kind in (PromptKind.TRANSLATION, PromptKind.GLOSSARY):
+        for kind in PromptKind:
             store = _store_for(cache_root, kind)
             presets = list(store.load())
             for preset in presets:
@@ -287,7 +286,7 @@ def _build_handlers(
                 field="context",
             )
         requested_thinking = bool(payload.get("thinking", False))
-        for kind in (PromptKind.TRANSLATION, PromptKind.GLOSSARY):
+        for kind in PromptKind:
             store = _store_for(cache_root, kind)
             for preset in store.load():
                 if preset.id != preset_id:
@@ -333,7 +332,7 @@ def _build_handlers(
 
     def reset_to_default(payload: Mapping[str, object]) -> dict[str, object]:
         preset_id = expect_string(payload, "id")
-        for kind in (PromptKind.TRANSLATION, PromptKind.GLOSSARY):
+        for kind in PromptKind:
             if preset_id != _default_id(kind):
                 continue
             store = _store_for(cache_root, kind)

@@ -7,6 +7,8 @@ import type {
   DialogPathResult,
   GlossaryArtifacts,
   GlossaryFileResult,
+  GlossaryReviewArtifacts,
+  GlossaryReviewReport,
   ModelListResult,
   ModelProfile,
   ModelProfileDraft,
@@ -164,7 +166,7 @@ export const modelProfilesBridge = {
     });
   },
   selectActive(
-    module: "translation" | "glossary",
+    module: "translation" | "glossary" | "glossary_review",
     profileId: string | null,
   ): Promise<{ app: AppSettings }> {
     return call("model_profiles.select_active", {
@@ -415,6 +417,45 @@ export const glossaryBridge = {
     }>;
   }> {
     return call("glossary.list_presets", {});
+  },
+};
+
+// --- Glossary Review --------------------------------------------------------
+
+export const glossaryReviewBridge = {
+  startTask(
+    requestId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("glossary_review.start_task", { request_id: requestId });
+  },
+  pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("glossary_review.pause_task", { task_id: taskId });
+  },
+  stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("glossary_review.stop_task", { task_id: taskId });
+  },
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("glossary_review.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("glossary_review.probe_continuable", {});
+  },
+  readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("glossary_review.read_snapshot", { task_id: taskId });
+  },
+  listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
+    return call("glossary_review.list_recent_tasks", { limit });
+  },
+  readArtifacts(taskId: string): Promise<GlossaryReviewArtifacts> {
+    return call("glossary_review.read_artifacts", { task_id: taskId });
+  },
+  readReport(taskId: string): Promise<GlossaryReviewReport> {
+    return call("glossary_review.read_report", { task_id: taskId });
+  },
+  listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
+    return call("glossary_review.list_failed_subtasks", { task_id: taskId });
   },
 };
 

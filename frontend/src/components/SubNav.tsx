@@ -149,6 +149,11 @@ export function crumbFor(
         module: messages.glossary.crumb,
         page: messages.pages.glossary[route.page],
       };
+    case "glossary-review":
+      return {
+        module: messages.glossaryReview.crumb,
+        page: messages.pages.glossaryReview[route.page],
+      };
     case "general-tools":
       return {
         module: messages.generalTools.crumb,
@@ -168,5 +173,6 @@ export function primaryLabelFor(
 ): string | undefined {
   if (route.module === "translation") return messages.topbar.start.translation;
   if (route.module === "glossary") return messages.topbar.start.extraction;
+  if (route.module === "glossary-review") return messages.topbar.start.extraction;
   return undefined;
 }

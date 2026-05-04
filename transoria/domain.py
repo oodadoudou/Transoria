@@ -62,6 +62,7 @@ class SubtaskStatus(str, Enum):
 class TaskKind(str, Enum):
     TRANSLATION = "translation"
     GLOSSARY = "glossary"
+    GLOSSARY_REVIEW = "glossary_review"
     REPLACEMENT = "replacement"
 
 
@@ -96,4 +97,3 @@ def translated_filename(
         language_tag = f"{language_tag}-{source_language.value}"
 
     return f"{stem}-{language_tag}{suffix}"
-

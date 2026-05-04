@@ -207,6 +207,7 @@ def build_default_router(
         for folder in (
             settings.translation.output_folder,
             settings.glossary.output_folder,
+            settings.glossary_review.input_folder,
             settings.replacement.output_folder,
         ):
             if folder:

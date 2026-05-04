@@ -39,6 +39,7 @@ from transoria.settings import SettingsStore
 ACTIVE_FIELD_BY_MODULE = {
     "translation": "active_translation_model_id",
     "glossary": "active_glossary_model_id",
+    "glossary_review": "active_glossary_review_model_id",
 }
 
 
@@ -143,6 +144,8 @@ def _build_handlers(
             patch["active_translation_model_id"] = None
         if current.app.active_glossary_model_id == profile_id:
             patch["active_glossary_model_id"] = None
+        if current.app.active_glossary_review_model_id == profile_id:
+            patch["active_glossary_review_model_id"] = None
         if patch:
             settings_store.save_partial("app", patch)
         return {}
@@ -173,7 +176,7 @@ def _build_handlers(
         module = payload.get("module")
         if module not in ACTIVE_FIELD_BY_MODULE:
             raise BridgeError.invalid_argument(
-                "module must be 'translation' or 'glossary'.",
+                "module must be 'translation', 'glossary', or 'glossary_review'.",
                 field="module",
             )
         profile_id = payload.get("profile_id")

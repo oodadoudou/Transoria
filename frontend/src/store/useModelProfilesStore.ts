@@ -46,7 +46,7 @@ interface ModelProfilesState {
   deleteProfile: (id: string) => Promise<boolean>;
   setApiKey: (id: string, apiKeys: string[]) => Promise<ModelProfile | null>;
   selectActive: (
-    module: "translation" | "glossary",
+    module: "translation" | "glossary" | "glossary_review",
     profileId: string | null,
   ) => Promise<AppSettings | null>;
   testConnection: (id: string) => Promise<void>;

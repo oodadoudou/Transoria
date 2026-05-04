@@ -12,6 +12,7 @@ const TOKEN_FORMATTER = new Intl.NumberFormat("en", {
 const FULL_FORMATTER = new Intl.NumberFormat("en");
 
 function routeToRunKind(module: string): RunKind {
+  if (module === "glossary-review") return "glossary_review";
   return module === "glossary" ? "glossary" : "translation";
 }
 

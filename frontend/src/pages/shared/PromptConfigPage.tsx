@@ -12,11 +12,16 @@ import type { PromptKind, PromptPresetBody } from "@/bridge";
 import styles from "./PromptConfigPage.module.css";
 
 interface PromptConfigPageProps {
-  owner: "translation" | "glossary";
+  owner: PromptKind;
 }
 
-function ownerToKind(owner: "translation" | "glossary"): PromptKind {
+function ownerToKind(owner: PromptKind): PromptKind {
   return owner;
+}
+
+function defaultPromptId(kind: PromptKind, locale: string): string {
+  if (kind === "glossary_review") return `default-glossary-review-${locale}`;
+  return `default-${kind}-${locale}`;
 }
 
 type ModalState =
@@ -34,7 +39,7 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
   const [editBody, setEditBody] = useState<PromptPresetBody | null>(null);
 
   const locale = useI18n((state) => state.locale);
-  const localeDefaultId = `default-${kind}-${locale}`;
+  const localeDefaultId = defaultPromptId(kind, locale);
   // Only the locale-matching system preset is shown — users picked
   // their UI language, so we surface the system prompt phrased in
   // that language. The non-matching system preset is still resolved

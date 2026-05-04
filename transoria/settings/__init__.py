@@ -3,7 +3,8 @@
 Public surface:
 
 - :class:`AppSettings`, :class:`TranslationSettings`,
-  :class:`GlossarySettings`, :class:`ReplacementSettings` — typed module
+  :class:`GlossarySettings`, :class:`GlossaryReviewSettings`,
+  :class:`ReplacementSettings` — typed module
   schemas matching ``docs/bridge-contract.md``.
 - :class:`AllSettings` — bundle of all four.
 - :class:`SettingsStore` — atomic JSON-backed loader/saver.
@@ -14,6 +15,7 @@ Public surface:
 from transoria.settings.defaults import (
     AllSettings,
     AppSettings,
+    GlossaryReviewSettings,
     GlossarySettings,
     ReplacementSettings,
     SettingsModule,
@@ -26,6 +28,7 @@ from transoria.settings.store import SettingsStore
 __all__ = [
     "AllSettings",
     "AppSettings",
+    "GlossaryReviewSettings",
     "GlossarySettings",
     "ReplacementSettings",
     "SettingsModule",
