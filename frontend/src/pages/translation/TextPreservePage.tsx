@@ -25,11 +25,16 @@ import {
   type RuleExportFormat,
 } from "@/components/RuleExportModal";
 import { RuleStatsModal } from "@/components/RuleStatsModal";
+import { appendUniqueRows, tableRowKey } from "@/utils/tableDedupe";
 
 const EMPTY_RULES: PersistedTextPreserveRule[] = [];
 
 function emptyRule(): PersistedTextPreserveRule {
   return { pattern: "", note: "", enabled: true };
+}
+
+function textPreserveRuleKey(rule: PersistedTextPreserveRule): string {
+  return tableRowKey([rule.pattern, rule.note, rule.enabled]);
 }
 
 export function TextPreservePage() {
@@ -129,7 +134,7 @@ export function TextPreservePage() {
         setImportError(m.importEmpty);
         return;
       }
-      setRules([...allRules, ...incoming]);
+      setRules(appendUniqueRows(allRules, incoming, textPreserveRuleKey).rows);
     } catch (error) {
       setImportError(
         BridgeError.isBridgeError(error)

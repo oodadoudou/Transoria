@@ -26,6 +26,7 @@ import {
   type RuleExportFormat,
 } from "@/components/RuleExportModal";
 import { RuleStatsModal } from "@/components/RuleStatsModal";
+import { appendUniqueRows, tableRowKey } from "@/utils/tableDedupe";
 
 type Group = "pre" | "post";
 
@@ -40,6 +41,19 @@ function emptyRule(): PersistedTranslationReplacementRule {
     note: "",
     enabled: true,
   };
+}
+
+function translationReplacementRuleKey(
+  rule: PersistedTranslationReplacementRule,
+): string {
+  return tableRowKey([
+    rule.src,
+    rule.dst,
+    rule.regex,
+    rule.case_sensitive,
+    rule.note,
+    rule.enabled,
+  ]);
 }
 
 interface TranslationReplacementPageProps {
@@ -147,7 +161,9 @@ export function TranslationReplacementPage({
         setImportError(m.importEmpty);
         return;
       }
-      setRules([...allRules, ...incoming]);
+      setRules(
+        appendUniqueRows(allRules, incoming, translationReplacementRuleKey).rows,
+      );
     } catch (error) {
       setImportError(
         BridgeError.isBridgeError(error)

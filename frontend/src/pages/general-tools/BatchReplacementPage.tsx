@@ -31,6 +31,7 @@ import {
   type RuleTableSelection,
 } from "@/components/RuleTable";
 import { useSearchShortcut } from "@/components/useSearchShortcut";
+import { tableRowKey, uniqueRows } from "@/utils/tableDedupe";
 import styles from "./BatchReplacementPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -40,6 +41,16 @@ const TERMINAL: ReadonlySet<string> = new Set([
   "failed",
   "stopped",
 ]);
+
+function replacementRuleKey(rule: ReplacementRule): string {
+  return tableRowKey([
+    rule.src,
+    rule.dst,
+    rule.regex,
+    rule.case_sensitive,
+    rule.enabled,
+  ]);
+}
 
 export function BatchReplacementPage() {
   const messages = useMessages();
@@ -185,9 +196,10 @@ export function BatchReplacementPage() {
       const dialogResult = await dialogsBridge.chooseReplacementRulesFile();
       if (!dialogResult.path) return;
       const parsed = await replacementBridge.importRules(dialogResult.path);
-      setRules(parsed.rules);
+      const unique = uniqueRows(parsed.rules, replacementRuleKey);
+      setRules(unique);
       setWarnings(parsed.parse_warnings);
-      const validation = await replacementBridge.validateRules(parsed.rules);
+      const validation = await replacementBridge.validateRules(unique);
       setIssues(validation.issues);
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {

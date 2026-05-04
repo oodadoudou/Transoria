@@ -24,6 +24,7 @@ import {
 import { GlossaryStatsModal } from "@/components/GlossaryStatsModal";
 import { GlossaryPresetModal } from "@/components/GlossaryPresetModal";
 import { useSearchShortcut } from "@/components/useSearchShortcut";
+import { appendUniqueRows, tableRowKey } from "@/utils/tableDedupe";
 import {
   GlossaryExportModal,
   type GlossaryExportFormat,
@@ -33,6 +34,17 @@ import { GlossaryScrollNav } from "@/components/GlossaryScrollNav";
 type Toggle = "on" | "off";
 
 const SORT_STORAGE_KEY = "transoria.glossary.sortState";
+
+function glossaryEntryKey(entry: GlossaryEntry): string {
+  return tableRowKey([
+    entry.source,
+    entry.translation,
+    entry.description,
+    entry.caseSensitive,
+    entry.enabled,
+    entry.frequency,
+  ]);
+}
 
 interface PersistedEntry {
   src: string;
@@ -216,7 +228,9 @@ export function GlossaryPage() {
         setImportError(g.importEmpty);
         return;
       }
-      importEntries([...state.entries, ...incoming]);
+      importEntries(
+        appendUniqueRows(state.entries, incoming, glossaryEntryKey).rows,
+      );
     } catch (error) {
       setImportError(
         BridgeError.isBridgeError(error)
@@ -501,7 +515,9 @@ export function GlossaryPage() {
               enabled: entry.enabled,
               frequency: 0,
             }));
-            importEntries([...state.entries, ...incoming]);
+            importEntries(
+              appendUniqueRows(state.entries, incoming, glossaryEntryKey).rows,
+            );
           }}
           onClose={() => setPresetOpen(false)}
         />
