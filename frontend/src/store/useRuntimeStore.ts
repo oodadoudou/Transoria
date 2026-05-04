@@ -12,6 +12,7 @@ import {
 import { useSettingsStore } from "@/store/useSettingsStore";
 import type {
   TaskFailure,
+  GlossaryReviewRoundProgress,
   TaskHeader,
   TaskSnapshot,
   TaskStatus,
@@ -259,6 +260,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
 export type SnapshotShape = {
   status: TaskStatus;
   progress: TaskSnapshot["progress"];
+  roundProgress: GlossaryReviewRoundProgress | null;
   usage: TaskSnapshot["usage"];
   lowConfidence: { total: number; sourceResidue: number };
   subtasks: TaskSnapshot["subtasks"];
@@ -284,6 +286,7 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
         elapsed_seconds: 0,
         rate_per_second: 0,
       },
+      roundProgress: runtime.snapshot?.round_progress ?? null,
       usage: runtime.snapshot?.usage ?? {
         input_tokens: 0,
         output_tokens: 0,

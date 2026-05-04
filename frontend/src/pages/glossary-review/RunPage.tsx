@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMessages, useI18n } from "@/locales";
+import { format, useMessages, useI18n } from "@/locales";
 import { BridgeError, glossaryReviewBridge, type GlossaryReviewReport } from "@/bridge";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
@@ -174,9 +174,46 @@ export function RunPage() {
   const skipped = snapshot.progress.skipped;
   const remaining = snapshot.progress.pending + snapshot.progress.running;
   const settled = completed + skipped;
-  const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
+  const roundProgress = snapshot.roundProgress;
+  const roundCurrent = roundProgress
+    ? Math.max(
+        1,
+        Math.min(roundProgress.current_round || 1, roundProgress.total_rounds),
+      )
+    : 0;
+  const roundBatchRatio =
+    roundProgress && roundProgress.current_total_batches > 0
+      ? Math.min(
+          1,
+          roundProgress.current_completed_batches /
+            roundProgress.current_total_batches,
+        )
+      : 0;
+  const roundPercent = roundProgress
+    ? Math.floor(
+        (Math.min(
+          roundProgress.total_rounds,
+          Math.max(
+            roundProgress.completed_rounds,
+            roundProgress.completed_rounds >= roundCurrent
+              ? roundProgress.completed_rounds
+              : roundProgress.completed_rounds + roundBatchRatio,
+          ),
+        ) /
+          roundProgress.total_rounds) *
+          100,
+      )
+    : null;
+  const percent =
+    roundPercent ?? (total > 0 ? Math.floor((settled / total) * 100) : 0);
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
+  const roundDetail = roundProgress
+    ? format(run.roundOverall, {
+        current: roundCurrent,
+        total: roundProgress.total_rounds,
+      })
+    : undefined;
 
   return (
     <>
@@ -268,7 +305,12 @@ export function RunPage() {
 
       <Panel label={run.progress}>
         <div className={styles.progressCard}>
-          <ProgressRing percent={percent} completed={settled} total={total} />
+          <ProgressRing
+            percent={percent}
+            completed={settled}
+            total={total}
+            detail={roundDetail}
+          />
           <div className={styles.statGrid}>
             <Stat label={run.stats.completed} value={NUM.format(completed)} />
             <Stat label={run.stats.failed} value={NUM.format(failed)} />
@@ -284,6 +326,20 @@ export function RunPage() {
             />
           </div>
         </div>
+        {roundProgress ? (
+          <div className={styles.roundStrip}>
+            <span>
+              <b>{run.roundCurrent}</b>
+              {roundDetail}
+            </span>
+            <span>
+              {format(run.roundBatches, {
+                done: roundProgress.current_completed_batches,
+                total: roundProgress.current_total_batches,
+              })}
+            </span>
+          </div>
+        ) : null}
         {snapshot.subtasks.length > 0 ? (
           <>
             <LiveRequestCounter

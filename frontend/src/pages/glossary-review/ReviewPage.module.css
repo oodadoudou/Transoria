@@ -1,0 +1,168 @@
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.taskSelect,
+.searchInput,
+.field,
+.textarea {
+  border: 1px solid var(--hairline-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.taskSelect {
+  padding: 6px 10px;
+  max-width: 100%;
+}
+
+.hint {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.tableWrap {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  overflow: auto;
+  max-height: 62vh;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.table th,
+.table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--hairline-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-weight: 600;
+  z-index: 1;
+}
+
+.table tr {
+  cursor: pointer;
+}
+
+.table tr:hover {
+  background: var(--panel-soft);
+}
+
+.activeRow {
+  background: var(--panel-soft);
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.truncate {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.empty {
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.field {
+  width: 100%;
+  padding: 8px 10px;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dirty {
+  color: #b04038;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.banner {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.error {
+  color: #b04038;
+}
+
+.success {
+  color: #2c7a55;
+}

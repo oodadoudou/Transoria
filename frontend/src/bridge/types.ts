@@ -407,11 +407,20 @@ export interface TaskLowConfidenceSummary {
   source_residue: number;
 }
 
+export interface GlossaryReviewRoundProgress {
+  total_rounds: number;
+  current_round: number;
+  completed_rounds: number;
+  current_total_batches: number;
+  current_completed_batches: number;
+}
+
 export interface TaskSnapshot {
   header: TaskHeader;
   progress: TaskProgress;
   usage: TaskUsage;
   low_confidence?: TaskLowConfidenceSummary;
+  round_progress?: GlossaryReviewRoundProgress | null;
   subtasks: SubtaskMini[];
   active_model_id: string | null;
   active_prompt_id: string | null;
@@ -501,6 +510,20 @@ export interface GlossaryReviewReport {
   output_path: string;
   changed_count: number;
   rows: GlossaryReviewReportRow[];
+}
+
+export interface GlossaryReviewFinalRow {
+  row_index: number;
+  src: string;
+  dst: string;
+  info: string;
+  frequency: number;
+}
+
+export interface GlossaryReviewFinalSheet {
+  task_id: string;
+  path: string;
+  rows: GlossaryReviewFinalRow[];
 }
 
 export interface ReplacementArtifacts {

@@ -32,7 +32,7 @@ export type TranslationPage =
 
 export type GlossaryPage = "run" | "settings" | "prompt";
 
-export type GlossaryReviewPage = "run" | "settings" | "prompt";
+export type GlossaryReviewPage = "run" | "review" | "settings" | "prompt";
 
 export type GeneralToolsPage = "batchReplacement";
 

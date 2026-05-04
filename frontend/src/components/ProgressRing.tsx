@@ -5,6 +5,7 @@ interface ProgressRingProps {
   percent: number;
   completed: number;
   total: number;
+  detail?: string;
 }
 
 const RADIUS = 78;
@@ -12,7 +13,12 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS; // ≈ 490
 
 const NUM = new Intl.NumberFormat("en");
 
-export function ProgressRing({ percent, completed, total }: ProgressRingProps) {
+export function ProgressRing({
+  percent,
+  completed,
+  total,
+  detail,
+}: ProgressRingProps) {
   const clamped = Math.max(0, Math.min(100, percent));
   const offset = CIRCUMFERENCE * (1 - clamped / 100);
   // Floor (not round) so 400/402 = 99.5% renders as "99%", not "100%".
@@ -47,7 +53,7 @@ export function ProgressRing({ percent, completed, total }: ProgressRingProps) {
       <div className={styles.num}>
         <b className="tnum">{display}%</b>
         <span className="tnum">
-          {NUM.format(completed)} / {NUM.format(total)}
+          {detail ?? `${NUM.format(completed)} / ${NUM.format(total)}`}
         </span>
       </div>
     </div>

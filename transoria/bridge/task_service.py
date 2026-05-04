@@ -26,6 +26,8 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 from uuid import uuid4
 
+from openpyxl import load_workbook
+
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.task_registry import RunningTask, TaskRegistry
 from transoria.domain import (
@@ -58,7 +60,10 @@ from transoria.tools.replacement import (
 from transoria.workflows.glossary.config import GlossaryConfig
 from transoria.workflows.glossary_review.config import GlossaryReviewConfig
 from transoria.workflows.glossary_review.exporters import REPORT_FILENAME
-from transoria.workflows.glossary_review.loader import normalize_output_filename
+from transoria.workflows.glossary_review.loader import (
+    load_glossary_xlsx,
+    normalize_output_filename,
+)
 from transoria.workflows.glossary_review.orchestrator import (
     GlossaryReviewOrchestrator,
     GlossaryReviewResult,
@@ -449,6 +454,27 @@ def _usage_to_block(usage) -> dict[str, object]:
     }
 
 
+def _glossary_review_round_progress(
+    record: TaskRecord, metadata: Mapping[str, object]
+) -> dict[str, int] | None:
+    if record.kind is not TaskKind.GLOSSARY_REVIEW:
+        return None
+    total_rounds = int(metadata.get("review_rounds_total", 0) or 0)
+    if total_rounds <= 0:
+        return None
+    return {
+        "total_rounds": total_rounds,
+        "current_round": int(metadata.get("review_round_current", 0) or 0),
+        "completed_rounds": int(metadata.get("review_round_completed", 0) or 0),
+        "current_total_batches": int(
+            metadata.get("review_round_total_batches", 0) or 0
+        ),
+        "current_completed_batches": int(
+            metadata.get("review_round_completed_batches", 0) or 0
+        ),
+    }
+
+
 def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
     elapsed_seconds = _task_elapsed_seconds(snapshot.record)
     progress = snapshot.progress(elapsed_seconds=elapsed_seconds)
@@ -499,6 +525,9 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
         "progress": progress_block,
         "usage": usage_block,
         "low_confidence": low_conf_block,
+        "round_progress": _glossary_review_round_progress(
+            snapshot.record, metadata
+        ),
         # Per-chunk status drives the chunk-grid UX. Tuple-of-objects
         # is preserved in the order the orchestrator seeded them, so
         # the grid renders chunk-0 leftmost. ``last_error`` is included
@@ -1700,6 +1729,11 @@ class TaskService:
                 "input_dir": str(config.input_dir),
                 "output_dir": str(config.input_dir),
                 "output_filename": config.output_filename,
+                "review_rounds_total": config.review_rounds,
+                "review_round_current": 0,
+                "review_round_completed": 0,
+                "review_round_total_batches": 0,
+                "review_round_completed_batches": 0,
                 "model_id": model.id,
                 "prompt_preset_id": preset.id,
                 "request_id": request_id,
@@ -2723,6 +2757,88 @@ class TaskService:
                 details={"task_id": task_id, "path": str(path)},
             ) from exc
         return payload if isinstance(payload, dict) else {"rows": []}
+
+    def read_glossary_review_final(self, *, task_id: str) -> dict[str, object]:
+        path = self._glossary_review_output_path(task_id)
+        loaded = load_glossary_xlsx(path)
+        return {
+            "task_id": task_id,
+            "path": str(path),
+            "rows": [
+                {
+                    "row_index": row.row_index,
+                    "src": row.src,
+                    "dst": row.dst,
+                    "info": row.info,
+                    "frequency": row.frequency,
+                }
+                for row in loaded.rows
+            ],
+        }
+
+    def update_glossary_review_final_row(
+        self,
+        *,
+        task_id: str,
+        row_index: int,
+        src: str,
+        dst: str,
+        info: str,
+        delete: bool = False,
+    ) -> dict[str, object]:
+        if row_index < 2:
+            raise BridgeError.invalid_argument(
+                "row_index must point to a spreadsheet data row.",
+                field="row_index",
+            )
+        path = self._glossary_review_output_path(task_id)
+        loaded = load_glossary_xlsx(path)
+        if row_index not in {row.row_index for row in loaded.rows}:
+            raise BridgeError.not_found(
+                f"glossary review row {row_index!r} not found.",
+                details={"task_id": task_id, "row_index": row_index},
+            )
+        workbook = load_workbook(path)
+        sheet = workbook[loaded.sheet_name]
+        if delete:
+            sheet.delete_rows(row_index, 1)
+        else:
+            sheet.cell(row=row_index, column=loaded.source_col, value=src.strip())
+            sheet.cell(row=row_index, column=loaded.target_col, value=dst.strip())
+            sheet.cell(row=row_index, column=loaded.info_col, value=info.strip())
+        workbook.save(path)
+        return self.read_glossary_review_final(task_id=task_id)
+
+    def _glossary_review_output_path(self, task_id: str) -> Path:
+        try:
+            record = self.cache.load_record(task_id)
+        except TaskNotFoundError as exc:
+            raise BridgeError.not_found(
+                f"task {task_id!r} not found.",
+                details={"task_id": task_id},
+            ) from exc
+        if record.kind is not TaskKind.GLOSSARY_REVIEW:
+            raise BridgeError.invalid_argument(
+                f"task {task_id!r} kind mismatch.",
+                field="task_id",
+            )
+        result = self._read_result(task_id)
+        output_path = result.get("output_path") if result else None
+        if isinstance(output_path, str) and output_path:
+            path = Path(output_path)
+        else:
+            metadata = record.metadata
+            output_dir = Path(str(metadata.get("output_dir", "")))
+            output_filename = normalize_output_filename(
+                str(metadata.get("output_filename", ""))
+            )
+            path = output_dir / output_filename
+        if not path.exists():
+            raise BridgeError.not_found(
+                f"glossary review output not found for {task_id!r}.",
+                details={"task_id": task_id, "path": str(path)},
+            )
+        return path
 
     def _write_result(
         self, task_id: str, payload: Mapping[str, object]

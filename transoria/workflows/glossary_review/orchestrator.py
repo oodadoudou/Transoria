@@ -151,13 +151,42 @@ class GlossaryReviewOrchestrator:
                 if _subtask_round(subtask) == round_index
             ]
             if not round_subtasks:
+                self._save_round_progress(
+                    task_id,
+                    total_rounds=config.review_rounds,
+                    current_round=round_index,
+                    completed_rounds=round_index,
+                    current_total_batches=0,
+                    current_completed_batches=0,
+                )
                 continue
             if round_subtasks and all(
                 subtask.status is SubtaskStatus.COMPLETED
                 for subtask in round_subtasks
             ):
+                self._save_round_progress(
+                    task_id,
+                    total_rounds=config.review_rounds,
+                    current_round=round_index,
+                    completed_rounds=round_index,
+                    current_total_batches=len(round_subtasks),
+                    current_completed_batches=len(round_subtasks),
+                )
                 continue
             self._reset_failed_round_subtasks(task_id, round_index=round_index)
+            round_subtasks = [
+                subtask
+                for subtask in self.cache.load_subtasks(task_id)
+                if _subtask_round(subtask) == round_index
+            ]
+            self._save_round_progress(
+                task_id,
+                total_rounds=config.review_rounds,
+                current_round=round_index,
+                completed_rounds=round_index - 1,
+                current_total_batches=len(round_subtasks),
+                current_completed_batches=_settled_round_subtasks(round_subtasks),
+            )
 
             runner = self.runner_factory(self.client, config)
             executor = TaskExecutor(
@@ -165,7 +194,12 @@ class GlossaryReviewOrchestrator:
                 runner=runner,
                 concurrency_limit=max(1, config.model.concurrency_limit),
                 rpm_limit=max(0, config.model.rpm_limit),
-                progress=self.progress,
+                progress=self._round_progress_listener(
+                    task_id=task_id,
+                    total_rounds=config.review_rounds,
+                    current_round=round_index,
+                    current_total_batches=len(round_subtasks),
+                ),
                 clock=self.clock,
                 stop_drain_seconds=max(5.0, float(config.model.timeout_seconds) + 5.0),
             )
@@ -180,6 +214,14 @@ class GlossaryReviewOrchestrator:
                     changed_count=0,
                     final_status=final_snapshot.record.status,
                 )
+            self._save_round_progress(
+                task_id,
+                total_rounds=config.review_rounds,
+                current_round=round_index,
+                completed_rounds=round_index,
+                current_total_batches=len(round_subtasks),
+                current_completed_batches=len(round_subtasks),
+            )
 
         snapshot = self.cache.load(task_id)
         rows, report_rows = self._replay_completed(
@@ -212,6 +254,56 @@ class GlossaryReviewOrchestrator:
             self.on_result_finalized(result)
         return result
 
+    def _save_round_progress(
+        self,
+        task_id: str,
+        *,
+        total_rounds: int,
+        current_round: int,
+        completed_rounds: int,
+        current_total_batches: int,
+        current_completed_batches: int,
+    ) -> None:
+        record = self.cache.load_record(task_id)
+        metadata = dict(record.metadata)
+        metadata["review_rounds_total"] = max(1, int(total_rounds))
+        metadata["review_round_current"] = max(0, int(current_round))
+        metadata["review_round_completed"] = max(0, int(completed_rounds))
+        metadata["review_round_total_batches"] = max(0, int(current_total_batches))
+        metadata["review_round_completed_batches"] = max(
+            0, int(current_completed_batches)
+        )
+        self.cache.save_task(
+            replace(record, metadata=metadata, updated_at=self.clock())
+        )
+
+    def _round_progress_listener(
+        self,
+        *,
+        task_id: str,
+        total_rounds: int,
+        current_round: int,
+        current_total_batches: int,
+    ) -> ProgressListener:
+        def _listener(event) -> None:
+            round_subtasks = [
+                subtask
+                for subtask in event.snapshot.subtasks
+                if _subtask_round(subtask) == current_round
+            ]
+            self._save_round_progress(
+                task_id,
+                total_rounds=total_rounds,
+                current_round=current_round,
+                completed_rounds=current_round - 1,
+                current_total_batches=current_total_batches,
+                current_completed_batches=_settled_round_subtasks(round_subtasks),
+            )
+            if self.progress is not None:
+                self.progress(event)
+
+        return _listener
+
     def _seed_initial_task(
         self,
         task_id: str,
@@ -234,6 +326,11 @@ class GlossaryReviewOrchestrator:
                 "output_filename": config.output_filename,
                 "input_xlsx": str(loaded.workbook_path),
                 "reference_files": [str(path) for path in reference_files],
+                "review_rounds_total": config.review_rounds,
+                "review_round_current": 0,
+                "review_round_completed": 0,
+                "review_round_total_batches": 0,
+                "review_round_completed_batches": 0,
                 "model_id": config.model.id,
                 "prompt_preset_id": config.prompt_preset.id,
             },
@@ -443,6 +540,15 @@ def _subtask_round(subtask: Subtask) -> int:
         return int(subtask.request_payload.get("round", 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _settled_round_subtasks(subtasks: tuple[Subtask, ...] | list[Subtask]) -> int:
+    return sum(
+        1
+        for subtask in subtasks
+        if subtask.status
+        in (SubtaskStatus.COMPLETED, SubtaskStatus.FAILED, SubtaskStatus.SKIPPED)
+    )
 
 
 def _apply_decision(

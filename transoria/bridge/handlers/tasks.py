@@ -106,6 +106,19 @@ def _build_handlers(
         handlers[f"{kind}.read_report"] = lambda payload: service.read_glossary_review_report(
             task_id=_expect_task_id(payload)
         )
+        handlers[f"{kind}.read_final"] = lambda payload: service.read_glossary_review_final(
+            task_id=_expect_task_id(payload)
+        )
+        handlers[f"{kind}.update_final_row"] = (
+            lambda payload: service.update_glossary_review_final_row(
+                task_id=_expect_task_id(payload),
+                row_index=int(payload.get("row_index", 0)),
+                src=str(payload.get("src", "")),
+                dst=str(payload.get("dst", "")),
+                info=str(payload.get("info", "")),
+                delete=bool(payload.get("delete", False)),
+            )
+        )
     return handlers
 
 

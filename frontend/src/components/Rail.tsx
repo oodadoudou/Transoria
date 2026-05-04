@@ -64,6 +64,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         label: messages.rail.glossaryReview,
         children: [
           { page: "run", label: gr.run },
+          { page: "review", label: gr.review },
           { page: "prompt", label: gr.prompt },
           { page: "settings", label: gr.settings },
         ],

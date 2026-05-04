@@ -8,6 +8,7 @@ import type {
   GlossaryArtifacts,
   GlossaryFileResult,
   GlossaryReviewArtifacts,
+  GlossaryReviewFinalSheet,
   GlossaryReviewReport,
   ModelListResult,
   ModelProfile,
@@ -453,6 +454,24 @@ export const glossaryReviewBridge = {
   },
   readReport(taskId: string): Promise<GlossaryReviewReport> {
     return call("glossary_review.read_report", { task_id: taskId });
+  },
+  readFinal(taskId: string): Promise<GlossaryReviewFinalSheet> {
+    return call("glossary_review.read_final", { task_id: taskId });
+  },
+  updateFinalRow(
+    taskId: string,
+    row: {
+      row_index: number;
+      src: string;
+      dst: string;
+      info: string;
+      delete?: boolean;
+    },
+  ): Promise<GlossaryReviewFinalSheet> {
+    return call("glossary_review.update_final_row", {
+      task_id: taskId,
+      ...row,
+    });
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("glossary_review.list_failed_subtasks", { task_id: taskId });

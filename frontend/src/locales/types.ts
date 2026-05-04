@@ -295,6 +295,7 @@ export interface Messages {
     };
     glossaryReview: {
       run: string;
+      review: string;
       settings: string;
       prompt: string;
     };
@@ -629,6 +630,9 @@ export interface Messages {
       switch: string;
       viewReport: string;
       reportUnavailable: string;
+      roundOverall: string;
+      roundCurrent: string;
+      roundBatches: string;
       stats: {
         completed: string;
         failed: string;
@@ -662,6 +666,33 @@ export interface Messages {
         suggestedInfo: string;
         reason: string;
       };
+    };
+    review: {
+      title: string;
+      sub: string;
+      noTasks: string;
+      taskPicker: string;
+      loading: string;
+      pathHint: string;
+      searchPlaceholder: string;
+      empty: string;
+      columns: {
+        index: string;
+        src: string;
+        dst: string;
+        info: string;
+        frequency: string;
+      };
+      editorEmpty: string;
+      srcLabel: string;
+      dstLabel: string;
+      infoLabel: string;
+      save: string;
+      delete: string;
+      saved: string;
+      deleted: string;
+      failed: string;
+      dirty: string;
     };
   };
   generalTools: { crumb: string; title: string; sub: string };
