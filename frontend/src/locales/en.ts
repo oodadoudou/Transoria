@@ -233,6 +233,7 @@ export const en: Messages = {
     cacheManageAction: "Manage cache",
     cacheSummary: "{count} tasks · {size} on disk.",
     cacheSummaryEmpty: "No cached tasks.",
+    cacheRunningBlock: "A task is running; cache cleanup is temporarily disabled.",
     cacheModalTitle: "Manage task cache",
     cacheModalHint: "Pick a scope to clean. In-flight tasks are never deleted.",
     cachePurgeAll: "Delete all",
@@ -720,7 +721,7 @@ export const en: Messages = {
     },
     run: {
       title: "Run Glossary Review",
-      sub: "Review an XLSX glossary, report only changed rows, and write the final XLSX.",
+      sub: "Review an XLSX glossary, report only changed rows, and write the final XLSX. For better AI review, configure the novel background in Settings.",
       progress: "Progress",
       activeConfig: "Active configuration",
       activeModel: "Model",

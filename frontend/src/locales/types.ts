@@ -210,6 +210,7 @@ export interface Messages {
     cacheManageAction: string;
     cacheSummary: string;
     cacheSummaryEmpty: string;
+    cacheRunningBlock: string;
     cacheModalTitle: string;
     cacheModalHint: string;
     cachePurgeAll: string;

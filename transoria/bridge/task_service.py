@@ -1016,6 +1016,12 @@ class TaskService:
                     field="days",
                 )
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        active_ids = self._active_task_ids()
+        if active_ids:
+            raise BridgeError.conflict(
+                "cache cleanup is disabled while tasks are running.",
+                details={"active_task_ids": active_ids},
+            )
 
         removed: list[str] = []
         skipped_active: list[str] = []
@@ -1048,6 +1054,16 @@ class TaskService:
             "removed_ids": removed,
             "skipped_active_count": len(skipped_active),
         }
+
+    def _active_task_ids(self) -> list[str]:
+        active: list[str] = []
+        for kind in _KIND_TO_TASKKIND:
+            active.extend(
+                running.task_id
+                for running in self.registry.list_by_kind(kind)
+                if not running.is_done
+            )
+        return sorted(set(active))
 
     def _maybe_cleanup_cache(self, kind: str, task_id: str) -> None:
         """Freeze final stats into in-memory mirrors for a clean run.

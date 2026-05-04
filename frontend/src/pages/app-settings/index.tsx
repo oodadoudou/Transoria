@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { format, useI18n, useMessages, type Locale } from "@/locales";
 import type { AppSettingsPage } from "@/store/useTaskStore";
+import { useRuntimeStore } from "@/store/useRuntimeStore";
 import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
 import {
   appBridge,
@@ -19,6 +20,8 @@ import { Segmented } from "@/components/Segmented";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import modalStyles from "@/components/GlossaryExportModal.module.css";
 import styles from "./index.module.css";
+
+const CACHE_BLOCK_STATUSES = new Set(["pending", "running", "stopping", "pausing"]);
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -277,6 +280,14 @@ function CachePanel() {
   const [open, setOpen] = useState(false);
   const [resultText, setResultText] = useState<string | null>(null);
   const [error, setError] = useState<BridgeError | null>(null);
+  const cleanupBlocked = useRuntimeStore((state) =>
+    (["translation", "glossary", "glossary_review", "replacement"] as const).some(
+      (kind) => {
+        const status = state[kind].snapshot?.header.status ?? state[kind].header?.status;
+        return status ? CACHE_BLOCK_STATUSES.has(status) : false;
+      },
+    ),
+  );
 
   const refresh = async () => {
     try {
@@ -318,7 +329,12 @@ function CachePanel() {
     <Panel
       label={labels.cacheLabel}
       labelExtra={
-        <Pill variant="ghost" onClick={() => setOpen(true)}>
+        <Pill
+          variant="ghost"
+          onClick={() => setOpen(true)}
+          disabled={cleanupBlocked}
+          title={cleanupBlocked ? labels.cacheRunningBlock : undefined}
+        >
           {labels.cacheManageAction}
         </Pill>
       }
@@ -336,6 +352,11 @@ function CachePanel() {
           {summaryText ? (
             <div className={styles.rowHint} style={{ marginTop: 8 }}>
               {summaryText}
+            </div>
+          ) : null}
+          {cleanupBlocked ? (
+            <div className={styles.rowHint} style={{ marginTop: 8 }}>
+              {labels.cacheRunningBlock}
             </div>
           ) : null}
           {resultText ? (

@@ -225,6 +225,7 @@ export const zh: Messages = {
     cacheManageAction: "清理缓存",
     cacheSummary: "已保存 {count} 个任务，占用 {size}。",
     cacheSummaryEmpty: "暂无任务缓存。",
+    cacheRunningBlock: "任务运行中，暂时不能清理缓存。",
     cacheModalTitle: "清理任务缓存",
     cacheModalHint: "选择要清理的范围。当前在跑的任务不会被删除。",
     cachePurgeAll: "全部清除",
@@ -703,7 +704,7 @@ export const zh: Messages = {
     },
     run: {
       title: "执行术语审查",
-      sub: "审查 XLSX 术语表，只把有改动的条目写入报告，并输出最终 XLSX。",
+      sub: "审查 XLSX 术语表，只把有改动的条目写入报告，并输出最终 XLSX。为了让 AI 更好地校对，建议在设置页配置小说背景。",
       progress: "进度",
       activeConfig: "当前配置",
       activeModel: "模型",
