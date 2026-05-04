@@ -156,7 +156,7 @@ export function RunPage() {
   };
 
   const handleOpenReport = async () => {
-    if (!activeTaskId) return;
+    if (!activeTaskId || snapshot.status !== "completed") return;
     try {
       const next = await glossaryReviewBridge.readReport(activeTaskId);
       setReport(next);
@@ -214,6 +214,7 @@ export function RunPage() {
         total: roundProgress.total_rounds,
       })
     : undefined;
+  const canViewReport = Boolean(activeTaskId && snapshot.status === "completed");
 
   return (
     <>
@@ -355,15 +356,13 @@ export function RunPage() {
         ) : null}
       </Panel>
 
-      <div className={styles.failuresPillRow}>
-        <Pill
-          variant="ghost"
-          onClick={handleOpenReport}
-          title={activeTaskId ? run.viewReport : run.reportUnavailable}
-        >
-          {run.viewReport}
-        </Pill>
-      </div>
+      {canViewReport ? (
+        <div className={styles.failuresPillRow}>
+          <Pill variant="ghost" onClick={handleOpenReport} title={run.viewReport}>
+            {run.viewReport}
+          </Pill>
+        </div>
+      ) : null}
 
       <RunControls kind="glossary_review" />
 
