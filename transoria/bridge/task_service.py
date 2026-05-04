@@ -1404,6 +1404,7 @@ class TaskService:
     ) -> None:
         client = self.llm_client_factory()
         cache = self._cache_for_kind("translation")
+        config = replace(config, debug_log_dir=cache.task_dir(task_id) / "debug")
 
         def _capture(executor: TaskExecutor) -> None:
             running.set_executor(executor)
@@ -1533,6 +1534,7 @@ class TaskService:
     ) -> None:
         client = self.llm_client_factory()
         cache = self._cache_for_kind("glossary")
+        config = replace(config, debug_log_dir=cache.task_dir(task_id) / "debug")
 
         def _capture(executor: TaskExecutor) -> None:
             running.set_executor(executor)
