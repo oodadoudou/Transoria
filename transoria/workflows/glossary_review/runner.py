@@ -200,6 +200,11 @@ def _build_user_prompt(
             "dst": str(row.get("dst", "")),
             "info": str(row.get("info", "")),
             "frequency": int(row.get("frequency", 0)),
+            "tier": str(row.get("tier", "B")),
+            "instruction": str(row.get("instruction", "")),
+            "history_context": str(row.get("history_context", "")),
+            "is_character": bool(row.get("is_character", False)),
+            "current_category": str(row.get("current_category", row.get("info", ""))),
             "context": str(row.get("context", "")),
         }
         for row in rows
@@ -215,6 +220,17 @@ def _build_user_prompt(
         instruction_prompt,
         f"[Review Round]\n{round_index}",
         "[Novel Background]\n" + (novel_background or "(empty)"),
+        (
+            "[Review Rules]\n"
+            "Each row includes tier/instruction/history_context/current_category. "
+            "Tier S means protected lore and must not be deleted. Tier A means "
+            "high-frequency: usually important, but clearly generic extraction "
+            "noise should be deleted. Tier C means low-frequency: generic words, "
+            "verbs, adjectives, and meaningless fragments may be deleted more "
+            "aggressively. If history_context exists, keep the previous conclusion "
+            "unless there is a clear fatal error. Always review category and return "
+            "a normalized category in suggested_info when it should change."
+        ),
         "[Glossary Rows]\n" + json.dumps(row_payload, ensure_ascii=False, indent=2),
         (
             "[Output Contract]\n"

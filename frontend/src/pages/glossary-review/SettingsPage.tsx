@@ -62,16 +62,6 @@ export function SettingsPage() {
         </ToggleRow>
         <ToggleRow label="" hint="">
           <NumberField
-            label={settings.maxWorkers}
-            value={draft.max_workers}
-            onChange={(v) => moduleSettings.update("max_workers", v)}
-            help={settings.maxWorkersHelp}
-            min={1}
-            max={20}
-          />
-        </ToggleRow>
-        <ToggleRow label="" hint="">
-          <NumberField
             label={settings.batchSize}
             value={draft.batch_size}
             onChange={(v) => moduleSettings.update("batch_size", v)}

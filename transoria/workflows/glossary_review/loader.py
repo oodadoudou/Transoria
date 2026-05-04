@@ -105,7 +105,7 @@ def load_glossary_xlsx(path: Path) -> LoadedGlossary:
         info = _cell_text(sheet.cell(row=row_index, column=info_col).value)
         if not src and not dst and not info:
             continue
-        frequency = 0
+        frequency = 1
         if frequency_col is not None:
             frequency = _cell_int(sheet.cell(row=row_index, column=frequency_col).value)
         rows.append(

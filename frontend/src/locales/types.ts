@@ -514,6 +514,18 @@ export interface Messages {
       filterOnlySourceResidue: string;
       filterOnlyUntranslated: string;
       filterAll: string;
+      replacementToggle: string;
+      replacementFindPlaceholder: string;
+      replacementValuePlaceholder: string;
+      replacementRegex: string;
+      replacementSelected: string;
+      replacementAll: string;
+      replacementRunning: string;
+      replacementEmptyNeedle: string;
+      replacementInvalidRegex: string;
+      replacementNoSelection: string;
+      replacementNoMatch: string;
+      replacementDone: string;
       taskFolderHint: string;
       retranslateAction: string;
       retranslating: string;
@@ -598,8 +610,6 @@ export interface Messages {
       novelBackgroundHelp: string;
       reviewRounds: string;
       reviewRoundsHelp: string;
-      maxWorkers: string;
-      maxWorkersHelp: string;
       batchSize: string;
       batchSizeHelp: string;
       timeoutSeconds: string;

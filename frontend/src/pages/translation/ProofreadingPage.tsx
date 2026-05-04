@@ -17,6 +17,10 @@ interface Feedback {
   text: string;
 }
 
+interface ReplacementPlan {
+  apply: (text: string) => string;
+}
+
 // "Untranslated" covers two model failure shapes the user wants to spot
 // quickly: empty translation and verbatim source echo (terminal source-
 // fallback path). Trim before comparing so trailing whitespace doesn't
@@ -40,6 +44,11 @@ export function ProofreadingPage() {
   );
   const [draftDst, setDraftDst] = useState<string>("");
   const [search, setSearch] = useState("");
+  const [replacementEnabled, setReplacementEnabled] = useState(false);
+  const [replacementNeedle, setReplacementNeedle] = useState("");
+  const [replacementValue, setReplacementValue] = useState("");
+  const [replacementRegex, setReplacementRegex] = useState(false);
+  const [replacing, setReplacing] = useState<"one" | "all" | null>(null);
   // Multi-select chip filters. Empty set = show all. Multiple chips
   // AND together (e.g. "low_conf" + "untranslated" = low-confidence
   // segments whose translation equals the source).
@@ -209,6 +218,128 @@ export function ProofreadingPage() {
           ? `${err.code}: ${err.message}`
           : String(err),
       });
+    }
+  };
+
+  const makeReplacementPlan = (): ReplacementPlan | null => {
+    if (!replacementNeedle) {
+      setFeedback({ kind: "error", text: m.replacementEmptyNeedle });
+      return null;
+    }
+    if (replacementRegex) {
+      try {
+        const regex = new RegExp(replacementNeedle, "g");
+        return {
+          apply: (text) => {
+            regex.lastIndex = 0;
+            return text.replace(regex, replacementValue);
+          },
+        };
+      } catch (err) {
+        setFeedback({
+          kind: "error",
+          text: format(m.replacementInvalidRegex, {
+            reason: err instanceof Error ? err.message : String(err),
+          }),
+        });
+        return null;
+      }
+    }
+    return {
+      apply: (text) => text.split(replacementNeedle).join(replacementValue),
+    };
+  };
+
+  const saveReplacement = async (segmentId: string, dst: string) => {
+    if (!activeTaskId) return;
+    await proofreadingBridge.updateSegment(activeTaskId, segmentId, dst);
+    setSnapshot((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((item) =>
+          item.segment_id === segmentId ? { ...item, dst } : item,
+        ),
+      };
+    });
+  };
+
+  const handleReplaceSelected = async () => {
+    if (!selectedItem) {
+      setFeedback({ kind: "error", text: m.replacementNoSelection });
+      return;
+    }
+    const plan = makeReplacementPlan();
+    if (!plan) return;
+    const next = plan.apply(draftDst);
+    if (next === draftDst) {
+      setFeedback({ kind: "info", text: m.replacementNoMatch });
+      return;
+    }
+    setReplacing("one");
+    setFeedback(null);
+    try {
+      await saveReplacement(selectedItem.segment_id, next);
+      setDraftDst(next);
+      setSavedTick((t) => t + 1);
+      setFeedback({
+        kind: "success",
+        text: format(m.replacementDone, { n: 1 }),
+      });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: BridgeError.isBridgeError(err)
+          ? `${err.code}: ${err.message}`
+          : String(err),
+      });
+    } finally {
+      setReplacing(null);
+    }
+  };
+
+  const handleReplaceAll = async () => {
+    if (!activeTaskId) return;
+    const plan = makeReplacementPlan();
+    if (!plan) return;
+    const changes = filteredItems
+      .map((item) => {
+        const base = item.segment_id === selectedSegmentId ? draftDst : item.dst;
+        const next = plan.apply(base);
+        return next === base ? null : { segmentId: item.segment_id, dst: next };
+      })
+      .filter(
+        (change): change is { segmentId: string; dst: string } =>
+          change !== null,
+      );
+    if (changes.length === 0) {
+      setFeedback({ kind: "info", text: m.replacementNoMatch });
+      return;
+    }
+    setReplacing("all");
+    setFeedback(null);
+    try {
+      for (const change of changes) {
+        await saveReplacement(change.segmentId, change.dst);
+      }
+      const selectedChange = changes.find(
+        (change) => change.segmentId === selectedSegmentId,
+      );
+      if (selectedChange) setDraftDst(selectedChange.dst);
+      setSavedTick((t) => t + 1);
+      setFeedback({
+        kind: "success",
+        text: format(m.replacementDone, { n: changes.length }),
+      });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: BridgeError.isBridgeError(err)
+          ? `${err.code}: ${err.message}`
+          : String(err),
+      });
+    } finally {
+      setReplacing(null);
     }
   };
 
@@ -427,6 +558,58 @@ export function ProofreadingPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder={m.filterPlaceholder}
         />
+      </div>
+
+      <div className={styles.replacementWrap}>
+        <label className={styles.checkLabel}>
+          <input
+            type="checkbox"
+            checked={replacementEnabled}
+            onChange={(e) => setReplacementEnabled(e.target.checked)}
+          />
+          <span>{m.replacementToggle}</span>
+        </label>
+        {replacementEnabled ? (
+          <div className={styles.replacementPanel}>
+            <input
+              type="text"
+              className={styles.replacementInput}
+              value={replacementNeedle}
+              onChange={(e) => setReplacementNeedle(e.target.value)}
+              placeholder={m.replacementFindPlaceholder}
+            />
+            <input
+              type="text"
+              className={styles.replacementInput}
+              value={replacementValue}
+              onChange={(e) => setReplacementValue(e.target.value)}
+              placeholder={m.replacementValuePlaceholder}
+            />
+            <label className={styles.checkLabel}>
+              <input
+                type="checkbox"
+                checked={replacementRegex}
+                onChange={(e) => setReplacementRegex(e.target.checked)}
+              />
+              <span>{m.replacementRegex}</span>
+            </label>
+            <Pill
+              variant="ghost"
+              onClick={() => void handleReplaceSelected()}
+              disabled={replacing !== null || !selectedItem}
+            >
+              {replacing === "one"
+                ? m.replacementRunning
+                : m.replacementSelected}
+            </Pill>
+            <Pill
+              onClick={() => void handleReplaceAll()}
+              disabled={replacing !== null || filteredItems.length === 0}
+            >
+              {replacing === "all" ? m.replacementRunning : m.replacementAll}
+            </Pill>
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.layout}>

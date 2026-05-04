@@ -110,7 +110,6 @@ class GlossaryReviewSettings:
     output_filename: str = "glossary-review-final.xlsx"
     novel_background: str = ""
     review_rounds: int = 1
-    max_workers: int = 2
     batch_size: int = 20
     auto_open_output_folder: bool = False
     timeout_seconds: int = 600

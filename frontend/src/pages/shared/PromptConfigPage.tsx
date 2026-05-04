@@ -180,6 +180,7 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
               <div
                 key={preset.id}
                 className={`${styles.row} ${preset.id === displayedActiveId ? styles.rowActive : ""}`.trim()}
+                onDoubleClick={open}
               >
                 <button
                   type="button"

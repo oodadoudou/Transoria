@@ -594,6 +594,18 @@ export const en: Messages = {
       filterOnlySourceResidue: "Source residue",
       filterOnlyUntranslated: "Untranslated",
       filterAll: "All",
+      replacementToggle: "Batch replacement",
+      replacementFindPlaceholder: "Find in translations…",
+      replacementValuePlaceholder: "Replace with…",
+      replacementRegex: "Regex",
+      replacementSelected: "Replace current",
+      replacementAll: "Replace current list",
+      replacementRunning: "Replacing…",
+      replacementEmptyNeedle: "Enter text to find.",
+      replacementInvalidRegex: "Invalid regex: {reason}",
+      replacementNoSelection: "Select a translation first.",
+      replacementNoMatch: "No matching text found.",
+      replacementDone: "Replaced {n} items and saved to cache.",
       taskFolderHint: "Output: {path}",
       retranslateAction: "Retranslate",
       retranslating: "Retranslating…",
@@ -693,9 +705,6 @@ export const en: Messages = {
       reviewRounds: "Review rounds",
       reviewRoundsHelp:
         "Each extra round reviews the glossary after prior changes. Default 1.",
-      maxWorkers: "Concurrent requests",
-      maxWorkersHelp:
-        "How many review requests can run at once. Higher values may hit rate limits.",
       batchSize: "Terms per batch",
       batchSizeHelp:
         "How many terms each model request reviews. Smaller is steadier; larger uses fewer requests.",

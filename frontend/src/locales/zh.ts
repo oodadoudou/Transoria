@@ -580,6 +580,18 @@ export const zh: Messages = {
       filterOnlySourceResidue: "原文残留",
       filterOnlyUntranslated: "未译",
       filterAll: "全部",
+      replacementToggle: "批量替换",
+      replacementFindPlaceholder: "查找译文…",
+      replacementValuePlaceholder: "替换为…",
+      replacementRegex: "正则",
+      replacementSelected: "替换当前",
+      replacementAll: "替换当前列表",
+      replacementRunning: "替换中…",
+      replacementEmptyNeedle: "请输入要查找的内容。",
+      replacementInvalidRegex: "正则表达式无效：{reason}",
+      replacementNoSelection: "请先选择一条译文。",
+      replacementNoMatch: "没有匹配到可替换内容。",
+      replacementDone: "已替换 {n} 条并写入缓存。",
       taskFolderHint: "输出位置：{path}",
       retranslateAction: "重翻此条",
       retranslating: "重翻中…",
@@ -676,9 +688,6 @@ export const zh: Messages = {
       reviewRounds: "审查轮数",
       reviewRoundsHelp:
         "多轮会基于上一轮修改后的术语表继续审查。默认 1。",
-      maxWorkers: "并发请求数",
-      maxWorkersHelp:
-        "同时发起的审查请求数量。过高可能触发限流。",
       batchSize: "每批术语数",
       batchSizeHelp:
         "每个模型请求包含多少条术语。较小更稳，较大更省请求数。",

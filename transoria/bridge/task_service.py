@@ -1673,7 +1673,6 @@ class TaskService:
             output_filename=output_filename,
             novel_background=review.novel_background,
             review_rounds=max(1, int(review.review_rounds)),
-            max_workers=max(1, int(review.max_workers)),
             batch_size=max(1, int(review.batch_size)),
             model=model,
             prompt_preset=preset,
@@ -2462,11 +2461,7 @@ class TaskService:
     def _resolve_prompt_preset(
         self, preset_id: str | None, *, kind: PromptKind
     ) -> PromptPreset:
-        filename = (
-            "prompts.translation.json"
-            if kind is PromptKind.TRANSLATION
-            else "prompts.glossary.json"
-        )
+        filename = f"prompts.{kind.value}.json"
         store = PromptPresetStore(
             path=self.prompts_cache_root / filename, kind=kind
         )

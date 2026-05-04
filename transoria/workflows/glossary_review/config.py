@@ -17,7 +17,6 @@ class GlossaryReviewConfig:
     output_filename: str
     novel_background: str
     review_rounds: int
-    max_workers: int
     batch_size: int
     model: ModelConfig
     prompt_preset: PromptPreset

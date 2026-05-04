@@ -193,7 +193,7 @@ function ConfiguredModelRow({
   onDelete,
 }: ConfiguredModelRowProps) {
   return (
-    <div className={styles.configuredRow}>
+    <div className={styles.configuredRow} onDoubleClick={onEdit}>
       <div className={styles.configuredText}>
         <span className={styles.configuredName}>{profile.display_name}</span>
         <span className={styles.configuredMeta}>

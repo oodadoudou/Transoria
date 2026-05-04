@@ -36,6 +36,27 @@ from transoria.workflows.glossary_review.runner import (
 )
 
 
+CHARACTER_CATEGORY_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "角色",
+        "男性角色",
+        "女性角色",
+        "动物与非人角色",
+        "历史与知名人物",
+        "群体代称",
+        "称呼与头衔",
+        "ID与外号",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ReviewHistoryItem:
+    dst: str
+    info: str
+    deleted: bool
+
+
 @dataclass(frozen=True)
 class GlossaryReviewResult:
     task_id: str
@@ -116,17 +137,21 @@ class GlossaryReviewOrchestrator:
         for round_index in range(1, config.review_rounds + 1):
             rows, _report_rows = self._replay_completed(loaded.rows, self.cache.load(task_id))
             rows = attach_reference_contexts(rows, review_input.reference_text)
+            history = self._review_history(loaded.rows, self.cache.load(task_id))
             self._ensure_round_seeded(
                 task_id,
                 round_index=round_index,
                 config=config,
                 rows=rows,
+                history=history,
             )
             round_subtasks = [
                 subtask
                 for subtask in self.cache.load_subtasks(task_id)
                 if _subtask_round(subtask) == round_index
             ]
+            if not round_subtasks:
+                continue
             if round_subtasks and all(
                 subtask.status is SubtaskStatus.COMPLETED
                 for subtask in round_subtasks
@@ -138,7 +163,7 @@ class GlossaryReviewOrchestrator:
             executor = TaskExecutor(
                 cache=self.cache,
                 runner=runner,
-                concurrency_limit=max(1, config.max_workers),
+                concurrency_limit=max(1, config.model.concurrency_limit),
                 rpm_limit=max(0, config.model.rpm_limit),
                 progress=self.progress,
                 clock=self.clock,
@@ -225,11 +250,15 @@ class GlossaryReviewOrchestrator:
         round_index: int,
         config: GlossaryReviewConfig,
         rows: tuple[GlossaryReviewRow, ...],
+        history: Mapping[str, tuple[ReviewHistoryItem, ...]] | None = None,
     ) -> None:
-        if any(_subtask_round(subtask) == round_index for subtask in self.cache.load_subtasks(task_id)):
+        if any(
+            _subtask_round(subtask) == round_index
+            for subtask in self.cache.load_subtasks(task_id)
+        ):
             return
         for subtask in self._build_round_subtasks(
-            task_id, round_index=round_index, config=config, rows=rows
+            task_id, round_index=round_index, config=config, rows=rows, history=history
         ):
             self.cache.save_subtask(subtask)
 
@@ -240,15 +269,22 @@ class GlossaryReviewOrchestrator:
         round_index: int,
         config: GlossaryReviewConfig,
         rows: tuple[GlossaryReviewRow, ...],
+        history: Mapping[str, tuple[ReviewHistoryItem, ...]] | None = None,
     ) -> list[Subtask]:
-        active_rows = [row for row in rows if not row.deleted]
+        active_rows = [
+            row
+            for row in rows
+            if not row.deleted and not _has_consensus(row, round_index, history)
+        ]
         batches = [
             active_rows[index : index + config.batch_size]
             for index in range(0, len(active_rows), config.batch_size)
         ]
         subtasks: list[Subtask] = []
         for batch_index, batch in enumerate(batches):
-            payload_rows = tuple(_row_payload(row) for row in batch)
+            payload_rows = tuple(
+                _row_payload(row, config=config, history=history) for row in batch
+            )
             subtasks.append(
                 Subtask(
                     id=f"round-{round_index:02d}-batch-{batch_index:04d}",
@@ -298,16 +334,108 @@ class GlossaryReviewOrchestrator:
                     report_rows.append(report)
         return tuple(rows[index] for index in sorted(rows)), report_rows
 
+    def _review_history(
+        self, initial_rows: tuple[GlossaryReviewRow, ...], snapshot: TaskSnapshot
+    ) -> dict[str, tuple[ReviewHistoryItem, ...]]:
+        rows = {row.row_index: row for row in initial_rows}
+        history: dict[str, list[ReviewHistoryItem]] = {}
+        completed = sorted(
+            (s for s in snapshot.subtasks if s.status is SubtaskStatus.COMPLETED),
+            key=lambda s: (_subtask_round(s), int(s.request_payload.get("batch", 0))),
+        )
+        for subtask in completed:
+            for decision in decode_review_response(subtask.response_content):
+                current = rows.get(decision.row_index)
+                if current is None:
+                    continue
+                updated, _report = _apply_decision(
+                    current, decision, _subtask_round(subtask)
+                )
+                history.setdefault(current.src, []).append(
+                    ReviewHistoryItem(
+                        dst=updated.dst,
+                        info=updated.info,
+                        deleted=updated.deleted,
+                    )
+                )
+                rows[decision.row_index] = updated
+        return {term: tuple(items) for term, items in history.items()}
 
-def _row_payload(row: GlossaryReviewRow) -> Mapping[str, object]:
+
+def _row_payload(
+    row: GlossaryReviewRow,
+    *,
+    config: GlossaryReviewConfig,
+    history: Mapping[str, tuple[ReviewHistoryItem, ...]] | None,
+) -> Mapping[str, object]:
+    tier, instruction = _tier_instruction(row, config.novel_background)
+    history_context = _history_context(row, history)
     return {
         "row_index": row.row_index,
         "src": row.src,
         "dst": row.dst,
         "info": row.info,
         "frequency": row.frequency,
+        "tier": tier,
+        "instruction": instruction,
+        "history_context": history_context,
+        "is_character": any(keyword in row.info for keyword in CHARACTER_CATEGORY_KEYWORDS),
+        "current_category": row.info,
         "context": row.context,
     }
+
+
+def _tier_instruction(row: GlossaryReviewRow, novel_background: str) -> tuple[str, str]:
+    if row.src and row.src in novel_background:
+        return "S", "【核心设定词】出现在背景设定中。必须严格保持一致，绝对禁止删除。"
+    if row.frequency >= 5:
+        return (
+            "A",
+            "【高频词】出现在原文多次。通常是重要术语，但若是被错误提取的通用常用词，请务必标记删除。",
+        )
+    if row.frequency <= 3:
+        return (
+            "C",
+            "【低频词】仅出现1-3次。若判断为通用词汇、动词、形容词或无意义短语，请大胆建议删除。",
+        )
+    return "B", ""
+
+
+def _history_context(
+    row: GlossaryReviewRow,
+    history: Mapping[str, tuple[ReviewHistoryItem, ...]] | None,
+) -> str:
+    if not history:
+        return ""
+    items = history.get(row.src)
+    if not items:
+        return ""
+    latest = items[-1]
+    if latest.deleted:
+        return "之前已建议删除"
+    parts = [f"之前已审定为: {latest.dst}"]
+    if latest.info:
+        parts.append(f"之前分类为: {latest.info}")
+    return "；".join(parts)
+
+
+def _has_consensus(
+    row: GlossaryReviewRow,
+    round_index: int,
+    history: Mapping[str, tuple[ReviewHistoryItem, ...]] | None,
+) -> bool:
+    if round_index < 3 or not history:
+        return False
+    items = history.get(row.src, ())
+    if len(items) < 2:
+        return False
+    latest = items[-1]
+    previous = items[-2]
+    return (
+        latest.dst == previous.dst
+        and latest.info == previous.info
+        and latest.deleted == previous.deleted
+    )
 
 
 def _subtask_round(subtask: Subtask) -> int:
