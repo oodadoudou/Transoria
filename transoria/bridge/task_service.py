@@ -135,17 +135,14 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
-# Capped at 32: large chunks burn tokens on format-drift retries faster
-# than they save round-trips, and binary split + retry handles the rest.
 _CHUNK_SIZE_FLOOR = 8
-_CHUNK_SIZE_CEILING = 32
 _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED = 32
 
 
 def _derive_chunk_size(input_token_limit: int) -> int:
     if input_token_limit <= 0:
         return _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED
-    return min(_CHUNK_SIZE_CEILING, max(_CHUNK_SIZE_FLOOR, input_token_limit // 16))
+    return max(_CHUNK_SIZE_FLOOR, input_token_limit // 16)
 
 
 def _new_task_id(kind: str) -> str:
