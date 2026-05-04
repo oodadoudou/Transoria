@@ -42,9 +42,9 @@ class TranslationConfig:
     # Per-request line budget. Larger chunks amortize the fixed per-call
     # boilerplate (system prompt, glossary) over more output lines, so
     # token cost per source line drops. 24 is a balanced default — small
-    # enough that one bad response only loses 24 lines (and the
-    # ``failed_chunk_split_rounds`` mechanism halves further on failure),
-    # large enough to hit ~1/3 the per-line cost of the old chunk_size=8.
+    # enough that one bad response only loses 24 lines (the orchestrator
+    # split mechanism halves further on failure), large enough to hit
+    # ~1/3 the per-line cost of the old chunk_size=8.
     context_line_count: int = 4
     chunk_size: int = 24
     chunk_token_limit: int = 0
@@ -74,8 +74,6 @@ class TranslationConfig:
     fake_name_roster: FakeNameRoster | FakeNameSession = field(
         default_factory=FakeNameSession
     )
-
-    failed_chunk_split_rounds: int = 3
 
     # Extra rounds of orchestrator-level auto-retry after the split
     # loop finishes with leftover FAILED subtasks. Each round waits

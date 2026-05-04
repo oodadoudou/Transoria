@@ -90,6 +90,11 @@ from transoria.workflows.translation.statistics import (
 # user-facing knob (``TranslationConfig.auto_retry_max_rounds``).
 _AUTO_RETRY_DELAY_SECONDS = 30.0
 
+# 32-line chunk that keeps failing → round 0: 16+16 → round 1: 8+8+8+8 → stop.
+# Smaller than 8 starts paying singleton prompt-overhead without obvious
+# reliability gains, so the cap is 2.
+_SPLIT_ROUNDS = 2
+
 
 class TranslationEmptyInputError(RuntimeError):
     """Raised when translation would produce no output because the
@@ -445,7 +450,7 @@ class TranslationOrchestrator:
         subtasks: tuple[Subtask, ...],
         config: TranslationConfig,
     ) -> int:
-        if config.failed_chunk_split_rounds <= 0:
+        if _SPLIT_ROUNDS <= 0:
             return 0
         created = 0
         for subtask in subtasks:
@@ -454,7 +459,7 @@ class TranslationOrchestrator:
             child_payloads = _split_failed_payload(
                 subtask.request_payload,
                 parent_subtask_id=subtask.id,
-                max_rounds=config.failed_chunk_split_rounds,
+                max_rounds=_SPLIT_ROUNDS,
             )
             if not child_payloads:
                 continue

@@ -365,9 +365,6 @@ export const zh: Messages = {
       autoRetryMaxRounds: "自动重试轮数",
       autoRetryMaxRoundsHelp:
         "整次任务跑完后若仍有失败分块，自动 reset 重跑的最大轮数。每轮间隔 30 秒，足以让 API 的 RPM 限流窗口重置。设为 0 关闭自动重试（仍可手动「继续」）。最大 100。",
-      failedChunkSplitRounds: "失败分块自动拆分轮数",
-      failedChunkSplitRoundsHelp:
-        "当某个分块翻译失败时，自动把它折半成更小的子分块再重跑的最大轮数。常见的「行数对不上」类失败大多在 2-3 轮内会被救回。设为 0 关闭自动拆分。最大 8。",
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。慢模型/长输出可调高，默认 600。",

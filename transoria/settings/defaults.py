@@ -61,12 +61,6 @@ class TranslationSettings:
     # entirely; the user still gets manual ``Continue`` afterward.
     # Capped at 100 in the UI to avoid pathological wait loops.
     auto_retry_max_rounds: int = 5
-    # Rounds of "split failed chunk in half + rerun" the orchestrator
-    # runs before falling back to auto-retry. Each round halves any
-    # leftover FAILED subtask (e.g. a chunk_size=24 failure → 12+12 →
-    # 6+6+6+6 → 3×8). Most line_count_mismatch failures recover by
-    # round 2-3. 0 disables splitting entirely. Capped at 8.
-    failed_chunk_split_rounds: int = 3
     auto_open_output_folder: bool = False
     timeout_seconds: int = 600
     # Glossary entries threaded into TranslationConfig.glossary at run

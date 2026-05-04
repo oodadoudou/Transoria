@@ -310,8 +310,6 @@ export interface Messages {
       lowConfidenceMaxRetriesHelp: string;
       autoRetryMaxRounds: string;
       autoRetryMaxRoundsHelp: string;
-      failedChunkSplitRounds: string;
-      failedChunkSplitRoundsHelp: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
       on: string;

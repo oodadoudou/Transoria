@@ -375,9 +375,6 @@ export const en: Messages = {
       autoRetryMaxRounds: "Auto-retry rounds",
       autoRetryMaxRoundsHelp:
         "After the full run finishes, if any chunks still failed, automatically reset and rerun them up to this many rounds. Each round waits 30 seconds — long enough for typical RPM rate-limit windows to reset. Set to 0 to disable (manual Continue still works). Max 100.",
-      failedChunkSplitRounds: "Failed-chunk split rounds",
-      failedChunkSplitRoundsHelp:
-        "When a chunk fails translation, automatically halve it into smaller sub-chunks and retry, up to this many rounds. Most line-count-mismatch failures recover within 2-3 rounds. Set to 0 to disable splitting. Max 8.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 600.",
