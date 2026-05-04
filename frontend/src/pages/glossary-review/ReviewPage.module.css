@@ -75,6 +75,28 @@
   z-index: 1;
 }
 
+.sortButton {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortButton:hover {
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.sortActive {
+  color: var(--ink);
+}
+
 .table tr {
   cursor: pointer;
 }

@@ -6,6 +6,13 @@ import { Pill } from "@/components/Pill";
 import styles from "./ReviewPage.module.css";
 
 type FeedbackKind = "error" | "success";
+type SortKey = "row_index" | "src" | "dst" | "info" | "frequency";
+type SortDirection = "asc" | "desc";
+
+interface SortState {
+  key: SortKey;
+  direction: SortDirection;
+}
 
 interface Feedback {
   kind: FeedbackKind;
@@ -31,6 +38,7 @@ export function ReviewPage() {
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>({ src: "", dst: "", info: "" });
   const [query, setQuery] = useState("");
+  const [sortState, setSortState] = useState<SortState | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -94,11 +102,43 @@ export function ReviewPage() {
   const rows = useMemo(() => {
     if (!sheet) return [] as GlossaryReviewFinalRow[];
     const q = query.trim().toLowerCase();
-    if (!q) return sheet.rows;
-    return sheet.rows.filter((row) =>
-      [row.src, row.dst, row.info].join("\n").toLowerCase().includes(q),
-    );
-  }, [query, sheet]);
+    const filtered = !q
+      ? sheet.rows
+      : sheet.rows.filter((row) =>
+          [row.src, row.dst, row.info].join("\n").toLowerCase().includes(q),
+        );
+    if (!sortState) return filtered;
+    const direction = sortState.direction === "asc" ? 1 : -1;
+    const valueFor = (row: GlossaryReviewFinalRow): number | string => {
+      switch (sortState.key) {
+        case "row_index":
+          return row.row_index;
+        case "src":
+          return row.src.toLowerCase();
+        case "dst":
+          return row.dst.toLowerCase();
+        case "info":
+          return row.info.toLowerCase();
+        case "frequency":
+          return row.frequency;
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      if (av < bv) return -direction;
+      if (av > bv) return direction;
+      return a.row_index - b.row_index;
+    });
+  }, [query, sheet, sortState]);
+
+  const toggleSort = (key: SortKey) => {
+    setSortState((current) => {
+      if (current?.key !== key) return { key, direction: "asc" };
+      if (current.direction === "asc") return { key, direction: "desc" };
+      return null;
+    });
+  };
 
   const dirty =
     selected !== null &&
@@ -189,11 +229,36 @@ export function ReviewPage() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>{labels.columns.index}</th>
-                  <th>{labels.columns.src}</th>
-                  <th>{labels.columns.dst}</th>
-                  <th>{labels.columns.info}</th>
-                  <th>{labels.columns.frequency}</th>
+                  <SortableTh
+                    label={labels.columns.index}
+                    sortKey="row_index"
+                    sortState={sortState}
+                    onSort={toggleSort}
+                  />
+                  <SortableTh
+                    label={labels.columns.src}
+                    sortKey="src"
+                    sortState={sortState}
+                    onSort={toggleSort}
+                  />
+                  <SortableTh
+                    label={labels.columns.dst}
+                    sortKey="dst"
+                    sortState={sortState}
+                    onSort={toggleSort}
+                  />
+                  <SortableTh
+                    label={labels.columns.info}
+                    sortKey="info"
+                    sortState={sortState}
+                    onSort={toggleSort}
+                  />
+                  <SortableTh
+                    label={labels.columns.frequency}
+                    sortKey="frequency"
+                    sortState={sortState}
+                    onSort={toggleSort}
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -289,4 +354,28 @@ export function ReviewPage() {
 function errorText(error: unknown): string {
   if (BridgeError.isBridgeError(error)) return `${error.code}: ${error.message}`;
   return error instanceof Error ? error.message : String(error);
+}
+
+interface SortableThProps {
+  label: string;
+  sortKey: SortKey;
+  sortState: SortState | null;
+  onSort: (key: SortKey) => void;
+}
+
+function SortableTh({ label, sortKey, sortState, onSort }: SortableThProps) {
+  const active = sortState?.key === sortKey;
+  const indicator = !active ? "" : sortState.direction === "asc" ? " ↑" : " ↓";
+  return (
+    <th>
+      <button
+        type="button"
+        className={`${styles.sortButton} ${active ? styles.sortActive : ""}`.trim()}
+        onClick={() => onSort(sortKey)}
+      >
+        {label}
+        {indicator}
+      </button>
+    </th>
+  );
 }
