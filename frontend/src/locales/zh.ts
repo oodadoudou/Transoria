@@ -34,6 +34,14 @@ export const zh: Messages = {
     activeRequests: "{n} 个进行中的请求",
     perMinute: "{n} 段 / 分钟",
     tokens: "{n} token",
+    tokenDetail: {
+      title: "Token 用量明细",
+      input: "输入",
+      output: "输出",
+      total: "总计",
+      perMinute: "每分钟",
+      perSegment: "每段平均",
+    },
   },
   allKeysFailed: {
     title: "所有 API key 都已失效",

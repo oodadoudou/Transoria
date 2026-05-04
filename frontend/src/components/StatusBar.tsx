@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { format, useMessages } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useRunSnapshot, type RunKind } from "@/store/useRuntimeStore";
@@ -7,6 +8,8 @@ const TOKEN_FORMATTER = new Intl.NumberFormat("en", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
+
+const FULL_FORMATTER = new Intl.NumberFormat("en");
 
 function routeToRunKind(module: string): RunKind {
   return module === "glossary" ? "glossary" : "translation";
@@ -37,13 +40,104 @@ export function StatusBar() {
         <span>{format(messages.status.perMinute, { n: ratePerMinute })}</span>
       </div>
       <div className={styles.group}>
-        <span className={styles.pillMini}>
-          {format(messages.status.tokens, {
-            n: TOKEN_FORMATTER.format(snapshot.usage.total_tokens),
-          })}
-        </span>
+        <TokenPill snapshot={snapshot} messages={messages} />
       </div>
     </footer>
+  );
+}
+
+interface TokenPillProps {
+  snapshot: ReturnType<typeof useRunSnapshot>;
+  messages: ReturnType<typeof useMessages>;
+}
+
+function TokenPill({ snapshot, messages }: TokenPillProps) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Dismiss on outside click + Esc.
+  useEffect(() => {
+    if (!open) return;
+    function onDown(event: MouseEvent) {
+      if (!wrapRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const usage = snapshot.usage;
+  const completedSegments = snapshot.progress.completed;
+  const elapsedSeconds = snapshot.progress.elapsed_seconds || 0;
+  const tokensPerMinute =
+    elapsedSeconds > 0
+      ? Math.round((usage.total_tokens / elapsedSeconds) * 60)
+      : 0;
+  const avgPerSegment =
+    completedSegments > 0
+      ? Math.round(usage.total_tokens / completedSegments)
+      : 0;
+  const labels = messages.status.tokenDetail;
+
+  return (
+    <div className={styles.tokenWrap} ref={wrapRef}>
+      <button
+        type="button"
+        className={styles.pillMini}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        aria-label={labels.title}
+      >
+        {format(messages.status.tokens, {
+          n: TOKEN_FORMATTER.format(usage.total_tokens),
+        })}
+      </button>
+      {open ? (
+        <div className={styles.tokenPanel} role="dialog" aria-label={labels.title}>
+          <div className={styles.tokenPanelTitle}>{labels.title}</div>
+          <div className={styles.tokenRow}>
+            <span className={styles.tokenRowLabel}>{labels.input}</span>
+            <span className={styles.tokenRowValue}>
+              {FULL_FORMATTER.format(usage.input_tokens)}
+            </span>
+          </div>
+          <div className={styles.tokenRow}>
+            <span className={styles.tokenRowLabel}>{labels.output}</span>
+            <span className={styles.tokenRowValue}>
+              {FULL_FORMATTER.format(usage.output_tokens)}
+            </span>
+          </div>
+          <div className={styles.tokenDivider} />
+          <div className={styles.tokenRow}>
+            <span className={styles.tokenRowLabel}>{labels.total}</span>
+            <span className={styles.tokenRowValue}>
+              {FULL_FORMATTER.format(usage.total_tokens)}
+            </span>
+          </div>
+          <div className={styles.tokenDivider} />
+          <div className={styles.tokenRow}>
+            <span className={styles.tokenRowLabel}>{labels.perMinute}</span>
+            <span className={styles.tokenRowValue}>
+              {FULL_FORMATTER.format(tokensPerMinute)}
+            </span>
+          </div>
+          <div className={styles.tokenRow}>
+            <span className={styles.tokenRowLabel}>{labels.perSegment}</span>
+            <span className={styles.tokenRowValue}>
+              {avgPerSegment > 0 ? FULL_FORMATTER.format(avgPerSegment) : "—"}
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

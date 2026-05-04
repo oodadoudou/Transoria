@@ -30,6 +30,14 @@ export interface Messages {
     activeRequests: string;
     perMinute: string;
     tokens: string;
+    tokenDetail: {
+      title: string;
+      input: string;
+      output: string;
+      total: string;
+      perMinute: string;
+      perSegment: string;
+    };
   };
   errors: {
     notifications: string;

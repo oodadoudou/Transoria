@@ -34,6 +34,14 @@ export const en: Messages = {
     activeRequests: "{n} active requests",
     perMinute: "{n} segments / min",
     tokens: "{n} tokens",
+    tokenDetail: {
+      title: "Token usage",
+      input: "Input",
+      output: "Output",
+      total: "Total",
+      perMinute: "Per minute",
+      perSegment: "Avg / segment",
+    },
   },
   errors: {
     notifications: "Notifications",

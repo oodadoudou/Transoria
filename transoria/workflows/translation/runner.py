@@ -420,15 +420,23 @@ class TranslationSubtaskRunner:
                 current_reasons = last_reasons
                 for solo_round in range(self.low_confidence_max_retries):
                     retry_round = max(retry_round, solo_round + 1)
+                    # Mirror the proofreading-page "retranslate" path
+                    # exactly: chunk_index=0 (model sees an isolated
+                    # single-line task, not "line N of some chunk"),
+                    # no context_lines (no neighboring segments to
+                    # compete for attention), glossary entries matched
+                    # against just this one source. This eliminates the
+                    # batch-context drift where the model keyed a
+                    # neighbor's translation under the wrong index.
                     solo_chunk = TranslationChunk(
                         segments=(
                             ChunkSegment(
                                 segment_id=meta.segment_id,
-                                chunk_index=meta.chunk_index,
+                                chunk_index=0,
                                 prompt_text=meta.prompt_text,
                             ),
                         ),
-                        context_lines=chunk.context_lines,
+                        context_lines=(),
                         glossary_entries=chunk.glossary_entries,
                     )
                     solo_user_prompt = self._compose_user_prompt(
@@ -451,13 +459,14 @@ class TranslationSubtaskRunner:
                         }
                     )
                     decoded = decode_translation_jsonl(solo_raw)
-                    retry_text = next(
-                        (
-                            line.text
-                            for line in decoded.lines
-                            if line.index == meta.chunk_index
-                        ),
-                        None,
+                    # Single-segment response: take the first parsed
+                    # value regardless of its JSON key. Models
+                    # occasionally emit a wrong key (e.g. echoing the
+                    # original chunk_index even when we asked with
+                    # chunk_index=0); positional acceptance keeps the
+                    # content from landing under the wrong segment.
+                    retry_text = (
+                        decoded.lines[0].text if decoded.lines else None
                     )
                     if retry_text is None:
                         continue
@@ -626,20 +635,40 @@ class TranslationSubtaskRunner:
         """Decode the LLM response into ``{chunk_index: text}`` and the
         set of expected indices that did not appear.
 
-        Indices outside the expected set are silently dropped — happens
-        when a partial-retry call asks for a small subset and the model
-        echoes the full prior chunk; we accept the requested indices
-        and ignore the stale extras. Duplicate-drift detection runs on
-        the accumulated dict in the caller, not here.
+        Two decode paths, picked by line-count:
+
+        1. **Positional** — when the response has exactly one parsed
+           line per requested segment, zip by position (sorted by
+           ``chunk_index``) and ignore JSON keys. This recovers from
+           the common failure where the model emits content in correct
+           order but with stale or off-by-one keys; without this the
+           translations land under wrong indices and the proofreading
+           page shows segment-vs-translation mismatches.
+
+        2. **Key-based fallback** — when the line count differs, the
+           response is partial / has extras, so we have to trust keys.
+           Lines whose keys are outside the requested set are dropped
+           silently; happens when a partial-retry call asks for a
+           subset and the model echoes the full prior chunk.
+
+        Duplicate-drift detection runs on the accumulated dict in the
+        caller, not here.
         """
 
         decoded = decode_translation_jsonl(raw_content)
         expected = {meta.chunk_index for meta in metadata}
-        translations_by_index = {
-            line.index: line.text
-            for line in decoded.lines
-            if line.index in expected
-        }
+        if len(decoded.lines) == len(metadata) and metadata:
+            sorted_meta = sorted(metadata, key=lambda m: m.chunk_index)
+            translations_by_index = {
+                meta.chunk_index: line.text
+                for meta, line in zip(sorted_meta, decoded.lines)
+            }
+        else:
+            translations_by_index = {
+                line.index: line.text
+                for line in decoded.lines
+                if line.index in expected
+            }
         missing = frozenset(expected - translations_by_index.keys())
         return translations_by_index, missing
 
