@@ -526,6 +526,14 @@ class TranslationSubtaskRunner:
                 + issue_summary,
                 code="llm.line_count_mismatch",
             )
+
+        suspicious = _detect_duplicate_drift(translations_by_index, metadata)
+        if suspicious:
+            raise LlmRequestError(
+                "Translation duplicate drift — indices "
+                f"{suspicious} share identical translation across distinct sources",
+                code="llm.duplicate_translations",
+            )
         return translations_by_index, rescued_indices
 
     def _postprocess(self, meta: _SegmentPayload, translated: str) -> str:
@@ -566,6 +574,42 @@ _FENCE_RESCUE_PATTERN = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 _RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
+
+
+def _detect_duplicate_drift(
+    translations_by_index: dict[int, str],
+    metadata: tuple["_SegmentPayload", ...],
+) -> list[int]:
+    """Indices flagged as suspicious duplicate-content drift.
+
+    LLM occasionally returns valid JSONL with the same translation under
+    multiple keys (model laziness / chunk-boundary bleed). Distinct
+    source segments must not share an identical translation; if they do,
+    the response is treated as failed so the split-rerun loop can halve
+    the chunk and re-ask.
+
+    Same source ↔ same translation is legitimate (e.g. repeated 嗯。/
+    OK.) and is NOT flagged.
+    """
+
+    by_idx = {m.chunk_index: m for m in metadata}
+    by_text: dict[str, list[int]] = {}
+    for idx, text in translations_by_index.items():
+        norm = text.strip()
+        if not norm:
+            continue
+        by_text.setdefault(norm, []).append(idx)
+
+    suspicious: set[int] = set()
+    for indices in by_text.values():
+        if len(indices) <= 1:
+            continue
+        sources = {
+            by_idx[i].original_text.strip() for i in indices if i in by_idx
+        }
+        if len(sources) > 1:
+            suspicious.update(indices)
+    return sorted(suspicious)
 
 
 def _positional_rescue(

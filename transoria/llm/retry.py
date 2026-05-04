@@ -46,7 +46,8 @@ def is_transient_llm_error(exc: BaseException) -> bool:
     if isinstance(exc, json.JSONDecodeError):
         return True
     if isinstance(exc, LlmRequestError):
-        if getattr(exc, "code", "") == "llm.transport_error":
+        code = getattr(exc, "code", "")
+        if code in ("llm.transport_error", "llm.duplicate_translations"):
             return True
         message = str(exc)
         if "line count mismatch" in message.lower():
