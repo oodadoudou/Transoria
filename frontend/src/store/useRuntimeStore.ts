@@ -55,6 +55,16 @@ const completionWithFailuresDismissed = new Set<string>();
 // Per-task-id tracking so the "fully successful run" toast only fires
 // once per task even as the RunPage re-mounts on tab switches.
 const cleanCompletionToastShown = new Set<string>();
+// Same idea for the "completed with low-confidence segments" toast.
+const lowConfToastShown = new Set<string>();
+
+export function hasShownLowConfToast(taskId: string): boolean {
+  return lowConfToastShown.has(taskId);
+}
+
+export function markLowConfToastShown(taskId: string): void {
+  lowConfToastShown.add(taskId);
+}
 
 export function hasDismissedCompletionWithFailures(taskId: string): boolean {
   return completionWithFailuresDismissed.has(taskId);
@@ -242,6 +252,7 @@ export type SnapshotShape = {
   status: TaskStatus;
   progress: TaskSnapshot["progress"];
   usage: TaskSnapshot["usage"];
+  lowConfidence: { total: number; sourceResidue: number };
   subtasks: TaskSnapshot["subtasks"];
   failures: TaskFailure[];
   isIdle: boolean;
@@ -269,6 +280,10 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
         input_tokens: 0,
         output_tokens: 0,
         total_tokens: 0,
+      },
+      lowConfidence: {
+        total: runtime.snapshot?.low_confidence?.total ?? 0,
+        sourceResidue: runtime.snapshot?.low_confidence?.source_residue ?? 0,
       },
       subtasks: runtime.snapshot?.subtasks ?? [],
       failures: runtime.failures,

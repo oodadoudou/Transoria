@@ -444,6 +444,14 @@ export function ProofreadingPage() {
                               ? m.statusEmpty
                               : m.statusOk}
                         </span>
+                        {item.tags?.includes("source_residue") ? (
+                          <span
+                            className={`${styles.statusChip} ${styles.statusResidue}`}
+                            title={m.statusSourceResidueHint}
+                          >
+                            {m.statusSourceResidue}
+                          </span>
+                        ) : null}
                       </span>
                     </div>
                   );
@@ -457,7 +465,12 @@ export function ProofreadingPage() {
           <div className={styles.editor}>
             <div>
               <div className={styles.label}>{m.editorSrcLabel}</div>
-              <div className={styles.editorSrc}>{selectedItem.src}</div>
+              <textarea
+                className={styles.editorSrc}
+                value={selectedItem.src}
+                readOnly
+                onFocus={(e) => e.currentTarget.select()}
+              />
             </div>
             <div>
               <div className={styles.label}>{m.editorDstLabel}</div>

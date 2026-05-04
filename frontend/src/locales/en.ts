@@ -559,6 +559,9 @@ export const en: Messages = {
       statusLowConfidence: "Low confidence",
       statusOk: "OK",
       statusEmpty: "Untranslated",
+      statusSourceResidue: "Source residue",
+      statusSourceResidueHint:
+        "Translation kept source-language characters (Korean / Japanese / etc.) — manual review recommended.",
       editorEmpty: "Pick a row on the left to edit.",
       editorSrcLabel: "Source",
       editorDstLabel: "Translation",
@@ -902,6 +905,11 @@ export const en: Messages = {
   },
   runCompleted: {
     title: "All done",
+  },
+  runLowConfReminder: {
+    title: "Review on the proofreading page",
+    totalLine: "{n} low-confidence segment(s)",
+    residueLine: "{n} contain source-language residue",
   },
   common: {
     placeholder:

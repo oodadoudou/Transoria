@@ -126,6 +126,13 @@
   color: #b04038;
 }
 
+.statusResidue {
+  margin-left: 4px;
+  background: #fff4e5;
+  color: #8a4b0c;
+  border: 1px solid #d6a36b;
+}
+
 .statusEmpty {
   background: #fff;
   color: #b04038;
@@ -152,14 +159,29 @@
 }
 
 .editorSrc {
+  width: 100%;
   background: var(--panel-soft);
   padding: 10px 12px;
+  border: 1px solid var(--hairline);
   border-radius: 8px;
+  font-family: inherit;
   font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 60px;
+  max-height: 220px;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 220px;
-  overflow-y: auto;
+  cursor: text;
+  user-select: text;
+  /* Read-only: keep the box selectable for copy without looking
+   * editable. No focus ring, no caret jump on hover. */
+  outline: none;
+  color: inherit;
+}
+
+.editorSrc:focus {
+  border-color: var(--accent);
 }
 
 .editorTextarea {

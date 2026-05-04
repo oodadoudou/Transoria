@@ -6,6 +6,8 @@ import {
   hasDismissedCompletionWithFailures,
   hasShownCleanCompletionToast,
   markCleanCompletionToastShown,
+  hasShownLowConfToast,
+  markLowConfToastShown,
   markCompletionWithFailuresDismissed,
   useRunSnapshot,
   usePollRunSnapshot,
@@ -109,6 +111,44 @@ export function RunPage() {
     snapshot.progress.failed,
     snapshot.progress.completed,
     messages.runCompleted.title,
+  ]);
+
+  // Reminder toast when a clean run still has low-confidence segments
+  // the proofreading page should review. Fires once per task; respects
+  // the same per-task dedupe pattern as the celebratory toast.
+  useEffect(() => {
+    if (!activeTaskId) return;
+    if (snapshot.status !== "completed") return;
+    if (snapshot.lowConfidence.total <= 0) return;
+    if (hasShownLowConfToast(activeTaskId)) return;
+    markLowConfToastShown(activeTaskId);
+    const detailParts: string[] = [];
+    detailParts.push(
+      messages.runLowConfReminder.totalLine.replace(
+        "{n}",
+        String(snapshot.lowConfidence.total),
+      ),
+    );
+    if (snapshot.lowConfidence.sourceResidue > 0) {
+      detailParts.push(
+        messages.runLowConfReminder.residueLine.replace(
+          "{n}",
+          String(snapshot.lowConfidence.sourceResidue),
+        ),
+      );
+    }
+    useToastStore.getState().push({
+      variant: "warning",
+      title: messages.runLowConfReminder.title,
+      detail: detailParts.join(" · "),
+      durationMs: 8000,
+    });
+  }, [
+    activeTaskId,
+    snapshot.status,
+    snapshot.lowConfidence.total,
+    snapshot.lowConfidence.sourceResidue,
+    messages.runLowConfReminder,
   ]);
 
   const handleAcceptCompletion = () => {

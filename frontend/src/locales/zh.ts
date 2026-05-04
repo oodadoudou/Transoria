@@ -545,6 +545,9 @@ export const zh: Messages = {
       statusLowConfidence: "低置信度",
       statusOk: "正常",
       statusEmpty: "未译",
+      statusSourceResidue: "原文残留",
+      statusSourceResidueHint:
+        "译文中保留了源语言字符（韩文/日文等），建议人工修正。",
       editorEmpty: "在左侧表格点选一条以编辑。",
       editorSrcLabel: "原文",
       editorDstLabel: "译文",
@@ -875,6 +878,11 @@ export const zh: Messages = {
   },
   runCompleted: {
     title: "全部完成",
+  },
+  runLowConfReminder: {
+    title: "建议去校对页复审",
+    totalLine: "{n} 段低置信度",
+    residueLine: "其中 {n} 段含原文残留",
   },
   common: {
     placeholder:

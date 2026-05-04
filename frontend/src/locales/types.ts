@@ -480,6 +480,8 @@ export interface Messages {
       statusLowConfidence: string;
       statusOk: string;
       statusEmpty: string;
+      statusSourceResidue: string;
+      statusSourceResidueHint: string;
       editorEmpty: string;
       editorSrcLabel: string;
       editorDstLabel: string;
@@ -801,6 +803,11 @@ export interface Messages {
   };
   runCompleted: {
     title: string;
+  };
+  runLowConfReminder: {
+    title: string;
+    totalLine: string;
+    residueLine: string;
   };
   common: { placeholder: string };
 }

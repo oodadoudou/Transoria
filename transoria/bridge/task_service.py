@@ -485,10 +485,12 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
     else:
         progress_block = _progress_to_block(progress, elapsed_seconds=elapsed_seconds)
         usage_block = _usage_to_block(usage)
+    low_conf_block = _low_confidence_summary(snapshot, metadata)
     return {
         "header": _format_header(snapshot.record),
         "progress": progress_block,
         "usage": usage_block,
+        "low_confidence": low_conf_block,
         # Per-chunk status drives the chunk-grid UX. Tuple-of-objects
         # is preserved in the order the orchestrator seeded them, so
         # the grid renders chunk-0 leftmost. ``last_error`` is included
@@ -507,6 +509,41 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
         "active_prompt_id": metadata.get("prompt_preset_id"),
         "metadata": metadata,
     }
+
+
+def _low_confidence_summary(
+    snapshot: TaskSnapshot, metadata: Mapping[str, object]
+) -> dict[str, int]:
+    # When subtasks are cleaned post-completion, fall back to the frozen
+    # snapshot stashed in metadata at task finalize.
+    if not snapshot.subtasks:
+        frozen = metadata.get("final_low_confidence")
+        if isinstance(frozen, Mapping):
+            return {
+                "total": int(frozen.get("total", 0)),
+                "source_residue": int(frozen.get("source_residue", 0)),
+            }
+    total = 0
+    residue = 0
+    for subtask in snapshot.subtasks:
+        rc = subtask.response_content
+        if not rc:
+            continue
+        try:
+            payload = json.loads(rc)
+        except (TypeError, ValueError):
+            continue
+        entries = payload.get("low_confidence")
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, Mapping):
+                continue
+            total += 1
+            tags = entry.get("tags")
+            if isinstance(tags, list) and "source_residue" in tags:
+                residue += 1
+    return {"total": total, "source_residue": residue}
 
 
 def _task_elapsed_seconds(record: TaskRecord) -> float:
@@ -988,6 +1025,7 @@ class TaskService:
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
         }
+        frozen["final_low_confidence"] = _low_confidence_summary(snapshot, frozen)
         frozen_record = replace(
             snapshot.record,
             metadata=frozen,

@@ -107,6 +107,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         # always read back consistently.
         translations = _collect_translations_from_cache(snapshot)
         low_conf_ids: set[str] = set()
+        seg_tags: dict[str, list[str]] = {}
         for subtask in snapshot.subtasks:
             resp = _decode_response(subtask.response_content or "")
             entries = resp.get("low_confidence", [])
@@ -116,6 +117,12 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                         sid = entry.get("segment_id")
                         if isinstance(sid, str):
                             low_conf_ids.add(sid)
+                            tags = entry.get("tags", [])
+                            if isinstance(tags, list):
+                                merged = seg_tags.setdefault(sid, [])
+                                for t in tags:
+                                    if isinstance(t, str) and t not in merged:
+                                        merged.append(t)
 
         # Build (segment_id, src) map. Each segment appears exactly once
         # in the parent subtask's request_payload, but split children
@@ -135,12 +142,16 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     continue
                 if seg_id in seen:
                     continue
-                seen[seg_id] = {
+                item: dict[str, object] = {
                     "segment_id": seg_id,
                     "src": str(segment.get("original_text", "")),
                     "dst": translations.get(seg_id, ""),
                     "low_confidence": seg_id in low_conf_ids,
                 }
+                tags_for_seg = seg_tags.get(seg_id)
+                if tags_for_seg:
+                    item["tags"] = tags_for_seg
+                seen[seg_id] = item
 
         items = sorted(seen.values(), key=lambda i: _segment_sort_key(str(i["segment_id"])))
         return {

@@ -379,10 +379,16 @@ export interface SubtaskMini {
   last_error?: string;
 }
 
+export interface TaskLowConfidenceSummary {
+  total: number;
+  source_residue: number;
+}
+
 export interface TaskSnapshot {
   header: TaskHeader;
   progress: TaskProgress;
   usage: TaskUsage;
+  low_confidence?: TaskLowConfidenceSummary;
   subtasks: SubtaskMini[];
   active_model_id: string | null;
   active_prompt_id: string | null;

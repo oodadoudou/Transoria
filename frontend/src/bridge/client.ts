@@ -276,6 +276,10 @@ export interface ProofreadingItem {
   src: string;
   dst: string;
   low_confidence: boolean;
+  /** Optional per-segment classification tags. Currently only
+   * "source_residue" is emitted (translation kept source-language
+   * characters), but the field is open for future categories. */
+  tags?: string[];
 }
 
 export interface ProofreadingSnapshot {
