@@ -1,9 +1,9 @@
 # Transoria
 
 <p align="center">
-  <strong><a href="#中文">中文</a></strong> ·
-  <strong><a href="#english">English</a></strong>
-</p>
+  <strong><a href=" ">中文</a ></strong> ·
+  <strong><a href="#english">English</a ></strong>
+</p >
 
 ![模型配置页](assets/demo/model_page.jpg)
 
@@ -18,6 +18,18 @@ Transoria 是一个面向小说翻译的桌面应用：把一个装着 EPUB / TX
 界面支持中英文切换。所有任务在本地运行，由你自己的 LLM API Key 调用模型。
 
 交流/问题反馈群qq：**1104197845**。欢迎加入，使用中遇到问题可以进群反馈。
+
+### 最近更新（1.0.5）
+
+- 失败分块只重发缺失的几行，token 浪费 ↓ 70%
+- 低置信度段落改为单条独立重试，模型不再敷衍 "네." 这种短回应
+- 自动剥离 EPUB 水印隐形字符
+- 网文表情（ㅋㅋㅋ / ㅠㅠ）混在中文译文中不再误判残留
+- 校对页加"原文残留"标签，原文框可复制
+- 底栏 token 标签可点击查看实时明细
+- 修复 app 重启误开输出文件夹、失败任务点继续卡 conflict 等
+
+完整列表见 [Releases](https://github.com/oodadoudou/Transoria/releases)。
 
 ### 下载安装包
 
@@ -88,6 +100,18 @@ Transoria is a desktop app for novel translation: drop a folder of EPUB / TXT fi
 The UI ships with both Chinese and English. All tasks run locally and call models via your own LLM API key.
 
 > Screenshots above show the Chinese UI; switch to English in the top-right of the app.
+
+### What's new (1.0.5)
+
+- Partial-accept on failed chunks: only missing lines retry (~70% less token waste)
+- Single-segment focused retries — no more glossed-over short replies like "네."
+- Auto-strips invisible DRM watermarks from EPUB sources
+- Chat-style emoji fragments (ㅋㅋㅋ / ㅠㅠ) inside Chinese prose no longer flagged as residue
+- Proofreading: new `source_residue` tag, source field is now copyable
+- Clickable token chip with live input/output/total breakdown
+- Fixes: no auto-reopen of output folder on restart; "Continue" no longer hits phantom "already running" errors
+
+Full list on [Releases](https://github.com/oodadoudou/Transoria/releases).
 
 ### Download
 
