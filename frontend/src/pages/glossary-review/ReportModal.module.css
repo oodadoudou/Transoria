@@ -69,6 +69,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  user-select: text;
 }
 
 .table th,
@@ -77,6 +78,10 @@
   border-bottom: 1px solid var(--hairline);
   text-align: left;
   vertical-align: top;
+  cursor: text;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .table th {
