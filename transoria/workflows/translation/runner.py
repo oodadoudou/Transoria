@@ -397,73 +397,125 @@ class TranslationSubtaskRunner:
                     continue
                 finalized[meta.segment_id] = final_text
                 if verdict.is_low_confidence or extra_reasons:
-                    low_confidence.append(
+                    entry: dict[str, object] = {
+                        "segment_id": meta.segment_id,
+                        "reasons": extra_reasons + list(verdict.reasons),
+                    }
+                    tags: list[str] = []
+                    if any("residue" in str(r).lower() for r in verdict.reasons):
+                        tags.append("source_residue")
+                    if tags:
+                        entry["tags"] = tags
+                    low_confidence.append(entry)
+
+            # Single-item retry: each pending segment gets up to
+            # ``low_confidence_max_retries`` solo LLM calls, in isolation.
+            # When the model sees only one source line per request its
+            # attention isn't diluted across other segments of the chunk,
+            # so short fillers (네./응./等) and ambiguous phrases that
+            # were echoed in the batch call usually get a real translation.
+            still_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
+            for meta, last_text, last_reasons in pending:
+                current_text = last_text
+                current_reasons = last_reasons
+                for solo_round in range(self.low_confidence_max_retries):
+                    retry_round = max(retry_round, solo_round + 1)
+                    solo_chunk = TranslationChunk(
+                        segments=(
+                            ChunkSegment(
+                                segment_id=meta.segment_id,
+                                chunk_index=meta.chunk_index,
+                                prompt_text=meta.prompt_text,
+                            ),
+                        ),
+                        context_lines=chunk.context_lines,
+                        glossary_entries=chunk.glossary_entries,
+                    )
+                    solo_user_prompt = self._compose_user_prompt(
+                        self._apply_roster(assemble_user_prompt(solo_chunk)),
+                        format_retry=False,
+                    )
+                    solo_response = await self._one_llm_call(
+                        system_prompt,
+                        solo_user_prompt,
+                        f"{log_label} solo-retry {meta.segment_id}",
+                    )
+                    total_input += solo_response.usage.input_tokens
+                    total_output += solo_response.usage.output_tokens
+                    solo_raw = self._restore_roster(solo_response.content)
+                    debug_attempts.append(
                         {
+                            "user_prompt": solo_user_prompt,
+                            "raw_response": solo_raw,
                             "segment_id": meta.segment_id,
-                            "reasons": extra_reasons + list(verdict.reasons),
                         }
                     )
-
-            while pending and retry_round < self.low_confidence_max_retries:
-                retry_round += 1
-                retry_chunk = TranslationChunk(
-                    segments=tuple(
-                        ChunkSegment(
-                            segment_id=meta.segment_id,
-                            chunk_index=meta.chunk_index,
-                            prompt_text=meta.prompt_text,
-                        )
-                        for meta, _, _ in pending
-                    ),
-                    context_lines=chunk.context_lines,
-                    glossary_entries=chunk.glossary_entries,
-                )
-                retry_user_prompt = self._compose_user_prompt(
-                    self._apply_roster(assemble_user_prompt(retry_chunk)),
-                    format_retry=False,
-                )
-                retry_response = await self._one_llm_call(
-                    system_prompt, retry_user_prompt, f"{log_label} retry"
-                )
-                total_input += retry_response.usage.input_tokens
-                total_output += retry_response.usage.output_tokens
-
-                retry_raw = self._restore_roster(retry_response.content)
-                debug_attempts.append(
-                    {"user_prompt": retry_user_prompt, "raw_response": retry_raw}
-                )
-                retry_decoded = decode_translation_jsonl(retry_raw)
-                retry_by_index = {line.index: line.text for line in retry_decoded.lines}
-
-                next_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
-                for meta, last_text, last_reasons in pending:
-                    retry_text = retry_by_index.get(meta.chunk_index)
+                    decoded = decode_translation_jsonl(solo_raw)
+                    retry_text = next(
+                        (
+                            line.text
+                            for line in decoded.lines
+                            if line.index == meta.chunk_index
+                        ),
+                        None,
+                    )
                     if retry_text is None:
-                        next_pending.append((meta, last_text, last_reasons))
                         continue
                     retry_final = self._postprocess(meta, retry_text)
-                    verdict = self._evaluate_confidence(meta.original_text, retry_final)
-                    if verdict.is_low_confidence:
-                        # Don't overwrite the initial candidate with a still-failing
-                        # retry — the model often hallucinates worse content the
-                        # second time around.
-                        next_pending.append((meta, last_text, last_reasons))
-                        continue
-                    finalized[meta.segment_id] = retry_final
-                pending = next_pending
+                    verdict = self._evaluate_confidence(
+                        meta.original_text, retry_final
+                    )
+                    if not verdict.is_low_confidence:
+                        finalized[meta.segment_id] = retry_final
+                        current_text = None  # signal: passed
+                        break
+                    # Still low-conf: keep tracking the current best as
+                    # whatever has the *least* source-language residue.
+                    # An attempt that's mostly Chinese is preferable to a
+                    # source-language echo even if both are low-conf.
+                    if _residue_score(retry_final, self.source_language) < (
+                        _residue_score(current_text, self.source_language)
+                    ):
+                        current_text = retry_final
+                        current_reasons = verdict.reasons
+                if current_text is not None:
+                    still_pending.append((meta, current_text, current_reasons))
+            pending = still_pending
 
-            for meta, _last_text, last_reasons in pending:
-                # No retry passed confidence: fall back to the source text so
-                # the user sees the original line in the output and can fix
-                # it in the proofreading page. Never silently store the
-                # low-confidence candidate as if it were a clean translation.
-                finalized[meta.segment_id] = meta.original_text
-                low_confidence.append(
-                    {
-                        "segment_id": meta.segment_id,
-                        "reasons": list(last_reasons) + ["fell_back_to_source_after_max_retries"],
-                    }
+            for meta, last_text, last_reasons in pending:
+                has_residue = any(
+                    "residue" in str(r).lower() for r in last_reasons
                 )
+                echoes_source = (
+                    last_text.strip() == meta.original_text.strip()
+                )
+                # Three terminal modes:
+                # - Model echoed source: source-passthrough (same effect,
+                #   clearer reason for the user).
+                # - Model's last attempt still contains source-language
+                #   residue: source-passthrough. A Chinese-shaped string
+                #   that is mostly Korean/Japanese characters is more
+                #   confusing than the raw source line; the user can
+                #   spot residue at a glance on the proofreading page.
+                # - Model produced a Chinese guess that's flawed but not
+                #   residue: keep it. A questionable Chinese line is
+                #   easier to fix than re-translating from scratch.
+                tags: list[str] = []
+                if has_residue:
+                    tags.append("source_residue")
+                if echoes_source or has_residue:
+                    finalized[meta.segment_id] = meta.original_text
+                    extra_reason = "fell_back_to_source_after_max_retries"
+                else:
+                    finalized[meta.segment_id] = last_text
+                    extra_reason = "force_accepted_after_max_retries"
+                entry: dict[str, object] = {
+                    "segment_id": meta.segment_id,
+                    "reasons": list(last_reasons) + [extra_reason],
+                }
+                if tags:
+                    entry["tags"] = tags
+                low_confidence.append(entry)
 
             payload: dict[str, object] = {
                 "version": SUBTASK_RESPONSE_VERSION,
@@ -671,6 +723,30 @@ def _detect_duplicate_drift(
             continue
         suspicious.update(indices)
     return sorted(suspicious)
+
+
+_KOREAN_RESIDUE_RE = re.compile(
+    r"[ᄀ-ᇿ㄰-㆏ꥠ-꥿가-힯ힰ-퟿ﾠ-ￜ]"
+)
+_JAPANESE_RESIDUE_RE = re.compile(
+    "[぀-゚ゝ-ゟ゠-ヺヽ-ヿㇰ-ㇿｦ-ﾟ]"
+)
+
+
+def _residue_score(text: str, source_language: Language) -> float:
+    """Fraction of source-language characters in ``text``. Lower = better
+    (more translation effort, less residue). Used by the single-item
+    retry loop to keep the cleanest candidate seen so far."""
+
+    if not text:
+        return 1.0
+    if source_language is Language.KOREAN:
+        pattern = _KOREAN_RESIDUE_RE
+    elif source_language is Language.JAPANESE:
+        pattern = _JAPANESE_RESIDUE_RE
+    else:
+        return 0.0
+    return len(pattern.findall(text)) / max(1, len(text))
 
 
 def _build_subchunk_from_pending(

@@ -41,40 +41,13 @@ interface KindRuntime {
 }
 
 const ERROR_HISTORY_CAP = 10;
-// Persisted across app restarts so a previously-completed task isn't
-// auto-reopened every time the user launches the app.
-const AUTO_OPENED_TASKS_KEY = "transoria.autoOpenedTaskIds";
-const AUTO_OPENED_TASKS_CAP = 200;
-
-function loadAutoOpenedTaskIds(): Set<string> {
-  try {
-    const raw = window.localStorage.getItem(AUTO_OPENED_TASKS_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return new Set(parsed.filter((v): v is string => typeof v === "string"));
-    }
-  } catch {
-    // Storage unavailable or corrupt — fall through to empty set.
-  }
-  return new Set();
-}
-
-function persistAutoOpenedTaskIds(set: Set<string>): void {
-  try {
-    // Cap so localStorage doesn't grow unbounded over a long-lived install.
-    const list = Array.from(set);
-    const trimmed =
-      list.length > AUTO_OPENED_TASKS_CAP
-        ? list.slice(list.length - AUTO_OPENED_TASKS_CAP)
-        : list;
-    window.localStorage.setItem(AUTO_OPENED_TASKS_KEY, JSON.stringify(trimmed));
-  } catch {
-    // Quota / privacy mode — best-effort only.
-  }
-}
-
-const autoOpenedTaskIds = loadAutoOpenedTaskIds();
+// Auto-open the output folder only when we observed a running→completed
+// transition WITHIN the current session. Restarting the app onto an
+// already-completed task means no transition happened in this session,
+// so we don't pop the Finder on launch. Both sets are session-scoped:
+// fresh on each app start.
+const seenInFlightTaskIds = new Set<string>();
+const autoOpenedTaskIds = new Set<string>();
 // Per-task-id dismissal tracking for the completion-with-failures
 // dialog. Module-level so navigating away and back doesn't re-open
 // the dialog the user already answered.
@@ -341,7 +314,15 @@ async function maybeOpenOutputFolder(
   taskId: string,
   status: TaskStatus,
 ): Promise<void> {
+  // Track whether we've seen this task in an in-flight state during
+  // this session. App restarts onto an already-completed task never
+  // pass through this branch, so the auto-open never fires for them.
+  if (status === "running" || status === "pending" || status === "stopping") {
+    seenInFlightTaskIds.add(taskId);
+    return;
+  }
   if (status !== "completed") return;
+  if (!seenInFlightTaskIds.has(taskId)) return;
   if (autoOpenedTaskIds.has(taskId)) return;
   const settings = useSettingsStore.getState();
   if (kind === "replacement") return;
@@ -351,7 +332,6 @@ async function maybeOpenOutputFolder(
       : settings.glossary.draft?.auto_open_output_folder;
   if (!enabled) return;
   autoOpenedTaskIds.add(taskId);
-  persistAutoOpenedTaskIds(autoOpenedTaskIds);
   try {
     const artifacts = await bridges[kind].readArtifacts(taskId);
     if (artifacts.output_folder) {
