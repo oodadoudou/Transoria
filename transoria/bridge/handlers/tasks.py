@@ -30,6 +30,18 @@ def _expect_request_id(payload: Mapping[str, object]) -> str:
     return expect_string(payload, "request_id")
 
 
+def _optional_string(payload: Mapping[str, object], key: str) -> str:
+    raw = payload.get(key, "")
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        raise BridgeError.invalid_argument(
+            f"{key} must be a string.",
+            field=key,
+        )
+    return raw
+
+
 def _optional_limit(payload: Mapping[str, object]) -> int | None:
     raw = payload.get("limit")
     if raw is None:
@@ -103,6 +115,12 @@ def _build_handlers(
         f"{kind}.read_artifacts": read_artifacts,
     }
     if kind == "glossary_review":
+        handlers[f"{kind}.discover_inputs"] = (
+            lambda payload: service.discover_glossary_review_inputs(
+                input_folder=_optional_string(payload, "input_folder"),
+                output_filename=_optional_string(payload, "output_filename"),
+            )
+        )
         handlers[f"{kind}.read_report"] = lambda payload: service.read_glossary_review_report(
             task_id=_expect_task_id(payload)
         )

@@ -22,7 +22,7 @@ from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.bridge.task_service import TaskService
-from transoria.domain import Language, TaskKind
+from transoria.domain import Language, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
 
 
@@ -68,6 +68,26 @@ def _collect_translations_from_cache(snapshot) -> dict[str, str]:
 
 
 def _build_handlers(service: TaskService) -> dict[str, object]:
+    def require_completed_translation_task(task_id: str):
+        try:
+            snapshot = service.cache.load(task_id)
+        except TaskNotFoundError as exc:
+            raise BridgeError.not_found(
+                f"task {task_id!r} not found in cache.",
+                details={"task_id": task_id},
+            ) from exc
+        if snapshot.record.kind is not TaskKind.TRANSLATION:
+            raise BridgeError.invalid_argument(
+                f"task {task_id!r} is not a translation task.",
+                details={"task_id": task_id},
+            )
+        if snapshot.record.status is not TaskStatus.COMPLETED:
+            raise BridgeError.conflict(
+                "proofreading is only available after translation completes.",
+                details={"task_id": task_id, "status": snapshot.record.status.value},
+            )
+        return snapshot
+
     def list_tasks(_payload: Mapping[str, object]) -> dict[str, object]:
         listing = service.list_recent_tasks(kind="translation", limit=None)
         out: list[dict[str, object]] = []
@@ -82,6 +102,8 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 snapshot = service.cache.load(task_id)
             except (TaskNotFoundError, OSError, ValueError):
                 continue
+            if snapshot.record.status is not TaskStatus.COMPLETED:
+                continue
             if not snapshot.subtasks:
                 continue
             out.append(header)
@@ -89,18 +111,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
 
     def load_snapshot(payload: Mapping[str, object]) -> dict[str, object]:
         task_id = expect_string(payload, "task_id")
-        try:
-            snapshot = service.cache.load(task_id)
-        except TaskNotFoundError as exc:
-            raise BridgeError.not_found(
-                f"task {task_id!r} not found in cache.",
-                details={"task_id": task_id},
-            ) from exc
-        if snapshot.record.kind is not TaskKind.TRANSLATION:
-            raise BridgeError.invalid_argument(
-                f"task {task_id!r} is not a translation task.",
-                details={"task_id": task_id},
-            )
+        snapshot = require_completed_translation_task(task_id)
 
         # Aggregate per-segment data across subtasks. Latest write wins
         # (split children override the parent) so edits via update_segment
@@ -171,13 +182,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 "dst must be a string.",
                 field="dst",
             )
-        try:
-            snapshot = service.cache.load(task_id)
-        except TaskNotFoundError as exc:
-            raise BridgeError.not_found(
-                f"task {task_id!r} not found.",
-                details={"task_id": task_id},
-            ) from exc
+        snapshot = require_completed_translation_task(task_id)
 
         # Find every subtask whose request_payload owns this segment_id.
         # When a parent has been split, both the (SKIPPED) parent and
@@ -232,18 +237,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         from transoria.workflows.translation.rules import Glossary  # noqa: PLC0415
 
         task_id = expect_string(payload, "task_id")
-        try:
-            snapshot = service.cache.load(task_id)
-        except TaskNotFoundError as exc:
-            raise BridgeError.not_found(
-                f"task {task_id!r} not found.",
-                details={"task_id": task_id},
-            ) from exc
-        if snapshot.record.kind is not TaskKind.TRANSLATION:
-            raise BridgeError.invalid_argument(
-                f"task {task_id!r} is not a translation task.",
-                details={"task_id": task_id},
-            )
+        snapshot = require_completed_translation_task(task_id)
 
         # Pull the original folder pair + language from the cache
         # record, not the current settings — proofreading is decoupled

@@ -15,6 +15,7 @@ from typing import Mapping
 
 from transoria.settings.defaults import (
     _TRANSLATION_LIST_OF_MAPPING_FIELDS,
+    _GLOSSARY_REVIEW_TUPLE_STRING_FIELDS,
     AllSettings,
     AppSettings,
     GlossarySettings,
@@ -179,6 +180,12 @@ def _hydrate(
                     dict(item) if isinstance(item, Mapping) else item
                     for item in value
                 )
+            elif (
+                cls is GlossaryReviewSettings
+                and key in _GLOSSARY_REVIEW_TUPLE_STRING_FIELDS
+                and isinstance(value, list)
+            ):
+                init_kwargs[key] = tuple(value)
             else:
                 init_kwargs[key] = value
     if cls is AppSettings:

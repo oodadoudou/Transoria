@@ -9,6 +9,7 @@ import type {
   GlossaryFileResult,
   GlossaryReviewArtifacts,
   GlossaryReviewFinalSheet,
+  GlossaryReviewInputCandidates,
   GlossaryReviewReport,
   ModelListResult,
   ModelProfile,
@@ -448,6 +449,15 @@ export const glossaryReviewBridge = {
   },
   listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
     return call("glossary_review.list_recent_tasks", { limit });
+  },
+  discoverInputs(
+    inputFolder: string,
+    outputFilename: string,
+  ): Promise<GlossaryReviewInputCandidates> {
+    return call("glossary_review.discover_inputs", {
+      input_folder: inputFolder,
+      output_filename: outputFilename,
+    });
   },
   readArtifacts(taskId: string): Promise<GlossaryReviewArtifacts> {
     return call("glossary_review.read_artifacts", { task_id: taskId });

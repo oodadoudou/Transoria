@@ -681,6 +681,15 @@ export const zh: Messages = {
       title: "术语审查设置",
       sub: "选择包含术语表 XLSX 与参考 TXT 的文件夹。审查后的 XLSX 会写回同一文件夹。",
       inputFolder: "输入文件夹",
+      glossaryFile: "术语表 XLSX",
+      glossaryFileHelp: "当文件夹内有多个 XLSX 时，请选择要审查的原始术语表。",
+      glossaryFilePlaceholder: "请选择术语表",
+      referenceFiles: "参考 TXT",
+      referenceFilesHelp:
+        "可多选。模型会把选中的 TXT 合并为小说参考上下文。",
+      referenceFilesEmpty: "当前文件夹没有可用 TXT 参考文件。",
+      inputScanLoading: "正在扫描输入文件夹…",
+      inputScanError: "扫描输入文件夹失败：{reason}",
       outputFilename: "最终文件名",
       outputFilenameHelp:
         "默认 glossary-review-final.xlsx。只支持 .xlsx；不写后缀时会自动补上。",

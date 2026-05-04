@@ -107,6 +107,8 @@ class GlossarySettings:
 @dataclass(frozen=True)
 class GlossaryReviewSettings:
     input_folder: str = ""
+    selected_xlsx_path: str = ""
+    selected_reference_paths: tuple[str, ...] = ()
     output_filename: str = "glossary-review-final.xlsx"
     novel_background: str = ""
     review_rounds: int = 1
@@ -193,6 +195,9 @@ _TRANSLATION_LIST_OF_MAPPING_FIELDS: frozenset[str] = frozenset(
     }
 )
 
+_GLOSSARY_REVIEW_TUPLE_STRING_FIELDS: frozenset[str] = frozenset(
+    {"selected_reference_paths"}
+)
 
 
 def default_module_settings(
@@ -335,6 +340,25 @@ def _coerce(
             normalized.append(dict(entry))
         return tuple(normalized)
 
+    if (
+        key in _GLOSSARY_REVIEW_TUPLE_STRING_FIELDS
+        and isinstance(current, GlossaryReviewSettings)
+    ):
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(
+                f"Field {key!r} expects a list of strings, "
+                f"got {type(value).__name__}"
+            )
+        normalized: list[str] = []
+        for index, entry in enumerate(value):
+            if not isinstance(entry, str):
+                raise ValueError(
+                    f"Field {key!r} entry {index} must be a string, "
+                    f"got {type(entry).__name__}"
+                )
+            normalized.append(entry)
+        return tuple(normalized)
+
     field_type = current.__dataclass_fields__[key].type  # type: ignore[attr-defined]
     annotation = field_type if isinstance(field_type, str) else field_type.__name__
 
@@ -367,6 +391,7 @@ __all__ = [
     "ReplacementSettings",
     "SettingsModule",
     "TranslationSettings",
+    "_GLOSSARY_REVIEW_TUPLE_STRING_FIELDS",
     "_TRANSLATION_LIST_OF_MAPPING_FIELDS",
     "default_module_settings",
     "default_settings",

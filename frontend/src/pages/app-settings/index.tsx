@@ -380,6 +380,7 @@ function CachePanel() {
       ) : null}
       {open ? (
         <CacheCleanupModal
+          cleanupBlocked={cleanupBlocked}
           onClose={() => setOpen(false)}
           onPurged={(text) => {
             setResultText(text);
@@ -392,11 +393,16 @@ function CachePanel() {
 }
 
 interface CacheCleanupModalProps {
+  cleanupBlocked: boolean;
   onClose: () => void;
   onPurged: (text: string) => void;
 }
 
-function CacheCleanupModal({ onClose, onPurged }: CacheCleanupModalProps) {
+function CacheCleanupModal({
+  cleanupBlocked,
+  onClose,
+  onPurged,
+}: CacheCleanupModalProps) {
   const labels = useMessages().appSettingsExtra;
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -411,6 +417,7 @@ function CacheCleanupModal({ onClose, onPurged }: CacheCleanupModalProps) {
   }, [onClose]);
 
   const purge = async (scope: "all" | "older_than_days", days?: number) => {
+    if (cleanupBlocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -455,16 +462,18 @@ function CacheCleanupModal({ onClose, onPurged }: CacheCleanupModalProps) {
         </div>
         <div className={modalStyles.body}>
           <p className={modalStyles.hint}>
-            {confirmingAll
-              ? labels.cachePurgeAllConfirm
-              : labels.cacheModalHint}
+            {cleanupBlocked
+              ? labels.cacheRunningBlock
+              : confirmingAll
+                ? labels.cachePurgeAllConfirm
+                : labels.cacheModalHint}
           </p>
           {confirmingAll ? (
             <div className={modalStyles.choices}>
               <button
                 type="button"
                 className={modalStyles.choice}
-                disabled={busy}
+                disabled={busy || cleanupBlocked}
                 onClick={() => void purge("all")}
               >
                 <span className={modalStyles.choiceText}>
@@ -479,7 +488,7 @@ function CacheCleanupModal({ onClose, onPurged }: CacheCleanupModalProps) {
               <button
                 type="button"
                 className={modalStyles.choice}
-                disabled={busy}
+                disabled={busy || cleanupBlocked}
                 onClick={() => setConfirmingAll(true)}
               >
                 <span className={modalStyles.choiceText}>
@@ -494,7 +503,7 @@ function CacheCleanupModal({ onClose, onPurged }: CacheCleanupModalProps) {
               <button
                 type="button"
                 className={modalStyles.choice}
-                disabled={busy}
+                disabled={busy || cleanupBlocked}
                 onClick={() => void purge("older_than_days", 30)}
               >
                 <span className={modalStyles.choiceText}>
@@ -509,7 +518,7 @@ function CacheCleanupModal({ onClose, onPurged }: CacheCleanupModalProps) {
               <button
                 type="button"
                 className={modalStyles.choice}
-                disabled={busy}
+                disabled={busy || cleanupBlocked}
                 onClick={() => void purge("older_than_days", 7)}
               >
                 <span className={modalStyles.choiceText}>

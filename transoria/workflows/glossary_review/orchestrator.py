@@ -118,7 +118,10 @@ class GlossaryReviewOrchestrator:
         started_at = self.clock()
         task_id = self.id_factory()
         review_input = load_review_input(
-            config.input_dir, output_filename=config.output_filename
+            config.input_dir,
+            output_filename=config.output_filename,
+            selected_xlsx_path=config.selected_xlsx_path,
+            selected_reference_paths=config.selected_reference_paths,
         )
         loaded = review_input.glossary
         rows = attach_reference_contexts(loaded.rows, review_input.reference_text)

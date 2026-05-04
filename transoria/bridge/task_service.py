@@ -61,6 +61,7 @@ from transoria.workflows.glossary.config import GlossaryConfig
 from transoria.workflows.glossary_review.config import GlossaryReviewConfig
 from transoria.workflows.glossary_review.exporters import REPORT_FILENAME
 from transoria.workflows.glossary_review.loader import (
+    discover_review_input_candidates,
     load_glossary_xlsx,
     normalize_output_filename,
 )
@@ -1715,6 +1716,12 @@ class TaskService:
         )
         config = GlossaryReviewConfig(
             input_dir=input_dir,
+            selected_xlsx_path=Path(review.selected_xlsx_path)
+            if review.selected_xlsx_path
+            else None,
+            selected_reference_paths=tuple(
+                Path(path) for path in review.selected_reference_paths
+            ),
             output_filename=output_filename,
             novel_background=review.novel_background,
             review_rounds=max(1, int(review.review_rounds)),
@@ -1723,6 +1730,29 @@ class TaskService:
             prompt_preset=preset,
         )
         return config, model, preset
+
+    def discover_glossary_review_inputs(
+        self, *, input_folder: str, output_filename: str
+    ) -> dict[str, object]:
+        input_dir = _require_directory(input_folder, field="input_folder")
+        try:
+            output_name = normalize_output_filename(output_filename)
+            candidates = discover_review_input_candidates(
+                input_dir, output_filename=output_name
+            )
+        except ValueError as exc:
+            raise BridgeError.invalid_argument(str(exc)) from exc
+        return {
+            "input_folder": str(input_dir),
+            "xlsx_candidates": [
+                {"path": str(path), "name": path.name}
+                for path in candidates.xlsx_files
+            ],
+            "reference_candidates": [
+                {"path": str(path), "name": path.name}
+                for path in candidates.reference_files
+            ],
+        }
 
     def start_glossary_review(self, request_id: str) -> dict[str, object]:
         with self._start_locks["glossary_review"]:

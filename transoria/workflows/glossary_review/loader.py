@@ -56,6 +56,12 @@ class ReviewInput:
     reference_files: tuple[Path, ...]
 
 
+@dataclass(frozen=True)
+class ReviewInputCandidates:
+    xlsx_files: tuple[Path, ...]
+    reference_files: tuple[Path, ...]
+
+
 def normalize_output_filename(value: str) -> str:
     name = (value or "glossary-review-final.xlsx").strip()
     if not name:
@@ -69,10 +75,32 @@ def normalize_output_filename(value: str) -> str:
     return name
 
 
-def load_review_input(input_dir: Path, *, output_filename: str) -> ReviewInput:
+def discover_review_input_candidates(
+    input_dir: Path, *, output_filename: str
+) -> ReviewInputCandidates:
     output_name = normalize_output_filename(output_filename)
-    xlsx_path = _discover_glossary_xlsx(input_dir, output_filename=output_name)
-    reference_files = _discover_reference_texts(input_dir)
+    return ReviewInputCandidates(
+        xlsx_files=_discover_glossary_xlsx_candidates(
+            input_dir, output_filename=output_name
+        ),
+        reference_files=_discover_reference_texts(input_dir),
+    )
+
+
+def load_review_input(
+    input_dir: Path,
+    *,
+    output_filename: str,
+    selected_xlsx_path: Path | None = None,
+    selected_reference_paths: Sequence[Path] = (),
+) -> ReviewInput:
+    output_name = normalize_output_filename(output_filename)
+    xlsx_path = _resolve_glossary_xlsx(
+        input_dir, output_filename=output_name, selected_path=selected_xlsx_path
+    )
+    reference_files = _resolve_reference_texts(
+        input_dir, selected_paths=selected_reference_paths
+    )
     if not reference_files:
         raise GlossaryReviewInputError(
             "input folder must contain at least one .txt reference file"
@@ -130,14 +158,34 @@ def load_glossary_xlsx(path: Path) -> LoadedGlossary:
     )
 
 
-def _discover_glossary_xlsx(input_dir: Path, *, output_filename: str) -> Path:
-    candidates = [
+def _discover_glossary_xlsx_candidates(
+    input_dir: Path, *, output_filename: str
+) -> tuple[Path, ...]:
+    return tuple(
         path
         for path in sorted(input_dir.iterdir(), key=lambda p: p.name.casefold())
         if path.is_file()
         and path.suffix.lower() == ".xlsx"
         and not _is_ignored_xlsx(path, output_filename=output_filename)
-    ]
+    )
+
+
+def _resolve_glossary_xlsx(
+    input_dir: Path, *, output_filename: str, selected_path: Path | None
+) -> Path:
+    candidates = _discover_glossary_xlsx_candidates(
+        input_dir, output_filename=output_filename
+    )
+    if selected_path is not None:
+        selected = _validate_child_file(
+            input_dir,
+            selected_path,
+            suffix=".xlsx",
+            field="selected_xlsx_path",
+        )
+        if _is_ignored_xlsx(selected, output_filename=output_filename):
+            raise GlossaryReviewInputError("selected_xlsx_path points to an ignored file")
+        return selected
     if not candidates:
         raise GlossaryReviewInputError("input folder contains no glossary .xlsx file")
     if len(candidates) > 1:
@@ -154,6 +202,42 @@ def _discover_reference_texts(input_dir: Path) -> tuple[Path, ...]:
         for path in sorted(input_dir.iterdir(), key=lambda p: p.name.casefold())
         if path.is_file() and path.suffix.lower() == ".txt" and not path.name.startswith("~$")
     )
+
+
+def _resolve_reference_texts(
+    input_dir: Path, *, selected_paths: Sequence[Path]
+) -> tuple[Path, ...]:
+    if not selected_paths:
+        return _discover_reference_texts(input_dir)
+    return tuple(
+        _validate_child_file(
+            input_dir,
+            path,
+            suffix=".txt",
+            field="selected_reference_paths",
+        )
+        for path in selected_paths
+    )
+
+
+def _validate_child_file(
+    input_dir: Path, path: Path, *, suffix: str, field: str
+) -> Path:
+    candidate = path.expanduser()
+    if not candidate.is_absolute():
+        candidate = input_dir / candidate
+    try:
+        resolved_input = input_dir.resolve()
+        resolved = candidate.resolve()
+    except OSError as exc:
+        raise GlossaryReviewInputError(f"{field} cannot be resolved") from exc
+    if resolved.parent != resolved_input:
+        raise GlossaryReviewInputError(f"{field} must be inside the input folder")
+    if not resolved.is_file() or resolved.suffix.lower() != suffix:
+        raise GlossaryReviewInputError(f"{field} points to an invalid {suffix} file")
+    if resolved.name.startswith("~$"):
+        raise GlossaryReviewInputError(f"{field} points to a temporary file")
+    return resolved
 
 
 def _is_ignored_xlsx(path: Path, *, output_filename: str) -> bool:
@@ -218,7 +302,9 @@ __all__ = [
     "GlossaryReviewInputError",
     "GlossaryReviewRow",
     "LoadedGlossary",
+    "ReviewInputCandidates",
     "ReviewInput",
+    "discover_review_input_candidates",
     "load_glossary_xlsx",
     "load_review_input",
     "normalize_output_filename",

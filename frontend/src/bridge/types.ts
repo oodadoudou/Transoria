@@ -155,6 +155,8 @@ export interface GlossarySettings {
 
 export interface GlossaryReviewSettings {
   input_folder: string;
+  selected_xlsx_path: string;
+  selected_reference_paths: string[];
   output_filename: string;
   novel_background: string;
   review_rounds: number;
@@ -488,6 +490,12 @@ export interface GlossaryReviewArtifacts {
   output_path: string | null;
   report_path: string | null;
   changed_count: number;
+}
+
+export interface GlossaryReviewInputCandidates {
+  input_folder: string;
+  xlsx_candidates: Array<{ path: string; name: string }>;
+  reference_candidates: Array<{ path: string; name: string }>;
 }
 
 export interface GlossaryReviewReportRow {

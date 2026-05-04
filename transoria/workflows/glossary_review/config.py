@@ -14,6 +14,8 @@ DEFAULT_OUTPUT_FILENAME = "glossary-review-final.xlsx"
 @dataclass(frozen=True)
 class GlossaryReviewConfig:
     input_dir: Path
+    selected_xlsx_path: Path | None
+    selected_reference_paths: tuple[Path, ...]
     output_filename: str
     novel_background: str
     review_rounds: int

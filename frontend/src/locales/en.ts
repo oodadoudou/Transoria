@@ -698,6 +698,15 @@ export const en: Messages = {
       title: "Glossary Review Settings",
       sub: "Choose the folder containing one glossary XLSX and reference TXT files. The reviewed XLSX is written back into the same folder.",
       inputFolder: "Input folder",
+      glossaryFile: "Glossary XLSX",
+      glossaryFileHelp: "When the folder contains multiple XLSX files, choose the source glossary to review.",
+      glossaryFilePlaceholder: "Choose a glossary",
+      referenceFiles: "Reference TXT",
+      referenceFilesHelp:
+        "Multiple files can be selected. The selected TXT files are merged as novel context for the model.",
+      referenceFilesEmpty: "No TXT reference files are available in this folder.",
+      inputScanLoading: "Scanning input folder...",
+      inputScanError: "Failed to scan input folder: {reason}",
       outputFilename: "Final filename",
       outputFilenameHelp:
         "Default: glossary-review-final.xlsx. Only .xlsx is supported; missing suffix is appended automatically.",

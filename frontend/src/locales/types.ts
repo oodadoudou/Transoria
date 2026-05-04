@@ -606,6 +606,14 @@ export interface Messages {
       title: string;
       sub: string;
       inputFolder: string;
+      glossaryFile: string;
+      glossaryFileHelp: string;
+      glossaryFilePlaceholder: string;
+      referenceFiles: string;
+      referenceFilesHelp: string;
+      referenceFilesEmpty: string;
+      inputScanLoading: string;
+      inputScanError: string;
       outputFilename: string;
       outputFilenameHelp: string;
       novelBackground: string;
