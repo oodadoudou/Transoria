@@ -712,7 +712,7 @@ _FENCE_RESCUE_PATTERN = re.compile(
 _RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
 
 
-_DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 5
+_DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 10
 
 
 def _detect_duplicate_drift(
@@ -721,14 +721,13 @@ def _detect_duplicate_drift(
 ) -> list[int]:
     """Flag indices that look like model-laziness duplicate output.
 
-    A short translation can legitimately collide across distinct sources
-    (Korean 응/어/네 → 嗯。/好。, English yeah/yep → 是的, etc.) so we
-    require either translation length ≥ 5 chars OR three+ distinct
-    sources sharing one output before treating it as drift. The 5-char
-    floor and 3-source threshold are empirical: real "model copy-pastes
-    one sentence across the chunk" failures produce many cells with a
-    long shared translation; natural-language coincidences cap at 2-3
-    affirmatives.
+    Short translations legitimately collide across distinct sources —
+    affirmatives (응/어/네 → 嗯。), domain idioms (체크/체크메이트 → 将军。 in
+    chess), titles, exclamations — so we require either translation
+    length ≥ 10 chars OR three+ distinct sources sharing one output
+    before treating it as drift. Real "model copy-pastes one sentence
+    across the chunk" failures produce many cells holding a full-length
+    sentence; short-text coincidences are domain vocabulary, not drift.
     """
 
     by_idx = {m.chunk_index: m for m in metadata}
