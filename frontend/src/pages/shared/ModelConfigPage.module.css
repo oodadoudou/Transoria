@@ -360,6 +360,7 @@
   border-radius: 12px;
   background: var(--panel-soft);
   transition: background 160ms ease;
+  cursor: pointer;
 }
 
 .configuredRow:hover {

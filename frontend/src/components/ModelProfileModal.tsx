@@ -162,31 +162,41 @@ function profileToDraft(p: ModelProfile): Draft {
   };
 }
 
-function draftToCreatePayload(d: Draft): ModelProfileDraft {
+function normalizeDraft(d: Draft): Draft {
   return {
-    display_name: d.display_name,
-    provider_format: d.provider_format,
-    base_url: d.base_url,
-    model_id: d.model_id,
-    rotate_keys: d.rotate_keys,
-    thinking_level: d.thinking_level,
-    timeout_seconds: d.timeout_seconds,
-    concurrency_limit: d.concurrency_limit,
-    rpm_limit: d.rpm_limit,
-    tpm_limit: d.tpm_limit,
-    retry_attempts: d.retry_attempts,
-    retry_initial_backoff_seconds: d.retry_initial_backoff_seconds,
-    retry_max_backoff_seconds: d.retry_max_backoff_seconds,
-    max_output_tokens: d.max_output_tokens,
-    thinking_budget_tokens: d.thinking_budget_tokens,
-    input_token_limit: d.input_token_limit,
-    top_p: d.top_p,
-    temperature: d.temperature,
-    presence_penalty: d.presence_penalty,
-    frequency_penalty: d.frequency_penalty,
-    custom_headers: d.custom_headers,
-    force_thinking_enable: d.force_thinking_enable,
-    api_keys: parseApiKeys(d.api_keys),
+    ...d,
+    display_name: d.display_name.trim(),
+    base_url: d.base_url.trim(),
+    model_id: d.model_id.trim(),
+  };
+}
+
+function draftToCreatePayload(d: Draft): ModelProfileDraft {
+  const normalized = normalizeDraft(d);
+  return {
+    display_name: normalized.display_name,
+    provider_format: normalized.provider_format,
+    base_url: normalized.base_url,
+    model_id: normalized.model_id,
+    rotate_keys: normalized.rotate_keys,
+    thinking_level: normalized.thinking_level,
+    timeout_seconds: normalized.timeout_seconds,
+    concurrency_limit: normalized.concurrency_limit,
+    rpm_limit: normalized.rpm_limit,
+    tpm_limit: normalized.tpm_limit,
+    retry_attempts: normalized.retry_attempts,
+    retry_initial_backoff_seconds: normalized.retry_initial_backoff_seconds,
+    retry_max_backoff_seconds: normalized.retry_max_backoff_seconds,
+    max_output_tokens: normalized.max_output_tokens,
+    thinking_budget_tokens: normalized.thinking_budget_tokens,
+    input_token_limit: normalized.input_token_limit,
+    top_p: normalized.top_p,
+    temperature: normalized.temperature,
+    presence_penalty: normalized.presence_penalty,
+    frequency_penalty: normalized.frequency_penalty,
+    custom_headers: normalized.custom_headers,
+    force_thinking_enable: normalized.force_thinking_enable,
+    api_keys: parseApiKeys(normalized.api_keys),
   };
 }
 
@@ -306,17 +316,18 @@ export function ModelProfileModal({
   };
 
   const inlineCreds = (): InlineProbeCredentials | null => {
-    const apiKeys = parseApiKeys(draft.api_keys);
+    const normalized = normalizeDraft(draft);
+    const apiKeys = parseApiKeys(normalized.api_keys);
     if (apiKeys.length === 0) return null;
-    if (!draft.base_url || !draft.provider_format) return null;
+    if (!normalized.base_url || !normalized.provider_format) return null;
     const creds: InlineProbeCredentials = {
-      provider_format: draft.provider_format,
-      base_url: draft.base_url,
+      provider_format: normalized.provider_format,
+      base_url: normalized.base_url,
       api_key: apiKeys[0],
     };
-    if (draft.model_id) creds.model_id = draft.model_id;
-    if (draft.custom_headers.length)
-      creds.custom_headers = draft.custom_headers;
+    if (normalized.model_id) creds.model_id = normalized.model_id;
+    if (normalized.custom_headers.length)
+      creds.custom_headers = normalized.custom_headers;
     return creds;
   };
 
@@ -361,7 +372,8 @@ export function ModelProfileModal({
   };
 
   const handleSave = async () => {
-    if (!draft.display_name.trim()) {
+    const normalized = normalizeDraft(draft);
+    if (!normalized.display_name) {
       setError(
         new BridgeError({
           code: "bridge.invalid_argument",
@@ -378,7 +390,7 @@ export function ModelProfileModal({
     try {
       if (mode === "edit" && profile) {
         // Update profile fields, then api keys separately if user typed any.
-        const payload = draftToCreatePayload(draft);
+        const payload = draftToCreatePayload(normalized);
         const { api_keys: keys, ...patch } = payload;
         await modelProfilesBridge.update(
           profile.id,
@@ -390,17 +402,17 @@ export function ModelProfileModal({
         pushToast({
           variant: "success",
           title: messages.toast.profileSaved,
-          detail: draft.display_name,
+          detail: normalized.display_name,
         });
         onSaved(profile.id);
       } else {
         const { profile: saved } = await modelProfilesBridge.create(
-          draftToCreatePayload(draft),
+          draftToCreatePayload(normalized),
         );
         pushToast({
           variant: "success",
           title: messages.toast.profileSaved,
-          detail: draft.display_name,
+          detail: normalized.display_name,
         });
         onSaved(saved.id);
       }
