@@ -93,14 +93,70 @@ def _count_punctuation(text: str) -> int:
     return sum(1 for char in text if char in _PUNCTUATION_CHARS)
 
 
+# Korean Hangul Syllables \u2014 full Korean words/phrases. Translation
+# output should never carry these; any occurrence = model laziness.
+#   U+AC00-U+D7AF  Hangul Syllables (\uc548\ub155\ud558\uc138\uc694 etc)
+_KOREAN_SYLLABLES_PATTERN = re.compile(r"[\uac00-\ud7af]")
+
+# Korean Jamo blocks \u2014 single letters used as cultural references in
+# Chinese text (sorting "from \u3131", shape "\u3137-shape", chat "\u314b\u314b").
+# Flag only when they saturate the line, not when sprinkled in long text.
+#   U+1100-U+11FF  Hangul Jamo
+#   U+3130-U+318F  Hangul Compatibility Jamo
+#   U+A960-U+A97F  Hangul Jamo Extended-A
+#   U+D7B0-U+D7FF  Hangul Jamo Extended-B
+#   U+FFA0-U+FFDC  Halfwidth Hangul Jamo
+_KOREAN_JAMO_PATTERN = re.compile(
+    r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff\uffa0-\uffdc]"
+)
+
+# Japanese kana \u2014 translation output should never contain these.
+# Excludes punctuation-class chars that legitimately appear in Chinese
+# text: U+309B/U+309C (dakuten/handakuten), U+30FB (fullwidth middle
+# dot \u30fb), U+30FC (long-sound mark \u30fc), U+FF65 (halfwidth middle dot \uff65),
+# and the halfwidth CJK-punctuation block U+FF61-U+FF64 (\uff61\uff62\uff63\uff64).
+#   U+3040-U+309A, U+309D-U+309F  Hiragana (sans dakuten marks)
+#   U+30A0-U+30FA, U+30FD-U+30FF  Katakana (sans middle dot, long mark)
+#   U+31F0-U+31FF                 Katakana Phonetic Extensions
+#   U+FF66-U+FF9F                 Halfwidth Katakana letters only
+_JAPANESE_KANA_PATTERN = re.compile(
+    "["
+    "\u3040-\u309a"   # Hiragana (excl. \u309b dakuten, \u309c handakuten)
+    "\u309d-\u309f"   # Hiragana iteration marks, digraph yori
+    "\u30a0-\u30fa"   # Katakana (excl. \u30fb \u30fb, \u30fc \u30fc)
+    "\u30fd-\u30ff"   # Katakana iteration marks
+    "\u31f0-\u31ff"   # Katakana Phonetic Extensions
+    "\uff66-\uff9f"   # Halfwidth Katakana letters (excl. \uff65 \uff65)
+    "]"
+)
+
+# Threshold for Compat-Jamo-only residue. Empirically a chat laze
+# (\u314b\u314b\u314b\u314b\u314b\u314b\u314b) sits at \u226540% jamo, while a single-letter cultural
+# reference is \u22645% of any reasonably-long sentence.
+_JAMO_RATIO_THRESHOLD = 0.10
+
+
 def _source_language_residue(
     translated_text: str, source_language: Language | None
 ) -> str | None:
-    if source_language is Language.KOREAN and re.search(r"[\uac00-\ud7af]", translated_text):
-        return "Korean residue remains in translation"
-    if source_language is Language.JAPANESE and re.search(r"[\u3040-\u30ff]", translated_text):
-        return "Japanese kana residue remains in translation"
+    if source_language is Language.KOREAN:
+        # Hangul Syllables = real Korean words, never legitimate.
+        if _KOREAN_SYLLABLES_PATTERN.search(translated_text):
+            return "Korean residue remains in translation"
+        # Compat-Jamo cluster = chat slang or saturating residue.
+        if _ratio(_KOREAN_JAMO_PATTERN, translated_text) > _JAMO_RATIO_THRESHOLD:
+            return "Korean residue remains in translation"
+    elif source_language is Language.JAPANESE:
+        if _JAPANESE_KANA_PATTERN.search(translated_text):
+            return "Japanese kana residue remains in translation"
     return None
+
+
+def _ratio(pattern: re.Pattern[str], text: str) -> float:
+    if not text:
+        return 0.0
+    hits = len(pattern.findall(text))
+    return hits / len(text)
 
 
 def _too_similar(source_text: str, translated_text: str) -> bool:
