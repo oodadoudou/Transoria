@@ -408,6 +408,9 @@ class TranslationSubtaskRunner:
             total_output += retry_response.usage.output_tokens
 
             retry_raw = self._restore_roster(retry_response.content)
+            debug_attempts.append(
+                {"user_prompt": retry_user_prompt, "raw_response": retry_raw}
+            )
             retry_decoded = decode_translation_jsonl(retry_raw)
             retry_by_index = {line.index: line.text for line in retry_decoded.lines}
 
@@ -420,17 +423,24 @@ class TranslationSubtaskRunner:
                 retry_final = self._postprocess(meta, retry_text)
                 verdict = self._evaluate_confidence(meta.original_text, retry_final)
                 if verdict.is_low_confidence:
-                    next_pending.append((meta, retry_final, verdict.reasons))
+                    # Don't overwrite the initial candidate with a still-failing
+                    # retry — the model often hallucinates worse content the
+                    # second time around.
+                    next_pending.append((meta, last_text, last_reasons))
                     continue
                 finalized[meta.segment_id] = retry_final
             pending = next_pending
 
-        for meta, last_text, last_reasons in pending:
-            finalized[meta.segment_id] = last_text
+        for meta, _last_text, last_reasons in pending:
+            # No retry passed confidence: fall back to the source text so the
+            # user sees the original line in the output and can fix it in the
+            # proofreading page. Never silently store the low-confidence
+            # candidate as if it were a clean translation.
+            finalized[meta.segment_id] = meta.original_text
             low_confidence.append(
                 {
                     "segment_id": meta.segment_id,
-                    "reasons": list(last_reasons) + ["force_accepted_after_max_retries"],
+                    "reasons": list(last_reasons) + ["fell_back_to_source_after_max_retries"],
                 }
             )
 

@@ -71,7 +71,10 @@ from transoria.workflows.translation.chunker import (
 )
 from transoria.workflows.translation.config import TranslationConfig
 from transoria.workflows.prefilter import is_translation_skippable
-from transoria.workflows.translation.preprocessor import preprocess_segment
+from transoria.workflows.translation.preprocessor import (
+    preprocess_segment,
+    strip_drm_invisibles,
+)
 from transoria.workflows.translation.runner import (
     TranslationSubtaskRunner,
     encode_subtask_payload,
@@ -541,10 +544,10 @@ def _prepare_segments(
     per_file: dict[int, list[PreparedSegment]] = {}
     for parsed in parsed_files:
         bucket: list[PreparedSegment] = []
-        for segment_index, source_text in parsed.source_segments:
-            # Skip empty / pure-numeric / pure-punctuation lines before
-            # the preprocessor so they never reach the LLM. The writer
-            # keeps the original line verbatim.
+        for segment_index, raw_source_text in parsed.source_segments:
+            # Strip DRM invisible chars so confidence checks and bilingual
+            # output see the same clean text the LLM does.
+            source_text = strip_drm_invisibles(raw_source_text)
             if is_translation_skippable(source_text):
                 continue
             preprocessed = preprocess_segment(

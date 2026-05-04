@@ -44,6 +44,14 @@ _SENTINEL_PATTERN = re.compile(
     re.escape(_SENTINEL_PREFIX) + r"(\d+)" + re.escape(_SENTINEL_SUFFIX)
 )
 
+# Strip invisible Cf-class chars often injected by EPUB DRM watermarks.
+# These survive normal whitespace stripping (they're not Zs-class) and
+# fool length-based confidence checks. U+2061 (FUNCTION APPLICATION) is
+# deliberately excluded \u2014 it's reused inside our protection sentinels.
+_DRM_INVISIBLE_PATTERN = re.compile(
+    r"[\u200b-\u200f\u202a-\u202e\u2060\u2062-\u2064\u206a-\u206f\ufeff]+"
+)
+
 
 @dataclass(frozen=True)
 class ProtectionMap:
@@ -71,9 +79,10 @@ def preprocess_segment(
     text_preserve_rules: Iterable[TextPreserveRule] = (),
     pre_replacements: Iterable[ReplacementRule] = (),
 ) -> PreprocessedSegment:
-    """Strip whitespace, mask preserved spans, then apply pre-replacements."""
+    """Strip DRM invisibles + whitespace, mask preserved spans, apply pre-replacements."""
 
-    leading, body, trailing = _split_whitespace(source_text)
+    cleaned = _DRM_INVISIBLE_PATTERN.sub("", source_text)
+    leading, body, trailing = _split_whitespace(cleaned)
     masked, protection = _mask_protected_spans(body, text_preserve_rules)
     rewritten = _apply_replacements(masked, pre_replacements)
     return PreprocessedSegment(
@@ -178,9 +187,14 @@ def _apply_replacements(text: str, rules: Iterable[ReplacementRule]) -> str:
     return out
 
 
+def strip_drm_invisibles(text: str) -> str:
+    return _DRM_INVISIBLE_PATTERN.sub("", text)
+
+
 __all__ = [
     "PreprocessedSegment",
     "ProtectionMap",
     "preprocess_segment",
     "postprocess_segment",
+    "strip_drm_invisibles",
 ]
