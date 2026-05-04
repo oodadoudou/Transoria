@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { format, useMessages } from "@/locales";
-import { BridgeError, dialogsBridge, glossaryBridge } from "@/bridge";
+import {
+  BridgeError,
+  dialogsBridge,
+  glossaryBridge,
+  glossaryReviewBridge,
+} from "@/bridge";
 import { useTaskStore, type GlossaryEntry } from "@/store/useTaskStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
@@ -190,7 +195,9 @@ export function GlossaryPage() {
   const handleImport = async () => {
     setImportError(null);
     try {
+      const initialPath = await findLatestGlossaryReviewOutputFolder();
       const choice = await dialogsBridge.chooseGlossaryFile({
+        initialPath,
         allowJson: true,
         allowXlsx: true,
       });
@@ -217,6 +224,20 @@ export function GlossaryPage() {
           : String(error),
       );
     }
+  };
+
+  const findLatestGlossaryReviewOutputFolder = async () => {
+    try {
+      const listing = await glossaryReviewBridge.listRecentTasks(8);
+      for (const task of listing.tasks) {
+        if (task.status !== "completed") continue;
+        const artifacts = await glossaryReviewBridge.readArtifacts(task.id);
+        if (artifacts.output_folder) return artifacts.output_folder;
+      }
+    } catch {
+      // If recent review lookup fails, keep the normal file picker behavior.
+    }
+    return undefined;
   };
 
   const handleExport = async (fmt: "json" | "xlsx") => {

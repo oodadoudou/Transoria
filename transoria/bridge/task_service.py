@@ -2953,6 +2953,40 @@ class TaskService:
         workbook.save(path)
         return self.read_glossary_review_final(task_id=task_id)
 
+    def restore_glossary_review_deleted_report_row(
+        self,
+        *,
+        task_id: str,
+        src: str,
+        dst: str,
+        info: str,
+        frequency: int = 0,
+    ) -> dict[str, object]:
+        source = src.strip()
+        target = dst.strip()
+        category = info.strip()
+        if not source or not target:
+            raise BridgeError.invalid_argument(
+                "src and dst must not be empty.",
+                field="src",
+            )
+        path = self._glossary_review_output_path(task_id)
+        loaded = load_glossary_xlsx(path)
+        workbook = load_workbook(path)
+        sheet = workbook[loaded.sheet_name]
+        row_index = sheet.max_row + 1
+        sheet.cell(row=row_index, column=loaded.source_col, value=source)
+        sheet.cell(row=row_index, column=loaded.target_col, value=target)
+        sheet.cell(row=row_index, column=loaded.info_col, value=category)
+        if loaded.frequency_col is not None:
+            sheet.cell(
+                row=row_index,
+                column=loaded.frequency_col,
+                value=max(0, int(frequency)),
+            )
+        workbook.save(path)
+        return self.read_glossary_review_final(task_id=task_id)
+
     def _glossary_review_output_path(self, task_id: str) -> Path:
         try:
             record = self.cache.load_record(task_id)

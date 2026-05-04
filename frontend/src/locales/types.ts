@@ -394,6 +394,8 @@ export interface Messages {
       activeModel: string;
       activePrompt: string;
       switch: string;
+      taskId: string;
+      proofreadLowConfidence: string;
       stats: {
         completed: string;
         failed: string;
@@ -515,6 +517,9 @@ export interface Messages {
       filterOnlyLowConfidence: string;
       filterOnlySourceResidue: string;
       filterOnlyUntranslated: string;
+      filterOnlyTooShort: string;
+      filterOnlyTooLong: string;
+      filterOnlyFormatRescue: string;
       filterAll: string;
       replacementToggle: string;
       replacementFindPlaceholder: string;
@@ -639,6 +644,13 @@ export interface Messages {
       switch: string;
       viewReport: string;
       reportUnavailable: string;
+      importFinalToTranslation: string;
+      importingFinal: string;
+      importFinalUnavailable: string;
+      importFinalEmpty: string;
+      importFinalReplaceConfirm: string;
+      importFinalSuccess: string;
+      importFinalFailed: string;
       roundOverall: string;
       roundCurrent: string;
       roundBatches: string;
@@ -672,9 +684,15 @@ export interface Messages {
         originalDst: string;
         suggestedDst: string;
         originalInfo: string;
-        suggestedInfo: string;
-        reason: string;
-      };
+          suggestedInfo: string;
+          reason: string;
+          actions: string;
+        };
+      restoreDelete: string;
+      restoring: string;
+      restored: string;
+      restoreSuccess: string;
+      restoreFailed: string;
     };
     review: {
       title: string;

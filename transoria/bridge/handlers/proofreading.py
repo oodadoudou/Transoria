@@ -123,6 +123,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         translations = _collect_translations_from_cache(snapshot)
         low_conf_ids: set[str] = set()
         seg_tags: dict[str, list[str]] = {}
+        seg_reasons: dict[str, list[str]] = {}
         for subtask in snapshot.subtasks:
             resp = _decode_response(subtask.response_content or "")
             entries = resp.get("low_confidence", [])
@@ -132,6 +133,15 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                         sid = entry.get("segment_id")
                         if isinstance(sid, str):
                             low_conf_ids.add(sid)
+                            reasons = entry.get("reasons", [])
+                            if isinstance(reasons, list):
+                                merged_reasons = seg_reasons.setdefault(sid, [])
+                                for reason in reasons:
+                                    if (
+                                        isinstance(reason, str)
+                                        and reason not in merged_reasons
+                                    ):
+                                        merged_reasons.append(reason)
                             tags = entry.get("tags", [])
                             if isinstance(tags, list):
                                 merged = seg_tags.setdefault(sid, [])
@@ -166,6 +176,9 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 tags_for_seg = seg_tags.get(seg_id)
                 if tags_for_seg:
                     item["tags"] = tags_for_seg
+                reasons_for_seg = seg_reasons.get(seg_id)
+                if reasons_for_seg:
+                    item["reasons"] = reasons_for_seg
                 seen[seg_id] = item
 
         items = sorted(seen.values(), key=lambda i: _segment_sort_key(str(i["segment_id"])))
@@ -228,7 +241,11 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 )
             )
         tags = []
+        reasons = []
         if confidence_entry is not None:
+            raw_reasons = confidence_entry.get("reasons")
+            if isinstance(raw_reasons, list):
+                reasons = [str(reason) for reason in raw_reasons]
             raw_tags = confidence_entry.get("tags")
             if isinstance(raw_tags, list):
                 tags = [str(tag) for tag in raw_tags]
@@ -238,6 +255,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             "dst": new_dst_raw,
             "low_confidence": confidence_entry is not None,
             "tags": tags,
+            "reasons": reasons,
         }
 
     def regenerate_outputs(

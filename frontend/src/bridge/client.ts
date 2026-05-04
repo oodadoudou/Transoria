@@ -20,6 +20,7 @@ import type {
   ProviderTemplate,
   ProbeContinuable,
   PromptKind,
+  PersistedGlossaryEntry,
   PromptPresetBody,
   PromptPresetSummary,
   PromptPreviewContext,
@@ -280,6 +281,7 @@ export interface ProofreadingItem {
   src: string;
   dst: string;
   low_confidence: boolean;
+  reasons?: string[];
   /** Optional per-segment classification tags. Currently only
    * "source_residue" is emitted (translation kept source-language
    * characters), but the field is open for future categories. */
@@ -311,6 +313,7 @@ export const proofreadingBridge = {
     dst: string;
     low_confidence: boolean;
     tags: string[];
+    reasons: string[];
   }> {
     return call("proofreading.update_segment", {
       task_id: taskId,
@@ -498,10 +501,38 @@ export const glossaryReviewBridge = {
       row_indices: rowIndices,
     });
   },
+  restoreDeletedReportRow(
+    taskId: string,
+    row: {
+      src: string;
+      dst: string;
+      info: string;
+      frequency?: number;
+    },
+  ): Promise<GlossaryReviewFinalSheet> {
+    return call("glossary_review.restore_deleted_report_row", {
+      task_id: taskId,
+      ...row,
+    });
+  },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("glossary_review.list_failed_subtasks", { task_id: taskId });
   },
 };
+
+export function importedGlossaryToPersisted(
+  entries: Awaited<ReturnType<typeof glossaryBridge.importRules>>["entries"],
+): PersistedGlossaryEntry[] {
+  return entries.map((entry) => ({
+    src: entry.src,
+    dst: entry.dst,
+    info: entry.info,
+    regex: entry.regex,
+    case_sensitive: entry.case_sensitive,
+    enabled: entry.enabled,
+    frequency: entry.frequency ?? 0,
+  }));
+}
 
 // --- Task-cache management (Settings page) --------------------------------
 

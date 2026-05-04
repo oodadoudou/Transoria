@@ -48,6 +48,7 @@ export function RunPage() {
   const { run } = messages.translation;
   const failedModalMessages = messages.failedSubtasksModal;
   const navigate = useTaskStore((state) => state.navigate);
+  const openProofreadingTask = useTaskStore((state) => state.openProofreadingTask);
   const profiles = useModelProfiles();
   const prompts = usePromptPresets("translation");
   const promptSlice = prompts.translation;
@@ -230,6 +231,10 @@ export function RunPage() {
   const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
+  const showLowConfidenceAction =
+    Boolean(activeTaskId) &&
+    snapshot.status === "completed" &&
+    snapshot.lowConfidence.total > 0;
 
   return (
     <>
@@ -323,6 +328,12 @@ export function RunPage() {
       ) : null}
 
       <Panel label={run.progress}>
+        {activeTaskId ? (
+          <div className={styles.taskIdStrip}>
+            <span>{run.taskId}</span>
+            <code>{activeTaskId}</code>
+          </div>
+        ) : null}
         <div className={styles.progressCard}>
           <ProgressRing percent={percent} completed={settled} total={total} />
           <div className={styles.statGrid}>
@@ -352,6 +363,19 @@ export function RunPage() {
               itemLabel={run.liveCounter.chunksLabel}
             />
           </>
+        ) : null}
+        {showLowConfidenceAction && activeTaskId ? (
+          <div className={styles.reviewActionRow}>
+            <Pill
+              variant="ghost"
+              onClick={() => openProofreadingTask(activeTaskId, ["low_conf"])}
+            >
+              {run.proofreadLowConfidence.replace(
+                "{n}",
+                String(snapshot.lowConfidence.total),
+              )}
+            </Pill>
+          </div>
         ) : null}
       </Panel>
 

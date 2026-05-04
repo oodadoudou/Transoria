@@ -10,6 +10,7 @@ export {
   translationBridge,
   glossaryBridge,
   glossaryReviewBridge,
+  importedGlossaryToPersisted,
   proofreadingBridge,
   replacementBridge,
   rulesBridge,

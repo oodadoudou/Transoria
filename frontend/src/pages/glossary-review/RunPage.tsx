@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { format, useMessages, useI18n } from "@/locales";
-import { BridgeError, glossaryReviewBridge, type GlossaryReviewReport } from "@/bridge";
+import {
+  BridgeError,
+  glossaryBridge,
+  glossaryReviewBridge,
+  importedGlossaryToPersisted,
+  type GlossaryReviewReport,
+  type GlossaryReviewReportRow,
+} from "@/bridge";
 import { useTaskStore } from "@/store/useTaskStore";
+import type { GlossaryEntry } from "@/store/useTaskStore";
 import {
   hasDismissedCompletionWithFailures,
   hasShownCleanCompletionToast,
@@ -18,6 +26,7 @@ import {
 } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { ProgressRing } from "@/components/ProgressRing";
@@ -47,6 +56,15 @@ export function RunPage() {
   const { run } = messages.glossaryReview;
   const failedModalMessages = messages.failedSubtasksModal;
   const navigate = useTaskStore((state) => state.navigate);
+  const translationGlossary = useTaskStore((state) => state.translationGlossary);
+  const importTranslationGlossaryEntries = useTaskStore(
+    (state) => state.importTranslationGlossaryEntries,
+  );
+  const setTranslationGlossaryEnabled = useTaskStore(
+    (state) => state.setTranslationGlossaryEnabled,
+  );
+  const updateSetting = useSettingsStore((state) => state.updateField);
+  const saveSettingsNow = useSettingsStore((state) => state.saveNow);
   const profiles = useModelProfiles();
   const prompts = usePromptPresets("glossary_review");
   const promptSlice = prompts.glossary_review;
@@ -66,6 +84,7 @@ export function RunPage() {
   const [rerunPending, setRerunPending] = useState(false);
   const [report, setReport] = useState<GlossaryReviewReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [importingFinal, setImportingFinal] = useState(false);
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -166,6 +185,86 @@ export function RunPage() {
         useRuntimeStore.getState().setLastError("glossary_review", error);
       }
     }
+  };
+
+  const handleUseFinalGlossary = async () => {
+    if (!activeTaskId || importingFinal) return;
+    setImportingFinal(true);
+    try {
+      const artifacts = await glossaryReviewBridge.readArtifacts(activeTaskId);
+      if (!artifacts.output_path) {
+        throw new Error(run.importFinalUnavailable);
+      }
+      const imported = await glossaryBridge.importRules(artifacts.output_path);
+      const incoming: GlossaryEntry[] = imported.entries.map((entry, idx) => ({
+        id: `g-review-${Date.now()}-${idx}`,
+        source: entry.src,
+        translation: entry.dst,
+        description: entry.info,
+        caseSensitive: entry.case_sensitive,
+        enabled: entry.enabled,
+        frequency: entry.frequency ?? 0,
+      }));
+      if (incoming.length === 0) {
+        throw new Error(run.importFinalEmpty);
+      }
+      const shouldReplace =
+        translationGlossary.entries.length > 0
+          ? window.confirm(
+              format(run.importFinalReplaceConfirm, {
+                n: translationGlossary.entries.length,
+              }),
+            )
+          : true;
+      const nextEntries = shouldReplace
+        ? incoming
+        : [...translationGlossary.entries, ...incoming];
+      importTranslationGlossaryEntries(nextEntries);
+      setTranslationGlossaryEnabled(true);
+      const persisted = importedGlossaryToPersisted(
+        shouldReplace
+          ? imported.entries
+          : [
+              ...translationGlossary.entries.map((entry) => ({
+                src: entry.source,
+                dst: entry.translation,
+                info: entry.description,
+                regex: false,
+                case_sensitive: entry.caseSensitive,
+                enabled: entry.enabled,
+                frequency: entry.frequency,
+              })),
+              ...imported.entries,
+            ],
+      );
+      updateSetting("translation", "translation_glossary", persisted);
+      await saveSettingsNow("translation");
+      useToastStore.getState().push({
+        variant: "success",
+        title: format(run.importFinalSuccess, { n: incoming.length }),
+      });
+      navigate({ module: "translation", page: "glossary" });
+    } catch (error) {
+      useToastStore.getState().push({
+        variant: "error",
+        title: format(run.importFinalFailed, {
+          reason: BridgeError.isBridgeError(error)
+            ? `${error.code}: ${error.message}`
+            : String(error),
+        }),
+      });
+    } finally {
+      setImportingFinal(false);
+    }
+  };
+
+  const handleRestoreDeletedRow = async (row: GlossaryReviewReportRow) => {
+    if (!activeTaskId) return;
+    await glossaryReviewBridge.restoreDeletedReportRow(activeTaskId, {
+      src: row.src,
+      dst: row.original_dst,
+      info: row.original_info,
+    });
   };
 
   const total = snapshot.progress.total;
@@ -358,6 +457,14 @@ export function RunPage() {
 
       {canViewReport ? (
         <div className={styles.failuresPillRow}>
+          <Pill
+            variant="ghost"
+            onClick={() => void handleUseFinalGlossary()}
+            disabled={importingFinal}
+            title={run.importFinalToTranslation}
+          >
+            {importingFinal ? run.importingFinal : run.importFinalToTranslation}
+          </Pill>
           <Pill variant="ghost" onClick={handleOpenReport} title={run.viewReport}>
             {run.viewReport}
           </Pill>
@@ -367,7 +474,11 @@ export function RunPage() {
       <RunControls kind="glossary_review" />
 
       {reportOpen && report ? (
-        <ReportModal report={report} onClose={() => setReportOpen(false)} />
+        <ReportModal
+          report={report}
+          onClose={() => setReportOpen(false)}
+          onRestoreDelete={handleRestoreDeletedRow}
+        />
       ) : null}
     </>
   );
@@ -425,13 +536,16 @@ function Stat({ label, value, delta }: StatProps) {
 interface ReportModalProps {
   report: GlossaryReviewReport;
   onClose: () => void;
+  onRestoreDelete: (row: GlossaryReviewReportRow) => Promise<void>;
 }
 
-function ReportModal({ report, onClose }: ReportModalProps) {
+function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
   const messages = useMessages();
   const labels = messages.glossaryReview.report;
   const [query, setQuery] = useState("");
   const [action, setAction] = useState("all");
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const [restored, setRestored] = useState<ReadonlySet<string>>(() => new Set());
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return report.rows.filter((row) => {
@@ -451,6 +565,31 @@ function ReportModal({ report, onClose }: ReportModalProps) {
         .includes(q);
     });
   }, [action, query, report.rows]);
+  const restoreKey = (row: GlossaryReviewReportRow) =>
+    `${row.round}-${row.row_index}-${row.src}`;
+  const restoreDelete = async (row: GlossaryReviewReportRow) => {
+    const key = restoreKey(row);
+    setRestoring(key);
+    try {
+      await onRestoreDelete(row);
+      setRestored((prev) => new Set(prev).add(key));
+      useToastStore.getState().push({
+        variant: "success",
+        title: labels.restoreSuccess,
+      });
+    } catch (error) {
+      useToastStore.getState().push({
+        variant: "error",
+        title: format(labels.restoreFailed, {
+          reason: BridgeError.isBridgeError(error)
+            ? `${error.code}: ${error.message}`
+            : String(error),
+        }),
+      });
+    } finally {
+      setRestoring(null);
+    }
+  };
 
   return (
     <div className={reportStyles.overlay} role="dialog" aria-modal="true">
@@ -490,21 +629,43 @@ function ReportModal({ report, onClose }: ReportModalProps) {
                   <th>{labels.columns.originalInfo}</th>
                   <th>{labels.columns.suggestedInfo}</th>
                   <th>{labels.columns.reason}</th>
+                  <th>{labels.columns.actions}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
-                  <tr key={`${row.round}-${row.row_index}-${row.action}`}>
-                    <td>{row.round}</td>
-                    <td>{row.action}</td>
-                    <td>{row.src}</td>
-                    <td>{row.original_dst}</td>
-                    <td>{row.suggested_dst}</td>
-                    <td>{row.original_info}</td>
-                    <td>{row.suggested_info}</td>
-                    <td>{row.reason}</td>
-                  </tr>
-                ))}
+                {rows.map((row) => {
+                  const key = restoreKey(row);
+                  const canRestore =
+                    row.action === "delete" && !restored.has(key);
+                  return (
+                    <tr key={`${row.round}-${row.row_index}-${row.action}`}>
+                      <td>{row.round}</td>
+                      <td>{row.action}</td>
+                      <td>{row.src}</td>
+                      <td>{row.original_dst}</td>
+                      <td>{row.suggested_dst}</td>
+                      <td>{row.original_info}</td>
+                      <td>{row.suggested_info}</td>
+                      <td>{row.reason}</td>
+                      <td>
+                        {row.action === "delete" ? (
+                          <button
+                            type="button"
+                            className={reportStyles.restoreButton}
+                            disabled={!canRestore || restoring === key}
+                            onClick={() => void restoreDelete(row)}
+                          >
+                            {restored.has(key)
+                              ? labels.restored
+                              : restoring === key
+                                ? labels.restoring
+                                : labels.restoreDelete}
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

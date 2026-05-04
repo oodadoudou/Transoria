@@ -102,9 +102,28 @@ export interface ModuleGlossaryRules {
   entries: GlossaryEntry[];
 }
 
+export type ProofreadingFilterKey =
+  | "low_conf"
+  | "source_residue"
+  | "untranslated"
+  | "too_short"
+  | "too_long"
+  | "format_rescue";
+
+export interface ProofreadingLaunchState {
+  taskId: string | null;
+  filters: ProofreadingFilterKey[];
+}
+
 interface TaskState {
   route: Route;
   navigate: (route: Route) => void;
+  proofreadingLaunch: ProofreadingLaunchState;
+  openProofreadingTask: (
+    taskId: string,
+    filters?: ProofreadingFilterKey[],
+  ) => void;
+  consumeProofreadingLaunch: () => ProofreadingLaunchState;
   translationGlossary: ModuleGlossaryRules;
   setTranslationGlossaryEnabled: (enabled: boolean) => void;
   setTranslationGlossarySelectedId: (id: string | null) => void;
@@ -123,9 +142,20 @@ const initialTranslationGlossary: ModuleGlossaryRules = {
   entries: [],
 };
 
-export const useTaskStore = create<TaskState>((set) => ({
+export const useTaskStore = create<TaskState>((set, get) => ({
   route: { module: "translation", page: "run" },
   navigate: (route) => set({ route }),
+  proofreadingLaunch: { taskId: null, filters: [] },
+  openProofreadingTask: (taskId, filters = []) =>
+    set({
+      route: { module: "translation", page: "proofreading" },
+      proofreadingLaunch: { taskId, filters },
+    }),
+  consumeProofreadingLaunch: () => {
+    const launch = get().proofreadingLaunch;
+    set({ proofreadingLaunch: { taskId: null, filters: [] } });
+    return launch;
+  },
   translationGlossary: initialTranslationGlossary,
   setTranslationGlossaryEnabled: (enabled) =>
     set((state) => ({

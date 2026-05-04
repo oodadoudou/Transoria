@@ -7,6 +7,10 @@ import {
   type ProofreadingSnapshot,
   type TaskHeader,
 } from "@/bridge";
+import {
+  useTaskStore,
+  type ProofreadingFilterKey,
+} from "@/store/useTaskStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import styles from "./ProofreadingPage.module.css";
@@ -35,6 +39,13 @@ function isUntranslated(item: ProofreadingItem): boolean {
   return dst === item.src.trim();
 }
 
+function hasReason(item: ProofreadingItem, ...needles: string[]): boolean {
+  const reasons = item.reasons ?? [];
+  return reasons.some((reason) =>
+    needles.every((needle) => reason.toLowerCase().includes(needle)),
+  );
+}
+
 export function ProofreadingPage() {
   const messages = useMessages();
   const m = messages.translation.proofreadingPage;
@@ -53,14 +64,13 @@ export function ProofreadingPage() {
   const [replacementValue, setReplacementValue] = useState("");
   const [replacementRegex, setReplacementRegex] = useState(false);
   const [replacing, setReplacing] = useState<"one" | "all" | null>(null);
-  // Multi-select chip filters. Empty set = show all. Multiple chips
-  // AND together (e.g. "low_conf" + "untranslated" = low-confidence
-  // segments whose translation equals the source).
-  type FilterKey = "low_conf" | "source_residue" | "untranslated";
-  const [filters, setFilters] = useState<ReadonlySet<FilterKey>>(
+  const consumeProofreadingLaunch = useTaskStore(
+    (state) => state.consumeProofreadingLaunch,
+  );
+  const [filters, setFilters] = useState<ReadonlySet<ProofreadingFilterKey>>(
     () => new Set(),
   );
-  const toggleFilter = (key: FilterKey) =>
+  const toggleFilter = (key: ProofreadingFilterKey) =>
     setFilters((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -86,8 +96,15 @@ export function ProofreadingPage() {
       .then((res) => {
         if (cancelled) return;
         setTasks(res.tasks);
+        const launch = consumeProofreadingLaunch();
         if (res.tasks.length > 0) {
-          setActiveTaskId(res.tasks[0].id);
+          const requested = launch.taskId
+            ? res.tasks.find((task) => task.id === launch.taskId)
+            : null;
+          setActiveTaskId(requested?.id ?? res.tasks[0].id);
+          if (launch.filters.length > 0) {
+            setFilters(new Set(launch.filters));
+          }
         }
       })
       .catch((err) => {
@@ -105,7 +122,7 @@ export function ProofreadingPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [consumeProofreadingLaunch]);
 
   // Load snapshot when active task changes.
   useEffect(() => {
@@ -164,6 +181,18 @@ export function ProofreadingPage() {
       )
         return false;
       if (filters.has("untranslated") && !isUntranslated(item)) return false;
+      if (filters.has("too_short") && !hasReason(item, "length ratio", "< min")) {
+        return false;
+      }
+      if (filters.has("too_long") && !hasReason(item, "length ratio", "> max")) {
+        return false;
+      }
+      if (
+        filters.has("format_rescue") &&
+        !hasReason(item, "positional_rescue_after_format_failure")
+      ) {
+        return false;
+      }
       if (!q) return true;
       return (
         item.src.toLowerCase().includes(q) || item.dst.toLowerCase().includes(q)
@@ -214,6 +243,7 @@ export function ProofreadingPage() {
                   dst: updated.dst,
                   low_confidence: updated.low_confidence,
                   tags: updated.tags,
+                  reasons: updated.reasons,
                 }
               : item,
           ),
@@ -291,6 +321,7 @@ export function ProofreadingPage() {
                 dst: updated.dst,
                 low_confidence: updated.low_confidence,
                 tags: updated.tags,
+                reasons: updated.reasons,
               }
             : item,
         ),
@@ -580,6 +611,30 @@ export function ProofreadingPage() {
             onClick={() => toggleFilter("untranslated")}
           >
             {m.filterOnlyUntranslated}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("too_short") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("too_short")}
+            onClick={() => toggleFilter("too_short")}
+          >
+            {m.filterOnlyTooShort}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("too_long") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("too_long")}
+            onClick={() => toggleFilter("too_long")}
+          >
+            {m.filterOnlyTooLong}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("format_rescue") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("format_rescue")}
+            onClick={() => toggleFilter("format_rescue")}
+          >
+            {m.filterOnlyFormatRescue}
           </button>
         </span>
       </div>

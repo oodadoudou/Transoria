@@ -74,6 +74,32 @@
   align-items: center;
 }
 
+.taskIdStrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.taskIdStrip code {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--panel-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 4px 7px;
+  user-select: text;
+}
+
+.reviewActionRow {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
 .statGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

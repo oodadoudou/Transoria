@@ -167,6 +167,15 @@ def _build_handlers(
                 row_indices=_expect_int_list(payload, "row_indices"),
             )
         )
+        handlers[f"{kind}.restore_deleted_report_row"] = (
+            lambda payload: service.restore_glossary_review_deleted_report_row(
+                task_id=_expect_task_id(payload),
+                src=str(payload.get("src", "")),
+                dst=str(payload.get("dst", "")),
+                info=str(payload.get("info", "")),
+                frequency=int(payload.get("frequency", 0)),
+            )
+        )
     return handlers
 
 
