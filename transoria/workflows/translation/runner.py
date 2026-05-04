@@ -595,20 +595,23 @@ _FENCE_RESCUE_PATTERN = re.compile(
 _RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
 
 
+_DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 5
+
+
 def _detect_duplicate_drift(
     translations_by_index: dict[int, str],
     metadata: tuple["_SegmentPayload", ...],
 ) -> list[int]:
-    """Indices flagged as suspicious duplicate-content drift.
+    """Flag indices that look like model-laziness duplicate output.
 
-    LLM occasionally returns valid JSONL with the same translation under
-    multiple keys (model laziness / chunk-boundary bleed). Distinct
-    source segments must not share an identical translation; if they do,
-    the response is treated as failed so the split-rerun loop can halve
-    the chunk and re-ask.
-
-    Same source ↔ same translation is legitimate (e.g. repeated 嗯。/
-    OK.) and is NOT flagged.
+    A short translation can legitimately collide across distinct sources
+    (Korean 응/어/네 → 嗯。/好。, English yeah/yep → 是的, etc.) so we
+    require either translation length ≥ 5 chars OR three+ distinct
+    sources sharing one output before treating it as drift. The 5-char
+    floor and 3-source threshold are empirical: real "model copy-pastes
+    one sentence across the chunk" failures produce many cells with a
+    long shared translation; natural-language coincidences cap at 2-3
+    affirmatives.
     """
 
     by_idx = {m.chunk_index: m for m in metadata}
@@ -620,14 +623,17 @@ def _detect_duplicate_drift(
         by_text.setdefault(norm, []).append(idx)
 
     suspicious: set[int] = set()
-    for indices in by_text.values():
+    for text, indices in by_text.items():
         if len(indices) <= 1:
             continue
         sources = {
             by_idx[i].original_text.strip() for i in indices if i in by_idx
         }
-        if len(sources) > 1:
-            suspicious.update(indices)
+        if len(sources) <= 1:
+            continue
+        if len(text) < _DUPLICATE_DRIFT_MIN_TEXT_LENGTH and len(sources) < 3:
+            continue
+        suspicious.update(indices)
     return sorted(suspicious)
 
 

@@ -108,6 +108,16 @@ _ZOMBIE_TASK_STATES: frozenset[TaskStatus] = frozenset(
         TaskStatus.PAUSING,
     }
 )
+# Disk states that imply the executor finished (success or failure).
+# A registry entry that's still not-done while disk shows one of these
+# is stale — usually a thread that exited without reaching mark_done.
+_TERMINAL_TASK_STATES: frozenset[TaskStatus] = frozenset(
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+        TaskStatus.STOPPED,
+    }
+)
 _LIVE_TASK_STALL_SECONDS = 600.0
 _STOP_REQUEST_STALL_SECONDS = 90.0
 _MAX_RETRANSLATE_JOBS = 50
@@ -909,7 +919,7 @@ class TaskService:
         removed: list[str] = []
         skipped_active: list[str] = []
         for record in self.cache.list_tasks():
-            running = self.registry.get(record.id)
+            running = self._resolve_live_running(record.id, record.status)
             if running is not None and not running.is_done:
                 skipped_active.append(record.id)
                 continue
@@ -1018,7 +1028,7 @@ class TaskService:
                 details={"task_id": task_id},
             )
         if snapshot.record.status in _ZOMBIE_TASK_STATES:
-            running = self.registry.get(task_id)
+            running = self._resolve_live_running(task_id, snapshot.record.status)
             if running is not None and not running.is_done:
                 raise BridgeError.conflict(
                     "cannot retranslate while the task is running.",
@@ -1940,7 +1950,7 @@ class TaskService:
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
             )
-        existing = self.registry.get(task_id)
+        existing = self._resolve_live_running(task_id, snapshot.record.status)
         if existing is not None and not existing.is_done:
             self._raise_live_task_conflict(existing)
         snapshot = self._reconcile_zombie(snapshot, cache)
@@ -2288,6 +2298,27 @@ class TaskService:
         )
         running.thread = thread
         thread.start()
+
+    def _resolve_live_running(
+        self, task_id: str, snapshot_status: TaskStatus
+    ) -> "RunningTask | None":
+        """Return the registry entry only when it's actually live.
+
+        If the disk snapshot shows a terminal state but the registry still
+        has a not-done entry, the entry is stale (thread exited without
+        reaching mark_done — typically a host crash or unexpected
+        BaseException path). Force-mark it done so subsequent
+        continue/retranslate calls don't see a phantom "already running"
+        conflict.
+        """
+
+        existing = self.registry.get(task_id)
+        if existing is None or existing.is_done:
+            return existing
+        if snapshot_status in _TERMINAL_TASK_STATES:
+            existing.mark_done()
+            return None
+        return existing
 
     def _raise_live_task_conflict(self, running: RunningTask) -> None:
         stalled = running.is_stalled(
