@@ -53,6 +53,7 @@ from transoria.workflows.translation.rules import (
 
 SUBTASK_PAYLOAD_VERSION = 1
 SUBTASK_RESPONSE_VERSION = 2
+_SOURCE_FALLBACK_RESIDUE_RATIO = 0.15
 
 
 # When the first attempt produces non-JSONL output (prose, mixed text,
@@ -498,21 +499,24 @@ class TranslationSubtaskRunner:
                 echoes_source = (
                     last_text.strip() == meta.original_text.strip()
                 )
+                residue_ratio = _residue_score(last_text, self.source_language)
                 # Three terminal modes:
                 # - Model echoed source: source-passthrough (same effect,
                 #   clearer reason for the user).
-                # - Model's last attempt still contains source-language
-                #   residue: source-passthrough. A Chinese-shaped string
-                #   that is mostly Korean/Japanese characters is more
-                #   confusing than the raw source line; the user can
-                #   spot residue at a glance on the proofreading page.
+                # - Model's last attempt is mostly source-language residue:
+                #   source-passthrough. A mostly translated sentence with a
+                #   small residue leak is kept and tagged; it is easier to
+                #   fix than the raw source line.
                 # - Model produced a Chinese guess that's flawed but not
                 #   residue: keep it. A questionable Chinese line is
                 #   easier to fix than re-translating from scratch.
                 tags: list[str] = []
                 if has_residue:
                     tags.append("source_residue")
-                if echoes_source or has_residue:
+                if (
+                    echoes_source
+                    or (has_residue and residue_ratio >= _SOURCE_FALLBACK_RESIDUE_RATIO)
+                ):
                     finalized[meta.segment_id] = meta.original_text
                     extra_reason = "fell_back_to_source_after_max_retries"
                 else:

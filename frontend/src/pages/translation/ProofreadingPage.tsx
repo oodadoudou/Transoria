@@ -21,6 +21,10 @@ interface ReplacementPlan {
   apply: (text: string) => string;
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // "Untranslated" covers two model failure shapes the user wants to spot
 // quickly: empty translation and verbatim source echo (terminal source-
 // fallback path). Trim before comparing so trailing whitespace doesn't
@@ -192,7 +196,7 @@ export function ProofreadingPage() {
     if (!activeTaskId || !selectedItem || !dirty) return;
     setFeedback(null);
     try {
-      await proofreadingBridge.updateSegment(
+      const updated = await proofreadingBridge.updateSegment(
         activeTaskId,
         selectedItem.segment_id,
         draftDst,
@@ -205,7 +209,12 @@ export function ProofreadingPage() {
           ...prev,
           items: prev.items.map((item) =>
             item.segment_id === selectedItem.segment_id
-              ? { ...item, dst: draftDst }
+              ? {
+                  ...item,
+                  dst: updated.dst,
+                  low_confidence: updated.low_confidence,
+                  tags: updated.tags,
+                }
               : item,
           ),
         };
@@ -245,6 +254,20 @@ export function ProofreadingPage() {
         return null;
       }
     }
+    if (/\s/.test(replacementNeedle)) {
+      const parts = replacementNeedle.trim().split(/\s+/).filter(Boolean);
+      if (parts.length === 0) {
+        setFeedback({ kind: "error", text: m.replacementEmptyNeedle });
+        return null;
+      }
+      const regex = new RegExp(parts.map(escapeRegExp).join("\\s+"), "g");
+      return {
+        apply: (text) => {
+          regex.lastIndex = 0;
+          return text.replace(regex, replacementValue);
+        },
+      };
+    }
     return {
       apply: (text) => text.split(replacementNeedle).join(replacementValue),
     };
@@ -252,13 +275,24 @@ export function ProofreadingPage() {
 
   const saveReplacement = async (segmentId: string, dst: string) => {
     if (!activeTaskId) return;
-    await proofreadingBridge.updateSegment(activeTaskId, segmentId, dst);
+    const updated = await proofreadingBridge.updateSegment(
+      activeTaskId,
+      segmentId,
+      dst,
+    );
     setSnapshot((prev) => {
       if (!prev) return prev;
       return {
         ...prev,
         items: prev.items.map((item) =>
-          item.segment_id === segmentId ? { ...item, dst } : item,
+          item.segment_id === segmentId
+            ? {
+                ...item,
+                dst: updated.dst,
+                low_confidence: updated.low_confidence,
+                tags: updated.tags,
+              }
+            : item,
         ),
       };
     });

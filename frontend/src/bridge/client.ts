@@ -305,7 +305,13 @@ export const proofreadingBridge = {
     taskId: string,
     segmentId: string,
     dst: string,
-  ): Promise<{ updated: boolean; segment_id: string; dst: string }> {
+  ): Promise<{
+    updated: boolean;
+    segment_id: string;
+    dst: string;
+    low_confidence: boolean;
+    tags: string[];
+  }> {
     return call("proofreading.update_segment", {
       task_id: taskId,
       segment_id: segmentId,
@@ -481,6 +487,15 @@ export const glossaryReviewBridge = {
     return call("glossary_review.update_final_row", {
       task_id: taskId,
       ...row,
+    });
+  },
+  deleteFinalRows(
+    taskId: string,
+    rowIndices: number[],
+  ): Promise<GlossaryReviewFinalSheet> {
+    return call("glossary_review.delete_final_rows", {
+      task_id: taskId,
+      row_indices: rowIndices,
     });
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {

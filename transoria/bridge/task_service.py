@@ -69,6 +69,7 @@ from transoria.workflows.glossary_review.orchestrator import (
     GlossaryReviewOrchestrator,
     GlossaryReviewResult,
 )
+from transoria.workflows.translation.confidence import evaluate_segment_confidence
 from transoria.workflows.translation.rules import (
     Glossary,
     ReplacementRule as TranslationReplacementRule,
@@ -208,6 +209,7 @@ def _patch_segment_dst(
     segment_id: str,
     new_dst: str,
 ) -> None:
+    confidence_entry = _confidence_entry_for_segment(snapshot, segment_id, new_dst)
     for subtask in snapshot.subtasks:
         segments = subtask.request_payload.get("segments")
         if not isinstance(segments, list):
@@ -229,9 +231,76 @@ def _patch_segment_dst(
             translations = {}
             payload["translations"] = translations
         translations[segment_id] = new_dst
+        _replace_low_confidence_entry(payload, segment_id, confidence_entry)
         cache.save_subtask(
             replace(subtask, response_content=json.dumps(payload, ensure_ascii=False))
         )
+
+
+def _confidence_entry_for_segment(
+    snapshot: TaskSnapshot, segment_id: str, dst: str
+) -> dict[str, object] | None:
+    source = ""
+    for subtask in snapshot.subtasks:
+        segments = subtask.request_payload.get("segments")
+        if not isinstance(segments, list):
+            continue
+        for segment in segments:
+            if (
+                not isinstance(segment, Mapping)
+                or segment.get("segment_id") != segment_id
+            ):
+                continue
+            source = str(
+                segment.get("original_text")
+                or segment.get("prompt_text")
+                or ""
+            )
+            break
+        if source:
+            break
+    if not source:
+        return None
+    try:
+        source_language = Language(snapshot.record.metadata.get("source_language", ""))
+    except ValueError:
+        source_language = None
+    verdict = evaluate_segment_confidence(
+        source,
+        dst,
+        min_length_ratio=0.25,
+        max_length_ratio=4.0,
+        max_punctuation_delta=12,
+        source_language=source_language,
+    )
+    if not verdict.is_low_confidence:
+        return None
+    entry: dict[str, object] = {
+        "segment_id": segment_id,
+        "reasons": list(verdict.reasons),
+    }
+    if any("residue" in reason.lower() for reason in verdict.reasons):
+        entry["tags"] = ["source_residue"]
+    return entry
+
+
+def _replace_low_confidence_entry(
+    payload: dict[str, object],
+    segment_id: str,
+    entry: dict[str, object] | None,
+) -> None:
+    existing = payload.get("low_confidence")
+    if isinstance(existing, list):
+        next_entries = [
+            item
+            for item in existing
+            if isinstance(item, dict) and item.get("segment_id") != segment_id
+        ]
+    else:
+        next_entries = []
+    if entry is not None:
+        next_entries.append(entry)
+    payload["low_confidence"] = next_entries
 
 
 def _coerce_text_preserve_rules(
@@ -2852,6 +2921,35 @@ class TaskService:
             sheet.cell(row=row_index, column=loaded.source_col, value=src.strip())
             sheet.cell(row=row_index, column=loaded.target_col, value=dst.strip())
             sheet.cell(row=row_index, column=loaded.info_col, value=info.strip())
+        workbook.save(path)
+        return self.read_glossary_review_final(task_id=task_id)
+
+    def delete_glossary_review_final_rows(
+        self, *, task_id: str, row_indices: list[int]
+    ) -> dict[str, object]:
+        if not row_indices:
+            raise BridgeError.invalid_argument(
+                "row_indices must not be empty.",
+                field="row_indices",
+            )
+        if any(row_index < 2 for row_index in row_indices):
+            raise BridgeError.invalid_argument(
+                "row_indices must point to spreadsheet data rows.",
+                field="row_indices",
+            )
+        path = self._glossary_review_output_path(task_id)
+        loaded = load_glossary_xlsx(path)
+        existing = {row.row_index for row in loaded.rows}
+        missing = sorted(set(row_indices) - existing)
+        if missing:
+            raise BridgeError.not_found(
+                f"glossary review rows not found: {missing!r}.",
+                details={"task_id": task_id, "row_indices": missing},
+            )
+        workbook = load_workbook(path)
+        sheet = workbook[loaded.sheet_name]
+        for row_index in sorted(set(row_indices), reverse=True):
+            sheet.delete_rows(row_index, 1)
         workbook.save(path)
         return self.read_glossary_review_final(task_id=task_id)
 

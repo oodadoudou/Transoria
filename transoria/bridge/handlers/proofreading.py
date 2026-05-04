@@ -21,7 +21,11 @@ from typing import Any, Mapping
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
-from transoria.bridge.task_service import TaskService
+from transoria.bridge.task_service import (
+    TaskService,
+    _confidence_entry_for_segment,
+    _replace_low_confidence_entry,
+)
 from transoria.domain import Language, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
 
@@ -205,6 +209,9 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 details={"task_id": task_id, "segment_id": segment_id},
             )
 
+        confidence_entry = _confidence_entry_for_segment(
+            snapshot, segment_id, new_dst_raw
+        )
         for subtask in owners:
             current = _decode_response(subtask.response_content or "")
             current.setdefault("version", 2)
@@ -213,13 +220,25 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 translations = {}
                 current["translations"] = translations
             translations[segment_id] = new_dst_raw
+            _replace_low_confidence_entry(current, segment_id, confidence_entry)
             service.cache.save_subtask(
                 replace(
                     subtask,
                     response_content=json.dumps(current, ensure_ascii=False),
                 )
             )
-        return {"updated": True, "segment_id": segment_id, "dst": new_dst_raw}
+        tags = []
+        if confidence_entry is not None:
+            raw_tags = confidence_entry.get("tags")
+            if isinstance(raw_tags, list):
+                tags = [str(tag) for tag in raw_tags]
+        return {
+            "updated": True,
+            "segment_id": segment_id,
+            "dst": new_dst_raw,
+            "low_confidence": confidence_entry is not None,
+            "tags": tags,
+        }
 
     def regenerate_outputs(
         payload: Mapping[str, object],

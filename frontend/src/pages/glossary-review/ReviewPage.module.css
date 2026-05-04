@@ -52,6 +52,11 @@
   max-height: 62vh;
 }
 
+.tableWrap:focus {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -109,6 +114,19 @@
   background: var(--panel-soft);
   outline: 2px solid var(--action);
   outline-offset: -2px;
+}
+
+.selectedRow {
+  background: color-mix(in srgb, var(--action) 10%, var(--panel));
+}
+
+.selectColumn {
+  width: 38px;
+  text-align: center !important;
+}
+
+.selectColumn input {
+  cursor: pointer;
 }
 
 .mono {

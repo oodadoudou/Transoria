@@ -698,8 +698,11 @@ export interface Messages {
       infoLabel: string;
       save: string;
       delete: string;
+      deleteSelected: string;
+      selectedCount: string;
       saved: string;
       deleted: string;
+      deletedMany: string;
       failed: string;
       dirty: string;
     };

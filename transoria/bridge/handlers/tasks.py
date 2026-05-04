@@ -42,6 +42,30 @@ def _optional_string(payload: Mapping[str, object], key: str) -> str:
     return raw
 
 
+def _expect_int_list(payload: Mapping[str, object], key: str) -> list[int]:
+    raw = payload.get(key)
+    if not isinstance(raw, list):
+        raise BridgeError.invalid_argument(
+            f"{key} must be a list of integers.",
+            field=key,
+        )
+    out: list[int] = []
+    for index, value in enumerate(raw):
+        if isinstance(value, bool):
+            raise BridgeError.invalid_argument(
+                f"{key}[{index}] must be an integer.",
+                field=key,
+            )
+        try:
+            out.append(int(value))  # type: ignore[arg-type]
+        except (TypeError, ValueError) as exc:
+            raise BridgeError.invalid_argument(
+                f"{key}[{index}] must be an integer.",
+                field=key,
+            ) from exc
+    return out
+
+
 def _optional_limit(payload: Mapping[str, object]) -> int | None:
     raw = payload.get("limit")
     if raw is None:
@@ -135,6 +159,12 @@ def _build_handlers(
                 dst=str(payload.get("dst", "")),
                 info=str(payload.get("info", "")),
                 delete=bool(payload.get("delete", False)),
+            )
+        )
+        handlers[f"{kind}.delete_final_rows"] = (
+            lambda payload: service.delete_glossary_review_final_rows(
+                task_id=_expect_task_id(payload),
+                row_indices=_expect_int_list(payload, "row_indices"),
             )
         )
     return handlers

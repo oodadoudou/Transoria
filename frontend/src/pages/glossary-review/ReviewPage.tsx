@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { BridgeError, glossaryReviewBridge, type GlossaryReviewFinalRow, type GlossaryReviewFinalSheet, type TaskHeader } from "@/bridge";
 import { format, useMessages } from "@/locales";
 import { Panel } from "@/components/Panel";
@@ -36,6 +36,10 @@ export function ReviewPage() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<GlossaryReviewFinalSheet | null>(null);
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
+  const [selectedRowIndices, setSelectedRowIndices] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
+  const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>({ src: "", dst: "", info: "" });
   const [query, setQuery] = useState("");
   const [sortState, setSortState] = useState<SortState | null>(null);
@@ -69,6 +73,8 @@ export function ReviewPage() {
     if (!activeTaskId) {
       setSheet(null);
       setSelectedRowIndex(null);
+      setSelectedRowIndices(new Set());
+      setSelectionAnchor(null);
       return;
     }
     let cancelled = false;
@@ -81,6 +87,8 @@ export function ReviewPage() {
         setSheet(next);
         const first = next.rows[0] ?? null;
         setSelectedRowIndex(first?.row_index ?? null);
+        setSelectedRowIndices(first ? new Set([first.row_index]) : new Set());
+        setSelectionAnchor(first?.row_index ?? null);
         setDraft(first ? rowToDraft(first) : { src: "", dst: "", info: "" });
       })
       .catch((error) => {
@@ -148,7 +156,75 @@ export function ReviewPage() {
 
   const selectRow = (row: GlossaryReviewFinalRow) => {
     setSelectedRowIndex(row.row_index);
+    setSelectedRowIndices(new Set([row.row_index]));
+    setSelectionAnchor(row.row_index);
     setDraft(rowToDraft(row));
+  };
+
+  const selectPrimaryRow = (row: GlossaryReviewFinalRow | null) => {
+    setSelectedRowIndex(row?.row_index ?? null);
+    setDraft(row ? rowToDraft(row) : { src: "", dst: "", info: "" });
+  };
+
+  const handleRowClick = (
+    event: MouseEvent<HTMLElement>,
+    row: GlossaryReviewFinalRow,
+    rowPosition: number,
+  ) => {
+    if (event.shiftKey && selectionAnchor !== null) {
+      const anchorPosition = rows.findIndex(
+        (item) => item.row_index === selectionAnchor,
+      );
+      const start = Math.min(anchorPosition >= 0 ? anchorPosition : rowPosition, rowPosition);
+      const end = Math.max(anchorPosition >= 0 ? anchorPosition : rowPosition, rowPosition);
+      const range = rows.slice(start, end + 1).map((item) => item.row_index);
+      setSelectedRowIndices((current) => {
+        const next = event.metaKey || event.ctrlKey ? new Set(current) : new Set<number>();
+        range.forEach((rowIndex) => next.add(rowIndex));
+        return next;
+      });
+      selectPrimaryRow(row);
+      return;
+    }
+    if (event.metaKey || event.ctrlKey) {
+      const next = new Set(selectedRowIndices);
+      if (next.has(row.row_index)) next.delete(row.row_index);
+      else next.add(row.row_index);
+      const nextPrimary =
+        next.has(row.row_index)
+          ? row
+          : rows.find((item) => next.has(item.row_index)) ?? null;
+      setSelectedRowIndices(next);
+      selectPrimaryRow(nextPrimary);
+      setSelectionAnchor(row.row_index);
+      return;
+    }
+    selectRow(row);
+  };
+
+  const handleSelectAllRows = () => {
+    if (rows.length === 0) return;
+    const allSelected = rows.every((row) => selectedRowIndices.has(row.row_index));
+    if (allSelected) {
+      setSelectedRowIndices(new Set());
+      setSelectedRowIndex(null);
+      setSelectionAnchor(null);
+      setDraft({ src: "", dst: "", info: "" });
+      return;
+    }
+    setSelectedRowIndices(new Set(rows.map((row) => row.row_index)));
+    setSelectionAnchor(rows[0].row_index);
+    selectPrimaryRow(selected ?? rows[0]);
+  };
+
+  const handleTableKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      if (rows.length === 0) return;
+      setSelectedRowIndices(new Set(rows.map((row) => row.row_index)));
+      setSelectionAnchor(rows[0].row_index);
+      selectPrimaryRow(selected ?? rows[0]);
+    }
   };
 
   const save = async (deleteRow: boolean) => {
@@ -183,6 +259,45 @@ export function ReviewPage() {
       setSaving(false);
     }
   };
+
+  const deleteSelectedRows = async () => {
+    if (!activeTaskId || selectedRowIndices.size === 0) return;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const deletedCount = selectedRowIndices.size;
+      const next = await glossaryReviewBridge.deleteFinalRows(
+        activeTaskId,
+        [...selectedRowIndices],
+      );
+      setSheet(next);
+      const nextSelected =
+        next.rows.find((row) => row.row_index === selectedRowIndex) ??
+        next.rows[0] ??
+        null;
+      selectPrimaryRow(nextSelected);
+      setSelectedRowIndices(nextSelected ? new Set([nextSelected.row_index]) : new Set());
+      setSelectionAnchor(nextSelected?.row_index ?? null);
+      setFeedback({
+        kind: "success",
+        text:
+          deletedCount === 1
+            ? labels.deleted
+            : format(labels.deletedMany, { n: deletedCount }),
+      });
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        text: format(labels.failed, { reason: errorText(error) }),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedCount = selectedRowIndices.size;
+  const allVisibleSelected =
+    rows.length > 0 && rows.every((row) => selectedRowIndices.has(row.row_index));
 
   if (tasks !== null && tasks.length === 0) {
     return (
@@ -220,7 +335,11 @@ export function ReviewPage() {
       />
 
       <div className={styles.layout}>
-        <div className={styles.tableWrap}>
+        <div
+          className={styles.tableWrap}
+          tabIndex={0}
+          onKeyDown={handleTableKeyDown}
+        >
           {loading ? (
             <div className={styles.empty}>{labels.loading}</div>
           ) : rows.length === 0 ? (
@@ -229,6 +348,14 @@ export function ReviewPage() {
             <table className={styles.table}>
               <thead>
                 <tr>
+                  <th className={styles.selectColumn}>
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      aria-label={labels.deleteSelected}
+                      onChange={handleSelectAllRows}
+                    />
+                  </th>
                   <SortableTh
                     label={labels.columns.index}
                     sortKey="row_index"
@@ -262,14 +389,25 @@ export function ReviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {rows.map((row, index) => (
                   <tr
                     key={row.row_index}
-                    className={
+                    className={`${selectedRowIndices.has(row.row_index) ? styles.selectedRow : ""} ${
                       row.row_index === selectedRowIndex ? styles.activeRow : ""
-                    }
-                    onClick={() => selectRow(row)}
+                    }`.trim()}
+                    onClick={(event) => handleRowClick(event, row, index)}
                   >
+                    <td className={styles.selectColumn}>
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIndices.has(row.row_index)}
+                        readOnly
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleRowClick(event, row, index);
+                        }}
+                      />
+                    </td>
                     <td className={styles.mono}>{row.row_index}</td>
                     <td className={styles.truncate}>{row.src}</td>
                     <td className={styles.truncate}>{row.dst}</td>
@@ -315,14 +453,20 @@ export function ReviewPage() {
               />
             </div>
             <div className={styles.actions}>
-              <span className={styles.dirty}>{dirty ? labels.dirty : ""}</span>
+              <span className={styles.dirty}>
+                {dirty
+                  ? labels.dirty
+                  : selectedCount > 1
+                    ? format(labels.selectedCount, { n: selectedCount })
+                    : ""}
+              </span>
               <span style={{ display: "flex", gap: 8 }}>
                 <Pill
                   variant="ghost"
-                  disabled={saving}
-                  onClick={() => void save(true)}
+                  disabled={saving || selectedCount === 0}
+                  onClick={() => void deleteSelectedRows()}
                 >
-                  {labels.delete}
+                  {selectedCount > 1 ? labels.deleteSelected : labels.delete}
                 </Pill>
                 <Pill
                   disabled={saving || !dirty}
