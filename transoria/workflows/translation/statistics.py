@@ -23,6 +23,8 @@ STATISTICS_FILENAME_FAILED_SUBTASKS = "translation-failed-subtasks.txt"
 class FailedFile:
     path: str
     reason: str
+    code: str = "unknown"
+    details: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -58,7 +60,12 @@ class TranslationStatistics:
             "completed_segments": self.completed_segments,
             "failed_subtasks": self.failed_subtasks,
             "failed_files": [
-                {"path": item.path, "reason": item.reason}
+                {
+                    "path": item.path,
+                    "reason": item.reason,
+                    "code": item.code,
+                    "details": item.details,
+                }
                 for item in self.failed_files
             ],
             "low_confidence_segments": [

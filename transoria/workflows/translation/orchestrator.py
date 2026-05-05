@@ -731,6 +731,8 @@ def _failed_files_for_missing_translations(
                 FailedFile(
                     path=str(parsed.document.path),  # type: ignore[union-attr]
                     reason=f"{missing_for_file} segments missing from translation results",
+                    code="missing_translations",
+                    details={"missing_segments": missing_for_file},
                 )
             )
     return failed_files
@@ -757,6 +759,17 @@ def _write_outputs(
                 continue
             segment_index = int(item.segment_id.split(":", 1)[1])
             per_file_translations[segment_index] = translation
+
+        if not per_file_translations:
+            failed_files.append(
+                FailedFile(
+                    path=str(parsed.document.path),  # type: ignore[union-attr]
+                    reason="no translated segments matched this file",
+                    code="no_matching_translations",
+                    details={"expected_segments": len(prepared)},
+                )
+            )
+            continue
 
         try:
             if parsed.document_kind == "txt":
@@ -802,6 +815,8 @@ def _write_outputs(
                 FailedFile(
                     path=str(parsed.document.path),  # type: ignore[union-attr]
                     reason=f"{type(exc).__name__}: {exc}",
+                    code="writer_error",
+                    details={"error_type": type(exc).__name__},
                 )
             )
             continue
@@ -811,6 +826,8 @@ def _write_outputs(
                 FailedFile(
                     path=str(parsed.document.path),  # type: ignore[union-attr]
                     reason=f"{missing_for_file} segments missing from translation results",
+                    code="missing_translations",
+                    details={"missing_segments": missing_for_file},
                 )
             )
 

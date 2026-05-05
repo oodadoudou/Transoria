@@ -489,7 +489,14 @@ export interface Messages {
       regenerateBilingualAction: string;
       regenerating: string;
       regenerateSuccess: string;
+      regeneratePartial: string;
       regenerateFailed: string;
+      regenerateFailureReasons: {
+        noMatchingTranslations: string;
+        missingTranslations: string;
+        writerError: string;
+        unknown: string;
+      };
       columns: {
         index: string;
         src: string;

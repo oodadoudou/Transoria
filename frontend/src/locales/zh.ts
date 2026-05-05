@@ -554,7 +554,17 @@ export const zh: Messages = {
       regenerateBilingualAction: "导出双语版本",
       regenerating: "生成中…",
       regenerateSuccess: "已重新生成 {n} 个文件。",
+      regeneratePartial: "已重新生成 {n} 个文件，但部分文件失败：{reason}",
       regenerateFailed: "重新生成失败：{reason}",
+      regenerateFailureReasons: {
+        noMatchingTranslations:
+          "源文件和任务缓存对不上：这个文件没有匹配到任何已翻译段落。可能是原输入文件被移动、替换或用旧版本缓存直接重新生成。",
+        missingTranslations:
+          "这个文件有 {missing} 段没有译文，已生成的文件可能包含原文兜底。建议继续任务补齐后再重新生成。",
+        writerError:
+          "写入文件失败（{errorType}）。请检查输出目录权限、文件是否被占用，或磁盘是否可写。",
+        unknown: "{reason}",
+      },
       columns: {
         index: "序号",
         src: "原文",

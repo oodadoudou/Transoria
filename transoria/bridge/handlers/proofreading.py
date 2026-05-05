@@ -383,7 +383,12 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             "translated_files": [str(p) for p in translated],
             "bilingual_files": [str(p) for p in bilingual],
             "failed_files": [
-                {"path": item.path, "reason": item.reason}
+                {
+                    "path": item.path,
+                    "reason": item.reason,
+                    "code": item.code,
+                    "details": item.details,
+                }
                 for item in failed
             ],
         }

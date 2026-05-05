@@ -568,7 +568,17 @@ export const en: Messages = {
       regenerateBilingualAction: "Export bilingual",
       regenerating: "Generating…",
       regenerateSuccess: "Regenerated {n} files.",
+      regeneratePartial: "Regenerated {n} files, but some files failed: {reason}",
       regenerateFailed: "Regenerate failed: {reason}",
+      regenerateFailureReasons: {
+        noMatchingTranslations:
+          "The source file does not match this task cache: no translated segments matched this file. The original input may have been moved/replaced, or an old-version cache was regenerated directly.",
+        missingTranslations:
+          "This file is missing {missing} translated segments. Generated output may contain source-text fallbacks; continue the task to fill the gaps, then regenerate.",
+        writerError:
+          "File write failed ({errorType}). Check output folder permissions, whether the file is open, and whether the disk is writable.",
+        unknown: "{reason}",
+      },
       columns: {
         index: "#",
         src: "Source",

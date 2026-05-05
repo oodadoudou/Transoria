@@ -309,7 +309,12 @@ export const proofreadingBridge = {
     task_id: string;
     translated_files: string[];
     bilingual_files: string[];
-    failed_files: Array<{ path: string; reason: string }>;
+    failed_files: Array<{
+      path: string;
+      reason: string;
+      code?: string;
+      details?: Record<string, unknown>;
+    }>;
   }> {
     return call("proofreading.regenerate_outputs", {
       task_id: taskId,

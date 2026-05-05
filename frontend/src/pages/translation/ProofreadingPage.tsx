@@ -25,8 +25,32 @@ interface ReplacementPlan {
   apply: (text: string) => string;
 }
 
+interface RegenerateFailedFile {
+  path: string;
+  reason: string;
+  code?: string;
+  details?: Record<string, unknown>;
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stringDetail(
+  details: Record<string, unknown> | undefined,
+  key: string,
+  fallback = "",
+): string {
+  const value = details?.[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function numberDetail(
+  details: Record<string, unknown> | undefined,
+  key: string,
+): number {
+  const value = details?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 // "Untranslated" covers two model failure shapes the user wants to spot
@@ -44,6 +68,29 @@ function hasReason(item: ProofreadingItem, ...needles: string[]): boolean {
   return reasons.some((reason) =>
     needles.every((needle) => reason.toLowerCase().includes(needle)),
   );
+}
+
+function formatRegenerateFailure(
+  file: RegenerateFailedFile,
+  messages: ReturnType<typeof useMessages>["translation"]["proofreadingPage"],
+): string {
+  let reason: string;
+  if (file.code === "no_matching_translations") {
+    reason = messages.regenerateFailureReasons.noMatchingTranslations;
+  } else if (file.code === "missing_translations") {
+    reason = format(messages.regenerateFailureReasons.missingTranslations, {
+      missing: numberDetail(file.details, "missing_segments"),
+    });
+  } else if (file.code === "writer_error") {
+    reason = format(messages.regenerateFailureReasons.writerError, {
+      errorType: stringDetail(file.details, "error_type", file.reason),
+    });
+  } else {
+    reason = format(messages.regenerateFailureReasons.unknown, {
+      reason: file.reason,
+    });
+  }
+  return `${file.path}: ${reason}`;
 }
 
 export function ProofreadingPage() {
@@ -421,13 +468,16 @@ export function ProofreadingPage() {
       );
       const total =
         result.translated_files.length + result.bilingual_files.length;
-      if (total === 0 && result.failed_files.length > 0) {
+      if (result.failed_files.length > 0) {
         const reason = result.failed_files
-          .map((f) => `${f.path}: ${f.reason}`)
+          .map((f) => formatRegenerateFailure(f, m))
           .join("; ");
         setFeedback({
           kind: "error",
-          text: format(m.regenerateFailed, { reason }),
+          text:
+            total > 0
+              ? format(m.regeneratePartial, { n: total, reason })
+              : format(m.regenerateFailed, { reason }),
         });
       } else {
         setFeedback({
