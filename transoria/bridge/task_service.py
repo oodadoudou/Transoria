@@ -1110,11 +1110,19 @@ class TaskService:
     def _active_task_ids(self) -> list[str]:
         active: list[str] = []
         for kind in _KIND_TO_TASKKIND:
-            active.extend(
-                running.task_id
-                for running in self.registry.list_by_kind(kind)
-                if not running.is_done
-            )
+            for running in self.registry.list_by_kind(kind):
+                if running.is_done:
+                    continue
+                try:
+                    record = self._cache_for_task(running.task_id).load_record(
+                        running.task_id
+                    )
+                except (TaskNotFoundError, OSError, ValueError):
+                    active.append(running.task_id)
+                    continue
+                if self._resolve_live_running(running.task_id, record.status) is None:
+                    continue
+                active.append(running.task_id)
         return sorted(set(active))
 
     def _maybe_cleanup_cache(self, kind: str, task_id: str) -> None:
@@ -2157,12 +2165,20 @@ class TaskService:
         running = self.registry.get(task_id)
         if running is None:
             try:
-                self._cache_for_task(task_id).load_record(task_id)
+                snapshot = self._cache_for_task(task_id).load(task_id)
             except TaskNotFoundError as exc:
                 raise BridgeError.not_found(
                     f"task {task_id!r} not found.",
                     details={"task_id": task_id},
                 ) from exc
+            if snapshot.record.kind is not self._kind(kind):
+                raise BridgeError.invalid_argument(
+                    f"task {task_id!r} kind mismatch.",
+                    field="task_id",
+                )
+            healed = self._reconcile_zombie(snapshot, self._cache_for_task(task_id))
+            if healed.record.status is TaskStatus.STOPPED:
+                return {"snapshot": _format_snapshot(healed)}
             raise BridgeError(
                 "task.not_running",
                 f"task {task_id!r} is not currently running.",
