@@ -19,6 +19,40 @@ SPEC_DIR = ROOT / "build" / "pyinstaller" / "specs"
 DMG_STAGING_DIR = WORK_DIR / "dmg-root"
 ICON_PATH = ROOT / "assets" / "icon.icns"
 
+EXCLUDED_MODULES = (
+    # macOS uses pywebview's Cocoa backend. Other backends pull Qt,
+    # GTK, Windows .NET, or Android stacks when they exist in the
+    # build environment.
+    "webview.platforms.android",
+    "webview.platforms.cef",
+    "webview.platforms.edgechromium",
+    "webview.platforms.gtk",
+    "webview.platforms.mshtml",
+    "webview.platforms.qt",
+    "webview.platforms.win32",
+    "webview.platforms.winforms",
+    # Optional packages commonly present in Anaconda environments. The
+    # app does not use them, but PyInstaller hooks can discover and
+    # bundle them through optional integrations.
+    "IPython",
+    "PIL",
+    "PyQt5",
+    "PySide2",
+    "PySide6",
+    "_pytest",
+    "ipywidgets",
+    "jupyter_client",
+    "jupyter_core",
+    "matplotlib",
+    "notebook",
+    "numpy",
+    "numpydoc",
+    "pandas",
+    "pytest",
+    "scipy",
+    "sphinx",
+)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Transoria.app for macOS.")
@@ -88,6 +122,8 @@ def main() -> None:
         "--collect-submodules",
         "lxml",
     ]
+    for module in EXCLUDED_MODULES:
+        cmd.extend(["--exclude-module", module])
     if ICON_PATH.is_file():
         cmd.extend(["--icon", str(ICON_PATH)])
         print(f"[build] using icon: {ICON_PATH}")
