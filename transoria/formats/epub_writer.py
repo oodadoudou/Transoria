@@ -6,7 +6,7 @@ import zipfile
 
 from lxml import etree
 
-from transoria.domain import Language, translated_filename
+from transoria.domain import Language, normalize_target_script, translated_filename
 from transoria.formats.epub_parser import (
     EpubDocument,
     EpubTextKind,
@@ -30,7 +30,8 @@ def write_translated_epub(
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / translated_filename(document.path, target_language)
-    _write_epub(document, translations, output_path, bilingual=False)
+    normalized = _normalize_translations(translations, target_language)
+    _write_epub(document, normalized, output_path, bilingual=False)
     return output_path
 
 
@@ -52,9 +53,10 @@ def write_bilingual_epub(
         source_language=source_language,
         bilingual=True,
     )
+    normalized = _normalize_translations(translations, target_language)
     _write_epub(
         document,
-        translations,
+        normalized,
         output_path,
         bilingual=True,
         dedup_when_same=dedup_when_same,
@@ -72,6 +74,16 @@ def write_epub_to_path(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     _write_epub(document, translations, output_path, bilingual=bilingual)
     return output_path
+
+
+def _normalize_translations(
+    translations: dict[int, str],
+    target_language: Language,
+) -> dict[int, str]:
+    return {
+        index: normalize_target_script(text, target_language)
+        for index, text in translations.items()
+    }
 
 
 def _write_epub(

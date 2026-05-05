@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from transoria.domain import Language
+from transoria.domain import Language, language_prompt_label
 from transoria.llm.client import ChatRequest, LlmClient
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import DecodeIssue, GlossaryEntry, decode_glossary_jsonl
@@ -55,9 +55,9 @@ def _output_contract_reminder(target_language: str) -> str:
 
     return (
         "FINAL OUTPUT CONTRACT: output JSONLINE only. Each line must be one JSON "
-        'object with exactly these keys: "src", "dst", "type". The "type" value '
+        'object with exactly these keys: "src", "dst", "type". The "dst" and "type" values '
         "must be non-empty and follow the active prompt's taxonomy. "
-        f'The "type" value must always be written in {target_language} — '
+        f'The "dst" and "type" values must always be written in {target_language} — '
         "never mix languages, never fall back to English category names. "
         "No prose, no Markdown, no code fence."
     )
@@ -161,8 +161,8 @@ class GlossarySubtaskRunner:
         instruction_prompt = build_prompt(
             self.prompt_preset,
             PromptContext(
-                source_language=self.source_language.value,
-                target_language=self.target_language.value,
+                source_language=language_prompt_label(self.source_language),
+                target_language=language_prompt_label(self.target_language),
             ),
             thinking=self.model.thinking_prompt_enabled,
         )
@@ -175,7 +175,7 @@ class GlossarySubtaskRunner:
         user_prompt = _build_glossary_user_prompt(
             instruction_prompt,
             prompt_text,
-            target_language=self.target_language.value,
+            target_language=language_prompt_label(self.target_language),
             format_retry=attempt_index > 0,
         )
 

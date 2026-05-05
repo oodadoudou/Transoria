@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from transoria.domain import Language, translated_filename
+from transoria.domain import Language, normalize_target_script, translated_filename
 
 
 BILINGUAL_OUTPUT_FOLDER_EN = "bilingual outputs"
@@ -206,7 +206,8 @@ def write_translated_txt(
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / translated_filename(document.path, target_language)
-    output_path.write_text(_render_translated(document, translations), encoding="utf-8")
+    normalized = _normalize_translations(translations, target_language)
+    output_path.write_text(_render_translated(document, normalized), encoding="utf-8")
     return output_path
 
 
@@ -228,8 +229,9 @@ def write_bilingual_txt(
         source_language=source_language,
         bilingual=True,
     )
+    normalized = _normalize_translations(translations, target_language)
     output_path.write_text(
-        _render_bilingual(document, translations, dedup_when_same=dedup_when_same),
+        _render_bilingual(document, normalized, dedup_when_same=dedup_when_same),
         encoding="utf-8",
     )
     return output_path
@@ -275,6 +277,16 @@ def _render_translated(document: TextDocument, translations: dict[int, str]) -> 
     return "".join(parts)
 
 
+def _normalize_translations(
+    translations: dict[int, str],
+    target_language: Language,
+) -> dict[int, str]:
+    return {
+        index: normalize_target_script(text, target_language)
+        for index, text in translations.items()
+    }
+
+
 def _render_bilingual(
     document: TextDocument,
     translations: dict[int, str],
@@ -292,4 +304,3 @@ def _render_bilingual(
             continue
         parts.append(f"{translated}{segment.newline}")
     return "".join(parts)
-

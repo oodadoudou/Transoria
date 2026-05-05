@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -29,6 +30,50 @@ class Language(str, Enum):
     THAI = "th"
     INDONESIAN = "id"
     VIETNAMESE = "vi"
+
+
+_LANGUAGE_PROMPT_LABELS: dict[Language, str] = {
+    Language.KOREAN: "Korean (한국어)",
+    Language.CHINESE_SIMPLIFIED: "Simplified Chinese (简体中文)",
+    Language.CHINESE_TRADITIONAL: "Traditional Chinese (繁體中文)",
+    Language.ENGLISH: "English",
+    Language.JAPANESE: "Japanese (日本語)",
+    Language.RUSSIAN: "Russian",
+    Language.ARABIC: "Arabic",
+    Language.GERMAN: "German",
+    Language.FRENCH: "French",
+    Language.POLISH: "Polish",
+    Language.SPANISH: "Spanish",
+    Language.ITALIAN: "Italian",
+    Language.PORTUGUESE: "Portuguese",
+    Language.HUNGARIAN: "Hungarian",
+    Language.TURKISH: "Turkish",
+    Language.THAI: "Thai",
+    Language.INDONESIAN: "Indonesian",
+    Language.VIETNAMESE: "Vietnamese",
+}
+
+
+def language_prompt_label(language: Language) -> str:
+    return _LANGUAGE_PROMPT_LABELS.get(language, language.value)
+
+
+def normalize_target_script(text: str, target_language: Language) -> str:
+    converter = _target_script_converter(target_language)
+    return converter(text) if converter is not None else text
+
+
+@lru_cache(maxsize=4)
+def _target_script_converter(target_language: Language):
+    if target_language is Language.CHINESE_SIMPLIFIED:
+        config = "t2s"
+    elif target_language is Language.CHINESE_TRADITIONAL:
+        config = "s2t"
+    else:
+        return None
+    from opencc import OpenCC
+
+    return OpenCC(config).convert
 
 
 class TaskStatus(str, Enum):

@@ -16,7 +16,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-from transoria.domain import Language
+from transoria.domain import Language, language_prompt_label, normalize_target_script
 from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import decode_translation_jsonl
@@ -85,6 +85,13 @@ _SYSTEM_FORMAT_CONTRACT_HINT = (
     "exactly once and only those indices. Do not wrap the response in "
     "Markdown, prose, headings, or a code fence."
 )
+_SYSTEM_LANGUAGE_CONTRACT_HINT = (
+    "\n\n[Output language — runtime selection]\n"
+    "Translate every translatable part into {target_language}. Do not output "
+    "another target language or script unless the source contains a name, ID, "
+    "code fragment, URL, file path, or other non-translatable literal that "
+    "must be preserved verbatim."
+)
 
 
 _JSONL_KEYWORD_PATTERN = re.compile(
@@ -93,25 +100,19 @@ _JSONL_KEYWORD_PATTERN = re.compile(
 
 
 def _augment_system_prompt(
-    system_prompt: str, preset: PromptPreset
+    system_prompt: str, preset: PromptPreset, *, target_language: str
 ) -> str:
-    """Inject the runtime format-transport contract into a custom
-    preset's system message when the preset itself does not mention it.
+    """Add runtime language guardrails and missing JSONL transport rules."""
 
-    System (built-in) presets already carry the JSONLINE suffix, so
-    they're left alone. User-authored presets focus on style/voice and
-    rarely include the wire format — without this nudge the model can
-    treat the long literary system prompt as the strongest signal and
-    return prose, even though the user message still asks for JSONLINE.
-
-    The hint is strictly about transport, not extraction policy.
-    """
-
-    if getattr(preset, "is_system", False):
-        return system_prompt
-    if _JSONL_KEYWORD_PATTERN.search(system_prompt):
-        return system_prompt
-    return system_prompt + _SYSTEM_FORMAT_CONTRACT_HINT
+    parts = [
+        system_prompt,
+        _SYSTEM_LANGUAGE_CONTRACT_HINT.format(target_language=target_language),
+    ]
+    if not getattr(preset, "is_system", False) and not _JSONL_KEYWORD_PATTERN.search(
+        system_prompt
+    ):
+        parts.append(_SYSTEM_FORMAT_CONTRACT_HINT)
+    return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -279,12 +280,13 @@ class TranslationSubtaskRunner:
             build_prompt(
                 self.prompt_preset,
                 PromptContext(
-                    source_language=self.source_language.value,
-                    target_language=self.target_language.value,
+                    source_language=language_prompt_label(self.source_language),
+                    target_language=language_prompt_label(self.target_language),
                 ),
                 thinking=self.model.thinking_prompt_enabled,
             ),
             self.prompt_preset,
+            target_language=language_prompt_label(self.target_language),
         )
         log_label = f"translation {subtask_id}" if subtask_id else "translation"
 
@@ -748,13 +750,14 @@ class TranslationSubtaskRunner:
         return translations_by_index, missing
 
     def _postprocess(self, meta: _SegmentPayload, translated: str) -> str:
-        return postprocess_segment(
+        processed = postprocess_segment(
             translated,
             protection=ProtectionMap(spans=meta.protection_spans),
             leading_whitespace=meta.leading_whitespace,
             trailing_whitespace=meta.trailing_whitespace,
             post_replacements=self.post_replacements,
         )
+        return normalize_target_script(processed, self.target_language)
 
     def _evaluate_confidence(
         self, source_text: str, translated_text: str
