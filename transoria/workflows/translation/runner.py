@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -307,7 +308,11 @@ class TranslationSubtaskRunner:
                 pending_meta = tuple(
                     metadata_by_index[i] for i in sorted(pending_indices)
                 )
-                sub_chunk = _build_subchunk_from_pending(chunk, pending_meta)
+                sub_chunk = _build_subchunk_from_pending(
+                    chunk,
+                    pending_meta,
+                    include_context=not debug_attempts,
+                )
                 user_prompt = self._compose_user_prompt(
                     self._apply_roster(assemble_user_prompt(sub_chunk)),
                     format_retry=len(debug_attempts) > 0,
@@ -330,7 +335,7 @@ class TranslationSubtaskRunner:
                 )
 
                 translations, missing = self._decode_partial(
-                    raw_content, pending_meta
+                    raw_content, pending_meta, sub_chunk.context_lines
                 )
                 for idx, text in translations.items():
                     accumulated[idx] = text
@@ -635,6 +640,7 @@ class TranslationSubtaskRunner:
         self,
         raw_content: str,
         metadata: Sequence[_SegmentPayload],
+        context_lines: Sequence[str] = (),
     ) -> tuple[dict[int, str], frozenset[int]]:
         """Decode the LLM response into ``{chunk_index: text}`` and the
         set of expected indices that did not appear.
@@ -664,6 +670,16 @@ class TranslationSubtaskRunner:
         decoded = decode_translation_jsonl(raw_content)
         expected = {meta.chunk_index for meta in metadata}
         decoded_indices = {line.index for line in decoded.lines}
+        sorted_expected = sorted(expected)
+        decoded_order = [line.index for line in decoded.lines]
+        if (
+            context_lines
+            and decoded.lines
+            and len(decoded.lines) < len(expected)
+            and len(decoded.lines) <= len(context_lines)
+            and decoded_order == sorted_expected[: len(decoded_order)]
+        ):
+            return {}, frozenset(expected)
         if decoded_indices == expected and len(decoded.lines) == len(expected):
             translations_by_index = {
                 line.index: line.text
@@ -729,6 +745,10 @@ _RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
 
 
 _DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 10
+_NEAR_DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 40
+_NEAR_DUPLICATE_TRANSLATION_RATIO = 0.70
+_NEAR_DUPLICATE_SOURCE_RATIO = 0.55
+_TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
 
 
 def _detect_duplicate_drift(
@@ -766,7 +786,44 @@ def _detect_duplicate_drift(
         if len(text) < _DUPLICATE_DRIFT_MIN_TEXT_LENGTH and len(sources) < 3:
             continue
         suspicious.update(indices)
+    by_idx = {m.chunk_index: m for m in metadata}
+    items = [
+        (idx, text.strip())
+        for idx, text in translations_by_index.items()
+        if len(text.strip()) >= _NEAR_DUPLICATE_DRIFT_MIN_TEXT_LENGTH
+    ]
+    for left_pos, (left_idx, left_text) in enumerate(items):
+        left_meta = by_idx.get(left_idx)
+        if left_meta is None:
+            continue
+        for right_idx, right_text in items[left_pos + 1:]:
+            right_meta = by_idx.get(right_idx)
+            if right_meta is None:
+                continue
+            if (
+                _text_similarity(left_text, right_text)
+                < _NEAR_DUPLICATE_TRANSLATION_RATIO
+            ):
+                continue
+            if (
+                _text_similarity(
+                    left_meta.original_text, right_meta.original_text
+                )
+                >= _NEAR_DUPLICATE_SOURCE_RATIO
+            ):
+                continue
+            suspicious.update((left_idx, right_idx))
     return sorted(suspicious)
+
+
+def _text_similarity(left: str, right: str) -> float:
+    left_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", left)
+    right_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", right)
+    if not left_norm or not right_norm:
+        return 0.0
+    return SequenceMatcher(
+        None, left_norm, right_norm, autojunk=False
+    ).ratio()
 
 
 _KOREAN_RESIDUE_RE = re.compile(
@@ -796,13 +853,15 @@ def _residue_score(text: str, source_language: Language) -> float:
 def _build_subchunk_from_pending(
     original: TranslationChunk,
     pending: Sequence[_SegmentPayload],
+    *,
+    include_context: bool = True,
 ) -> TranslationChunk:
     pending_indices = {m.chunk_index for m in pending}
     return TranslationChunk(
         segments=tuple(
             seg for seg in original.segments if seg.chunk_index in pending_indices
         ),
-        context_lines=original.context_lines,
+        context_lines=original.context_lines if include_context else (),
         glossary_entries=original.glossary_entries,
     )
 

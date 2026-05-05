@@ -621,6 +621,7 @@ def _split_failed_payload(
             continue
         child_payload = dict(payload)
         child_payload["segments"] = child_segments
+        child_payload["context_lines"] = []
         child_payload["parent_subtask_id"] = parent_subtask_id
         child_payload["split_round"] = split_round + 1
         child_payload["split_index"] = split_index

@@ -234,7 +234,10 @@ def assemble_user_prompt(chunk: TranslationChunk) -> str:
         parts.append("[Glossary]\n" + glossary_section)
     context_section = format_context_section(chunk.context_lines)
     if context_section:
-        parts.append("[Context]\n" + context_section)
+        parts.append(
+            "[Context - read only, do not translate or include in output]\n"
+            + context_section
+        )
     parts.append(
         "[Translate]\n```jsonline\n" + chunk.jsonl_input() + "\n```"
     )
