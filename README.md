@@ -19,6 +19,12 @@ Transoria 是一个面向小说翻译的桌面应用：把 EPUB / TXT 小说交�
 
 交流/问题反馈群 QQ：**1104197845**。欢迎加入，使用中遇到问题可以进群反馈。
 
+### 版权与使用声明
+
+Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权任何原作或译文版权。使用本项目处理小说、游戏文本、字幕或其他内容时，请自行确认你拥有相应权利，或已获得原作者 / 版权方允许，并遵守所在地法律法规与发布平台规则。
+
+如果你觉得 Transoria 好用，欢迎推荐给身边有类似需求的朋友。若公开发布了由本项目辅助翻译、校对或整理的作品，也欢迎在作品信息、发布页或说明中标注使用了 **Transoria**。
+
 ### 最近更新
 
 - 新增独立的 **术语审查** 模块：读取 XLSX 术语表，结合参考 TXT 做多轮 AI 审查，输出最终 XLSX。
@@ -111,6 +117,12 @@ Transoria is a desktop app for novel translation: provide EPUB / TXT novels and 
 The UI ships with both Chinese and English. All tasks run locally and call models via your own LLM API key.
 
 > Screenshots above show the Chinese UI; switch to English in the top-right of the app.
+
+### Copyright and Usage Notice
+
+Transoria is a local translation-assistance tool. It does not own, distribute, or grant rights to any original work or translated work. Before processing or publishing novels, game text, subtitles, or other content with this project, make sure you have the necessary rights or permission from the author / copyright holder, and follow applicable laws and platform rules.
+
+If Transoria is useful to you, feel free to recommend it to friends who may need it. If you publicly release work translated, proofread, or organized with help from this project, a mention of **Transoria** in the work information, release page, or notes is appreciated.
 
 ### What's new
 

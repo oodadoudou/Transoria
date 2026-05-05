@@ -61,6 +61,75 @@ export function defaultPageFor(module: ModuleId): Route {
   }
 }
 
+const ROUTE_STORAGE_KEY = "transoria.route";
+
+function loadInitialRoute(): Route {
+  if (typeof window === "undefined") return { module: "model", page: "general" };
+  try {
+    const raw = window.localStorage.getItem(ROUTE_STORAGE_KEY);
+    if (!raw) return { module: "model", page: "general" };
+    return coerceRoute(JSON.parse(raw));
+  } catch {
+    return { module: "model", page: "general" };
+  }
+}
+
+function persistRoute(route: Route): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify(route));
+  } catch {
+    // Navigation still works if storage is blocked.
+  }
+}
+
+function coerceRoute(value: unknown): Route {
+  if (!value || typeof value !== "object") return { module: "model", page: "general" };
+  const candidate = value as { module?: unknown; page?: unknown };
+  switch (candidate.module) {
+    case "model":
+      return { module: "model", page: "general" };
+    case "translation":
+      if (
+        [
+          "run",
+          "settings",
+          "glossary",
+          "proofreading",
+          "textPreserve",
+          "preReplacement",
+          "postReplacement",
+          "prompt",
+        ].includes(String(candidate.page))
+      ) {
+        return {
+          module: "translation",
+          page: candidate.page as TranslationPage,
+        };
+      }
+      return { module: "translation", page: "run" };
+    case "glossary":
+      if (["run", "settings", "prompt"].includes(String(candidate.page))) {
+        return { module: "glossary", page: candidate.page as GlossaryPage };
+      }
+      return { module: "glossary", page: "run" };
+    case "glossary-review":
+      if (["run", "review", "settings", "prompt"].includes(String(candidate.page))) {
+        return {
+          module: "glossary-review",
+          page: candidate.page as GlossaryReviewPage,
+        };
+      }
+      return { module: "glossary-review", page: "run" };
+    case "general-tools":
+      return { module: "general-tools", page: "batchReplacement" };
+    case "app-settings":
+      return { module: "app-settings", page: "general" };
+    default:
+      return { module: "model", page: "general" };
+  }
+}
+
 export interface GlossaryEntry {
   id: string;
   source: string;
@@ -119,13 +188,20 @@ const initialTranslationGlossary: ModuleGlossaryRules = {
 };
 
 export const useTaskStore = create<TaskState>((set, get) => ({
-  route: { module: "translation", page: "run" },
-  navigate: (route) => set({ route }),
+  route: loadInitialRoute(),
+  navigate: (route) => {
+    persistRoute(route);
+    set({ route });
+  },
   proofreadingLaunch: { taskId: null, filters: [] },
   openProofreadingTask: (taskId, filters = []) =>
-    set({
-      route: { module: "translation", page: "proofreading" },
-      proofreadingLaunch: { taskId, filters },
+    set(() => {
+      const route: Route = { module: "translation", page: "proofreading" };
+      persistRoute(route);
+      return {
+        route,
+        proofreadingLaunch: { taskId, filters },
+      };
     }),
   consumeProofreadingLaunch: () => {
     const launch = get().proofreadingLaunch;

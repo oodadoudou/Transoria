@@ -60,6 +60,8 @@ const THINKING_OPTIONS: Array<{ id: ThinkingLevel; label: string }> = [
   { id: "high", label: "High" },
 ];
 
+const INLINE_PROBE_TIMEOUT_MS = 30_000;
+
 interface Draft {
   display_name: string;
   provider_format: ProviderFormat;
@@ -216,6 +218,30 @@ function asBridgeError(error: unknown): BridgeError {
   });
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(
+        new BridgeError({
+          code: "bridge.timeout",
+          message: `Model probe timed out after ${Math.round(timeoutMs / 1000)}s.`,
+          retryable: true,
+        }),
+      );
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function ModelProfileModal({
   mode,
   profile,
@@ -251,8 +277,17 @@ export function ModelProfileModal({
       const confirmed = window.confirm(m.unsavedChangesConfirm);
       if (!confirmed) return;
     }
+    requestSeq.current += 1;
+    setProbeBusy(null);
     onCancel();
   };
+
+  useEffect(
+    () => () => {
+      requestSeq.current += 1;
+    },
+    [],
+  );
 
   // Load templates once on mount.
   useEffect(() => {
@@ -308,8 +343,10 @@ export function ModelProfileModal({
   };
 
   const handleBackToPicker = () => {
+    requestSeq.current += 1;
     setSelectedTemplate(null);
     setDraft(EMPTY_DRAFT);
+    setProbeBusy(null);
     setTestResult(null);
     setFetchedModels(null);
     setError(null);
@@ -339,9 +376,12 @@ export function ModelProfileModal({
     setTestResult(null);
     setError(null);
     try {
-      const result = await modelProfilesBridge.testConnectionInline(
-        creds,
-        `inline-test-${Date.now().toString(36)}`,
+      const result = await withTimeout(
+        modelProfilesBridge.testConnectionInline(
+          creds,
+          `inline-test-${Date.now().toString(36)}`,
+        ),
+        INLINE_PROBE_TIMEOUT_MS,
       );
       if (seq === requestSeq.current) setTestResult(result);
     } catch (err) {
@@ -359,9 +399,12 @@ export function ModelProfileModal({
     setFetchedModels(null);
     setError(null);
     try {
-      const result = await modelProfilesBridge.fetchModelListInline(
-        creds,
-        `inline-fetch-${Date.now().toString(36)}`,
+      const result = await withTimeout(
+        modelProfilesBridge.fetchModelListInline(
+          creds,
+          `inline-fetch-${Date.now().toString(36)}`,
+        ),
+        INLINE_PROBE_TIMEOUT_MS,
       );
       if (seq === requestSeq.current) setFetchedModels(result.models);
     } catch (err) {

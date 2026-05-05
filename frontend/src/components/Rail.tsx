@@ -20,6 +20,8 @@ interface ModuleSpec {
   children: ReadonlyArray<ChildSpec> | null;
 }
 
+const RAIL_EXPANDED_STORAGE_KEY = "transoria.rail.expanded";
+
 function buildTree(messages: ReturnType<typeof useMessages>): {
   modules: ReadonlyArray<ModuleSpec>;
   workspace: ReadonlyArray<ModuleSpec>;
@@ -85,16 +87,51 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
   };
 }
 
+function loadExpandedModules(): ReadonlySet<ModuleId> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(RAIL_EXPANDED_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    const modules = parsed.filter(isModuleId);
+    return new Set(modules);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveExpandedModules(expanded: ReadonlySet<ModuleId>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      RAIL_EXPANDED_STORAGE_KEY,
+      JSON.stringify([...expanded]),
+    );
+  } catch {
+    // Manual sidebar state is optional.
+  }
+}
+
+function isModuleId(value: unknown): value is ModuleId {
+  return (
+    value === "model" ||
+    value === "translation" ||
+    value === "glossary" ||
+    value === "glossary-review" ||
+    value === "general-tools" ||
+    value === "app-settings"
+  );
+}
+
 export function Rail() {
   const messages = useMessages();
   const route = useTaskStore((state) => state.route);
   const navigate = useTaskStore((state) => state.navigate);
   const tree = buildTree(messages);
 
-  // Modules whose subtree the user has manually toggled open. The active
-  // module's subtree is always treated as open even if it isn't in this set.
   const [expanded, setExpanded] = useState<ReadonlySet<ModuleId>>(
-    () => new Set([route.module]),
+    loadExpandedModules,
   );
 
   const toggle = (id: ModuleId) => {
@@ -105,6 +142,7 @@ export function Rail() {
       } else {
         next.add(id);
       }
+      saveExpandedModules(next);
       return next;
     });
   };
