@@ -486,6 +486,7 @@ export interface Messages {
       taskPicker: string;
       loading: string;
       regenerateAction: string;
+      regenerateBilingualAction: string;
       regenerating: string;
       regenerateSuccess: string;
       regenerateFailed: string;

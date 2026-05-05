@@ -551,6 +551,7 @@ export const zh: Messages = {
       taskPicker: "选择任务",
       loading: "加载中…",
       regenerateAction: "重新生成输出",
+      regenerateBilingualAction: "导出双语版本",
       regenerating: "生成中…",
       regenerateSuccess: "已重新生成 {n} 个文件。",
       regenerateFailed: "重新生成失败：{reason}",

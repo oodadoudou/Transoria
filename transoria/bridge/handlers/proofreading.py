@@ -167,10 +167,21 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     continue
                 if seg_id in seen:
                     continue
+                src = str(segment.get("original_text", ""))
+                dst = translations.get(seg_id)
+                if dst is None:
+                    dst = src
+                    low_conf_ids.add(seg_id)
+                    reasons = seg_reasons.setdefault(seg_id, [])
+                    if "missing_translation_fell_back_to_source" not in reasons:
+                        reasons.append("missing_translation_fell_back_to_source")
+                    tags = seg_tags.setdefault(seg_id, [])
+                    if "source_residue" not in tags:
+                        tags.append("source_residue")
                 item: dict[str, object] = {
                     "segment_id": seg_id,
-                    "src": str(segment.get("original_text", "")),
-                    "dst": translations.get(seg_id, ""),
+                    "src": src,
+                    "dst": dst,
                     "low_confidence": seg_id in low_conf_ids,
                 }
                 tags_for_seg = seg_tags.get(seg_id)
@@ -274,6 +285,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         from transoria.workflows.translation.rules import Glossary  # noqa: PLC0415
 
         task_id = expect_string(payload, "task_id")
+        export_bilingual = bool(payload.get("bilingual", False))
         snapshot = require_completed_translation_task(task_id)
 
         # Pull the original folder pair + language from the cache
@@ -330,6 +342,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             model=None,  # type: ignore[arg-type]
             prompt_preset=None,  # type: ignore[arg-type]
             glossary=Glossary.empty(),
+            bilingual_enabled=export_bilingual,
         )
 
         try:

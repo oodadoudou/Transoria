@@ -565,6 +565,7 @@ export const en: Messages = {
       taskPicker: "Select task",
       loading: "Loading…",
       regenerateAction: "Regenerate output",
+      regenerateBilingualAction: "Export bilingual",
       regenerating: "Generating…",
       regenerateSuccess: "Regenerated {n} files.",
       regenerateFailed: "Regenerate failed: {reason}",

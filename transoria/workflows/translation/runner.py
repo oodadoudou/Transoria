@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from transoria.domain import Language
-from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
+from transoria.llm.client import ChatRequest, LlmClient
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import decode_translation_jsonl
 from transoria.llm.retry import retry_async
@@ -290,6 +290,7 @@ class TranslationSubtaskRunner:
 
         accumulated: dict[int, str] = {}
         rescued_indices: set[int] = set()
+        fallback_reasons_by_index: dict[int, str] = {}
         debug_attempts: list[dict[str, object]] = []
         metadata_by_index = {m.chunk_index: m for m in metadata}
         pending_indices: set[int] = set(metadata_by_index.keys())
@@ -367,36 +368,47 @@ class TranslationSubtaskRunner:
                             rescued_indices.add(idx)
                         pending_indices.clear()
                         break
-                    # If everything that's pending is the duplicate-drift
-                    # set (no missing indices left), surface that as the
-                    # cause; otherwise the line-count-mismatch wins.
-                    if all(idx in metadata_by_index for idx in pending_indices) \
-                            and not missing:
-                        raise LlmRequestError(
-                            "Translation duplicate drift — indices "
-                            f"{sorted(pending_indices)} share identical "
-                            "translation across distinct sources",
-                            code="llm.duplicate_translations",
+                    fallback_reason = (
+                        "duplicate_drift_after_max_retries"
+                        if all(
+                            idx in metadata_by_index
+                            for idx in pending_indices
                         )
-                    raise LlmRequestError(
-                        "Translation line count mismatch — could not recover "
-                        f"{sorted(pending_indices)} after "
-                        f"{len(debug_attempts)} attempt(s)",
-                        code="llm.line_count_mismatch",
+                        and not missing
+                        else "line_count_mismatch_after_max_retries"
                     )
+                    for idx in sorted(pending_indices):
+                        meta = metadata_by_index.get(idx)
+                        if meta is None:
+                            continue
+                        accumulated[idx] = meta.prompt_text
+                        fallback_reasons_by_index[idx] = fallback_reason
+                    pending_indices.clear()
+                    break
                 retries_remaining -= 1
 
             pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
 
             for meta in metadata:
-                final_text = self._postprocess(
-                    meta, accumulated[meta.chunk_index]
+                fallback_reason = fallback_reasons_by_index.get(
+                    meta.chunk_index
                 )
+                if fallback_reason:
+                    final_text = meta.original_text
+                else:
+                    final_text = self._postprocess(
+                        meta, accumulated[meta.chunk_index]
+                    )
                 verdict = self._evaluate_confidence(meta.original_text, final_text)
                 extra_reasons: list[str] = []
+                if fallback_reason:
+                    extra_reasons.append(fallback_reason)
                 if meta.chunk_index in rescued_indices:
                     extra_reasons.append("positional_rescue_after_format_failure")
-                if verdict.is_low_confidence and self.low_confidence_max_retries > 0:
+                if (
+                    (verdict.is_low_confidence or fallback_reason)
+                    and self.low_confidence_max_retries > 0
+                ):
                     pending.append(
                         (meta, final_text, tuple(extra_reasons) + verdict.reasons)
                     )
@@ -408,7 +420,10 @@ class TranslationSubtaskRunner:
                         "reasons": extra_reasons + list(verdict.reasons),
                     }
                     tags: list[str] = []
-                    if any("residue" in str(r).lower() for r in verdict.reasons):
+                    if fallback_reason or any(
+                        "residue" in str(r).lower()
+                        for r in verdict.reasons
+                    ):
                         tags.append("source_residue")
                     if tags:
                         entry["tags"] = tags
@@ -516,7 +531,7 @@ class TranslationSubtaskRunner:
                 #   residue: keep it. A questionable Chinese line is
                 #   easier to fix than re-translating from scratch.
                 tags: list[str] = []
-                if has_residue:
+                if has_residue or echoes_source:
                     tags.append("source_residue")
                 if (
                     echoes_source

@@ -78,7 +78,9 @@ export function ProofreadingPage() {
       return next;
     });
   const [savedTick, setSavedTick] = useState(0);
-  const [regenerating, setRegenerating] = useState(false);
+  const [regenerating, setRegenerating] = useState<
+    "translated" | "bilingual" | null
+  >(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [inflightRetranslates, setInflightRetranslates] = useState<
     Record<string, string>
@@ -408,12 +410,15 @@ export function ProofreadingPage() {
     }
   };
 
-  const handleRegenerate = async () => {
+  const handleRegenerate = async (bilingual = false) => {
     if (!activeTaskId || regenerating) return;
-    setRegenerating(true);
+    setRegenerating(bilingual ? "bilingual" : "translated");
     setFeedback(null);
     try {
-      const result = await proofreadingBridge.regenerateOutputs(activeTaskId);
+      const result = await proofreadingBridge.regenerateOutputs(
+        activeTaskId,
+        bilingual,
+      );
       const total =
         result.translated_files.length + result.bilingual_files.length;
       if (total === 0 && result.failed_files.length > 0) {
@@ -440,7 +445,7 @@ export function ProofreadingPage() {
         }),
       });
     } finally {
-      setRegenerating(false);
+      setRegenerating(null);
     }
   };
 
@@ -573,10 +578,19 @@ export function ProofreadingPage() {
           ) : null}
         </span>
         <Pill
-          onClick={() => void handleRegenerate()}
-          disabled={regenerating || !activeTaskId}
+          onClick={() => void handleRegenerate(false)}
+          disabled={Boolean(regenerating) || !activeTaskId}
         >
-          {regenerating ? m.regenerating : m.regenerateAction}
+          {regenerating === "translated" ? m.regenerating : m.regenerateAction}
+        </Pill>
+        <Pill
+          variant="ghost"
+          onClick={() => void handleRegenerate(true)}
+          disabled={Boolean(regenerating) || !activeTaskId}
+        >
+          {regenerating === "bilingual"
+            ? m.regenerating
+            : m.regenerateBilingualAction}
         </Pill>
       </div>
 

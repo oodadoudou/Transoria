@@ -305,13 +305,16 @@ export const proofreadingBridge = {
       dst,
     });
   },
-  regenerateOutputs(taskId: string): Promise<{
+  regenerateOutputs(taskId: string, bilingual = false): Promise<{
     task_id: string;
     translated_files: string[];
     bilingual_files: string[];
     failed_files: Array<{ path: string; reason: string }>;
   }> {
-    return call("proofreading.regenerate_outputs", { task_id: taskId });
+    return call("proofreading.regenerate_outputs", {
+      task_id: taskId,
+      bilingual,
+    });
   },
   retranslateSegment(
     taskId: string,
