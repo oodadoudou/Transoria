@@ -42,7 +42,7 @@ from transoria.runtime.executor import (
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
 from transoria.runtime.subtask import Subtask
-from transoria.runtime.task_record import TaskRecord
+from transoria.runtime.task_record import TaskRecord, TaskSnapshot
 from transoria.workflows.glossary.candidate import Candidate, GlossaryRecord
 from transoria.workflows.glossary.chunker import (
     GlossaryChunk,
@@ -269,6 +269,13 @@ class GlossaryOrchestrator:
             self.on_executor_created(executor)
 
         snapshot = await executor.run(task_id)
+        if _stopped_after_all_subtasks_completed(snapshot):
+            self.cache.save_task(
+                snapshot.record.with_status(TaskStatus.COMPLETED).with_updated_at(
+                    self.clock()
+                )
+            )
+            snapshot = self.cache.load(task_id)
 
         candidates_by_file, issues_by_file = _aggregate_candidates(
             snapshot.subtasks, chunks
@@ -470,6 +477,18 @@ def _scan_and_parse(input_dir: Path) -> dict[Path, tuple[str, ...]]:
                 segment.text for segment in doc.segments if segment.text.strip()
             )
     return result
+
+
+def _stopped_after_all_subtasks_completed(snapshot: TaskSnapshot) -> bool:
+    progress = snapshot.progress()
+    return (
+        snapshot.record.status is TaskStatus.STOPPED
+        and progress.total > 0
+        and progress.pending == 0
+        and progress.running == 0
+        and progress.failed == 0
+        and progress.completed == progress.total
+    )
 # Aggregate
 
 

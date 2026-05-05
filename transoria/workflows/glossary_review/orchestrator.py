@@ -209,6 +209,13 @@ class GlossaryReviewOrchestrator:
             if self.on_executor_created is not None:
                 self.on_executor_created(executor)
             final_snapshot = await executor.run(task_id)
+            if _stopped_after_all_subtasks_completed(final_snapshot):
+                self.cache.save_task(
+                    final_snapshot.record.with_status(
+                        TaskStatus.COMPLETED
+                    ).with_updated_at(self.clock())
+                )
+                final_snapshot = self.cache.load(task_id)
             if final_snapshot.record.status is not TaskStatus.COMPLETED:
                 return GlossaryReviewResult(
                     task_id=task_id,
@@ -483,6 +490,18 @@ def _row_payload(
         "current_category": row.info,
         "context": row.context,
     }
+
+
+def _stopped_after_all_subtasks_completed(snapshot: TaskSnapshot) -> bool:
+    progress = snapshot.progress()
+    return (
+        snapshot.record.status is TaskStatus.STOPPED
+        and progress.total > 0
+        and progress.pending == 0
+        and progress.running == 0
+        and progress.failed == 0
+        and progress.completed == progress.total
+    )
 
 
 def _tier_instruction(row: GlossaryReviewRow, novel_background: str) -> tuple[str, str]:

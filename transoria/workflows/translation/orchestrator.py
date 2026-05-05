@@ -329,6 +329,17 @@ class TranslationOrchestrator:
         translations_by_segment, low_confidence_records = _collect_translations(
             snapshot.subtasks
         )
+        snapshot_progress = snapshot.progress()
+        all_segments_translated = len(translations_by_segment) == len(prepared)
+        if (
+            snapshot.record.status is TaskStatus.STOPPED
+            and all_segments_translated
+            and snapshot_progress.pending == 0
+            and snapshot_progress.running == 0
+            and snapshot_progress.failed == 0
+        ):
+            self._mark_task_status(task_id, TaskStatus.COMPLETED)
+            snapshot = self.cache.load(task_id)
         # Outputs are written on any terminal status that produced at
         # least one translated segment. Missing segments fall back to
         # original source text in the writers, so a forever-broken API

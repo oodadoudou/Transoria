@@ -2248,6 +2248,12 @@ class TaskService:
             )
         progress = snapshot.progress()
         if progress.pending == 0 and progress.failed == 0:
+            if kind == "translation":
+                return self._continue_translation(task_id)
+            if kind == "glossary":
+                return self._continue_glossary(task_id)
+            if kind == "glossary_review":
+                return self._continue_glossary_review(task_id)
             raise BridgeError(
                 "task.invalid_transition",
                 "task has no pending or failed subtasks; nothing to continue.",
@@ -2372,7 +2378,12 @@ class TaskService:
             ):
                 continue
             progress = snapshot.progress()
-            if progress.pending + progress.failed <= 0:
+            finalize_only = (
+                progress.pending == 0
+                and progress.failed == 0
+                and progress.running == 0
+            )
+            if progress.pending + progress.failed <= 0 and not finalize_only:
                 continue
             return {
                 "continuable": True,
