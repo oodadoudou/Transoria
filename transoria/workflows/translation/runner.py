@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from transoria.domain import Language
-from transoria.llm.client import ChatRequest, LlmClient
+from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import decode_translation_jsonl
-from transoria.llm.retry import retry_async
+from transoria.llm.retry import is_transient_llm_error, retry_async
 from transoria.llm.usage import estimate_tokens_from_text
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
@@ -464,11 +464,32 @@ class TranslationSubtaskRunner:
                         self._apply_roster(assemble_user_prompt(solo_chunk)),
                         format_retry=False,
                     )
-                    solo_response = await self._one_llm_call(
-                        system_prompt,
-                        solo_user_prompt,
-                        f"{log_label} solo-retry {meta.segment_id}",
-                    )
+                    async def _solo_llm_call() -> object:
+                        return await self._one_llm_call(
+                            system_prompt,
+                            solo_user_prompt,
+                            f"{log_label} solo-retry {meta.segment_id}",
+                        )
+
+                    try:
+                        solo_response = await retry_async(
+                            _solo_llm_call,
+                            model=self.model,
+                        )
+                    except LlmRequestError as exc:
+                        if not is_transient_llm_error(exc):
+                            raise
+                        current_reasons = tuple(current_reasons) + (
+                            "low_confidence_retry_transient_failed",
+                        )
+                        debug_attempts.append(
+                            {
+                                "user_prompt": solo_user_prompt,
+                                "segment_id": meta.segment_id,
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        )
+                        break
                     total_input += solo_response.usage.input_tokens
                     total_output += solo_response.usage.output_tokens
                     solo_raw = self._restore_roster(solo_response.content)
