@@ -240,7 +240,7 @@ class GlossaryReviewOrchestrator:
                 current_completed_batches=len(round_subtasks),
             )
 
-        snapshot = self.cache.load(task_id)
+        snapshot = self._complete_if_no_open_subtasks(task_id)
         rows, report_rows = self._replay_completed(
             attach_reference_contexts(loaded.rows, review_input.reference_text),
             snapshot,
@@ -270,6 +270,23 @@ class GlossaryReviewOrchestrator:
         if self.on_result_finalized is not None:
             self.on_result_finalized(result)
         return result
+
+    def _complete_if_no_open_subtasks(self, task_id: str) -> TaskSnapshot:
+        snapshot = self.cache.load(task_id)
+        progress = snapshot.progress()
+        if (
+            snapshot.record.status is not TaskStatus.COMPLETED
+            and progress.pending == 0
+            and progress.running == 0
+            and progress.failed == 0
+        ):
+            self.cache.save_task(
+                snapshot.record.with_status(TaskStatus.COMPLETED).with_updated_at(
+                    self.clock()
+                )
+            )
+            return self.cache.load(task_id)
+        return snapshot
 
     def _save_round_progress(
         self,
