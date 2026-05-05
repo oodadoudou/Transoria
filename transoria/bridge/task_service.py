@@ -520,6 +520,18 @@ def _glossary_review_round_progress(
     total_rounds = int(metadata.get("review_rounds_total", 0) or 0)
     if total_rounds <= 0:
         return None
+    if record.status is TaskStatus.COMPLETED:
+        return {
+            "total_rounds": total_rounds,
+            "current_round": total_rounds,
+            "completed_rounds": total_rounds,
+            "current_total_batches": int(
+                metadata.get("review_round_total_batches", 0) or 0
+            ),
+            "current_completed_batches": int(
+                metadata.get("review_round_completed_batches", 0) or 0
+            ),
+        }
     return {
         "total_rounds": total_rounds,
         "current_round": int(metadata.get("review_round_current", 0) or 0),
