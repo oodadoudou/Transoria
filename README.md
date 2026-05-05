@@ -19,7 +19,7 @@ Transoria 是一个面向小说翻译的桌面应用：把 EPUB / TXT 小说交�
 
 交流/问题反馈群 QQ：**1104197845**。欢迎加入，使用中遇到问题可以进群反馈。
 
-### 最近更新（1.0.6）
+### 最近更新
 
 - 新增独立的 **术语审查** 模块：读取 XLSX 术语表，结合参考 TXT 做多轮 AI 审查，输出最终 XLSX。
 - 术语审查支持候选文件选择、参考 TXT 多选、断点续跑、轮次进度、改动报告、最终表格编辑、多选删除和撤回删除。
@@ -112,7 +112,7 @@ The UI ships with both Chinese and English. All tasks run locally and call model
 
 > Screenshots above show the Chinese UI; switch to English in the top-right of the app.
 
-### What's new (1.0.6)
+### What's new
 
 - Added a standalone **Glossary Review** module: review XLSX glossaries against reference TXT files with multi-round AI review, then export a final XLSX.
 - Glossary Review supports candidate file selection, multi-select reference TXT files, resume from cache, round-aware progress, change reports, final table editing, multi-select deletion, and restoring deleted rows.
