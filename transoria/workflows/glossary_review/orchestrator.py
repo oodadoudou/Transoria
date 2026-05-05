@@ -224,6 +224,13 @@ class GlossaryReviewOrchestrator:
                     changed_count=0,
                     final_status=final_snapshot.record.status,
                 )
+            if round_index < config.review_rounds:
+                self.cache.save_task(
+                    final_snapshot.record.with_status(
+                        TaskStatus.RUNNING
+                    ).with_updated_at(self.clock())
+                )
+                final_snapshot = self.cache.load(task_id)
             self._save_round_progress(
                 task_id,
                 total_rounds=config.review_rounds,

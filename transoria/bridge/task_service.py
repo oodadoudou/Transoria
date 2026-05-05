@@ -1208,6 +1208,12 @@ class TaskService:
                     "cannot retranslate while the task is running.",
                     details={"task_id": task_id, "status": snapshot.record.status.value},
                 )
+            snapshot = self._reconcile_zombie(snapshot, self.cache)
+        if snapshot.record.status is not TaskStatus.COMPLETED:
+            raise BridgeError.conflict(
+                "retranslate is only available after translation completes.",
+                details={"task_id": task_id, "status": snapshot.record.status.value},
+            )
 
         seg_data = _find_segment_payload(snapshot, segment_id)
         if seg_data is None:
@@ -2450,6 +2456,7 @@ class TaskService:
                 field="task_id",
             )
         snapshot = self._reconcile_zombie(snapshot, cache)
+        snapshot = self._reconcile_glossary_review_completion(snapshot, cache)
         # Close the race window where disk shows terminal but the runner
         # thread hasn't flipped registry.is_done yet: the UI polls
         # read_snapshot, sees FAILED, opens the failure dialog; if the
@@ -2475,6 +2482,17 @@ class TaskService:
             if record.status in _ZOMBIE_TASK_STATES:
                 try:
                     snapshot = self._reconcile_zombie(cache.load(record.id), cache)
+                except (TaskNotFoundError, ValueError, OSError):
+                    continue
+                record = snapshot.record
+            elif (
+                record.kind is TaskKind.GLOSSARY_REVIEW
+                and record.status is TaskStatus.COMPLETED
+            ):
+                try:
+                    snapshot = self._reconcile_glossary_review_completion(
+                        cache.load(record.id), cache
+                    )
                 except (TaskNotFoundError, ValueError, OSError):
                     continue
                 record = snapshot.record
@@ -2609,12 +2627,32 @@ class TaskService:
         empty mirror naturally.
         """
 
-        live = [r for r in self.registry.list_by_kind(kind) if not r.is_done]
+        live: list[RunningTask] = []
+        for running in self.registry.list_by_kind(kind):
+            if running.is_done:
+                continue
+            try:
+                record = self._cache_for_task(running.task_id).load_record(
+                    running.task_id
+                )
+            except (TaskNotFoundError, OSError, ValueError):
+                live.append(running)
+                continue
+            resolved = self._resolve_live_running(running.task_id, record.status)
+            if resolved is not None and not resolved.is_done:
+                live.append(resolved)
         for running in live:
             running.request_stop()
         for running in live:
             if running.thread is not None:
                 running.thread.join(timeout=join_timeout)
+        for running in live:
+            if running.is_done:
+                continue
+            if running.thread is not None and not running.thread.is_alive():
+                running.mark_done()
+                continue
+            self._raise_live_task_conflict(running)
 
     def _spawn_thread(
         self,
@@ -2745,6 +2783,47 @@ class TaskService:
                 healed_subtasks.append(subtask)
         return TaskSnapshot(record=healed, subtasks=tuple(healed_subtasks))
 
+    def _reconcile_glossary_review_completion(
+        self, snapshot: TaskSnapshot, cache: TaskCache
+    ) -> TaskSnapshot:
+        record = snapshot.record
+        if (
+            record.kind is not TaskKind.GLOSSARY_REVIEW
+            or record.status is not TaskStatus.COMPLETED
+            or self._glossary_review_artifacts_exist(record)
+        ):
+            return snapshot
+        live = self.registry.get(record.id)
+        status = (
+            TaskStatus.RUNNING
+            if live is not None and not live.is_done
+            else TaskStatus.STOPPED
+        )
+        healed = record.with_status(status).with_updated_at(_utc_now_iso())
+        cache.save_task(healed)
+        return TaskSnapshot(record=healed, subtasks=snapshot.subtasks)
+
+    def _glossary_review_artifacts_exist(self, record: TaskRecord) -> bool:
+        if record.kind is not TaskKind.GLOSSARY_REVIEW:
+            return False
+        report_path = self.cache.task_dir(record.id) / REPORT_FILENAME
+        output_path: Path | None = None
+        result = self._read_result(record.id)
+        if result is not None:
+            raw_output = result.get("output_path")
+            if isinstance(raw_output, str) and raw_output:
+                output_path = Path(raw_output)
+        if output_path is None:
+            try:
+                output_filename = normalize_output_filename(
+                    str(record.metadata.get("output_filename", ""))
+                )
+            except ValueError:
+                return False
+            output_dir = Path(str(record.metadata.get("output_dir", "")))
+            output_path = output_dir / output_filename
+        return report_path.exists() and output_path.exists()
+
     def _on_task_failure(self, task_id: str, exc: BaseException) -> None:
         cache = self._cache_for_task(task_id)
         try:
@@ -2822,16 +2901,23 @@ class TaskService:
     def read_glossary_review_report(self, *, task_id: str) -> dict[str, object]:
         record_kind = TaskKind.GLOSSARY_REVIEW
         try:
-            record = self.cache.load_record(task_id)
+            snapshot = self.cache.load(task_id)
         except TaskNotFoundError as exc:
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
                 details={"task_id": task_id},
             ) from exc
+        record = snapshot.record
         if record.kind is not record_kind:
             raise BridgeError.invalid_argument(
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
+            )
+        snapshot = self._reconcile_glossary_review_completion(snapshot, self.cache)
+        if snapshot.record.status is not TaskStatus.COMPLETED:
+            raise BridgeError.conflict(
+                "glossary review report is not ready yet.",
+                details={"task_id": task_id, "status": snapshot.record.status.value},
             )
         path = self.cache.task_dir(task_id) / REPORT_FILENAME
         if not path.exists():
