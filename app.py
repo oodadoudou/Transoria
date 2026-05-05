@@ -164,7 +164,7 @@ def _ensure_dist() -> None:
 
 
 def _wait_for_vite(port: int, *, timeout: int = 30) -> str:
-    url = f"http://localhost:{port}"
+    url = f"http://127.0.0.1:{port}"
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -192,7 +192,17 @@ def _start_vite(port: int, *, bridge_port: int) -> subprocess.Popen:
     # rogue byte from killing the launcher.
     env["PYTHONIOENCODING"] = "utf-8"
     proc = subprocess.Popen(
-        [NPM_CMD, "run", "dev", "--", "--port", str(port), "--strictPort"],
+        [
+            NPM_CMD,
+            "run",
+            "dev",
+            "--",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--strictPort",
+        ],
         cwd=FRONTEND_DIR,
         env=env,
         stdout=subprocess.PIPE,
