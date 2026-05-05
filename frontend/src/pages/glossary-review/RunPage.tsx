@@ -73,7 +73,6 @@ export function RunPage() {
 
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
-  const [rerunPending, setRerunPending] = useState(false);
   const [report, setReport] = useState<GlossaryReviewReport | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [importingFinal, setImportingFinal] = useState(false);
@@ -152,22 +151,6 @@ export function RunPage() {
   const handleAcceptCompletion = () => {
     if (activeTaskId) markCompletionWithFailuresDismissed(activeTaskId);
     setCompletionPromptOpen(false);
-  };
-
-  const handleRerunFailed = async () => {
-    if (!activeTaskId || rerunPending) return;
-    setRerunPending(true);
-    try {
-      await glossaryReviewBridge.continueTask(activeTaskId);
-      setCompletionPromptOpen(false);
-      await useRuntimeStore.getState().refreshActiveTask("glossary_review");
-    } catch (error) {
-      if (BridgeError.isBridgeError(error)) {
-        useRuntimeStore.getState().setLastError("glossary_review", error);
-      }
-    } finally {
-      setRerunPending(false);
-    }
   };
 
   const handleOpenReport = async () => {
@@ -382,8 +365,6 @@ export function RunPage() {
       {completionPromptOpen ? (
         <CompletionWithFailuresDialog
           failedCount={snapshot.progress.failed}
-          rerunPending={rerunPending}
-          onRerun={handleRerunFailed}
           onAccept={handleAcceptCompletion}
         />
       ) : null}

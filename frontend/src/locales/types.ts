@@ -966,8 +966,6 @@ export interface Messages {
     title: string;
     bodyPrefix: string;
     bodySuffix: string;
-    rerunAction: string;
-    rerunPending: string;
     acceptAction: string;
   };
   runCompleted: {

@@ -4,15 +4,11 @@ import styles from "./CompletionWithFailuresDialog.module.css";
 
 interface CompletionWithFailuresDialogProps {
   failedCount: number;
-  rerunPending: boolean;
-  onRerun: () => void;
   onAccept: () => void;
 }
 
 export function CompletionWithFailuresDialog({
   failedCount,
-  rerunPending,
-  onRerun,
   onAccept,
 }: CompletionWithFailuresDialogProps) {
   const messages = useMessages().completionWithFailures;
@@ -34,11 +30,8 @@ export function CompletionWithFailuresDialog({
           {messages.bodySuffix}
         </p>
         <div className={styles.footer}>
-          <Pill variant="ghost" onClick={onAccept} disabled={rerunPending}>
+          <Pill variant="ghost" onClick={onAccept}>
             {messages.acceptAction}
-          </Pill>
-          <Pill onClick={onRerun} disabled={rerunPending}>
-            {rerunPending ? messages.rerunPending : messages.rerunAction}
           </Pill>
         </div>
       </div>

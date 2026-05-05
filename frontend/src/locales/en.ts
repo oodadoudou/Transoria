@@ -1075,9 +1075,7 @@ export const en: Messages = {
     title: "Run finished with failures",
     bodyPrefix: "After auto-retry exhausted, ",
     bodySuffix:
-      " chunk(s) still failed. A partial translation has been written (missing segments fall back to the source text). You can continue retrying the failed chunks, or accept the current result.",
-    rerunAction: "Retry failed chunks",
-    rerunPending: "Starting…",
+      " chunk(s) still failed. A partial translation has been written (missing segments fall back to the source text). Use Continue on the run page to retry failed chunks as many times as needed, or accept the current result for now.",
     acceptAction: "Accept current result",
   },
   runCompleted: {

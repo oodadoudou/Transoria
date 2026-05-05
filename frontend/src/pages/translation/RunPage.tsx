@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useMessages, useI18n } from "@/locales";
-import { translationBridge, BridgeError } from "@/bridge";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
   hasDismissedCompletionWithFailures,
@@ -68,14 +67,12 @@ export function RunPage() {
 
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
-  const [rerunPending, setRerunPending] = useState(false);
 
   // Auto-open the completion-with-failures dialog the first time we
   // see a terminal status with failures for this task. Fires even when
   // every chunk failed (progress.completed == 0) so the user is always
-  // offered a "continue rerun" path — they were getting silent dead
-  // ends previously. Dismissal is tracked module-level so navigating
-  // away and back doesn't re-open.
+  // told that Continue can retry remaining chunks. Dismissal is tracked
+  // module-level so navigating away and back doesn't re-open.
   useEffect(() => {
     if (!activeTaskId) return;
     if (snapshot.status !== "completed" && snapshot.status !== "failed") {
@@ -155,24 +152,6 @@ export function RunPage() {
   const handleAcceptCompletion = () => {
     if (activeTaskId) markCompletionWithFailuresDismissed(activeTaskId);
     setCompletionPromptOpen(false);
-  };
-
-  const handleRerunFailed = async () => {
-    if (!activeTaskId || rerunPending) return;
-    setRerunPending(true);
-    try {
-      await translationBridge.continueTask(activeTaskId);
-      // Continue resets the dismissal: if the rerun produces new failures,
-      // the dialog should fire again so the user can re-decide.
-      setCompletionPromptOpen(false);
-      await useRuntimeStore.getState().refreshActiveTask("translation");
-    } catch (error) {
-      if (BridgeError.isBridgeError(error)) {
-        useRuntimeStore.getState().setLastError("translation", error);
-      }
-    } finally {
-      setRerunPending(false);
-    }
   };
 
   const activeModelId = appSettings.draft?.active_translation_model_id ?? null;
@@ -321,8 +300,6 @@ export function RunPage() {
       {completionPromptOpen ? (
         <CompletionWithFailuresDialog
           failedCount={snapshot.progress.failed}
-          rerunPending={rerunPending}
-          onRerun={handleRerunFailed}
           onAccept={handleAcceptCompletion}
         />
       ) : null}

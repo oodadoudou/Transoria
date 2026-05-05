@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useMessages, useI18n } from "@/locales";
-import { glossaryBridge, BridgeError } from "@/bridge";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
   hasDismissedCompletionWithFailures,
@@ -63,10 +62,9 @@ export function RunPage() {
 
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
-  const [rerunPending, setRerunPending] = useState(false);
 
   // Same as translation: fire even when every chunk failed so the
-  // user always gets a "continue rerun" offer.
+  // user is told that Continue can retry remaining chunks.
   useEffect(() => {
     if (!activeTaskId) return;
     if (snapshot.status !== "completed" && snapshot.status !== "failed") {
@@ -104,22 +102,6 @@ export function RunPage() {
   const handleAcceptCompletion = () => {
     if (activeTaskId) markCompletionWithFailuresDismissed(activeTaskId);
     setCompletionPromptOpen(false);
-  };
-
-  const handleRerunFailed = async () => {
-    if (!activeTaskId || rerunPending) return;
-    setRerunPending(true);
-    try {
-      await glossaryBridge.continueTask(activeTaskId);
-      setCompletionPromptOpen(false);
-      await useRuntimeStore.getState().refreshActiveTask("glossary");
-    } catch (error) {
-      if (BridgeError.isBridgeError(error)) {
-        useRuntimeStore.getState().setLastError("glossary", error);
-      }
-    } finally {
-      setRerunPending(false);
-    }
   };
 
   const activeModelId = appSettings.draft?.active_glossary_model_id ?? null;
@@ -262,8 +244,6 @@ export function RunPage() {
       {completionPromptOpen ? (
         <CompletionWithFailuresDialog
           failedCount={snapshot.progress.failed}
-          rerunPending={rerunPending}
-          onRerun={handleRerunFailed}
           onAccept={handleAcceptCompletion}
         />
       ) : null}

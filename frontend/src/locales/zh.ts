@@ -1044,9 +1044,7 @@ export const zh: Messages = {
     title: "本次运行存在失败分块",
     bodyPrefix: "自动重试用尽后仍有 ",
     bodySuffix:
-      " 个分块失败。已写出部分译文（缺失段落保留原文）。可选择继续重跑失败分块以补齐，或直接接受当前结果。",
-    rerunAction: "继续重跑失败分块",
-    rerunPending: "正在启动…",
+      " 个分块失败。已写出部分译文（缺失段落保留原文）。可以回到运行页点击「继续」反复重跑失败分块，直到补齐；也可以先接受当前结果。",
     acceptAction: "接受当前结果",
   },
   runCompleted: {
