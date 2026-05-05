@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from transoria.domain import Language
 from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
@@ -670,6 +670,13 @@ class TranslationSubtaskRunner:
         decoded = decode_translation_jsonl(raw_content)
         expected = {meta.chunk_index for meta in metadata}
         decoded_indices = {line.index for line in decoded.lines}
+        if (
+            len(decoded.lines) == 1
+            and len(metadata) > 1
+            and _all_sources_equivalent(metadata)
+        ):
+            text = decoded.lines[0].text
+            return {meta.chunk_index: text for meta in metadata}, frozenset()
         sorted_expected = sorted(expected)
         decoded_order = [line.index for line in decoded.lines]
         if (
@@ -783,6 +790,8 @@ def _detect_duplicate_drift(
         }
         if len(sources) <= 1:
             continue
+        if _all_texts_equivalent(sources):
+            continue
         if len(text) < _DUPLICATE_DRIFT_MIN_TEXT_LENGTH and len(sources) < 3:
             continue
         suspicious.update(indices)
@@ -817,13 +826,30 @@ def _detect_duplicate_drift(
 
 
 def _text_similarity(left: str, right: str) -> float:
-    left_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", left)
-    right_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", right)
+    left_norm = _normalize_for_similarity(left)
+    right_norm = _normalize_for_similarity(right)
     if not left_norm or not right_norm:
         return 0.0
     return SequenceMatcher(
         None, left_norm, right_norm, autojunk=False
     ).ratio()
+
+
+def _normalize_for_similarity(text: str) -> str:
+    return _TEXT_SIMILARITY_NORMALIZE_RE.sub("", text)
+
+
+def _all_sources_equivalent(metadata: Sequence["_SegmentPayload"]) -> bool:
+    return _all_texts_equivalent(meta.original_text for meta in metadata)
+
+
+def _all_texts_equivalent(texts: Iterable[str]) -> bool:
+    normalized = {
+        _normalize_for_similarity(text)
+        for text in texts
+        if _normalize_for_similarity(text)
+    }
+    return len(normalized) == 1
 
 
 _KOREAN_RESIDUE_RE = re.compile(
