@@ -137,8 +137,6 @@ def _apply_doc_segments(
     for segment in segments:
         translation = translations[segment.index]
         translated_lines = translation.split("\n")
-        if len(translated_lines) != len(segment.parts):
-            continue
 
         resolved: list[tuple[str, etree._Element]] = []
         current_texts: list[str] = []
@@ -166,7 +164,12 @@ def _apply_doc_segments(
                     block_refs.append((block, copy.deepcopy(block)))
                     inserted_block_paths.add(segment.block_path)
 
-            for (slot, elem), translated_text in zip(resolved, translated_lines, strict=True):
+            if len(translated_lines) == len(resolved):
+                replacements = translated_lines
+            else:
+                replacements = [translation] + [""] * (len(resolved) - 1)
+
+            for (slot, elem), translated_text in zip(resolved, replacements, strict=True):
                 if slot == "text":
                     elem.text = translated_text
                 else:
