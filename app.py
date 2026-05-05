@@ -456,8 +456,18 @@ def _run_desktop(
     # Clean up the Vite child on Ctrl+C even if pywebview swallows the signal.
     def _shutdown() -> None:
         _terminate_vite()
-        http_server.shutdown()
-        http_server.server_close()
+        for action, close in (
+            ("shutdown", http_server.shutdown),
+            ("server_close", http_server.server_close),
+        ):
+            try:
+                close()
+            except OSError as exc:
+                print(
+                    f"[transoria] warning: HTTP bridge {action} failed during exit: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     signal.signal(signal.SIGINT, lambda *_: (_shutdown(), sys.exit(0)))
 

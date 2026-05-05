@@ -327,7 +327,8 @@ Transoria 启动说明（中文）
 
 请把 ZIP 解压到一个普通可写目录（如「文档」「桌面」或自建文件夹），
 不要解压到 C:\\Program Files、C:\\Windows、C:\\ 根目录这类受系统保护
-的位置；否则首次启动时 User Data 文件夹会因为权限不足写入失败。
+的位置。若安装目录不可写，程序会自动把用户数据改存到
+%LOCALAPPDATA%\\Transoria，以避免设置保存失败。
 
 【二、目录结构】
 
@@ -358,14 +359,19 @@ Transoria 启动说明（中文）
 
 【四、用户数据存放位置（便携模式）】
 
-所有设置、API Key、任务缓存都会写到 Transoria 文件夹里的：
+默认情况下，所有设置、API Key、任务缓存都会写到 Transoria 文件夹里的：
   Transoria\\User Data\\
 
 整个 Transoria 文件夹是自包含的：拷到 U 盘换台机器跑、备份整个文件
 夹都能完整带走状态。
 
+如果该目录不可写（例如放在 Program Files、只读目录，或被安全软件拦截），
+Transoria 会自动改用：
+  %LOCALAPPDATA%\\Transoria\\
+
 ⚠️ 注意：User Data 里包含明文 API Key。**分享或上传整个 Transoria
-文件夹之前，请先删除 User Data 文件夹**，避免泄漏。
+文件夹之前，请先删除 User Data 文件夹**，避免泄漏。如果程序已回退到
+%LOCALAPPDATA%\\Transoria，也请一并检查该目录。
 
 【五、升级】
 
@@ -400,8 +406,9 @@ extracting, double-clicking Transoria.exe directly also works.
 
 Extract the ZIP to a regular writable folder (e.g. Documents, Desktop,
 or a folder you create). Do not extract into C:\\Program Files,
-C:\\Windows, or the root of C:\\ — those are system-protected and the
-User Data folder will fail to write on first launch.
+C:\\Windows, or the root of C:\\. If the install folder is not writable,
+Transoria automatically stores user data in %LOCALAPPDATA%\\Transoria
+instead so settings can still save.
 
 [2] Folder layout
 
@@ -432,16 +439,20 @@ User Data folder will fail to write on first launch.
 
 [4] User data location (portable)
 
-Settings, API keys, and task caches all live inside the Transoria
+By default, settings, API keys, and task caches live inside the Transoria
 folder at:
   Transoria\\User Data\\
 
 The whole Transoria folder is self-contained: copy it to a USB stick,
 move it between machines, or back it up — your state moves with it.
 
+If that folder is not writable (for example under Program Files, a
+read-only folder, or blocked by security software), Transoria falls back to:
+  %LOCALAPPDATA%\\Transoria\\
+
 WARNING: User Data contains plaintext API keys. **Delete the User Data
 folder before sharing or uploading the Transoria folder** to avoid
-leaking your keys.
+leaking your keys. If fallback was used, also check %LOCALAPPDATA%\\Transoria.
 
 [5] Upgrading
 

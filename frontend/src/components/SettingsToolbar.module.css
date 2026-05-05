@@ -74,7 +74,9 @@
 .errorMessage {
   color: var(--warn-text, #6b3a1f);
   font-size: 12px;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   margin-left: 4px;
-  word-break: break-word;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

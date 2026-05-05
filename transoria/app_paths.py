@@ -28,14 +28,33 @@ def default_cache_root() -> Path:
         return Path(__file__).resolve().parents[1] / ".transoria-cache"
     # Windows packaged builds ship as a portable folder; keep all user
     # state next to the exe so moving the folder moves the state with
-    # it. Other platforms still use the platform-standard location.
+    # it. If that folder is not writable, fall back to LocalAppData so
+    # settings can still save when the user extracts into a protected
+    # directory or a security tool blocks writes next to the exe.
+    # Other platforms still use the platform-standard location.
     if sys.platform == "win32":
-        return Path(sys.executable).resolve().parent / PORTABLE_USER_DATA_DIR
+        portable = Path(sys.executable).resolve().parent / PORTABLE_USER_DATA_DIR
+        if _is_writable_cache_dir(portable):
+            return portable
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        root = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+        return root / APP_NAME
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / APP_NAME
     base = os.environ.get("XDG_DATA_HOME")
     root = Path(base) if base else Path.home() / ".local" / "share"
     return root / APP_NAME
+
+
+def _is_writable_cache_dir(path: Path) -> bool:
+    probe = path / ".transoria-write-test"
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError:
+        return False
+    return True
 
 
 __all__ = [

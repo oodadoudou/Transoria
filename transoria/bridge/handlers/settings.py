@@ -52,7 +52,10 @@ def _utc_now_iso() -> str:
 
 def _build_handlers(store: SettingsStore) -> dict[str, object]:
     def load_all(_payload: Mapping[str, object]) -> dict[str, object]:
-        return store.load_all().to_dict()
+        try:
+            return store.load_all().to_dict()
+        except OSError as exc:
+            raise _settings_io_error(store, "read", exc) from exc
 
     def save_partial(payload: Mapping[str, object]) -> dict[str, object]:
         module = _expect_module(payload)
@@ -62,6 +65,8 @@ def _build_handlers(store: SettingsStore) -> dict[str, object]:
         except ValueError as exc:
             field = _extract_field(exc)
             raise BridgeError.invalid_argument(str(exc), field=field) from exc
+        except OSError as exc:
+            raise _settings_io_error(store, "save", exc) from exc
         return {
             "saved_at": _utc_now_iso(),
             # Per-field rejection list. Empty when every patch field
@@ -72,7 +77,10 @@ def _build_handlers(store: SettingsStore) -> dict[str, object]:
 
     def reset_module(payload: Mapping[str, object]) -> dict[str, object]:
         module = _expect_module(payload)
-        defaults = store.reset_module(module)
+        try:
+            defaults = store.reset_module(module)
+        except OSError as exc:
+            raise _settings_io_error(store, "reset", exc) from exc
         return asdict(defaults)
 
     return {
@@ -97,6 +105,24 @@ def _extract_field(exc: ValueError) -> str | None:
             if tail.startswith("'") and "'" in tail[1:]:
                 return tail[1 : 1 + tail[1:].index("'")]
     return None
+
+
+def _settings_io_error(store: SettingsStore, action: str, exc: OSError) -> BridgeError:
+    settings_path = str(getattr(store, "path", "settings.json"))
+    return BridgeError(
+        "bridge.io_error",
+        (
+            f"Cannot {action} settings file: {settings_path}. "
+            f"{exc}. On Windows, make sure Transoria is extracted to a normal "
+            "writable folder and not running from Program Files or a read-only ZIP."
+        ),
+        retryable=True,
+        details={
+            "settings_path": settings_path,
+            "operation": action,
+            "error": str(exc),
+        },
+    )
 
 
 def register(router: BridgeRouter, *, store: SettingsStore) -> None:

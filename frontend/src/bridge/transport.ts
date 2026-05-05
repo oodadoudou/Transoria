@@ -25,14 +25,19 @@ export class HttpTransport implements BridgeTransport {
         body: JSON.stringify(payload ?? {}),
       });
     } catch (error) {
+      const rawMessage =
+        error instanceof Error ? error.message : String(error || "");
+      const pageUrl =
+        typeof window !== "undefined" ? window.location.href : undefined;
+      const message =
+        rawMessage === "Failed to fetch"
+          ? "network error: Failed to fetch. The local Transoria bridge is unavailable; restart Transoria, and make sure you launched Transoria.exe instead of opening frontend files directly."
+          : `network error: ${rawMessage || "request failed"}`;
       throw new BridgeError({
         code: "bridge.io_error",
-        message:
-          error instanceof Error
-            ? `network error: ${error.message}`
-            : "network error",
+        message,
         retryable: true,
-        details: { method, base_url: this.baseUrl },
+        details: { method, base_url: this.baseUrl, page_url: pageUrl },
       });
     }
 

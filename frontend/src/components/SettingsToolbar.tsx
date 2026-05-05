@@ -42,6 +42,7 @@ export function SettingsToolbar({
       ? styles.error
       : ''
   }`.trim();
+  const errorText = lastError?.message || lastError?.code || "";
 
   return (
     <div className={styles.toolbar}>
@@ -49,7 +50,12 @@ export function SettingsToolbar({
         <span className={dotClass} aria-hidden />
         <span>{stateLabel}</span>
         {lastError ? (
-          <span className={styles.errorMessage}>{lastError.code}</span>
+          <span
+            className={styles.errorMessage}
+            title={`${lastError.code}: ${errorText}`}
+          >
+            {errorText}
+          </span>
         ) : null}
       </div>
       <div className={styles.actions}>
