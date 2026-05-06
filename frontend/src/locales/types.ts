@@ -302,6 +302,9 @@ export interface Messages {
     };
     generalTools: {
       batchReplacement: string;
+      epubOrganize: string;
+      epubCompress: string;
+      epubMerge: string;
     };
     appSettings: {
       general: string;
@@ -745,7 +748,14 @@ export interface Messages {
       dirty: string;
     };
   };
-  generalTools: { crumb: string; title: string; sub: string };
+  generalTools: {
+    crumb: string;
+    title: string;
+    sub: string;
+    epubOrganize: { title: string; sub: string };
+    epubCompress: { title: string; sub: string };
+    epubMerge: { title: string; sub: string };
+  };
   batchReplacement: {
     title: string;
     sub: string;

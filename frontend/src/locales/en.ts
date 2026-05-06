@@ -364,7 +364,12 @@ export const en: Messages = {
       settings: "Settings",
       prompt: "Prompt",
     },
-    generalTools: { batchReplacement: "Batch Replacement" },
+    generalTools: {
+      batchReplacement: "Batch Replacement",
+      epubOrganize: "EPUB Organizer",
+      epubCompress: "EPUB Compressor",
+      epubMerge: "EPUB Merger",
+    },
     appSettings: { general: "General" },
   },
   translation: {
@@ -857,6 +862,18 @@ export const en: Messages = {
     crumb: "General Tools",
     title: "Batch Replacement",
     sub: "Apply a TXT rule file across an input folder of TXT and EPUB files. Output uses `<Name>-Replaced.<ext>`.",
+    epubOrganize: {
+      title: "EPUB Organizer",
+      sub: "Scan EPUB files, preview folder matches, then move them into novel folders. Moves files only; EPUB content and metadata are untouched.",
+    },
+    epubCompress: {
+      title: "EPUB Compressor",
+      sub: "Remove fonts and compress images to reduce file size. The output filename gets a compressed marker, but the book title metadata is unchanged.",
+    },
+    epubMerge: {
+      title: "EPUB Merger",
+      sub: "Merge selected EPUB files in order and rebuild navigation/resources. The output filename gets a merged marker, but the book title metadata is unchanged.",
+    },
   },
   appSettings: {
     crumb: "App Settings",

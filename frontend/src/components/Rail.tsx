@@ -74,7 +74,12 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
       {
         id: "general-tools",
         label: messages.rail.generalTools,
-        children: [{ page: "batchReplacement", label: gt.batchReplacement }],
+        children: [
+          { page: "batchReplacement", label: gt.batchReplacement },
+          { page: "epubOrganize", label: gt.epubOrganize },
+          { page: "epubCompress", label: gt.epubCompress },
+          { page: "epubMerge", label: gt.epubMerge },
+        ],
       },
     ],
     workspace: [

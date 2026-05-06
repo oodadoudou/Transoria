@@ -354,7 +354,12 @@ export const zh: Messages = {
       settings: "设置",
       prompt: "提示词",
     },
-    generalTools: { batchReplacement: "批量替换" },
+    generalTools: {
+      batchReplacement: "批量替换",
+      epubOrganize: "EPUB 整理",
+      epubCompress: "EPUB 压缩",
+      epubMerge: "EPUB 合并",
+    },
     appSettings: { general: "常规" },
   },
   translation: {
@@ -836,6 +841,18 @@ export const zh: Messages = {
     crumb: "通用工具",
     title: "批量替换",
     sub: "将 TXT 规则文件应用于输入目录下的 TXT 与 EPUB 文件。输出文件名为 `<Name>-Replaced.<ext>`。",
+    epubOrganize: {
+      title: "EPUB 整理",
+      sub: "扫描目录中的 EPUB，预览匹配结果后移动到对应小说文件夹；只移动文件，不修改 EPUB 内容或 metadata。",
+    },
+    epubCompress: {
+      title: "EPUB 压缩",
+      sub: "删除字体并压缩图片以减小体积；输出文件名会加压缩标识，但不会修改书内标题 metadata。",
+    },
+    epubMerge: {
+      title: "EPUB 合并",
+      sub: "按用户选择的顺序合并多个 EPUB，重建目录与资源引用；输出文件名会加合并标识，但不把标识写入书内标题 metadata。",
+    },
   },
   appSettings: {
     crumb: "应用设置",

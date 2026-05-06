@@ -22,7 +22,18 @@ export type GlossaryPage = "run" | "settings" | "prompt";
 
 export type GlossaryReviewPage = "run" | "review" | "settings" | "prompt";
 
-export type GeneralToolsPage = "batchReplacement";
+export type GeneralToolsPage =
+  | "batchReplacement"
+  | "epubOrganize"
+  | "epubCompress"
+  | "epubMerge";
+
+const GENERAL_TOOLS_PAGES = [
+  "batchReplacement",
+  "epubOrganize",
+  "epubCompress",
+  "epubMerge",
+] as const;
 
 export type AppSettingsPage = "general";
 
@@ -122,6 +133,12 @@ function coerceRoute(value: unknown): Route {
       }
       return { module: "glossary-review", page: "run" };
     case "general-tools":
+      if (GENERAL_TOOLS_PAGES.includes(candidate.page as GeneralToolsPage)) {
+        return {
+          module: "general-tools",
+          page: candidate.page as GeneralToolsPage,
+        };
+      }
       return { module: "general-tools", page: "batchReplacement" };
     case "app-settings":
       return { module: "app-settings", page: "general" };
