@@ -164,7 +164,6 @@ class GlossarySubtaskRunner:
             PromptContext(
                 source_language=language_prompt_label(self.source_language),
                 target_language=language_prompt_label(self.target_language),
-                context=self.novel_background,
             ),
             thinking=self.model.thinking_prompt_enabled,
         )
