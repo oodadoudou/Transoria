@@ -314,7 +314,7 @@ class TranslationSubtaskRunner:
                 sub_chunk = _build_subchunk_from_pending(
                     chunk,
                     pending_meta,
-                    include_context=not debug_attempts,
+                    include_context=False,
                 )
                 user_prompt = self._compose_user_prompt(
                     self._apply_roster(assemble_user_prompt(sub_chunk)),
@@ -724,6 +724,8 @@ class TranslationSubtaskRunner:
             and len(decoded.lines) <= len(context_lines)
             and decoded_order == sorted_expected[: len(decoded_order)]
         ):
+            return {}, frozenset(expected)
+        if context_lines and len(decoded.lines) > len(expected):
             return {}, frozenset(expected)
         if decoded_indices == expected and len(decoded.lines) == len(expected):
             translations_by_index = {
