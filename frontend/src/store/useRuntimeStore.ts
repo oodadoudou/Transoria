@@ -4,6 +4,7 @@ import { create } from "zustand";
 import {
   BridgeError,
   dialogsBridge,
+  epubCompressBridge,
   epubOrganizeBridge,
   glossaryBridge,
   glossaryReviewBridge,
@@ -24,7 +25,8 @@ export type RunKind =
   | "glossary"
   | "glossary_review"
   | "replacement"
-  | "epub_organize";
+  | "epub_organize"
+  | "epub_compress";
 
 const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set([
   "completed",
@@ -107,6 +109,7 @@ interface RuntimeState {
   glossary_review: KindRuntime;
   replacement: KindRuntime;
   epub_organize: KindRuntime;
+  epub_compress: KindRuntime;
   refreshActiveTask: (kind: RunKind) => Promise<void>;
   pollSnapshot: (kind: RunKind) => Promise<void>;
   setActiveTaskId: (kind: RunKind, taskId: string | null) => void;
@@ -120,6 +123,7 @@ const bridges = {
   glossary_review: glossaryReviewBridge,
   replacement: replacementBridge,
   epub_organize: epubOrganizeBridge,
+  epub_compress: epubCompressBridge,
 } as const;
 
 function pickActive(tasks: TaskHeader[]): TaskHeader | null {
@@ -159,6 +163,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   glossary_review: emptyRuntime,
   replacement: emptyRuntime,
   epub_organize: emptyRuntime,
+  epub_compress: emptyRuntime,
 
   setActiveTaskId: (kind, taskId) =>
     set((state) =>
@@ -356,7 +361,13 @@ async function maybeOpenOutputFolder(
   if (!seenInFlightTaskIds.has(taskId)) return;
   if (autoOpenedTaskIds.has(taskId)) return;
   const settings = useSettingsStore.getState();
-  if (kind === "replacement" || kind === "epub_organize") return;
+  if (
+    kind === "replacement" ||
+    kind === "epub_organize" ||
+    kind === "epub_compress"
+  ) {
+    return;
+  }
   const enabled =
     kind === "translation"
       ? settings.translation.draft?.auto_open_output_folder

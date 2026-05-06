@@ -3,6 +3,7 @@ import { useMessages } from '@/locales';
 import { PlaceholderPage } from '../PlaceholderPage';
 import { BatchReplacementPage } from './BatchReplacementPage';
 import { EpubOrganizePage } from './EpubOrganizePage';
+import { EpubCompressPage } from './EpubCompressPage';
 
 interface GeneralToolsModuleProps {
   page: GeneralToolsPage;
@@ -17,12 +18,7 @@ export function GeneralToolsModule({ page }: GeneralToolsModuleProps) {
     case 'epubOrganize':
       return <EpubOrganizePage />;
     case 'epubCompress':
-      return (
-        <PlaceholderPage
-          title={tools.epubCompress.title}
-          subtitle={tools.epubCompress.sub}
-        />
-      );
+      return <EpubCompressPage />;
     case 'epubMerge':
       return (
         <PlaceholderPage

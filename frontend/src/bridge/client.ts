@@ -9,6 +9,11 @@ import type {
   EpubOrganizeArtifacts,
   EpubOrganizePlan,
   EpubOrganizeReport,
+  EpubCompressAction,
+  EpubCompressArtifacts,
+  EpubCompressOptions,
+  EpubCompressPlan,
+  EpubCompressReport,
   GlossaryArtifacts,
   GlossaryFileResult,
   GlossaryReviewArtifacts,
@@ -95,6 +100,9 @@ export const dialogsBridge = {
   },
   chooseReplacementRulesFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, ["txt"]);
+  },
+  chooseEpubFile(initialPath?: string): Promise<DialogPathResult> {
+    return nativeDialogs.chooseFile(initialPath, ["epub"]);
   },
   chooseSavePath(
     defaultFilename: string,
@@ -683,6 +691,64 @@ export const epubOrganizeBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("epub_organize.list_failed_subtasks", { task_id: taskId });
+  },
+};
+
+export const epubCompressBridge = {
+  preview(
+    inputPath: string,
+    mode: "file" | "folder",
+    options: EpubCompressOptions,
+  ): Promise<EpubCompressPlan> {
+    return call("epub_compress.preview", {
+      input_path: inputPath,
+      mode,
+      options,
+    });
+  },
+  startTask(
+    requestId: string,
+    inputPath: string,
+    mode: "file" | "folder",
+    options: EpubCompressOptions,
+    actions: EpubCompressAction[],
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_compress.start_task", {
+      request_id: requestId,
+      input_path: inputPath,
+      mode,
+      options,
+      actions,
+    });
+  },
+  stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_compress.stop_task", { task_id: taskId });
+  },
+  pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_compress.pause_task", { task_id: taskId });
+  },
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_compress.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("epub_compress.probe_continuable", {});
+  },
+  readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_compress.read_snapshot", { task_id: taskId });
+  },
+  listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
+    return call("epub_compress.list_recent_tasks", { limit });
+  },
+  readArtifacts(taskId: string): Promise<EpubCompressArtifacts> {
+    return call("epub_compress.read_artifacts", { task_id: taskId });
+  },
+  readReport(taskId: string): Promise<EpubCompressReport> {
+    return call("epub_compress.read_report", { task_id: taskId });
+  },
+  listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
+    return call("epub_compress.list_failed_subtasks", { task_id: taskId });
   },
 };
 

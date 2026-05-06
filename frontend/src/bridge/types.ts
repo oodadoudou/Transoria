@@ -300,7 +300,8 @@ export type TaskKind =
   | "glossary"
   | "glossary_review"
   | "replacement"
-  | "epub_organize";
+  | "epub_organize"
+  | "epub_compress";
 
 /** Inline-credential payload used by the Add API Profile modal to
  *  test_connection / fetch_model_list before persisting the profile.
@@ -593,6 +594,72 @@ export interface EpubOrganizeReport {
   };
   created_folders: string[];
   results: EpubOrganizeReportResult[];
+}
+
+export interface EpubCompressOptions {
+  suffix: string;
+  replace_original: boolean;
+  preserve_first_cover: boolean;
+  quality: number;
+  max_size: number;
+  recursive: boolean;
+}
+
+export interface EpubCompressAction {
+  id: string;
+  source_path: string;
+  output_path: string;
+  selected: boolean;
+}
+
+export interface EpubCompressPlan {
+  input_path: string;
+  mode: "file" | "folder" | string;
+  actions: EpubCompressAction[];
+  totals: { epub_files: number };
+}
+
+export interface EpubCompressArtifacts {
+  kind: "epub_compress";
+  output_folder: string;
+  report_path: string | null;
+  output_files: string[];
+  compressed_count: number;
+  failed_count: number;
+}
+
+export interface EpubCompressReportResult {
+  action_id: string;
+  source_path: string;
+  output_path: string;
+  status: "compressed" | "failed" | string;
+  original_size_bytes: number;
+  output_size_bytes: number;
+  saved_bytes: number;
+  saved_percent: number;
+  fonts_removed: number;
+  images_compressed: number;
+  images_skipped: number;
+  entries_written: number;
+  error: string;
+}
+
+export interface EpubCompressReport {
+  task_id: string;
+  generated_at: string;
+  input_path: string;
+  mode: string;
+  totals: {
+    actions: number;
+    compressed: number;
+    failed: number;
+    original_size_bytes: number;
+    output_size_bytes: number;
+    fonts_removed: number;
+    images_compressed: number;
+    images_skipped: number;
+  };
+  results: EpubCompressReportResult[];
 }
 
 export interface ReplacementReportOccurrence {

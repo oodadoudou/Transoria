@@ -108,6 +108,7 @@ class TaskKind(str, Enum):
     GLOSSARY_REVIEW = "glossary_review"
     REPLACEMENT = "replacement"
     EPUB_ORGANIZE = "epub_organize"
+    EPUB_COMPRESS = "epub_compress"
 
 
 @dataclass(frozen=True)

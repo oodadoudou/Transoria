@@ -12,6 +12,7 @@ export {
   glossaryReviewBridge,
   importedGlossaryToPersisted,
   proofreadingBridge,
+  epubCompressBridge,
   epubOrganizeBridge,
   replacementBridge,
   rulesBridge,
