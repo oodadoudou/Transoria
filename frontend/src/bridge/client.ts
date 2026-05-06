@@ -14,6 +14,11 @@ import type {
   EpubCompressOptions,
   EpubCompressPlan,
   EpubCompressReport,
+  EpubMergeAction,
+  EpubMergeArtifacts,
+  EpubMergeOptions,
+  EpubMergePlan,
+  EpubMergeReport,
   GlossaryArtifacts,
   GlossaryFileResult,
   GlossaryReviewArtifacts,
@@ -749,6 +754,62 @@ export const epubCompressBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("epub_compress.list_failed_subtasks", { task_id: taskId });
+  },
+};
+
+export const epubMergeBridge = {
+  preview(
+    inputDir: string,
+    options: EpubMergeOptions,
+  ): Promise<EpubMergePlan> {
+    return call("epub_merge.preview", {
+      input_dir: inputDir,
+      options,
+    });
+  },
+  startTask(
+    requestId: string,
+    inputDir: string,
+    outputPath: string,
+    options: EpubMergeOptions,
+    actions: EpubMergeAction[],
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_merge.start_task", {
+      request_id: requestId,
+      input_dir: inputDir,
+      output_path: outputPath,
+      options,
+      actions,
+    });
+  },
+  stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_merge.stop_task", { task_id: taskId });
+  },
+  pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_merge.pause_task", { task_id: taskId });
+  },
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_merge.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("epub_merge.probe_continuable", {});
+  },
+  readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_merge.read_snapshot", { task_id: taskId });
+  },
+  listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
+    return call("epub_merge.list_recent_tasks", { limit });
+  },
+  readArtifacts(taskId: string): Promise<EpubMergeArtifacts> {
+    return call("epub_merge.read_artifacts", { task_id: taskId });
+  },
+  readReport(taskId: string): Promise<EpubMergeReport> {
+    return call("epub_merge.read_report", { task_id: taskId });
+  },
+  listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
+    return call("epub_merge.list_failed_subtasks", { task_id: taskId });
   },
 };
 

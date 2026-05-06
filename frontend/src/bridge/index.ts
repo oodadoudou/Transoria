@@ -13,6 +13,7 @@ export {
   importedGlossaryToPersisted,
   proofreadingBridge,
   epubCompressBridge,
+  epubMergeBridge,
   epubOrganizeBridge,
   replacementBridge,
   rulesBridge,

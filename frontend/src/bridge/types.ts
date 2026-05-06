@@ -301,7 +301,8 @@ export type TaskKind =
   | "glossary_review"
   | "replacement"
   | "epub_organize"
-  | "epub_compress";
+  | "epub_compress"
+  | "epub_merge";
 
 /** Inline-credential payload used by the Add API Profile modal to
  *  test_connection / fetch_model_list before persisting the profile.
@@ -660,6 +661,89 @@ export interface EpubCompressReport {
     images_skipped: number;
   };
   results: EpubCompressReportResult[];
+}
+
+export interface EpubMergeOptions {
+  suffix: string;
+  output_path: string;
+  quality: number;
+  max_size: number;
+  keep_original_images: boolean;
+  smart_cover: boolean;
+  recursive: boolean;
+}
+
+export interface EpubMergeAction {
+  id: string;
+  source_path: string;
+  order: number;
+  title_hint: string;
+  size_bytes: number;
+  selected: boolean;
+}
+
+export interface EpubMergePlan {
+  input_dir: string;
+  output_path: string;
+  title: string;
+  actions: EpubMergeAction[];
+  totals: { epub_files: number };
+}
+
+export interface EpubMergeArtifacts {
+  kind: "epub_merge";
+  output_folder: string;
+  report_path: string | null;
+  output_files: string[];
+  merged_count: number;
+  failed_count: number;
+}
+
+export interface EpubMergeReportResult {
+  action_id: string;
+  input_dir: string;
+  output_path: string;
+  status: "merged" | "failed" | string;
+  merged_files: number;
+  skipped_files: number;
+  chapters_written: number;
+  resources_written: number;
+  fonts_removed: number;
+  images_written: number;
+  images_deduplicated: number;
+  images_compressed: number;
+  output_size_bytes: number;
+  processed_files: Array<{
+    source_path: string;
+    title: string;
+    status: string;
+    chapters: number;
+    resources: number;
+    fonts_removed: number;
+    warnings: string[];
+  }>;
+  error: string;
+}
+
+export interface EpubMergeReport {
+  task_id: string;
+  generated_at: string;
+  input_dir: string;
+  totals: {
+    actions: number;
+    merged: number;
+    failed: number;
+    merged_files: number;
+    skipped_files: number;
+    chapters_written: number;
+    resources_written: number;
+    fonts_removed: number;
+    images_written: number;
+    images_deduplicated: number;
+    images_compressed: number;
+  };
+  result: EpubMergeReportResult;
+  results: EpubMergeReportResult[];
 }
 
 export interface ReplacementReportOccurrence {

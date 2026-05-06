@@ -109,6 +109,7 @@ class TaskKind(str, Enum):
     REPLACEMENT = "replacement"
     EPUB_ORGANIZE = "epub_organize"
     EPUB_COMPRESS = "epub_compress"
+    EPUB_MERGE = "epub_merge"
 
 
 @dataclass(frozen=True)
