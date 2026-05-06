@@ -2,6 +2,7 @@ import type { GeneralToolsPage } from '@/store/useTaskStore';
 import { useMessages } from '@/locales';
 import { PlaceholderPage } from '../PlaceholderPage';
 import { BatchReplacementPage } from './BatchReplacementPage';
+import { EpubOrganizePage } from './EpubOrganizePage';
 
 interface GeneralToolsModuleProps {
   page: GeneralToolsPage;
@@ -14,12 +15,7 @@ export function GeneralToolsModule({ page }: GeneralToolsModuleProps) {
     case 'batchReplacement':
       return <BatchReplacementPage />;
     case 'epubOrganize':
-      return (
-        <PlaceholderPage
-          title={tools.epubOrganize.title}
-          subtitle={tools.epubOrganize.sub}
-        />
-      );
+      return <EpubOrganizePage />;
     case 'epubCompress':
       return (
         <PlaceholderPage

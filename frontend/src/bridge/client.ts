@@ -5,6 +5,10 @@ import type {
   AppMetadata,
   AppSettings,
   DialogPathResult,
+  EpubOrganizeAction,
+  EpubOrganizeArtifacts,
+  EpubOrganizePlan,
+  EpubOrganizeReport,
   GlossaryArtifacts,
   GlossaryFileResult,
   GlossaryReviewArtifacts,
@@ -633,6 +637,52 @@ export const replacementBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("replacement.list_failed_subtasks", { task_id: taskId });
+  },
+};
+
+export const epubOrganizeBridge = {
+  preview(inputDir: string): Promise<EpubOrganizePlan> {
+    return call("epub_organize.preview", { input_dir: inputDir });
+  },
+  startTask(
+    requestId: string,
+    inputDir: string,
+    actions: EpubOrganizeAction[],
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_organize.start_task", {
+      request_id: requestId,
+      input_dir: inputDir,
+      actions,
+    });
+  },
+  stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_organize.stop_task", { task_id: taskId });
+  },
+  pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_organize.pause_task", { task_id: taskId });
+  },
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_organize.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("epub_organize.probe_continuable", {});
+  },
+  readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_organize.read_snapshot", { task_id: taskId });
+  },
+  listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
+    return call("epub_organize.list_recent_tasks", { limit });
+  },
+  readArtifacts(taskId: string): Promise<EpubOrganizeArtifacts> {
+    return call("epub_organize.read_artifacts", { task_id: taskId });
+  },
+  readReport(taskId: string): Promise<EpubOrganizeReport> {
+    return call("epub_organize.read_report", { task_id: taskId });
+  },
+  listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
+    return call("epub_organize.list_failed_subtasks", { task_id: taskId });
   },
 };
 
