@@ -354,7 +354,7 @@ export const en: Messages = {
   },
   epubCompressTool: {
     title: "EPUB Compressor",
-    sub: "Remove fonts and compress images. Output filenames get a compressed marker; book title metadata is not changed.",
+    sub: "Deduplicate fonts and compress images. Output filenames get a compressed marker; book title metadata is not changed.",
     defaultSuffix: "-Compressed",
     folderMode: "Folder",
     fileMode: "Single file",
@@ -364,6 +364,9 @@ export const en: Messages = {
     replaceOriginal: "Replace original files",
     preserveCover: "Preserve cover image",
     recursive: "Scan subfolders",
+    fontMode: "Font handling",
+    fontModeDeduplicate: "Deduplicate and keep",
+    fontModeRemove: "Remove all",
     suffix: "Output marker",
     scan: "Scan preview",
     execute: "Compress",
@@ -984,7 +987,7 @@ export const en: Messages = {
     },
     epubCompress: {
       title: "EPUB Compressor",
-      sub: "Remove fonts and compress images to reduce file size. The output filename gets a compressed marker, but the book title metadata is unchanged.",
+      sub: "Deduplicate fonts and compress images to reduce file size. The output filename gets a compressed marker, but the book title metadata is unchanged.",
     },
     epubMerge: {
       title: "EPUB Merger",

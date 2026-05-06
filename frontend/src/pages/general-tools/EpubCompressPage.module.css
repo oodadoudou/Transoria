@@ -37,7 +37,8 @@
 }
 
 .pathInput,
-.field input {
+.field input,
+.field select {
   width: 100%;
   border: 1px solid var(--hairline-strong, #d8d0c5);
   border-radius: 8px;

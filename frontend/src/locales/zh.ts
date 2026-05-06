@@ -345,7 +345,7 @@ export const zh: Messages = {
   },
   epubCompressTool: {
     title: "EPUB 压缩",
-    sub: "删除字体并压缩图片，输出文件名加压缩标识；不会修改书内标题 metadata。",
+    sub: "去重字体并压缩图片，输出文件名加压缩标识；不会修改书内标题 metadata。",
     defaultSuffix: "_压缩",
     folderMode: "文件夹",
     fileMode: "单个文件",
@@ -355,6 +355,9 @@ export const zh: Messages = {
     replaceOriginal: "替换原文件",
     preserveCover: "保留封面不压缩",
     recursive: "递归扫描子文件夹",
+    fontMode: "字体处理",
+    fontModeDeduplicate: "去重保留",
+    fontModeRemove: "全部删除",
     suffix: "输出标识",
     scan: "扫描预览",
     execute: "执行压缩",
@@ -378,7 +381,7 @@ export const zh: Messages = {
     hideReport: "收起详细记录",
     saved: "节省",
     images: "压缩图片",
-    fonts: "删除字体",
+    fonts: "去重字体",
     result: "结果",
     compressed: "已压缩",
   },
@@ -963,7 +966,7 @@ export const zh: Messages = {
     },
     epubCompress: {
       title: "EPUB 压缩",
-      sub: "删除字体并压缩图片以减小体积；输出文件名会加压缩标识，但不会修改书内标题 metadata。",
+      sub: "去重字体并压缩图片以减小体积；输出文件名会加压缩标识，但不会修改书内标题 metadata。",
     },
     epubMerge: {
       title: "EPUB 合并",

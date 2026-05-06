@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import posixpath
+import re
 import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -42,6 +44,7 @@ class EpubCompressOptions:
     suffix: str = "_压缩"
     replace_original: bool = False
     preserve_first_cover: bool = False
+    font_mode: str = "deduplicate"
     quality: int = 50
     max_size: int = 1200
     recursive: bool = True
@@ -52,6 +55,7 @@ class EpubCompressOptions:
             suffix=str(data.get("suffix", "_压缩")),
             replace_original=bool(data.get("replace_original", False)),
             preserve_first_cover=bool(data.get("preserve_first_cover", False)),
+            font_mode=_font_mode(data.get("font_mode", "deduplicate")),
             quality=_clamp_int(data.get("quality"), default=50, low=1, high=95),
             max_size=_clamp_int(data.get("max_size"), default=1200, low=200, high=4000),
             recursive=bool(data.get("recursive", True)),
@@ -62,6 +66,7 @@ class EpubCompressOptions:
             "suffix": self.suffix,
             "replace_original": self.replace_original,
             "preserve_first_cover": self.preserve_first_cover,
+            "font_mode": self.font_mode,
             "quality": self.quality,
             "max_size": self.max_size,
             "recursive": self.recursive,
@@ -280,7 +285,11 @@ def _compress_archive(
     with zipfile.ZipFile(source, "r") as archive:
         infos = archive.infolist()
         names = {info.filename for info in infos}
-        has_fonts = any(_is_font(info.filename) for info in infos)
+        if options.font_mode == "remove":
+            font_map: dict[str, str] = {}
+            fonts_removed = sum(1 for info in infos if not info.is_dir() and _is_font(info.filename))
+        else:
+            font_map, fonts_removed = _build_font_map(archive, infos)
         cover_name = _find_first_cover_name(infos) if options.preserve_first_cover else None
         output.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(output, "w") as target:
@@ -296,10 +305,18 @@ def _compress_archive(
                     continue
                 data = archive.read(info.filename)
                 if _is_font(info.filename):
-                    fonts_removed += 1
-                    continue
-                if info.filename.lower().endswith(".opf") and has_fonts:
-                    data = _remove_font_manifest_items(data)
+                    if options.font_mode == "remove" or font_map.get(info.filename) != info.filename:
+                        continue
+                if info.filename.lower().endswith(".opf"):
+                    if options.font_mode == "remove":
+                        data = _remove_font_manifest_items(data)
+                    elif font_map:
+                        data = _rewrite_font_manifest_items(data, info.filename, font_map)
+                if info.filename.lower().endswith(".css"):
+                    if options.font_mode == "remove":
+                        data = _remove_font_face_rules(data)
+                    elif font_map:
+                        data = _rewrite_css_font_urls(data, info.filename, font_map)
                 if _is_image(info.filename):
                     if info.filename == cover_name:
                         images_skipped += 1
@@ -385,6 +402,50 @@ def _save_image(image: Image.Image, fmt: str, **kwargs: object) -> bytes:
     return output.getvalue()
 
 
+def _build_font_map(
+    archive: zipfile.ZipFile, infos: Iterable[zipfile.ZipInfo]
+) -> tuple[dict[str, str], int]:
+    by_hash: dict[str, str] = {}
+    mapping: dict[str, str] = {}
+    removed = 0
+    for info in infos:
+        if info.is_dir() or not _is_font(info.filename):
+            continue
+        data = archive.read(info.filename)
+        signature = _md5(data)
+        kept = by_hash.setdefault(signature, info.filename)
+        mapping[info.filename] = kept
+        if kept != info.filename:
+            removed += 1
+    return mapping, removed
+
+
+def _rewrite_font_manifest_items(
+    data: bytes, opf_filename: str, font_map: Mapping[str, str]
+) -> bytes:
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return data
+    manifest = root.find(".//{*}manifest")
+    if manifest is None:
+        return data
+    changed = False
+    opf_dir = _zip_dirname(opf_filename)
+    for item in list(manifest):
+        href = item.get("href", "")
+        media_type = item.get("media-type", "")
+        if _is_font(href) or media_type in _FONT_MEDIA_TYPES:
+            resolved = _resolve_zip_href(opf_dir, href)
+            kept = font_map.get(resolved)
+            if kept and kept != resolved:
+                item.set("href", _relative_zip_href(opf_dir, kept))
+                changed = True
+    if not changed:
+        return data
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
 def _remove_font_manifest_items(data: bytes) -> bytes:
     try:
         root = ET.fromstring(data)
@@ -405,6 +466,45 @@ def _remove_font_manifest_items(data: bytes) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def _rewrite_css_font_urls(
+    data: bytes, css_filename: str, font_map: Mapping[str, str]
+) -> bytes:
+    text = _decode_text(data)
+    css_dir = _zip_dirname(css_filename)
+    changed = False
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal changed
+        quote = match.group(1) or ""
+        url = match.group(2).strip()
+        if url.startswith(("data:", "http://", "https://", "#")):
+            return match.group(0)
+        path, separator, fragment = url.partition("#")
+        resolved = _resolve_zip_href(css_dir, path)
+        kept = font_map.get(resolved)
+        if not kept or kept == resolved:
+            return match.group(0)
+        changed = True
+        next_url = _relative_zip_href(css_dir, kept)
+        if separator:
+            next_url = f"{next_url}#{fragment}"
+        return f"url({quote}{next_url}{quote})"
+
+    rewritten = re.sub(
+        r"url\s*\(\s*([\"']?)([^\"')]+)\1\s*\)",
+        replace,
+        text,
+        flags=re.IGNORECASE,
+    )
+    return rewritten.encode("utf-8") if changed else data
+
+
+def _remove_font_face_rules(data: bytes) -> bytes:
+    text = _decode_text(data)
+    rewritten = re.sub(r"@font-face\s*\{[^{}]*\}", "", text, flags=re.IGNORECASE | re.DOTALL)
+    return rewritten.encode("utf-8") if rewritten != text else data
+
+
 def _find_first_cover_name(infos: Iterable[zipfile.ZipInfo]) -> str | None:
     for info in infos:
         lower = info.filename.lower()
@@ -415,6 +515,37 @@ def _find_first_cover_name(infos: Iterable[zipfile.ZipInfo]) -> str | None:
         ):
             return info.filename
     return None
+
+
+def _decode_text(data: bytes) -> str:
+    head = data[:200].decode("ascii", errors="ignore")
+    match = re.search(r'encoding\s*=\s*["\']([^"\']+)["\']', head, re.IGNORECASE)
+    encodings = [match.group(1)] if match else []
+    encodings.extend(["utf-8", "utf-16", "euc-kr", "cp949", "latin-1"])
+    for encoding in encodings:
+        try:
+            return data.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
+def _zip_dirname(filename: str) -> str:
+    parent = posixpath.dirname(filename.replace("\\", "/"))
+    return "" if parent == "." else parent
+
+
+def _resolve_zip_href(base_dir: str, href: str) -> str:
+    href = href.replace("\\", "/").split("?", 1)[0]
+    if href.startswith("/"):
+        return posixpath.normpath(href.lstrip("/"))
+    return posixpath.normpath(posixpath.join(base_dir, href)).lstrip("./")
+
+
+def _relative_zip_href(base_dir: str, target: str) -> str:
+    if not base_dir:
+        return target
+    return posixpath.relpath(target, base_dir)
 
 
 def _output_path_for(path: Path, options: EpubCompressOptions) -> Path:
@@ -443,6 +574,12 @@ def _is_font(name: str) -> bool:
 
 def _is_image(name: str) -> bool:
     return Path(name).suffix.lower() in _IMAGE_SUFFIXES
+
+
+def _md5(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.md5(data).hexdigest()
 
 
 def _stored_info(filename: str) -> zipfile.ZipInfo:
@@ -479,6 +616,11 @@ def _clamp_int(value: object, *, default: int, low: int, high: int) -> int:
     except (TypeError, ValueError):
         return default
     return min(high, max(low, parsed))
+
+
+def _font_mode(value: object) -> str:
+    mode = str(value or "deduplicate").strip().lower()
+    return mode if mode in {"deduplicate", "remove"} else "deduplicate"
 
 
 def report_to_json(payload: Mapping[str, object]) -> str:

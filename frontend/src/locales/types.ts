@@ -822,6 +822,9 @@ export interface Messages {
     replaceOriginal: string;
     preserveCover: string;
     recursive: string;
+    fontMode: string;
+    fontModeDeduplicate: string;
+    fontModeRemove: string;
     suffix: string;
     scan: string;
     execute: string;

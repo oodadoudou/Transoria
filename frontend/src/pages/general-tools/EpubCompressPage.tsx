@@ -40,6 +40,7 @@ export function EpubCompressPage() {
     suffix: text.defaultSuffix,
     replace_original: false,
     preserve_first_cover: false,
+    font_mode: "deduplicate",
     quality: 50,
     max_size: 1200,
     recursive: true,
@@ -277,6 +278,21 @@ export function EpubCompressPage() {
               disabled={mode === "file"}
             />
             {text.recursive}
+          </label>
+          <label className={styles.field}>
+            <span>{text.fontMode}</span>
+            <select
+              value={options.font_mode}
+              onChange={(event) =>
+                setOptions((prev) => ({
+                  ...prev,
+                  font_mode: event.target.value,
+                }))
+              }
+            >
+              <option value="deduplicate">{text.fontModeDeduplicate}</option>
+              <option value="remove">{text.fontModeRemove}</option>
+            </select>
           </label>
           <label className={styles.field}>
             <span>{text.suffix}</span>

@@ -601,6 +601,7 @@ export interface EpubCompressOptions {
   suffix: string;
   replace_original: boolean;
   preserve_first_cover: boolean;
+  font_mode: "deduplicate" | "remove" | string;
   quality: number;
   max_size: number;
   recursive: boolean;
