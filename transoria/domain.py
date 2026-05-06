@@ -107,7 +107,6 @@ class TaskKind(str, Enum):
     GLOSSARY = "glossary"
     GLOSSARY_REVIEW = "glossary_review"
     REPLACEMENT = "replacement"
-    EPUB_ORGANIZE = "epub_organize"
     EPUB_COMPRESS = "epub_compress"
     EPUB_MERGE = "epub_merge"
 

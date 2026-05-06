@@ -302,7 +302,6 @@ export interface Messages {
     };
     generalTools: {
       batchReplacement: string;
-      epubOrganize: string;
       epubCompress: string;
       epubMerge: string;
     };
@@ -752,7 +751,6 @@ export interface Messages {
     crumb: string;
     title: string;
     sub: string;
-    epubOrganize: { title: string; sub: string };
     epubCompress: { title: string; sub: string };
     epubMerge: { title: string; sub: string };
   };
@@ -776,39 +774,6 @@ export interface Messages {
     outputFiles: string;
     statisticsFile: string;
     viewReport: string;
-  };
-  epubOrganize: {
-    title: string;
-    sub: string;
-    inputFolder: string;
-    scan: string;
-    execute: string;
-    stop: string;
-    previewLabel: string;
-    noPlan: string;
-    noActions: string;
-    epubsFound: string;
-    existingFolders: string;
-    selectedCount: string;
-    select: string;
-    source: string;
-    targetFolder: string;
-    targetName: string;
-    operation: string;
-    score: string;
-    moveExisting: string;
-    createFolder: string;
-    progressLabel: string;
-    statusLabel: string;
-    processedFiles: string;
-    failedFiles: string;
-    artifactsLabel: string;
-    movedCount: string;
-    createdFolders: string;
-    viewReport: string;
-    hideReport: string;
-    result: string;
-    moved: string;
   };
   epubCompressTool: {
     title: string;

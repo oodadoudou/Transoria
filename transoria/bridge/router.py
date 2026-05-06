@@ -134,9 +134,6 @@ def build_default_router(
         register_parsers as register_replacement_parsers,
         register_tasks as register_replacement_tasks,
     )
-    from transoria.bridge.handlers.epub_organize import (  # noqa: PLC0415
-        register as register_epub_organize,
-    )
     from transoria.bridge.handlers.epub_compress import (  # noqa: PLC0415
         register as register_epub_compress,
     )
@@ -230,7 +227,6 @@ def build_default_router(
     )
     register_replacement_parsers(router)
     register_replacement_tasks(router, service=task_service)
-    register_epub_organize(router, service=task_service)
     register_epub_compress(router, service=task_service)
     register_epub_merge(router, service=task_service)
     register_glossary_imports(router, cache_root=cache_root)

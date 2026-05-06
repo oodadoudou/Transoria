@@ -6,7 +6,6 @@ import {
   dialogsBridge,
   epubCompressBridge,
   epubMergeBridge,
-  epubOrganizeBridge,
   glossaryBridge,
   glossaryReviewBridge,
   replacementBridge,
@@ -26,7 +25,6 @@ export type RunKind =
   | "glossary"
   | "glossary_review"
   | "replacement"
-  | "epub_organize"
   | "epub_compress"
   | "epub_merge";
 
@@ -110,7 +108,6 @@ interface RuntimeState {
   glossary: KindRuntime;
   glossary_review: KindRuntime;
   replacement: KindRuntime;
-  epub_organize: KindRuntime;
   epub_compress: KindRuntime;
   epub_merge: KindRuntime;
   refreshActiveTask: (kind: RunKind) => Promise<void>;
@@ -125,7 +122,6 @@ const bridges = {
   glossary: glossaryBridge,
   glossary_review: glossaryReviewBridge,
   replacement: replacementBridge,
-  epub_organize: epubOrganizeBridge,
   epub_compress: epubCompressBridge,
   epub_merge: epubMergeBridge,
 } as const;
@@ -166,7 +162,6 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   glossary: emptyRuntime,
   glossary_review: emptyRuntime,
   replacement: emptyRuntime,
-  epub_organize: emptyRuntime,
   epub_compress: emptyRuntime,
   epub_merge: emptyRuntime,
 
@@ -368,7 +363,6 @@ async function maybeOpenOutputFolder(
   const settings = useSettingsStore.getState();
   if (
     kind === "replacement" ||
-    kind === "epub_organize" ||
     kind === "epub_compress" ||
     kind === "epub_merge"
   ) {

@@ -300,7 +300,6 @@ export type TaskKind =
   | "glossary"
   | "glossary_review"
   | "replacement"
-  | "epub_organize"
   | "epub_compress"
   | "epub_merge";
 
@@ -535,66 +534,6 @@ export interface ReplacementArtifacts {
    * generated one. Read via ``replacementBridge.readReplacementReport``. */
   replacement_report_path?: string | null;
   total_replacements: number;
-}
-
-export interface EpubOrganizeAction {
-  id: string;
-  source_name: string;
-  target_folder: string;
-  target_name: string;
-  operation: "move_existing" | "create_folder" | string;
-  score: number;
-  reason: string;
-  selected: boolean;
-}
-
-export interface EpubOrganizePlan {
-  input_dir: string;
-  folders: string[];
-  epub_files: string[];
-  actions: EpubOrganizeAction[];
-  totals: {
-    folders: number;
-    epub_files: number;
-    actions: number;
-    create_folder: number;
-    move_existing: number;
-  };
-}
-
-export interface EpubOrganizeArtifacts {
-  kind: "epub_organize";
-  output_folder: string;
-  report_path: string | null;
-  moved_count: number;
-  failed_count: number;
-  created_folders?: string[];
-}
-
-export interface EpubOrganizeReportResult {
-  action_id: string;
-  source_name: string;
-  target_folder: string;
-  target_name: string;
-  source_path: string;
-  target_path: string;
-  status: "moved" | "failed" | string;
-  created_folder: boolean;
-  error: string;
-}
-
-export interface EpubOrganizeReport {
-  task_id: string;
-  generated_at: string;
-  input_dir: string;
-  totals: {
-    actions: number;
-    moved: number;
-    failed: number;
-    created_folders: number;
-  };
-  created_folders: string[];
-  results: EpubOrganizeReportResult[];
 }
 
 export interface EpubCompressOptions {

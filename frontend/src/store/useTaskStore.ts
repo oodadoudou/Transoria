@@ -22,15 +22,10 @@ export type GlossaryPage = "run" | "settings" | "prompt";
 
 export type GlossaryReviewPage = "run" | "review" | "settings" | "prompt";
 
-export type GeneralToolsPage =
-  | "batchReplacement"
-  | "epubOrganize"
-  | "epubCompress"
-  | "epubMerge";
+export type GeneralToolsPage = "batchReplacement" | "epubCompress" | "epubMerge";
 
 const GENERAL_TOOLS_PAGES = [
   "batchReplacement",
-  "epubOrganize",
   "epubCompress",
   "epubMerge",
 ] as const;
