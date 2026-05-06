@@ -4,9 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import socket
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 
@@ -35,7 +39,6 @@ EXCLUDED_MODULES = (
     # app does not use them, but PyInstaller hooks can discover and
     # bundle them through optional integrations.
     "IPython",
-    "PIL",
     "PyQt5",
     "PySide2",
     "PySide6",
@@ -52,6 +55,17 @@ EXCLUDED_MODULES = (
     "scipy",
     "sphinx",
 )
+
+REQUIRED_RUNTIME_IMPORTS = (
+    "json_repair",
+    "chardet",
+    "lxml",
+    "openpyxl",
+    "PIL",
+    "webview",
+)
+
+SMOKE_TEST_TIMEOUT_SECONDS = 8
 
 
 def main() -> None:
@@ -71,6 +85,11 @@ def main() -> None:
         action="store_true",
         help="Build only Transoria.app and skip DMG creation.",
     )
+    parser.add_argument(
+        "--no-smoke-test",
+        action="store_true",
+        help="Skip the post-build bridge startup smoke test.",
+    )
     args = parser.parse_args()
 
     if sys.platform != "darwin" and not args.allow_non_macos:
@@ -81,6 +100,7 @@ def main() -> None:
         _run([_npm(), "run", "build"], cwd=FRONTEND_DIR)
     _require_frontend_dist()
     _require_pyinstaller()
+    _require_runtime_imports()
     _note_unbundled_local_state()
 
     DIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -137,6 +157,8 @@ def main() -> None:
     _verify_spec_excludes_local_state()
     app_path = DIST_DIR / "Transoria.app"
     print(f"[build] macOS app: {app_path}")
+    if not args.no_smoke_test:
+        _smoke_test_built_app(app_path)
     if not args.skip_dmg:
         dmg_path = _create_dmg(app_path)
         print(f"[build] macOS dmg: {dmg_path}")
@@ -173,6 +195,27 @@ def _require_pyinstaller() -> None:
         raise SystemExit(
             "PyInstaller not found. Run `python -m pip install -e \".[gui,build]\"` "
             "on the build machine."
+        )
+
+
+def _require_runtime_imports() -> None:
+    missing: list[str] = []
+    for module in REQUIRED_RUNTIME_IMPORTS:
+        result = subprocess.run(
+            [sys.executable, "-c", f"import {module}"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode != 0:
+            missing.append(module)
+    if missing:
+        raise SystemExit(
+            "missing runtime dependencies: "
+            + ", ".join(missing)
+            + ".\nRun `python -m pip install -e \".[gui,build]\"` on the "
+            "build machine before retrying."
         )
 
 
@@ -231,6 +274,62 @@ def _create_dmg(app_path: Path) -> Path:
     )
     tmp_dmg.replace(dmg_path)
     return dmg_path
+
+
+def _smoke_test_built_app(app_path: Path) -> None:
+    executable = app_path / "Contents" / "MacOS" / "Transoria"
+    if not executable.is_file():
+        raise SystemExit(f"built app executable not found: {executable}")
+    port = _find_free_port()
+    proc = subprocess.Popen(
+        [
+            str(executable),
+            "--bridge-only",
+            "--bridge-port",
+            str(port),
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    deadline = time.monotonic() + SMOKE_TEST_TIMEOUT_SECONDS
+    try:
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                output = proc.stdout.read() if proc.stdout is not None else ""
+                raise SystemExit(
+                    "macOS app smoke test failed: app exited before bridge "
+                    "became healthy.\n"
+                    + output
+                )
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/api/health",
+                    timeout=0.5,
+                ) as response:
+                    if response.status == 200:
+                        print("[build] macOS app smoke test passed")
+                        return
+            except (OSError, urllib.error.URLError):
+                time.sleep(0.2)
+        raise SystemExit(
+            "macOS app smoke test timed out waiting for /api/health."
+        )
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=3)
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def _run(cmd: list[str], *, cwd: Path) -> None:
