@@ -7,6 +7,7 @@ import { Segmented } from "@/components/Segmented";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
+import { TextField } from "@/components/TextField";
 import styles from "./SettingsPage.module.css";
 
 type Toggle = "on" | "off";
@@ -64,6 +65,16 @@ export function SettingsPage() {
       </Panel>
 
       <Panel>
+        <TextField
+          label={settings.novelBackground}
+          value={draft.novel_background}
+          onChange={(value) => moduleSettings.update("novel_background", value)}
+          help={settings.novelBackgroundHelp}
+          multiline
+        />
+      </Panel>
+
+      <Panel>
         <ToggleRow
           label={settings.combineFolderGlossary}
           hint={settings.combineFolderGlossaryHint}
@@ -93,6 +104,22 @@ export function SettingsPage() {
             value={draft.keep_identical_src_dst ? "on" : "off"}
             onChange={(v) =>
               moduleSettings.update("keep_identical_src_dst", v === "on")
+            }
+          />
+        </ToggleRow>
+        <ToggleRow
+          label={settings.openOutputOnComplete}
+          hint={settings.openOutputOnCompleteHint}
+        >
+          <Segmented<Toggle>
+            ariaLabel={settings.openOutputOnComplete}
+            options={[
+              { id: "on", label: settings.on },
+              { id: "off", label: settings.off },
+            ]}
+            value={draft.auto_open_output_folder ? "on" : "off"}
+            onChange={(v) =>
+              moduleSettings.update("auto_open_output_folder", v === "on")
             }
           />
         </ToggleRow>

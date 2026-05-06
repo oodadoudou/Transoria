@@ -654,6 +654,12 @@ export const en: Messages = {
       normalizeWidths: "Normalize term widths",
       normalizeWidthsHint:
         "Fold full-width Latin/digits/katakana to half-width (NFKC) and strip leading/trailing punctuation from extracted terms. Reduces near-duplicate entries; on by default.",
+      novelBackground: "Novel background",
+      novelBackgroundHelp:
+        "Optional. Add worldbuilding, character relationships, and naming preferences for the AI to use while extracting terms. Empty means an empty context field is sent.",
+      openOutputOnComplete: "Open output folder on completion",
+      openOutputOnCompleteHint:
+        "Open the output folder automatically after extraction so the XLSX/JSON/TXT artifacts are easy to find.",
       referenceExamplesPerTerm: "Reference examples per term",
       referenceExamplesPerTermHelp:
         "How many source-line snippets to attach per term in the -references.txt artifact. Larger values produce longer files; the term entries themselves are unaffected. Default 20.",

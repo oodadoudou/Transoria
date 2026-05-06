@@ -566,6 +566,10 @@ export interface Messages {
       allowSrcEqDstHint: string;
       normalizeWidths: string;
       normalizeWidthsHint: string;
+      novelBackground: string;
+      novelBackgroundHelp: string;
+      openOutputOnComplete: string;
+      openOutputOnCompleteHint: string;
       referenceExamplesPerTerm: string;
       referenceExamplesPerTermHelp: string;
       minimumFrequency: string;

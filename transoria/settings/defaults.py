@@ -101,6 +101,7 @@ class GlossarySettings:
     keep_identical_src_dst: bool = False
     normalize_widths: bool = True
     auto_open_output_folder: bool = False
+    novel_background: str = ""
     timeout_seconds: int = 600
 
 

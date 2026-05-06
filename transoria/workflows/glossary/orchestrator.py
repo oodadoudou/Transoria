@@ -138,6 +138,7 @@ def _default_runner_factory(
         debug_log_dir=config.debug_log_dir,
         fake_name_session=config.fake_name_session,
         name_injections=config.name_injections,
+        novel_background=config.novel_background,
     )
 
 

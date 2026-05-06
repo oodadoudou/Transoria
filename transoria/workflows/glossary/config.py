@@ -44,6 +44,7 @@ class GlossaryConfig:
     allow_src_eq_dst: bool = False
     combine_folder_glossary: bool = False
     normalize_widths: bool = True
+    novel_background: str = ""
 
     stream: bool = False
     debug_log_dir: Path | None = None

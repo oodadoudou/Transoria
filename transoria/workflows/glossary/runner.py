@@ -110,6 +110,7 @@ class GlossarySubtaskRunner:
     debug_log_dir: Path | None = None
     fake_name_session: FakeNameSession | None = None
     name_injections: Mapping[str, str] | None = None
+    novel_background: str = ""
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
@@ -163,6 +164,7 @@ class GlossarySubtaskRunner:
             PromptContext(
                 source_language=language_prompt_label(self.source_language),
                 target_language=language_prompt_label(self.target_language),
+                context=self.novel_background,
             ),
             thinking=self.model.thinking_prompt_enabled,
         )
@@ -175,6 +177,7 @@ class GlossarySubtaskRunner:
         user_prompt = _build_glossary_user_prompt(
             instruction_prompt,
             prompt_text,
+            novel_background=self.novel_background,
             target_language=language_prompt_label(self.target_language),
             format_retry=attempt_index > 0,
         )
@@ -320,6 +323,7 @@ def _build_glossary_user_prompt(
     instruction_prompt: str,
     source_text: str,
     *,
+    novel_background: str,
     target_language: str,
     format_retry: bool,
 ) -> str:
@@ -327,6 +331,7 @@ def _build_glossary_user_prompt(
     if format_retry:
         parts.append(_FORMAT_RETRY_REMINDER)
     parts.append(instruction_prompt)
+    parts.append("[Novel Background]\n" + novel_background)
     parts.append("[Source Text]\n" + source_text)
     parts.append(_output_contract_reminder(target_language))
     return "\n\n".join(part for part in parts if part)

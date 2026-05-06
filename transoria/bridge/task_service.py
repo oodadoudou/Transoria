@@ -1657,6 +1657,7 @@ class TaskService:
             allow_src_eq_dst=bool(glossary.keep_identical_src_dst),
             combine_folder_glossary=bool(glossary.merge_folder_glossary),
             normalize_widths=bool(glossary.normalize_widths),
+            novel_background=str(glossary.novel_background or ""),
         )
         return config, model, preset
 

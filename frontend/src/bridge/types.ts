@@ -146,6 +146,7 @@ export interface GlossarySettings {
   keep_identical_src_dst: boolean;
   normalize_widths: boolean;
   auto_open_output_folder: boolean;
+  novel_background: string;
   timeout_seconds: number;
 }
 

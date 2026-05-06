@@ -638,6 +638,12 @@ export const zh: Messages = {
       normalizeWidths: "术语全/半角归一化",
       normalizeWidthsHint:
         "对提取出的术语做 NFKC 折叠(全角拉丁字母/数字/片假名→半角),并剥离首尾标点。可减少近似重复条目;默认开启。",
+      novelBackground: "小说背景",
+      novelBackgroundHelp:
+        "可选。填写世界观、角色关系、专有名词偏好等信息，AI 提取术语时会作为参考；不填则传空字段。",
+      openOutputOnComplete: "任务完成时打开输出文件夹",
+      openOutputOnCompleteHint:
+        "提取完成后自动打开输出目录，方便直接查看 XLSX/JSON/TXT 结果。",
       referenceExamplesPerTerm: "每个术语的参考示例数",
       referenceExamplesPerTermHelp:
         "每条术语在 -references.txt 里附带几条原文出处，便于复盘上下文。值越大文件越长，对术语本身没影响。默认 20。",
