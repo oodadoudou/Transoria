@@ -11,8 +11,12 @@ _EPUB_SUFFIX = ".epub"
 _MATCH_THRESHOLD = 50
 _INVALID_FOLDER_CHARS = re.compile(r'[<>:"/\\|?*]')
 _KOREAN_PATTERN = re.compile(r"[가-힣]+")
+_NUMBER_TOKEN = r"(?:\d+|[一二三四五六七八九十百千万零〇两兩壹贰貳叁參肆伍陆陸柒捌玖拾佰仟萬]+)"
+_BOUNDARY_TOKEN = r"(?=$|[\s@_\-–—.,，()\[\]【】（）])"
 
 _TRAILING_MARKERS = (
+    r"\s*\d+\s*[-~～]\s*\d+(?:\s*,\s*(?:외|외전)?\s*\d+\s*[-~～]\s*\d+)?\s*(?:완결|완|完結|完)?$",
+    r"\s*\d+\s*[-~～]\s*\d+\s*(?:화|회|장|권|편|부)?\s*[\[(（]?\s*(?:완결|완|完結|完)?\s*[\])）]?$",
     r"\s*\d+화$",
     r"\s*제\d+화$",
     r"\s*\d+회$",
@@ -36,9 +40,13 @@ _TRAILING_MARKERS = (
     r"\s*番外$",
     r"\s*特典$",
     r"\s*第\d+话$",
+    r"\s*第\d+話$",
     r"\s*第\d+章$",
     r"\s*第\d+回$",
     r"\s*第\d+卷$",
+    rf"\s*(?:第\s*)?{_NUMBER_TOKEN}\s*(?:话|話|章|回|卷|冊|册|部|集)$",
+    rf"\s*(?:卷|冊|册|部|集)\s*{_NUMBER_TOKEN}$",
+    rf"\s*(?:외전|番外|外传|外傳|특별판|특별편|번외편)(?:\s*{_NUMBER_TOKEN})?$",
     r"\s*Vol\.?\s*\d+$",
     r"\s*Volume\s*\d+$",
     r"\s*Book\s*\d+$",
@@ -49,12 +57,10 @@ _TRAILING_MARKERS = (
 )
 
 _MID_VOLUME_MARKERS = (
-    r"\s*\d+권\s*",
-    r"\s*제\d+권\s*",
-    r"\s*\d+부\s*",
-    r"\s*제\d+부\s*",
-    r"\s*\d+책\s*",
-    r"\s*제\d+책\s*",
+    rf"\s*(?:제\s*)?{_NUMBER_TOKEN}\s*(?:권|부|책)\s*{_BOUNDARY_TOKEN}",
+    rf"\s*(?:第\s*)?{_NUMBER_TOKEN}\s*(?:卷|冊|册|部|集|本)\s*{_BOUNDARY_TOKEN}",
+    rf"\s*(?:卷|冊|册|部|集)\s*{_NUMBER_TOKEN}\s*{_BOUNDARY_TOKEN}",
+    rf"\s*(?:외전|番外|外传|外傳|특별판|특별편|번외편)\s*{_NUMBER_TOKEN}?\s*(?:권|卷|冊|册|部|集)?\s*{_BOUNDARY_TOKEN}",
 )
 
 
@@ -149,7 +155,7 @@ class EpubOrganizeMoveResult:
 
 
 def normalize_epub_title(text: str) -> str:
-    name = _strip_epub_suffix(text)
+    name = _strip_series_markers(_strip_epub_suffix(text))
     for pattern in _TRAILING_MARKERS:
         name = re.sub(pattern, "", name, flags=re.IGNORECASE)
     name = re.sub(r"[【】\[\]()（）《》「」<>:'\"\s.\-_~!@#$%^&*=+]+", " ", name)
@@ -161,7 +167,7 @@ def extract_korean(text: str) -> str:
 
 
 def create_folder_name(epub_name: str) -> str:
-    name = _strip_epub_suffix(epub_name)
+    name = _strip_series_markers(_strip_epub_suffix(epub_name))
     for pattern in _TRAILING_MARKERS:
         name = re.sub(pattern, "", name, flags=re.IGNORECASE)
     name = _INVALID_FOLDER_CHARS.sub("", name)
@@ -178,6 +184,17 @@ def create_group_key(epub_name: str) -> str:
     for pattern in _MID_VOLUME_MARKERS:
         key = re.sub(pattern, " ", key, flags=re.IGNORECASE)
     return " ".join(key.split()).strip()
+
+
+def _strip_series_markers(name: str) -> str:
+    for pattern in _MID_VOLUME_MARKERS:
+        name = re.sub(pattern, " ", name, flags=re.IGNORECASE)
+    for pattern in _TRAILING_MARKERS:
+        name = re.sub(pattern, "", name, flags=re.IGNORECASE)
+    name = re.sub(r"\s*-\s*", " - ", name)
+    name = re.sub(r"\s+([@,，)\]】）])", r"\1", name)
+    name = re.sub(r"([@])\s+", r"\1", name)
+    return " ".join(name.split()).strip()
 
 
 def scan_epub_organizer(input_dir: Path) -> EpubOrganizePlan:
