@@ -98,7 +98,12 @@ class TaskCache:
             task_file = child / _TASK_FILENAME
             if not task_file.exists():
                 continue
-            records.append(TaskRecord.from_json(task_file.read_text(encoding="utf-8")))
+            try:
+                records.append(
+                    TaskRecord.from_json(task_file.read_text(encoding="utf-8"))
+                )
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
         return tuple(records)
 
     def has_task(self, task_id: str) -> bool:
