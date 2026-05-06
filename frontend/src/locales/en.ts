@@ -393,14 +393,17 @@ export const en: Messages = {
   },
   epubMergeTool: {
     title: "EPUB Merger",
-    sub: "Merge selected EPUB files in order, rebuilding navigation and resource links. The merged marker is filename-only and never changes book title metadata.",
-    defaultSuffix: " Merged",
+    sub: "Merge selected EPUB files in order and rebuild navigation/resource links. The merged book title uses the output filename; source EPUB metadata is not modified.",
+    defaultOutputFilename: "merged.epub",
     inputFolder: "Folder to merge",
     outputFile: "Output EPUB",
+    outputFolder: "Output folder",
+    outputFilename: "Output filename",
+    outputFilenameHint:
+      "For example, `Novel 7` creates `Novel 7.epub` and writes `Novel 7` as the merged EPUB title. Avoid names that already exist in the input folder to prevent path conflicts.",
     recursive: "Scan subfolders",
     smartCover: "Skip duplicate cover pages",
     keepOriginalImages: "Keep original images",
-    suffix: "Output marker",
     scan: "Scan preview",
     execute: "Merge",
     stop: "Stop",
@@ -985,7 +988,7 @@ export const en: Messages = {
     },
     epubMerge: {
       title: "EPUB Merger",
-      sub: "Merge selected EPUB files in order and rebuild navigation/resources. The output filename gets a merged marker, but the book title metadata is unchanged.",
+      sub: "Merge selected EPUB files in order and rebuild navigation/resources. The merged book title uses the configured output filename.",
     },
   },
   appSettings: {

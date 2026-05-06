@@ -852,13 +852,15 @@ export interface Messages {
   epubMergeTool: {
     title: string;
     sub: string;
-    defaultSuffix: string;
+    defaultOutputFilename: string;
     inputFolder: string;
     outputFile: string;
+    outputFolder: string;
+    outputFilename: string;
+    outputFilenameHint: string;
     recursive: string;
     smartCover: string;
     keepOriginalImages: string;
-    suffix: string;
     scan: string;
     execute: string;
     stop: string;

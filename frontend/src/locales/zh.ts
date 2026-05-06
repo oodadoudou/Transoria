@@ -384,14 +384,17 @@ export const zh: Messages = {
   },
   epubMergeTool: {
     title: "EPUB 合并",
-    sub: "选择多个 EPUB 按顺序合并，自动重建目录和资源引用；合并标识只写入文件名，不修改书内标题 metadata。",
-    defaultSuffix: " 合并版",
+    sub: "选择多个 EPUB 按顺序合并，自动重建目录和资源引用；书内标题会使用输出文件名，不改动原 EPUB 的 metadata。",
+    defaultOutputFilename: "合并.epub",
     inputFolder: "待合并文件夹",
     outputFile: "输出 EPUB",
+    outputFolder: "输出目录",
+    outputFilename: "输出文件名",
+    outputFilenameHint:
+      "例如填「通奸 7」会生成「通奸 7.epub」，并把合并后 EPUB 的书内标题写为「通奸 7」。尽量不要与输入目录里已有 EPUB 同名，避免路径冲突。",
     recursive: "递归扫描子文件夹",
     smartCover: "智能跳过重复封面页",
     keepOriginalImages: "保留原图不压缩",
-    suffix: "输出标识",
     scan: "扫描预览",
     execute: "执行合并",
     stop: "停止",
@@ -964,7 +967,7 @@ export const zh: Messages = {
     },
     epubMerge: {
       title: "EPUB 合并",
-      sub: "按用户选择的顺序合并多个 EPUB，重建目录与资源引用；输出文件名会加合并标识，但不把标识写入书内标题 metadata。",
+      sub: "按用户选择的顺序合并多个 EPUB，重建目录与资源引用；合并书名使用用户配置的输出文件名。",
     },
   },
   appSettings: {

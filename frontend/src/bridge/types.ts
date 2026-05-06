@@ -664,7 +664,6 @@ export interface EpubCompressReport {
 }
 
 export interface EpubMergeOptions {
-  suffix: string;
   output_path: string;
   quality: number;
   max_size: number;

@@ -15,8 +15,6 @@ from typing import Iterable, Mapping
 
 from PIL import Image
 
-from transoria.tools.epub_organizer import create_folder_name
-
 
 _EPUB_SUFFIX = ".epub"
 _MIMETYPE = "application/epub+zip"
@@ -40,7 +38,6 @@ _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*]')
 
 @dataclass(frozen=True)
 class EpubMergeOptions:
-    suffix: str = " 合并版"
     output_path: str = ""
     quality: int = 60
     max_size: int = 1600
@@ -51,7 +48,6 @@ class EpubMergeOptions:
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "EpubMergeOptions":
         return cls(
-            suffix=str(data.get("suffix", " 合并版")),
             output_path=str(data.get("output_path", "")),
             quality=_clamp_int(data.get("quality"), default=60, low=1, high=95),
             max_size=_clamp_int(data.get("max_size"), default=1600, low=200, high=4000),
@@ -62,7 +58,6 @@ class EpubMergeOptions:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "suffix": self.suffix,
             "output_path": self.output_path,
             "quality": self.quality,
             "max_size": self.max_size,
@@ -158,26 +153,40 @@ class EpubMergeResult:
         }
 
 
+@dataclass(frozen=True)
+class _CopiedHtml:
+    original_href: str
+    new_href: str
+    title: str
+    is_cover: bool
+
+
+@dataclass(frozen=True)
+class _NavEntry:
+    title: str
+    href: str
+    children: tuple["_NavEntry", ...] = ()
+
+
 def build_epub_merge_plan(
     input_dir: Path, *, options: EpubMergeOptions
 ) -> EpubMergePlan:
     base = input_dir.expanduser().resolve()
     if not base.exists() or not base.is_dir():
         raise ValueError(f"input folder does not exist: {input_dir}")
+    output_path = _resolve_output_path(base, options)
     iterator = base.rglob("*") if options.recursive else base.glob("*")
-    suffix = options.suffix.strip()
     files = sorted(
         (
             path
             for path in iterator
             if path.is_file()
             and path.suffix.lower() == _EPUB_SUFFIX
-            and (not suffix or suffix not in path.stem)
+            and path.resolve() != output_path
         ),
         key=lambda path: _sort_key_korean(path.name),
     )
-    title = _infer_title(files) or "Merged EPUB"
-    output_path = _resolve_output_path(base, title, options)
+    title = _safe_filename(output_path.stem)
     actions = tuple(
         EpubMergeAction(
             id=f"epub-{index:04d}",
@@ -288,10 +297,11 @@ class _EpubMerger:
         self.author = ""
         self.language = "ko"
         self.image_signatures: dict[str, str] = {}
+        self.css_signatures: dict[str, str] = {}
         self.files: dict[str, bytes] = {}
         self.manifest: list[dict[str, str]] = []
         self.spine: list[str] = []
-        self.nav: list[dict[str, object]] = []
+        self.nav: list[_NavEntry] = []
         self.cover_signatures: set[str] = set()
         self.stats = {
             "merged_files": 0,
@@ -306,7 +316,7 @@ class _EpubMerger:
         }
 
     def merge(self, sources: list[Path], output: Path) -> dict[str, object]:
-        self.title = _infer_title(sources) or "Merged EPUB"
+        self.title = _safe_filename(output.stem)
         output.parent.mkdir(parents=True, exist_ok=True)
         for epub_index, source in enumerate(sources):
             self._merge_source(epub_index, source)
@@ -356,9 +366,13 @@ class _EpubMerger:
                     opf_dir = opf_dir.replace("\\", "/").strip("/")
                 root = ET.fromstring(_read_text(archive, opf_path))
                 self._set_metadata(root)
+                book_title = _metadata_title(root) or source.stem
+                file_stats["title"] = book_title
                 manifest_items = _manifest_items(root)
                 item_by_id = {item["id"]: item for item in manifest_items if item.get("id")}
                 resource_map: dict[str, str] = {}
+                html_href_map: dict[str, str] = {}
+                copied_html: list[_CopiedHtml] = []
 
                 cover_href = _find_cover_href(root, manifest_items)
                 for item in manifest_items:
@@ -396,14 +410,11 @@ class _EpubMerger:
                         file_stats["warnings"].append(f"missing css: {href}")
                         continue
                     css = _read_text(archive, entry_name)
-                    new_href = f"styles/{epub_index:03d}_{_safe_resource_name(Path(href).name)}"
                     css = _process_css(css, epub_index, href, opf_dir, resource_map)
-                    self.files[new_href] = css.encode("utf-8")
+                    new_href, wrote = self._store_css(epub_index, href, css)
                     resource_map[_normalize_path(href, opf_dir)] = new_href
-                    self.manifest.append(
-                        {"id": f"css_{epub_index:03d}_{len(self.manifest)}", "href": new_href, "media-type": "text/css"}
-                    )
-                    file_stats["resources"] += 1
+                    if wrote:
+                        file_stats["resources"] += 1
 
                 spine_refs = [
                     itemref.get("idref", "")
@@ -428,8 +439,16 @@ class _EpubMerger:
                         html_text, epub_index, opf_dir, href, resource_map
                     ):
                         continue
-                    safe_name = _safe_resource_name(Path(href).name or f"chapter_{idref}.xhtml")
-                    new_href = f"epub_{epub_index:03d}/{safe_name}"
+                    title = _extract_html_title(html_text) or Path(href).stem or "Chapter"
+                    is_cover_page = _is_cover_page_href(href) or _is_cover_page_title(title)
+                    safe_name = _html_output_name(
+                        href=href,
+                        title=title,
+                        book_title=book_title,
+                        index=sum(1 for item in copied_html if not item.is_cover) + 1,
+                        is_cover=is_cover_page,
+                    )
+                    new_href = _unique_href(f"epub_{epub_index:03d}/{safe_name}", self.files.keys())
                     html_text = _process_html(
                         html_text,
                         epub_index=epub_index,
@@ -448,10 +467,30 @@ class _EpubMerger:
                         }
                     )
                     self.spine.append(new_id)
-                    title = _extract_html_title(html_text) or Path(href).stem or "Chapter"
-                    self.nav.append({"book": source.stem, "title": title, "href": new_href})
+                    normalized_href = _normalize_path(href, opf_dir)
+                    html_href_map[normalized_href] = new_href
+                    copied_html.append(
+                        _CopiedHtml(
+                            original_href=normalized_href,
+                            new_href=new_href,
+                            title=title,
+                            is_cover=is_cover_page,
+                        )
+                    )
                     file_stats["chapters"] += 1
                     self.stats["chapters_written"] += 1
+
+                if copied_html:
+                    self.nav.append(
+                        _build_book_nav_entry(
+                            archive=archive,
+                            manifest_items=manifest_items,
+                            opf_dir=opf_dir,
+                            book_title=book_title,
+                            copied_html=copied_html,
+                            html_href_map=html_href_map,
+                        )
+                    )
 
                 for item in manifest_items:
                     href = item.get("href", "")
@@ -532,6 +571,23 @@ class _EpubMerger:
         self.stats["images_written"] += 1
         return name, True, compressed
 
+    def _store_css(self, epub_index: int, href: str, css: str) -> tuple[str, bool]:
+        data = css.encode("utf-8")
+        signature = _md5(data)
+        if signature in self.css_signatures:
+            return self.css_signatures[signature], False
+        new_href = f"styles/{epub_index:03d}_{_safe_resource_name(Path(href).name)}"
+        self.files[new_href] = data
+        self.css_signatures[signature] = new_href
+        self.manifest.append(
+            {
+                "id": f"css_{epub_index:03d}_{len(self.manifest)}",
+                "href": new_href,
+                "media-type": "text/css",
+            }
+        )
+        return new_href, True
+
     def _should_skip_duplicate_cover_page(
         self,
         html_text: str,
@@ -592,40 +648,19 @@ class _EpubMerger:
 </package>"""
 
     def _build_nav(self) -> str:
-        grouped: dict[str, list[dict[str, object]]] = {}
-        for item in self.nav:
-            grouped.setdefault(str(item["book"]), []).append(item)
-        rows = []
-        for book, items in grouped.items():
-            children = "".join(
-                f'<li><a href="{_xml_escape(str(item["href"]))}">{_xml_escape(str(item["title"]))}</a></li>'
-                for item in items
-            )
-            rows.append(f'<li><span>{_xml_escape(book)}</span><ol>{children}</ol></li>')
+        rows = "".join(_nav_entry_xhtml(entry) for entry in self.nav)
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{_xml_escape(self.language or "ko")}">
 <head><title>Table of Contents</title><meta charset="utf-8"/></head>
-<body><nav epub:type="toc" id="toc"><h1>Table of Contents</h1><ol>{''.join(rows)}</ol></nav></body>
+<body><nav epub:type="toc" id="toc"><h1>Table of Contents</h1><ol>{rows}</ol></nav></body>
 </html>"""
 
     def _build_ncx(self) -> str:
-        grouped: dict[str, list[dict[str, object]]] = {}
-        for item in self.nav:
-            grouped.setdefault(str(item["book"]), []).append(item)
         play = 1
         rows = []
-        for index, (book, items) in enumerate(grouped.items()):
-            parent_src = str(items[0]["href"]) if items else ""
-            rows.append(
-                f'<navPoint id="nav-book-{index}" playOrder="{play}"><navLabel><text>{_xml_escape(book)}</text></navLabel><content src="{_xml_escape(parent_src)}"/>'
-            )
-            play += 1
-            for item in items:
-                rows.append(
-                    f'<navPoint id="nav-{play}" playOrder="{play}"><navLabel><text>{_xml_escape(str(item["title"]))}</text></navLabel><content src="{_xml_escape(str(item["href"]))}"/></navPoint>'
-                )
-                play += 1
-            rows.append("</navPoint>")
+        for entry in self.nav:
+            row, play = _nav_entry_ncx(entry, play)
+            rows.append(row)
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
 <head><meta name="dtb:uid" content="urn:uuid:{uuid.uuid4()}"/></head>
@@ -652,35 +687,256 @@ def _clamp_int(value: object, *, default: int, low: int, high: int) -> int:
     return max(low, min(high, parsed))
 
 
-def _resolve_output_path(base: Path, title: str, options: EpubMergeOptions) -> Path:
+def _build_book_nav_entry(
+    *,
+    archive: zipfile.ZipFile,
+    manifest_items: list[dict[str, str]],
+    opf_dir: str,
+    book_title: str,
+    copied_html: list[_CopiedHtml],
+    html_href_map: Mapping[str, str],
+) -> _NavEntry:
+    first_content = next((item for item in copied_html if not item.is_cover), copied_html[0])
+    original_entries = _extract_original_nav_entries(
+        archive=archive,
+        manifest_items=manifest_items,
+        opf_dir=opf_dir,
+        html_href_map=html_href_map,
+    )
+    children = _clean_nav_entries(original_entries)
+    if len(children) <= 1:
+        children = _fallback_nav_children(book_title, copied_html)
+    if len(children) <= 1:
+        children = ()
+    return _NavEntry(title=book_title, href=first_content.new_href, children=children)
+
+
+def _extract_original_nav_entries(
+    *,
+    archive: zipfile.ZipFile,
+    manifest_items: list[dict[str, str]],
+    opf_dir: str,
+    html_href_map: Mapping[str, str],
+) -> tuple[_NavEntry, ...]:
+    ncx_href = _find_manifest_href(manifest_items, media_type=_NCX_MEDIA_TYPE)
+    if ncx_href:
+        entries = _extract_ncx_entries(archive, opf_dir, ncx_href, html_href_map)
+        if entries:
+            return entries
+    nav_href = _find_nav_href(manifest_items)
+    if nav_href:
+        return _extract_epub3_nav_entries(archive, opf_dir, nav_href, html_href_map)
+    return ()
+
+
+def _extract_ncx_entries(
+    archive: zipfile.ZipFile,
+    opf_dir: str,
+    ncx_href: str,
+    html_href_map: Mapping[str, str],
+) -> tuple[_NavEntry, ...]:
+    ncx_path = _join_href(opf_dir, ncx_href)
+    if ncx_path not in archive.namelist():
+        return ()
+    try:
+        root = ET.fromstring(_read_text(archive, ncx_path))
+    except ET.ParseError:
+        return ()
+    base_dir = str(Path(ncx_path).parent).replace("\\", "/").strip(".")
+    base_dir = "" if base_dir == "." else base_dir.strip("/")
+    nav_map = root.find(".//{*}navMap")
+    if nav_map is None:
+        return ()
+    return tuple(
+        entry
+        for navpoint in list(nav_map)
+        if _local_name(navpoint.tag) == "navPoint"
+        for entry in [_parse_ncx_navpoint(navpoint, base_dir, html_href_map)]
+        if entry is not None
+    )
+
+
+def _parse_ncx_navpoint(
+    node: ET.Element,
+    base_dir: str,
+    html_href_map: Mapping[str, str],
+) -> _NavEntry | None:
+    label = _clean_text(
+        "".join(text for text in node.findall(".//{*}navLabel/{*}text") for text in [text.text or ""])
+    )
+    content = node.find("./{*}content")
+    href = _map_nav_href(content.get("src", "") if content is not None else "", base_dir, html_href_map)
+    children = tuple(
+        child_entry
+        for child in list(node)
+        if _local_name(child.tag) == "navPoint"
+        for child_entry in [_parse_ncx_navpoint(child, base_dir, html_href_map)]
+        if child_entry is not None
+    )
+    if not href and children:
+        href = children[0].href
+    if not href:
+        return None
+    return _NavEntry(title=label or Path(href).stem, href=href, children=children)
+
+
+def _extract_epub3_nav_entries(
+    archive: zipfile.ZipFile,
+    opf_dir: str,
+    nav_href: str,
+    html_href_map: Mapping[str, str],
+) -> tuple[_NavEntry, ...]:
+    nav_path = _join_href(opf_dir, nav_href)
+    if nav_path not in archive.namelist():
+        return ()
+    try:
+        root = ET.fromstring(_replace_named_entities(_read_text(archive, nav_path)))
+    except ET.ParseError:
+        return ()
+    base_dir = str(Path(nav_path).parent).replace("\\", "/").strip(".")
+    base_dir = "" if base_dir == "." else base_dir.strip("/")
+    nav = _find_toc_nav(root)
+    if nav is None:
+        return ()
+    ol = next((child for child in list(nav) if _local_name(child.tag) == "ol"), None)
+    if ol is None:
+        return ()
+    return tuple(
+        entry
+        for li in list(ol)
+        if _local_name(li.tag) == "li"
+        for entry in [_parse_epub3_nav_li(li, base_dir, html_href_map)]
+        if entry is not None
+    )
+
+
+def _parse_epub3_nav_li(
+    node: ET.Element,
+    base_dir: str,
+    html_href_map: Mapping[str, str],
+) -> _NavEntry | None:
+    href = ""
+    title = ""
+    children: tuple[_NavEntry, ...] = ()
+    for child in list(node):
+        name = _local_name(child.tag)
+        if name == "a" and not href:
+            href = _map_nav_href(child.get("href", ""), base_dir, html_href_map)
+            title = _clean_text("".join(child.itertext()))
+        elif name == "span" and not title:
+            title = _clean_text("".join(child.itertext()))
+        elif name == "ol":
+            children = tuple(
+                entry
+                for li in list(child)
+                if _local_name(li.tag) == "li"
+                for entry in [_parse_epub3_nav_li(li, base_dir, html_href_map)]
+                if entry is not None
+            )
+    if not href and children:
+        href = children[0].href
+    if not href:
+        return None
+    return _NavEntry(title=title or Path(href).stem, href=href, children=children)
+
+
+def _find_toc_nav(root: ET.Element) -> ET.Element | None:
+    for node in root.iter():
+        if _local_name(node.tag) != "nav":
+            continue
+        epub_type = node.get("{http://www.idpf.org/2007/ops}type", "") or node.get("epub:type", "")
+        if "toc" in epub_type.split():
+            return node
+    return None
+
+
+def _fallback_nav_children(book_title: str, copied_html: list[_CopiedHtml]) -> tuple[_NavEntry, ...]:
+    content = [item for item in copied_html if not item.is_cover]
+    if len(content) <= 1:
+        return ()
+    rows = []
+    for index, item in enumerate(content, start=1):
+        title = item.title if not _is_generic_nav_title(item.title) else f"{book_title} {index}"
+        rows.append(_NavEntry(title=title, href=item.new_href))
+    return tuple(rows)
+
+
+def _clean_nav_entries(entries: Iterable[_NavEntry]) -> tuple[_NavEntry, ...]:
+    rows: list[_NavEntry] = []
+    for entry in entries:
+        children = _clean_nav_entries(entry.children)
+        if _is_cover_page_title(entry.title) or _is_generic_nav_title(entry.title):
+            rows.extend(children)
+        else:
+            rows.append(_NavEntry(title=entry.title, href=entry.href, children=children))
+    return tuple(rows)
+
+
+def _map_nav_href(src: str, base_dir: str, html_href_map: Mapping[str, str]) -> str:
+    if not src:
+        return ""
+    path, separator, fragment = src.partition("#")
+    mapped = html_href_map.get(_normalize_path(path, base_dir))
+    if not mapped:
+        return ""
+    return f"{mapped}{separator}{fragment}" if separator else mapped
+
+
+def _metadata_title(root: ET.Element) -> str:
+    title = root.find(".//{http://purl.org/dc/elements/1.1/}title")
+    return _clean_text(title.text or "") if title is not None else ""
+
+
+def _find_manifest_href(
+    manifest_items: list[dict[str, str]],
+    *,
+    media_type: str,
+) -> str:
+    for item in manifest_items:
+        if item.get("media-type") == media_type and item.get("href"):
+            return item["href"]
+    return ""
+
+
+def _find_nav_href(manifest_items: list[dict[str, str]]) -> str:
+    for item in manifest_items:
+        if _NAV_PROPERTY in item.get("properties", "").split() and item.get("href"):
+            return item["href"]
+    return ""
+
+
+def _nav_entry_xhtml(entry: _NavEntry) -> str:
+    children = "".join(_nav_entry_xhtml(child) for child in entry.children)
+    child_block = f"<ol>{children}</ol>" if children else ""
+    return (
+        f'<li><a href="{_xml_escape(entry.href)}">{_xml_escape(entry.title)}</a>'
+        f"{child_block}</li>"
+    )
+
+
+def _nav_entry_ncx(entry: _NavEntry, play: int) -> tuple[str, int]:
+    current = play
+    play += 1
+    children = []
+    for child in entry.children:
+        child_xml, play = _nav_entry_ncx(child, play)
+        children.append(child_xml)
+    xml = (
+        f'<navPoint id="nav-{current}" playOrder="{current}">'
+        f"<navLabel><text>{_xml_escape(entry.title)}</text></navLabel>"
+        f'<content src="{_xml_escape(entry.href)}"/>'
+        f"{''.join(children)}</navPoint>"
+    )
+    return xml, play
+
+
+def _resolve_output_path(base: Path, options: EpubMergeOptions) -> Path:
     if options.output_path.strip():
         output = Path(options.output_path).expanduser().resolve()
         if output.suffix.lower() != _EPUB_SUFFIX:
             output = output.with_suffix(_EPUB_SUFFIX)
         return output
-    suffix = options.suffix or " 合并版"
-    filename = f"{_safe_filename(title)}{suffix}.epub"
-    return (base.parent / filename).resolve()
-
-
-def _infer_title(paths: Iterable[Path]) -> str:
-    best = ""
-    for path in paths:
-        name = create_folder_name(path.name)
-        for pattern in (
-            r"\s*제?\d+\s*[화회장권부편탄].*$",
-            r"\s*\d+\s*[화회장권부편탄].*$",
-            r"\s*외전.*$",
-            r"\s*특별외전.*$",
-            r"\s*번외편.*$",
-            r"\s*완결$",
-            r"\s*\[\d+\].*$",
-            r"\s*\(\d+\).*$",
-        ):
-            name = re.sub(pattern, "", name, flags=re.IGNORECASE).strip()
-        if len(name) > len(best):
-            best = name
-    return _safe_filename(best or "Merged EPUB")
+    return (base / "merged.epub").resolve()
 
 
 def _sort_key_korean(filename: str) -> tuple[int, int, str]:
@@ -849,10 +1105,60 @@ def _extract_html_title(html_text: str) -> str:
     ):
         match = re.search(pattern, html_text, re.IGNORECASE | re.DOTALL)
         if match:
-            title = re.sub(r"<[^>]+>", "", match.group(1)).strip()
+            title = _clean_text(re.sub(r"<[^>]+>", "", match.group(1)))
             if title:
                 return title
     return ""
+
+
+def _clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _is_cover_page_href(href: str) -> bool:
+    name = Path(href).name.lower()
+    return name.startswith(("cover", "titlepage", "title_page", "표지", "커버"))
+
+
+def _is_cover_page_title(title: str) -> bool:
+    normalized = _clean_text(title).lower()
+    return normalized in {"cover", "cover page", "title page", "표지", "커버"}
+
+
+def _is_generic_nav_title(title: str) -> bool:
+    normalized = _clean_text(title).lower()
+    if not normalized:
+        return True
+    if _is_cover_page_title(normalized):
+        return True
+    return bool(
+        re.fullmatch(
+            r"(section|chapter|file|page|part|untitled)[\s_-]*\d*",
+            normalized,
+        )
+    )
+
+
+def _html_output_name(
+    *,
+    href: str,
+    title: str,
+    book_title: str,
+    index: int,
+    is_cover: bool,
+) -> str:
+    suffix = Path(href).suffix or ".xhtml"
+    if is_cover:
+        return _safe_resource_name(Path(href).name or f"cover{suffix}")
+    stem = Path(href).stem
+    if _is_generic_nav_title(title) or _is_generic_nav_title(stem):
+        base = _safe_resource_name(_safe_filename(book_title))
+        return f"{base}{suffix}" if index <= 1 else f"{base}_{index}{suffix}"
+    return _safe_resource_name(Path(href).name or f"{_safe_filename(title)}{suffix}")
 
 
 def _first_img_src(html_text: str) -> str:

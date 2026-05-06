@@ -8,7 +8,7 @@
 
 .fileRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 760px);
   gap: 10px;
   margin-top: 12px;
 }
@@ -49,12 +49,22 @@
   flex-direction: column;
 }
 
+.compactField {
+  max-width: 760px;
+}
+
 .field span {
   color: var(--muted, #7a7166);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.field small {
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .actionError {

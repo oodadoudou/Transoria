@@ -2691,9 +2691,12 @@ class TaskService:
                 "at least two EPUB files must be selected.",
                 field="actions",
             )
-        output = Path(output_path or config.output_path).expanduser().resolve()
-        if output.suffix.lower() != ".epub":
-            output = output.with_suffix(".epub")
+        if output_path.strip() or config.output_path.strip():
+            output = Path(output_path or config.output_path).expanduser().resolve()
+            if output.suffix.lower() != ".epub":
+                output = output.with_suffix(".epub")
+        else:
+            output = build_epub_merge_plan(source_dir, options=config).output_path
 
         self._purge_kind_for_start(
             kind="epub_merge", task_kind=TaskKind.EPUB_MERGE

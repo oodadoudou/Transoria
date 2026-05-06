@@ -34,8 +34,11 @@ export function EpubMergePage() {
   const messages = useMessages();
   const text = messages.epubMergeTool;
   const [inputDir, setInputDir] = useState("");
+  const [outputDir, setOutputDir] = useState("");
+  const [outputFilename, setOutputFilename] = useState(
+    text.defaultOutputFilename,
+  );
   const [options, setOptions] = useState<EpubMergeOptions>({
-    suffix: text.defaultSuffix,
     output_path: "",
     quality: 60,
     max_size: 1600,
@@ -55,10 +58,8 @@ export function EpubMergePage() {
   const activeTaskId = useRuntimeStore((state) => state.epub_merge.activeTaskId);
 
   useEffect(() => {
-    setOptions((prev) =>
-      prev.suffix ? prev : { ...prev, suffix: text.defaultSuffix },
-    );
-  }, [text.defaultSuffix]);
+    setOutputFilename((prev) => prev || text.defaultOutputFilename);
+  }, [text.defaultOutputFilename]);
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -125,9 +126,18 @@ export function EpubMergePage() {
     setReport(null);
     setShowReport(false);
     try {
-      const next = await epubMergeBridge.preview(inputDir, options);
+      const requestedOutput = composeOutputPath(
+        outputDir,
+        outputFilename,
+        inputDir,
+      );
+      const previewOptions = { ...options, output_path: requestedOutput };
+      const next = await epubMergeBridge.preview(inputDir, previewOptions);
+      const outputParts = splitOutputPath(next.output_path);
       setPlan(next);
       setActions(next.actions);
+      setOutputDir((prev) => prev || outputParts.dir);
+      setOutputFilename((prev) => prev || outputParts.name);
       setOptions((prev) => ({ ...prev, output_path: next.output_path }));
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {
@@ -145,11 +155,16 @@ export function EpubMergePage() {
     setShowReport(false);
     try {
       const requestId = `epub-merge-${Date.now().toString(36)}`;
+      const outputPath =
+        composeOutputPath(outputDir, outputFilename, inputDir) ||
+        plan?.output_path ||
+        "";
+      const executeOptions = { ...options, output_path: outputPath };
       const { task_id } = await epubMergeBridge.startTask(
         requestId,
         inputDir,
-        options.output_path || plan?.output_path || "",
-        options,
+        outputPath,
+        executeOptions,
         actions,
       );
       setActiveTaskId("epub_merge", task_id);
@@ -203,18 +218,20 @@ export function EpubMergePage() {
           variant="input"
           onChange={setInputDir}
         />
+        <FolderPickerRow
+          label={text.outputFolder}
+          value={outputDir}
+          variant="output"
+          onChange={setOutputDir}
+        />
         <div className={styles.fileRow}>
-          <label className={styles.field}>
-            <span>{text.outputFile}</span>
+          <label className={`${styles.field} ${styles.compactField}`}>
+            <span>{text.outputFilename}</span>
             <input
-              value={options.output_path}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  output_path: event.target.value,
-                }))
-              }
+              value={outputFilename}
+              onChange={(event) => setOutputFilename(event.target.value)}
             />
+            <small>{text.outputFilenameHint}</small>
           </label>
         </div>
         <div className={styles.optionsGrid}>
@@ -257,15 +274,6 @@ export function EpubMergePage() {
             />
             {text.keepOriginalImages}
           </label>
-          <label className={styles.field}>
-            <span>{text.suffix}</span>
-            <input
-              value={options.suffix}
-              onChange={(event) =>
-                setOptions((prev) => ({ ...prev, suffix: event.target.value }))
-              }
-            />
-          </label>
         </div>
         <div className={styles.actionRow}>
           <Pill onClick={handlePreview} disabled={!inputDir || isRunning}>
@@ -297,7 +305,13 @@ export function EpubMergePage() {
                 label={text.selectedCount}
                 value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
               />
-              <Stat label={text.outputFile} value={options.output_path || plan.output_path} />
+              <Stat
+                label={text.outputFile}
+                value={
+                  composeOutputPath(outputDir, outputFilename, inputDir) ||
+                  plan.output_path
+                }
+              />
             </div>
             {actions.length > 0 ? (
               <div className={styles.tableWrap}>
@@ -436,4 +450,22 @@ function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function composeOutputPath(folder: string, filename: string, fallbackFolder: string) {
+  const name = filename.trim();
+  if (!name) return "";
+  const dir = (folder.trim() || fallbackFolder.trim()).replace(/[\\/]+$/, "");
+  if (!dir) return name;
+  const separator = dir.includes("\\") && !dir.includes("/") ? "\\" : "/";
+  return `${dir}${separator}${name}`;
+}
+
+function splitOutputPath(path: string) {
+  const slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (slash < 0) return { dir: "", name: path };
+  return {
+    dir: path.slice(0, slash),
+    name: path.slice(slash + 1),
+  };
 }
