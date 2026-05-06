@@ -400,7 +400,7 @@ export const en: Messages = {
     outputFolder: "Output folder",
     outputFilename: "Output filename",
     outputFilenameHint:
-      "For example, `Novel 7` creates `Novel 7.epub` and writes `Novel 7` as the merged EPUB title. Avoid names that already exist in the input folder to prevent path conflicts.",
+      "Default: `merged.epub`; the merged EPUB title is written as `merged`. You can rename it. Avoid names that already exist in the input folder to prevent path conflicts.",
     recursive: "Scan subfolders",
     smartCover: "Skip duplicate cover pages",
     keepOriginalImages: "Keep original images",

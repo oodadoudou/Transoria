@@ -303,6 +303,8 @@ class _EpubMerger:
         self.spine: list[str] = []
         self.nav: list[_NavEntry] = []
         self.cover_signatures: set[str] = set()
+        self.cover_image_id = ""
+        self.cover_page_href = ""
         self.stats = {
             "merged_files": 0,
             "skipped_files": 0,
@@ -467,6 +469,8 @@ class _EpubMerger:
                         }
                     )
                     self.spine.append(new_id)
+                    if is_cover_page and not self.cover_page_href:
+                        self.cover_page_href = new_href
                     normalized_href = _normalize_path(href, opf_dir)
                     html_href_map[normalized_href] = new_href
                     copied_html.append(
@@ -567,6 +571,8 @@ class _EpubMerger:
         }
         if is_cover:
             manifest_item["properties"] = "cover-image"
+            if not self.cover_image_id:
+                self.cover_image_id = manifest_item["id"]
         self.manifest.append(manifest_item)
         self.stats["images_written"] += 1
         return name, True, compressed
@@ -630,6 +636,18 @@ class _EpubMerger:
         language = _xml_escape(self.language or "ko")
         manifest = "\n".join(_manifest_xml(item) for item in self.manifest)
         spine = "\n".join(f'<itemref idref="{_xml_escape(idref)}"/>' for idref in self.spine)
+        cover_meta = (
+            f'\n<meta name="cover" content="{_xml_escape(self.cover_image_id)}"/>'
+            if self.cover_image_id
+            else ""
+        )
+        guide = (
+            "\n<guide>\n"
+            f'<reference type="cover" title="Cover" href="{_xml_escape(self.cover_page_href)}"/>\n'
+            "</guide>"
+            if self.cover_page_href
+            else ""
+        )
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" unique-identifier="uid" version="3.0">
 <metadata>
@@ -638,6 +656,7 @@ class _EpubMerger:
 <dc:language>{language}</dc:language>
 <dc:creator>{author}</dc:creator>
 <meta property="dcterms:modified">{modified}</meta>
+{cover_meta}
 </metadata>
 <manifest>
 {manifest}
@@ -645,6 +664,7 @@ class _EpubMerger:
 <spine toc="ncx">
 {spine}
 </spine>
+{guide}
 </package>"""
 
     def _build_nav(self) -> str:

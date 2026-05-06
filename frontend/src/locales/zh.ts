@@ -391,7 +391,7 @@ export const zh: Messages = {
     outputFolder: "输出目录",
     outputFilename: "输出文件名",
     outputFilenameHint:
-      "例如填「通奸 7」会生成「通奸 7.epub」，并把合并后 EPUB 的书内标题写为「通奸 7」。尽量不要与输入目录里已有 EPUB 同名，避免路径冲突。",
+      "默认生成「合并.epub」，书内标题也会写为「合并」。可自行改名；尽量不要与输入目录里已有 EPUB 同名，避免路径冲突。",
     recursive: "递归扫描子文件夹",
     smartCover: "智能跳过重复封面页",
     keepOriginalImages: "保留原图不压缩",
