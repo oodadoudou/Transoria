@@ -212,18 +212,22 @@ export function EpubMergePage() {
   return (
     <>
       <Panel title={text.title} subtitle={text.sub}>
-        <FolderPickerRow
-          label={text.inputFolder}
-          value={inputDir}
-          variant="input"
-          onChange={setInputDir}
-        />
-        <FolderPickerRow
-          label={text.outputFolder}
-          value={outputDir}
-          variant="output"
-          onChange={setOutputDir}
-        />
+        <div className={styles.folderGrid}>
+          <FolderPickerRow
+            label={text.inputFolder}
+            value={inputDir}
+            variant="input"
+            onChange={setInputDir}
+            compact
+          />
+          <FolderPickerRow
+            label={text.outputFolder}
+            value={outputDir}
+            variant="output"
+            onChange={setOutputDir}
+            compact
+          />
+        </div>
         <div className={styles.fileRow}>
           <label className={`${styles.field} ${styles.compactField}`}>
             <span>{text.outputFilename}</span>

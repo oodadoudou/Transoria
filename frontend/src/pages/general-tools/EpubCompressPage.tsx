@@ -202,42 +202,45 @@ export function EpubCompressPage() {
   return (
     <>
       <Panel title={text.title} subtitle={text.sub}>
-        <div className={styles.modeRow}>
-          <button
-            type="button"
-            className={mode === "folder" ? styles.modeActive : styles.modeButton}
-            onClick={() => setMode("folder")}
-          >
-            {text.folderMode}
-          </button>
-          <button
-            type="button"
-            className={mode === "file" ? styles.modeActive : styles.modeButton}
-            onClick={() => setMode("file")}
-          >
-            {text.fileMode}
-          </button>
-        </div>
-        {mode === "folder" ? (
-          <FolderPickerRow
-            label={text.inputFolder}
-            value={inputPath}
-            variant="input"
-            onChange={setInputPath}
-          />
-        ) : (
-          <div className={styles.fileRow}>
-            <input
-              className={styles.pathInput}
-              value={inputPath}
-              onChange={(event) => setInputPath(event.target.value)}
-              placeholder={text.filePlaceholder}
-            />
-            <Pill variant="ghost" onClick={handleChooseFile}>
-              {text.chooseFile}
-            </Pill>
+        <div className={styles.configLine}>
+          <div className={styles.modeRow}>
+            <button
+              type="button"
+              className={mode === "folder" ? styles.modeActive : styles.modeButton}
+              onClick={() => setMode("folder")}
+            >
+              {text.folderMode}
+            </button>
+            <button
+              type="button"
+              className={mode === "file" ? styles.modeActive : styles.modeButton}
+              onClick={() => setMode("file")}
+            >
+              {text.fileMode}
+            </button>
           </div>
-        )}
+          {mode === "folder" ? (
+            <FolderPickerRow
+              label={text.inputFolder}
+              value={inputPath}
+              variant="input"
+              onChange={setInputPath}
+              compact
+            />
+          ) : (
+            <div className={styles.fileRow}>
+              <input
+                className={styles.pathInput}
+                value={inputPath}
+                onChange={(event) => setInputPath(event.target.value)}
+                placeholder={text.filePlaceholder}
+              />
+              <Pill variant="ghost" onClick={handleChooseFile}>
+                {text.chooseFile}
+              </Pill>
+            </div>
+          )}
+        </div>
         <div className={styles.optionsGrid}>
           <label className={styles.option}>
             <input

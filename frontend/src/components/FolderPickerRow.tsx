@@ -8,6 +8,7 @@ interface FolderPickerRowProps {
   variant: 'input' | 'output';
   onChange: (path: string) => void;
   onError?: (error: BridgeError) => void;
+  compact?: boolean;
 }
 
 /**
@@ -26,6 +27,7 @@ export function FolderPickerRow({
   variant,
   onChange,
   onError,
+  compact = false,
 }: FolderPickerRowProps) {
   const messages = useMessages();
   const buttonLabel = messages.folderPicker.choose;
@@ -46,7 +48,7 @@ export function FolderPickerRow({
   };
 
   return (
-    <div className={styles.row}>
+    <div className={compact ? `${styles.row} ${styles.compact}` : styles.row}>
       <div className={styles.field}>
         <span className={styles.label}>{label}</span>
         <input
