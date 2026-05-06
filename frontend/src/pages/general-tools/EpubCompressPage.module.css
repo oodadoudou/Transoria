@@ -58,8 +58,9 @@
 .optionsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
+  gap: 10px 14px;
   margin-top: 10px;
+  align-items: end;
 }
 
 .option,
@@ -67,17 +68,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 7px 10px;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
   color: var(--ink, #2a2620);
   font-size: 13px;
+}
+
+.option {
+  min-height: 33px;
 }
 
 .field {
   align-items: stretch;
   flex-direction: column;
+  gap: 5px;
 }
 
 .field span {
