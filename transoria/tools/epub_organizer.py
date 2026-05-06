@@ -63,6 +63,19 @@ _MID_VOLUME_MARKERS = (
     rf"\s*(?:외전|番外|外传|外傳|특별판|특별편|번외편)\s*{_NUMBER_TOKEN}?\s*(?:권|卷|冊|册|部|集)?\s*{_BOUNDARY_TOKEN}",
 )
 
+_INLINE_SERIES_MARKERS = re.compile(
+    rf"""
+    (?:
+        \s*(?:제\s*)?{_NUMBER_TOKEN}\s*(?:권|부|책)
+        |\s*(?:第\s*)?{_NUMBER_TOKEN}\s*(?:卷|冊|册|部|集|本)
+        |\s*(?:卷|冊|册|部|集)\s*{_NUMBER_TOKEN}
+        |\s*(?:외전|番外|外传|外傳|특별판|특별편|번외편)\s*{_NUMBER_TOKEN}?\s*(?:권|卷|冊|册|部|集)?
+    )
+    (?=$|[\s@_\-–—.,，()\[\]【】（）])
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 
 @dataclass(frozen=True)
 class EpubOrganizeAction:
@@ -187,8 +200,7 @@ def create_group_key(epub_name: str) -> str:
 
 
 def _strip_series_markers(name: str) -> str:
-    for pattern in _MID_VOLUME_MARKERS:
-        name = re.sub(pattern, " ", name, flags=re.IGNORECASE)
+    name = _INLINE_SERIES_MARKERS.sub(" ", name)
     for pattern in _TRAILING_MARKERS:
         name = re.sub(pattern, "", name, flags=re.IGNORECASE)
     name = re.sub(r"\s*-\s*", " - ", name)
