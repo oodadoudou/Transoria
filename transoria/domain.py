@@ -65,9 +65,7 @@ def normalize_target_script(text: str, target_language: Language) -> str:
 
 @lru_cache(maxsize=4)
 def _target_script_converter(target_language: Language):
-    if target_language is Language.CHINESE_SIMPLIFIED:
-        config = "t2s"
-    elif target_language is Language.CHINESE_TRADITIONAL:
+    if target_language is Language.CHINESE_TRADITIONAL:
         config = "s2t"
     else:
         return None

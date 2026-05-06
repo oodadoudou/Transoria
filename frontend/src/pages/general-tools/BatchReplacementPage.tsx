@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMessages } from "@/locales";
+import { format, useMessages } from "@/locales";
 import {
   BridgeError,
   dialogsBridge,
@@ -75,6 +75,14 @@ export function BatchReplacementPage() {
       if (!item) return prev;
       return prev.map((rule) => (rule === item ? { ...rule, ...patch } : rule));
     });
+  const deleteRules = (filteredIndices: number[]) => {
+    const targets = new Set(
+      filteredIndices.map((i) => visibleRules[i]).filter(Boolean),
+    );
+    if (targets.size === 0) return;
+    setRules((prev) => prev.filter((rule) => !targets.has(rule)));
+    setRuleSelection(EMPTY_SELECTION);
+  };
   const [warnings, setWarnings] = useState<
     Array<{ line_number: number; message: string }>
   >([]);
@@ -330,6 +338,11 @@ export function BatchReplacementPage() {
               emptyMessage={messages.batchReplacement.noRules}
               editor={null}
               toolbar={[]}
+              onBulkDelete={deleteRules}
+              contextMenuLabels={{
+                deleteSelected: (n) =>
+                  format(messages.ruleTable.deleteSelected, { n }),
+              }}
             />
           </>
         )}
@@ -506,12 +519,6 @@ function Stat({ label, value }: StatProps) {
   );
 }
 
-// Minimal columns for the imported rules: ``src`` / ``dst`` are
-// double-click editable text; ``regex`` and ``case_sensitive`` are
-// click-to-toggle booleans rendered as a plain checkbox so the user
-// can fix import-time mistakes without re-importing the whole file.
-// Deliberately no toolbar / editor sidebar / sort / bulk actions —
-// that level of complexity belongs to the Glossary page.
 function replacementColumns(
   messages: ReturnType<typeof useMessages>,
   updateRule: (index: number, patch: Partial<ReplacementRule>) => void,

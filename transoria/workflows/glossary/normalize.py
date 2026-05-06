@@ -156,14 +156,13 @@ def _build_cn_converter(target_language: Language | None):
 
     if target_language is None:
         return None
-    if target_language not in (Language.CHINESE_SIMPLIFIED, Language.CHINESE_TRADITIONAL):
+    if target_language is not Language.CHINESE_TRADITIONAL:
         return None
     try:
         from opencc import OpenCC  # type: ignore[import-not-found]
     except ImportError:
         return None
-    config = "t2s" if target_language is Language.CHINESE_SIMPLIFIED else "s2t"
-    converter = OpenCC(config)
+    converter = OpenCC("s2t")
     return converter.convert
 
 
