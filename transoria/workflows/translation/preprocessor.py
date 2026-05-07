@@ -170,7 +170,12 @@ def _apply_replacements(text: str, rules: Iterable[ReplacementRule]) -> str:
         if rule.regex:
             flags = 0 if rule.case_sensitive else re.IGNORECASE
             try:
-                out = re.sub(rule.src, rule.dst, out, flags=flags)
+                out = re.sub(
+                    rule.src,
+                    _normalize_regex_replacement(rule.dst),
+                    out,
+                    flags=flags,
+                )
             except re.error:
                 continue
             continue
@@ -180,6 +185,44 @@ def _apply_replacements(text: str, rules: Iterable[ReplacementRule]) -> str:
         # Case-insensitive plain replacement: use escaped regex with IGNORECASE.
         out = re.sub(re.escape(rule.src), rule.dst, out, flags=re.IGNORECASE)
     return out
+
+
+def _normalize_regex_replacement(template: str) -> str:
+    if "$" not in template:
+        return template
+    parts: list[str] = []
+    index = 0
+    while index < len(template):
+        char = template[index]
+        if char == "\\" and index + 1 < len(template) and template[index + 1] == "$":
+            parts.append("$")
+            index += 2
+            continue
+        if char != "$":
+            parts.append(char)
+            index += 1
+            continue
+        if index + 1 < len(template) and template[index + 1] == "$":
+            parts.append("$")
+            index += 2
+            continue
+        if index + 1 < len(template) and template[index + 1] == "{":
+            close = template.find("}", index + 2)
+            group = template[index + 2 : close] if close != -1 else ""
+            if group.isdigit():
+                parts.append(rf"\g<{group}>")
+                index = close + 1
+                continue
+        cursor = index + 1
+        while cursor < len(template) and template[cursor].isdigit():
+            cursor += 1
+        if cursor > index + 1:
+            parts.append(rf"\g<{template[index + 1:cursor]}>")
+            index = cursor
+            continue
+        parts.append("$")
+        index += 1
+    return "".join(parts)
 
 
 def strip_drm_invisibles(text: str) -> str:
