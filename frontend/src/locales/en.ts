@@ -363,7 +363,7 @@ export const en: Messages = {
   },
   epubMergeTool: {
     title: "EPUB Merger",
-    sub: "Merge selected EPUB files in order and rebuild navigation/resource links. The merged book title uses the output filename; source EPUB metadata is not modified.",
+    sub: "Select one or more EPUB files. Multiple files are merged in order with rebuilt navigation/resource links; a single file is copied with its book title rewritten from the output filename. Source EPUBs are not modified.",
     defaultOutputFilename: "merged.epub",
     inputFolder: "Folder to merge",
     outputFile: "Output EPUB",
@@ -737,7 +737,7 @@ export const en: Messages = {
       targetLanguage: "Target language",
       combineFolderGlossary: "Combined folder glossary",
       combineFolderGlossaryHint:
-        "Emit a single `<folder>-Glossary.{xlsx,json,txt}` set covering every file under the input folder, in addition to the per-file artifacts.",
+        "When enabled, emit only one `<folder>-Glossary.{xlsx,json,txt}` set for the whole input folder instead of per-file artifacts.",
       allowSrcEqDst: "Allow src == dst entries",
       allowSrcEqDstHint:
         "Keep candidates whose source and target spelling are identical. Useful when names are spelled the same in both languages; off by default.",

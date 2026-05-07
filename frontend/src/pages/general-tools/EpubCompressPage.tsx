@@ -22,29 +22,43 @@ import {
   useRuntimeStore,
 } from "@/store/useRuntimeStore";
 import { useToastStore } from "@/store/useToastStore";
+import { useSessionState } from "@/utils/sessionState";
 import styles from "./EpubCompressPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
+const MODE_SESSION_KEY = "transoria.generalTools.epubCompress.mode";
+const INPUT_SESSION_KEY = "transoria.generalTools.epubCompress.inputPath";
+const OPTIONS_SESSION_KEY = "transoria.generalTools.epubCompress.options";
 const TERMINAL: ReadonlySet<string> = new Set([
   "completed",
   "failed",
   "stopped",
 ]);
 
-export function EpubCompressPage() {
-  const messages = useMessages();
-  const text = messages.epubCompressTool;
-  const [mode, setMode] = useState<"file" | "folder">("folder");
-  const [inputPath, setInputPath] = useState("");
-  const [options, setOptions] = useState<EpubCompressOptions>({
-    suffix: text.defaultSuffix,
+function defaultOptions(suffix: string): EpubCompressOptions {
+  return {
+    suffix,
     replace_original: false,
     preserve_first_cover: false,
     font_mode: "deduplicate",
     quality: 50,
     max_size: 1200,
     recursive: true,
-  });
+  };
+}
+
+export function EpubCompressPage() {
+  const messages = useMessages();
+  const text = messages.epubCompressTool;
+  const [mode, setMode] = useSessionState<"file" | "folder">(
+    MODE_SESSION_KEY,
+    "folder",
+  );
+  const [inputPath, setInputPath] = useSessionState(INPUT_SESSION_KEY, "");
+  const [options, setOptions] = useSessionState<EpubCompressOptions>(
+    OPTIONS_SESSION_KEY,
+    defaultOptions(text.defaultSuffix),
+  );
   const [plan, setPlan] = useState<EpubCompressPlan | null>(null);
   const [actions, setActions] = useState<EpubCompressAction[]>([]);
   const [actionError, setActionError] = useState<BridgeError | null>(null);

@@ -354,7 +354,7 @@ export const zh: Messages = {
   },
   epubMergeTool: {
     title: "EPUB 合并",
-    sub: "选择多个 EPUB 按顺序合并，自动重建目录和资源引用；书内标题会使用输出文件名，不改动原 EPUB 的 metadata。",
+    sub: "选择一个或多个 EPUB。多本会按顺序合并并重建目录和资源引用；单本会生成副本并按输出文件名重写书内标题，不改动原 EPUB。",
     defaultOutputFilename: "合并.epub",
     inputFolder: "待合并文件夹",
     outputFile: "输出 EPUB",
@@ -721,7 +721,7 @@ export const zh: Messages = {
       targetLanguage: "目标语言",
       combineFolderGlossary: "合并整个文件夹的术语表",
       combineFolderGlossaryHint:
-        "在每个文件各自的术语表之外,额外输出一份覆盖整个输入文件夹的 `<folder>-Glossary.{xlsx,json,txt}`。",
+        "开启后只输出一份覆盖整个输入文件夹的 `<folder>-Glossary.{xlsx,json,txt}`，不再为每个文件单独生成术语表。",
       allowSrcEqDst: "保留 src == dst 的条目",
       allowSrcEqDstHint:
         "若候选条目的原文与译文写法相同,默认会被丢弃。两种语言写法相同的人名/术语场景下可开启。",

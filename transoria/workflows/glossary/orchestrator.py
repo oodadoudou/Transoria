@@ -52,6 +52,7 @@ from transoria.workflows.glossary.combine import combine_glossary_records
 from transoria.workflows.glossary.config import GlossaryConfig
 from transoria.workflows.glossary.exporters import (
     glossary_basename,
+    purge_glossary_artifacts,
     write_glossary_artifacts,
     write_glossary_decode_issues,
 )
@@ -284,7 +285,6 @@ class GlossaryOrchestrator:
 
         glossary_outputs_per_file: list[GlossaryArtifactSet] = []
         failed_files: list[GlossaryFailedFile] = []
-        all_records: list[GlossaryRecord] = []
         per_file_record_groups: list[tuple[GlossaryRecord, ...]] = []
         per_file_record_count = 0
 
@@ -331,32 +331,36 @@ class GlossaryOrchestrator:
                     )
                 )
                 continue
-            xlsx_path, json_path, references_path = write_glossary_artifacts(
-                records,
-                config.output_dir,
-                source_path=source_file,
-            )
-            glossary_outputs_per_file.append(
-                GlossaryArtifactSet(
-                    novel_name=source_file.stem,
-                    xlsx_path=xlsx_path,
-                    json_path=json_path,
-                    references_path=references_path,
+            if not config.combine_folder_glossary:
+                xlsx_path, json_path, references_path = write_glossary_artifacts(
+                    records,
+                    config.output_dir,
                     source_path=source_file,
-                    decode_issue_path=decode_issue_path,
                 )
-            )
-            all_records.extend(records)
+                glossary_outputs_per_file.append(
+                    GlossaryArtifactSet(
+                        novel_name=source_file.stem,
+                        xlsx_path=xlsx_path,
+                        json_path=json_path,
+                        references_path=references_path,
+                        source_path=source_file,
+                        decode_issue_path=decode_issue_path,
+                    )
+                )
             per_file_record_groups.append(records)
             per_file_record_count += len(records)
 
         combined_output: GlossaryArtifactSet | None = None
-        if config.combine_folder_glossary and len(per_file_record_groups) > 1:
+        if config.combine_folder_glossary and per_file_record_groups:
             combined = combine_glossary_records(
                 per_file_record_groups,
                 reference_example_limit=config.reference_example_limit,
             )
             if combined:
+                purge_glossary_artifacts(
+                    config.output_dir,
+                    source_paths=tuple(source_segments_by_file.keys()),
+                )
                 # Use the input folder's name as the basename for the combined
                 # artifact set. Falls back to "Combined" when the input dir
                 # has no descriptive name (e.g. ``/`` or ``.``).
