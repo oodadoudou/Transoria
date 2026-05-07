@@ -223,8 +223,8 @@ def merge_epub_files(
     output = output_path.expanduser().resolve()
     tmp_output: Path | None = None
     try:
-        if len(selected) < 2:
-            raise ValueError("at least two EPUB files are required for merge")
+        if not selected:
+            raise ValueError("at least one EPUB file is required")
         for action in selected:
             source = Path(action.source_path).expanduser().resolve()
             if not source.exists() or not source.is_file():

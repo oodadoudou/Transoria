@@ -285,7 +285,7 @@ export function EpubMergePage() {
           </Pill>
           <Pill
             onClick={handleExecute}
-            disabled={!inputDir || selectedCount < 2 || isRunning}
+            disabled={!inputDir || selectedCount < 1 || isRunning}
           >
             {text.execute}
           </Pill>

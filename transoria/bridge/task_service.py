@@ -2489,9 +2489,9 @@ class TaskService:
             for action in (EpubMergeAction.from_mapping(raw) for raw in actions)
             if action.selected
         )
-        if len(selected_actions) < 2:
+        if not selected_actions:
             raise BridgeError.invalid_argument(
-                "at least two EPUB files must be selected.",
+                "at least one EPUB file must be selected.",
                 field="actions",
             )
         if output_path.strip() or config.output_path.strip():
