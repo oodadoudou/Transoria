@@ -1282,9 +1282,13 @@ class TaskService:
                     details={"task_id": task_id, "status": snapshot.record.status.value},
                 )
             snapshot = self._reconcile_zombie(snapshot, self.cache)
-        if snapshot.record.status is not TaskStatus.COMPLETED:
+        if snapshot.record.status not in {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.STOPPED,
+        }:
             raise BridgeError.conflict(
-                "retranslate is only available after translation completes.",
+                "retranslate is only available after translation stops or completes.",
                 details={"task_id": task_id, "status": snapshot.record.status.value},
             )
 

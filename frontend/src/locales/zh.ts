@@ -220,7 +220,7 @@ export const zh: Messages = {
     savedTo: "已保存至",
     cacheLabel: "任务缓存",
     cacheHint:
-      "翻译/术语提取/批量替换 任务的进度缓存。保留它们可以在重启后恢复未跑完的任务、进入校对页查看历史译文。可在此处一键清理。",
+      "翻译/术语提取/批量替换 任务的进度缓存。保留它们可以在重启后恢复未跑完的任务、进入校对页查看已结束任务的译文。可在此处一键清理。",
     cacheOpenAction: "打开目录",
     cacheManageAction: "清理缓存",
     cacheSummary: "已保存 {count} 个任务，占用 {size}。",
@@ -636,8 +636,8 @@ export const zh: Messages = {
     },
     proofreadingPage: {
       title: "校对",
-      sub: "对已完成翻译的任务进行人工校对。修改即写入缓存，点击「重新生成输出」时把最新译文回写到原 epub / txt 文件（覆盖）。",
-      noTasks: "暂无可校对的任务。完成一次翻译后这里会出现入口。",
+      sub: "对已结束的翻译任务进行人工校对；失败或停止的任务也可先校对当前结果。修改即写入缓存，点击「重新生成输出」时把最新译文回写到原 epub / txt 文件（覆盖）。",
+      noTasks: "暂无可校对的任务。翻译完成、失败或停止后这里会出现入口。",
       taskPicker: "选择任务",
       loading: "加载中…",
       regenerateAction: "重新生成输出",

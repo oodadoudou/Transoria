@@ -29,6 +29,10 @@ from transoria.bridge.task_service import (
 from transoria.domain import Language, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
 
+_PROOFREADABLE_TRANSLATION_STATUSES = frozenset(
+    {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED}
+)
+
 
 def _segment_sort_key(segment_id: str) -> tuple[int, int]:
     """Sort items by ``(file_index, segment_index)`` so the校对 table
@@ -72,7 +76,7 @@ def _collect_translations_from_cache(snapshot) -> dict[str, str]:
 
 
 def _build_handlers(service: TaskService) -> dict[str, object]:
-    def require_completed_translation_task(task_id: str):
+    def require_proofreadable_translation_task(task_id: str):
         try:
             snapshot = service.cache.load(task_id)
         except TaskNotFoundError as exc:
@@ -85,9 +89,9 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 f"task {task_id!r} is not a translation task.",
                 details={"task_id": task_id},
             )
-        if snapshot.record.status is not TaskStatus.COMPLETED:
+        if snapshot.record.status not in _PROOFREADABLE_TRANSLATION_STATUSES:
             raise BridgeError.conflict(
-                "proofreading is only available after translation completes.",
+                "proofreading is only available after translation stops or completes.",
                 details={"task_id": task_id, "status": snapshot.record.status.value},
             )
         return snapshot
@@ -106,7 +110,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 snapshot = service.cache.load(task_id)
             except (TaskNotFoundError, OSError, ValueError):
                 continue
-            if snapshot.record.status is not TaskStatus.COMPLETED:
+            if snapshot.record.status not in _PROOFREADABLE_TRANSLATION_STATUSES:
                 continue
             if not snapshot.subtasks:
                 continue
@@ -115,7 +119,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
 
     def load_snapshot(payload: Mapping[str, object]) -> dict[str, object]:
         task_id = expect_string(payload, "task_id")
-        snapshot = require_completed_translation_task(task_id)
+        snapshot = require_proofreadable_translation_task(task_id)
 
         # Aggregate per-segment data across subtasks. Latest write wins
         # (split children override the parent) so edits via update_segment
@@ -210,7 +214,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 "dst must be a string.",
                 field="dst",
             )
-        snapshot = require_completed_translation_task(task_id)
+        snapshot = require_proofreadable_translation_task(task_id)
 
         # Find every subtask whose request_payload owns this segment_id.
         # When a parent has been split, both the (SKIPPED) parent and
@@ -286,7 +290,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
 
         task_id = expect_string(payload, "task_id")
         export_bilingual = bool(payload.get("bilingual", False))
-        snapshot = require_completed_translation_task(task_id)
+        snapshot = require_proofreadable_translation_task(task_id)
 
         # Pull the original folder pair + language from the cache
         # record, not the current settings — proofreading is decoupled

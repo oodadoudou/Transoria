@@ -228,7 +228,7 @@ export const en: Messages = {
     savedTo: "Saved to",
     cacheLabel: "Task cache",
     cacheHint:
-      "Per-task progress for translation, glossary, and batch replacement. Keeping caches lets you resume interrupted runs and open the proofreading view for completed runs. Clean up here when disk usage grows.",
+      "Per-task progress for translation, glossary, and batch replacement. Keeping caches lets you resume interrupted runs and open the proofreading view for settled translation tasks. Clean up here when disk usage grows.",
     cacheOpenAction: "Open folder",
     cacheManageAction: "Manage cache",
     cacheSummary: "{count} tasks · {size} on disk.",
@@ -650,8 +650,8 @@ export const en: Messages = {
     },
     proofreadingPage: {
       title: "Proofreading",
-      sub: "Review and edit translations from completed runs. Edits write to cache immediately. Click 'Regenerate output' to re-emit the original .epub / .txt files in place (overwrite).",
-      noTasks: "No tasks available for proofreading. Run a translation first.",
+      sub: "Review and edit translations from settled runs; failed or stopped runs can be reviewed with their current results. Edits write to cache immediately. Click 'Regenerate output' to re-emit the original .epub / .txt files in place (overwrite).",
+      noTasks: "No tasks available for proofreading. Run, stop, or finish a translation first.",
       taskPicker: "Select task",
       loading: "Loading…",
       regenerateAction: "Regenerate output",
