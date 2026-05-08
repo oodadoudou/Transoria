@@ -279,6 +279,7 @@ export interface ProofreadingItem {
   dst: string;
   low_confidence: boolean;
   reasons?: string[];
+  subtask_ids?: string[];
   /** Optional per-segment classification tags such as source residue or
    * possible adjacent duplicate translation. */
   tags?: string[];

@@ -33,7 +33,12 @@ def write_subtask_debug_log(
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                default=str,
+            ),
             encoding="utf-8",
         )
     except OSError:

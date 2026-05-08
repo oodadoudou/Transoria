@@ -84,6 +84,7 @@ export interface Messages {
     confirmStartConfirm: string;
     confirmStartCancel: string;
     restartHint: string;
+    continueHint: string;
     taskControls: string;
   };
   bilingual: {
@@ -535,6 +536,7 @@ export interface Messages {
       filterOnlyTooLong: string;
       filterOnlyFormatRescue: string;
       filterAll: string;
+      nextRiskAction: string;
       replacementToggle: string;
       replacementFindPlaceholder: string;
       replacementValuePlaceholder: string;
@@ -549,12 +551,17 @@ export interface Messages {
       replacementDone: string;
       taskFolderHint: string;
       retranslateAction: string;
+      retranslateSelectedAction: string;
       retranslating: string;
       retranslateSuccess: string;
+      retranslateSelectedDone: string;
+      retranslateSaveDirtyFirst: string;
       retranslateFailed: string;
       retranslateStale: string;
       retranslateTimeout: string;
       retranslateRejectedRunning: string;
+      selectRowLabel: string;
+      subtaskHint: string;
     };
   };
   glossary: {

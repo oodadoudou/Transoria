@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { format, useMessages } from "@/locales";
 import {
   BridgeError,
@@ -13,6 +13,7 @@ import {
 } from "@/store/useTaskStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { useVirtualWindow } from "@/hooks/useVirtualWindow";
 import styles from "./ProofreadingPage.module.css";
 
 type FeedbackKind = "info" | "error" | "success";
@@ -70,6 +71,30 @@ function hasReason(item: ProofreadingItem, ...needles: string[]): boolean {
   );
 }
 
+function riskRank(item: ProofreadingItem): number {
+  if (item.tags?.includes("source_residue")) return 0;
+  if (item.tags?.includes("possible_duplicate")) return 1;
+  if (isUntranslated(item)) return 2;
+  if (item.low_confidence) return 3;
+  return 4;
+}
+
+function segmentSortKey(segmentId: string): [number, number] {
+  const [file, segment] = segmentId.split(":", 2);
+  const fileIndex = Number.parseInt(file ?? "0", 10);
+  const segmentIndex = Number.parseInt(segment ?? "0", 10);
+  return [
+    Number.isFinite(fileIndex) ? fileIndex : 0,
+    Number.isFinite(segmentIndex) ? segmentIndex : 0,
+  ];
+}
+
+function compareSegmentIds(left: string, right: string): number {
+  const [leftFile, leftSegment] = segmentSortKey(left);
+  const [rightFile, rightSegment] = segmentSortKey(right);
+  return leftFile - rightFile || leftSegment - rightSegment;
+}
+
 function formatRegenerateFailure(
   file: RegenerateFailedFile,
   messages: ReturnType<typeof useMessages>["translation"]["proofreadingPage"],
@@ -104,6 +129,12 @@ export function ProofreadingPage() {
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null,
   );
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(
+    null,
+  );
   const [draftDst, setDraftDst] = useState<string>("");
   const [search, setSearch] = useState("");
   const [replacementEnabled, setReplacementEnabled] = useState(false);
@@ -132,9 +163,7 @@ export function ProofreadingPage() {
   const [inflightRetranslates, setInflightRetranslates] = useState<
     Record<string, string>
   >({});
-  const tableBodyRef = useRef<HTMLDivElement | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(600);
+  const [batchRetranslating, setBatchRetranslating] = useState(false);
 
   // Initial: load task list.
   useEffect(() => {
@@ -182,12 +211,17 @@ export function ProofreadingPage() {
     let cancelled = false;
     setLoading(true);
     setSelectedSegmentId(null);
+    setSelectedSegmentIds(new Set());
+    setSelectionAnchorId(null);
     proofreadingBridge
       .loadSnapshot(activeTaskId)
       .then((next) => {
         if (cancelled) return;
         setSnapshot(next);
-        setSelectedSegmentId(next.items[0]?.segment_id ?? null);
+        const firstId = next.items[0]?.segment_id ?? null;
+        setSelectedSegmentId(firstId);
+        setSelectionAnchorId(firstId);
+        setSelectedSegmentIds(firstId ? new Set([firstId]) : new Set());
       })
       .catch((err) => {
         if (cancelled) return;
@@ -222,58 +256,62 @@ export function ProofreadingPage() {
   const filteredItems = useMemo(() => {
     if (!snapshot) return [] as ProofreadingItem[];
     const q = search.trim().toLowerCase();
-    return snapshot.items.filter((item) => {
-      if (filters.has("low_conf") && !item.low_confidence) return false;
-      if (
-        filters.has("source_residue") &&
-        !item.tags?.includes("source_residue")
-      )
-        return false;
-      if (
-        filters.has("possible_duplicate") &&
-        !item.tags?.includes("possible_duplicate")
-      )
-        return false;
-      if (filters.has("untranslated") && !isUntranslated(item)) return false;
-      if (filters.has("too_short") && !hasReason(item, "length ratio", "< min")) {
-        return false;
-      }
-      if (filters.has("too_long") && !hasReason(item, "length ratio", "> max")) {
-        return false;
-      }
-      if (
-        filters.has("format_rescue") &&
-        !hasReason(item, "positional_rescue_after_format_failure")
-      ) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        item.src.toLowerCase().includes(q) || item.dst.toLowerCase().includes(q)
+    return [...snapshot.items]
+      .filter((item) => {
+        if (filters.has("low_conf") && !item.low_confidence) return false;
+        if (
+          filters.has("source_residue") &&
+          !item.tags?.includes("source_residue")
+        )
+          return false;
+        if (
+          filters.has("possible_duplicate") &&
+          !item.tags?.includes("possible_duplicate")
+        )
+          return false;
+        if (filters.has("untranslated") && !isUntranslated(item)) return false;
+        if (
+          filters.has("too_short") &&
+          !hasReason(item, "length ratio", "< min")
+        ) {
+          return false;
+        }
+        if (
+          filters.has("too_long") &&
+          !hasReason(item, "length ratio", "> max")
+        ) {
+          return false;
+        }
+        if (
+          filters.has("format_rescue") &&
+          !hasReason(item, "positional_rescue_after_format_failure")
+        ) {
+          return false;
+        }
+        if (!q) return true;
+        return (
+          item.src.toLowerCase().includes(q) ||
+          item.dst.toLowerCase().includes(q)
+        );
+      })
+      .sort(
+        (left, right) =>
+          riskRank(left) - riskRank(right) ||
+          compareSegmentIds(left.segment_id, right.segment_id),
       );
-    });
   }, [snapshot, search, filters]);
 
   const dirty = selectedItem !== null && draftDst !== (selectedItem?.dst ?? "");
 
   const ROW_HEIGHT = 48;
-  const OVERSCAN = 8;
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const endIndex = Math.min(
-    filteredItems.length,
-    Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
-  );
+  const virtual = useVirtualWindow({
+    count: filteredItems.length,
+    rowHeight: ROW_HEIGHT,
+  });
+  const startIndex = virtual.startIndex;
+  const endIndex = virtual.endIndex;
   const visibleItems = filteredItems.slice(startIndex, endIndex);
-
-  useEffect(() => {
-    const el = tableBodyRef.current;
-    if (!el) return;
-    const update = () => setViewportHeight(el.clientHeight);
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  const selectedCount = selectedSegmentIds.size;
 
   const handleSave = async () => {
     if (!activeTaskId || !selectedItem || !dirty) return;
@@ -504,85 +542,90 @@ export function ProofreadingPage() {
     }
   };
 
-  const pollRetranslate = (segmentId: string, requestId: string) => {
-    const startedAt = Date.now();
-    const tick = async () => {
-      try {
-        const status = await proofreadingBridge.retranslateStatus(requestId);
-        if (status.status === "completed") {
-          setSnapshot((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  items: prev.items.map((it) =>
-                    it.segment_id === segmentId
-                      ? { ...it, dst: status.result_dst }
-                      : it,
-                  ),
-                }
-              : prev,
-          );
-          if (selectedSegmentId === segmentId) setDraftDst(status.result_dst);
-          setFeedback({ kind: "success", text: m.retranslateSuccess });
-          finish();
-          return;
-        }
-        if (status.status === "stale") {
-          setFeedback({ kind: "info", text: m.retranslateStale });
-          finish();
-          return;
-        }
-        if (status.status === "failed") {
+  const pollRetranslate = (
+    segmentId: string,
+    requestId: string,
+  ): Promise<"completed" | "stale" | "failed" | "timeout"> =>
+    new Promise((resolve) => {
+      const startedAt = Date.now();
+      const tick = async () => {
+        try {
+          const status = await proofreadingBridge.retranslateStatus(requestId);
+          if (status.status === "completed") {
+            setSnapshot((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    items: prev.items.map((it) =>
+                      it.segment_id === segmentId
+                        ? { ...it, dst: status.result_dst }
+                        : it,
+                    ),
+                  }
+                : prev,
+            );
+            if (selectedSegmentId === segmentId) setDraftDst(status.result_dst);
+            finish();
+            resolve("completed");
+            return;
+          }
+          if (status.status === "stale") {
+            finish();
+            resolve("stale");
+            return;
+          }
+          if (status.status === "failed") {
+            setFeedback({
+              kind: "error",
+              text: format(m.retranslateFailed, { reason: status.error }),
+            });
+            finish();
+            resolve("failed");
+            return;
+          }
+        } catch (err) {
           setFeedback({
             kind: "error",
-            text: format(m.retranslateFailed, { reason: status.error }),
+            text: format(m.retranslateFailed, {
+              reason: BridgeError.isBridgeError(err)
+                ? `${err.code}: ${err.message}`
+                : String(err),
+            }),
           });
           finish();
+          resolve("failed");
           return;
         }
-      } catch (err) {
-        setFeedback({
-          kind: "error",
-          text: format(m.retranslateFailed, {
-            reason: BridgeError.isBridgeError(err)
-              ? `${err.code}: ${err.message}`
-              : String(err),
-          }),
+        if (Date.now() - startedAt > 60_000) {
+          finish();
+          resolve("timeout");
+          return;
+        }
+        setTimeout(tick, 500);
+      };
+      const finish = () => {
+        setInflightRetranslates((prev) => {
+          const next = { ...prev };
+          delete next[segmentId];
+          return next;
         });
-        finish();
-        return;
-      }
-      if (Date.now() - startedAt > 60_000) {
-        setFeedback({ kind: "error", text: m.retranslateTimeout });
-        finish();
-        return;
-      }
-      setTimeout(tick, 500);
-    };
-    const finish = () => {
-      setInflightRetranslates((prev) => {
-        const next = { ...prev };
-        delete next[segmentId];
-        return next;
-      });
-    };
-    void tick();
-  };
+      };
+      void tick();
+    });
 
-  const handleRetranslate = async () => {
-    if (!activeTaskId || !selectedItem) return;
-    if (inflightRetranslates[selectedItem.segment_id]) return;
+  const runRetranslateSegment = async (segmentId: string) => {
+    if (!activeTaskId || inflightRetranslates[segmentId]) return "failed";
     setFeedback(null);
     try {
       const { request_id } = await proofreadingBridge.retranslateSegment(
         activeTaskId,
-        selectedItem.segment_id,
+        segmentId,
       );
       setInflightRetranslates((prev) => ({
         ...prev,
-        [selectedItem.segment_id]: request_id,
+        [segmentId]: request_id,
       }));
-      pollRetranslate(selectedItem.segment_id, request_id);
+      return await pollRetranslate(segmentId, request_id);
     } catch (err) {
       const text = BridgeError.isBridgeError(err)
         ? err.code === "bridge.conflict"
@@ -590,7 +633,117 @@ export function ProofreadingPage() {
           : `${err.code}: ${err.message}`
         : String(err);
       setFeedback({ kind: "error", text });
+      return "failed";
     }
+  };
+
+  const handleRetranslate = async () => {
+    if (!selectedItem) return;
+    const result = await runRetranslateSegment(selectedItem.segment_id);
+    if (result === "completed") {
+      setFeedback({ kind: "success", text: m.retranslateSuccess });
+    } else if (result === "stale") {
+      setFeedback({ kind: "info", text: m.retranslateStale });
+    } else if (result === "timeout") {
+      setFeedback({ kind: "error", text: m.retranslateTimeout });
+    }
+  };
+
+  const handleRetranslateSelected = async () => {
+    if (selectedSegmentIds.size === 0 || batchRetranslating) return;
+    if (dirty && selectedSegmentId && selectedSegmentIds.has(selectedSegmentId)) {
+      setFeedback({ kind: "error", text: m.retranslateSaveDirtyFirst });
+      return;
+    }
+    const ids = Array.from(selectedSegmentIds).sort(compareSegmentIds);
+    setBatchRetranslating(true);
+    let completedCount = 0;
+    let staleCount = 0;
+    let failedCount = 0;
+    try {
+      for (const segmentId of ids) {
+        const result = await runRetranslateSegment(segmentId);
+        if (result === "completed") completedCount += 1;
+        else if (result === "stale") staleCount += 1;
+        else failedCount += 1;
+      }
+      setFeedback({
+        kind: failedCount > 0 ? "error" : staleCount > 0 ? "info" : "success",
+        text: format(m.retranslateSelectedDone, {
+          done: completedCount,
+          stale: staleCount,
+          failed: failedCount,
+        }),
+      });
+    } finally {
+      setBatchRetranslating(false);
+    }
+  };
+
+  const handleRowSelect = (
+    segmentId: string,
+    event: MouseEvent,
+    forceToggle = false,
+  ) => {
+    setSelectedSegmentId(segmentId);
+    if (event.shiftKey && selectionAnchorId) {
+      const anchorIndex = filteredItems.findIndex(
+        (item) => item.segment_id === selectionAnchorId,
+      );
+      const targetIndex = filteredItems.findIndex(
+        (item) => item.segment_id === segmentId,
+      );
+      if (anchorIndex >= 0 && targetIndex >= 0) {
+        const [from, to] =
+          anchorIndex < targetIndex
+            ? [anchorIndex, targetIndex]
+            : [targetIndex, anchorIndex];
+        setSelectedSegmentIds(
+          new Set(filteredItems.slice(from, to + 1).map((item) => item.segment_id)),
+        );
+        return;
+      }
+    }
+    if (event.metaKey || event.ctrlKey || forceToggle) {
+      setSelectedSegmentIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(segmentId) && next.size > 1) {
+          next.delete(segmentId);
+        } else {
+          next.add(segmentId);
+        }
+        return next;
+      });
+      setSelectionAnchorId(segmentId);
+      return;
+    }
+    setSelectedSegmentIds(new Set([segmentId]));
+    setSelectionAnchorId(segmentId);
+  };
+
+  const selectSingleSegment = (segmentId: string) => {
+    setSelectedSegmentId(segmentId);
+    setSelectedSegmentIds(new Set([segmentId]));
+    setSelectionAnchorId(segmentId);
+  };
+
+  const handleSelectNextRisk = () => {
+    if (filteredItems.length === 0) return;
+    const currentIndex = filteredItems.findIndex(
+      (item) => item.segment_id === selectedSegmentId,
+    );
+    const start = currentIndex >= 0 ? currentIndex + 1 : 0;
+    const ordered = [
+      ...filteredItems.slice(start),
+      ...filteredItems.slice(0, start),
+    ];
+    const next = ordered.find((item) => riskRank(item) < 4);
+    if (!next) return;
+    const nextIndex = filteredItems.findIndex(
+      (item) => item.segment_id === next.segment_id,
+    );
+    selectSingleSegment(next.segment_id);
+    if (nextIndex >= 0) virtual.scrollToIndex(nextIndex);
   };
 
   if (tasks !== null && tasks.length === 0) {
@@ -717,6 +870,14 @@ export function ProofreadingPage() {
           >
             {m.filterOnlyFormatRescue}
           </button>
+          <button
+            type="button"
+            className={styles.filterChip}
+            onClick={handleSelectNextRisk}
+            disabled={!filteredItems.some((item) => riskRank(item) < 4)}
+          >
+            {m.nextRiskAction}
+          </button>
         </span>
       </div>
 
@@ -785,15 +946,15 @@ export function ProofreadingPage() {
       <div className={styles.layout}>
         <div className={styles.tableContainer}>
           <div className={styles.tableHead}>
-            <span>{m.columns.index}</span>
+          <span>{m.columns.index}</span>
             <span>{m.columns.src}</span>
             <span>{m.columns.dst}</span>
             <span>{m.columns.status}</span>
           </div>
           <div
             className={styles.tableBody}
-            ref={tableBodyRef}
-            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+            ref={virtual.containerRef}
+            onScroll={virtual.handleScroll}
           >
             {loading ? (
               <div className={styles.empty}>{m.loading}</div>
@@ -802,12 +963,13 @@ export function ProofreadingPage() {
             ) : (
               <div
                 style={{
-                  height: filteredItems.length * ROW_HEIGHT,
+                  height: virtual.totalHeight,
                   position: "relative",
                 }}
               >
                 {visibleItems.map((item, i) => {
                   const active = item.segment_id === selectedSegmentId;
+                  const selected = selectedSegmentIds.has(item.segment_id);
                   const status = item.dst
                     ? item.low_confidence
                       ? "low"
@@ -816,19 +978,32 @@ export function ProofreadingPage() {
                   return (
                     <div
                       key={item.segment_id}
-                      className={`${styles.row} ${active ? styles.rowActive : ""}`.trim()}
+                      className={`${styles.row} ${selected ? styles.rowSelected : ""} ${active ? styles.rowActive : ""}`.trim()}
                       style={{
                         position: "absolute",
-                        top: (startIndex + i) * ROW_HEIGHT,
+                        top: virtual.topForIndex(startIndex + i),
                         left: 0,
                         right: 0,
                       }}
-                      onClick={() => setSelectedSegmentId(item.segment_id)}
+                      onClick={(event) => handleRowSelect(item.segment_id, event)}
                     >
                       <span
                         className={`${styles.cell} ${styles.cellIndex}`.trim()}
                       >
-                        {item.segment_id}
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          readOnly
+                          tabIndex={-1}
+                          aria-label={format(m.selectRowLabel, {
+                            id: item.segment_id,
+                          })}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRowSelect(item.segment_id, event, true);
+                          }}
+                        />
+                        <span>{item.segment_id}</span>
                       </span>
                       <span className={styles.cell}>{item.src}</span>
                       <span className={styles.cell}>{item.dst || "—"}</span>
@@ -912,11 +1087,29 @@ export function ProofreadingPage() {
                     ? m.retranslating
                     : m.retranslateAction}
                 </Pill>
+                <Pill
+                  variant="ghost"
+                  onClick={() => void handleRetranslateSelected()}
+                  disabled={batchRetranslating || selectedCount === 0}
+                >
+                  {batchRetranslating
+                    ? m.retranslating
+                    : format(m.retranslateSelectedAction, {
+                        n: selectedCount,
+                      })}
+                </Pill>
                 <Pill onClick={() => void handleSave()} disabled={!dirty}>
                   {m.editorSaveAction}
                 </Pill>
               </span>
             </div>
+            {selectedItem.subtask_ids?.length ? (
+              <div className={styles.debugHint}>
+                {format(m.subtaskHint, {
+                  ids: selectedItem.subtask_ids.join(", "),
+                })}
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className={styles.editorEmpty}>{m.editorEmpty}</div>

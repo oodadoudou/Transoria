@@ -869,6 +869,9 @@ def _default_runner_factory(
         stream=config.stream,
         debug_log_dir=config.debug_log_dir,
         fake_name_roster=config.fake_name_roster,
+        solo_retry_limiter=asyncio.Semaphore(
+            max(1, min(4, config.model.concurrency_limit))
+        ),
     )
 
 

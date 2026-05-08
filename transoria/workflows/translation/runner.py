@@ -9,6 +9,7 @@ preprocessed strings and translation results.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass
@@ -265,6 +266,7 @@ class TranslationSubtaskRunner:
     stream: bool = False
     debug_log_dir: Path | None = None
     fake_name_roster: FakeNameRoster | FakeNameSession | None = None
+    solo_retry_limiter: asyncio.Semaphore | None = None
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
@@ -476,10 +478,17 @@ class TranslationSubtaskRunner:
                         )
 
                     try:
-                        solo_response = await retry_async(
-                            _solo_llm_call,
-                            model=self.model,
-                        )
+                        if self.solo_retry_limiter is None:
+                            solo_response = await retry_async(
+                                _solo_llm_call,
+                                model=self.model,
+                            )
+                        else:
+                            async with self.solo_retry_limiter:
+                                solo_response = await retry_async(
+                                    _solo_llm_call,
+                                    model=self.model,
+                                )
                     except LlmRequestError as exc:
                         if not is_transient_llm_error(exc):
                             raise

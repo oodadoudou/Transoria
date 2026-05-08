@@ -91,6 +91,8 @@ export const en: Messages = {
     confirmStartConfirm: "Start fresh",
     confirmStartCancel: "Cancel",
     restartHint: "Click {count} more time(s) to re-run",
+    continueHint:
+      "Continue only reruns {failed} failed / {pending} unfinished chunks.",
     taskControls: "Task controls",
   },
   bilingual: {
@@ -707,6 +709,7 @@ export const en: Messages = {
       filterOnlyTooLong: "Too long",
       filterOnlyFormatRescue: "Format rescue",
       filterAll: "All",
+      nextRiskAction: "Next risk",
       replacementToggle: "Batch replacement",
       replacementFindPlaceholder: "Find in translations…",
       replacementValuePlaceholder: "Replace with…",
@@ -721,14 +724,21 @@ export const en: Messages = {
       replacementDone: "Replaced {n} items and saved to cache.",
       taskFolderHint: "Output: {path}",
       retranslateAction: "Retranslate",
+      retranslateSelectedAction: "Retranslate {n} selected",
       retranslating: "Retranslating…",
       retranslateSuccess: "Retranslated and saved to cache.",
+      retranslateSelectedDone:
+        "Batch retranslate finished: {done} completed, {stale} discarded, {failed} failed.",
+      retranslateSaveDirtyFirst:
+        "The current selected translation has unsaved edits. Save it before batch retranslating.",
       retranslateFailed: "Retranslate failed: {reason}",
       retranslateStale:
         "You edited this segment manually; LLM result discarded.",
       retranslateTimeout: "Retranslate timed out; try again later.",
       retranslateRejectedRunning:
         "Task is running; stop it before retranslating.",
+      selectRowLabel: "Select {id}",
+      subtaskHint: "Source subtask(s): {ids}",
     },
   },
   glossary: {

@@ -203,6 +203,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         # repeat it. Use the first occurrence for source text — they all
         # share the same `original_text` slot anyway.
         seen: dict[str, dict[str, object]] = {}
+        seg_subtasks: dict[str, list[str]] = {}
         for subtask in snapshot.subtasks:
             req = subtask.request_payload or {}
             segments = req.get("segments", [])
@@ -214,6 +215,9 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 seg_id = segment.get("segment_id")
                 if not isinstance(seg_id, str):
                     continue
+                owners = seg_subtasks.setdefault(seg_id, [])
+                if subtask.id not in owners:
+                    owners.append(subtask.id)
                 if seg_id in seen:
                     continue
                 src = str(segment.get("original_text", ""))
@@ -232,6 +236,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     "src": src,
                     "dst": dst,
                     "low_confidence": seg_id in low_conf_ids,
+                    "subtask_ids": owners,
                 }
                 tags_for_seg = seg_tags.get(seg_id)
                 if tags_for_seg:

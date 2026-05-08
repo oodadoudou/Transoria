@@ -298,6 +298,13 @@ export function RunControls({ kind }: RunControlsProps) {
           {labels.restartHint.replace("{count}", String(restartRemaining))}
         </p>
       ) : null}
+      {canContinue ? (
+        <p className={styles.hint} role="status">
+          {labels.continueHint
+            .replace("{failed}", String(probe.failed))
+            .replace("{pending}", String(probe.pending))}
+        </p>
+      ) : null}
       {confirmOpen ? (
         <ConfirmStartDialog
           title={labels.confirmStartTitle}
