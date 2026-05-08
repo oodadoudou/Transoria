@@ -1072,6 +1072,7 @@ def _process_html(
     new_href: str,
     resource_map: Mapping[str, str],
 ) -> str:
+    html_text = _trim_to_html_document_start_text(html_text)
     html_text = _replace_named_entities(html_text)
     html_text = re.sub(r";{2,}", ";", html_text)
     base_dir = _join_href(opf_dir, str(Path(href).parent))
@@ -1102,6 +1103,22 @@ def _process_html(
         return f'url("{rel}")'
 
     return re.sub(r"url\s*\(\s*[\"']?([^\"'()]+?)[\"']?\s*\)", replace_style_url, html_text, flags=re.IGNORECASE)
+
+
+def _trim_to_html_document_start_text(text: str) -> str:
+    lowered = text.lower()
+    marker_positions = [
+        pos
+        for marker in ("<?xml", "<!doctype", "<html")
+        for pos in [lowered.find(marker)]
+        if pos >= 0
+    ]
+    if not marker_positions:
+        return text
+    start = min(marker_positions)
+    if not text[:start].lstrip("\ufeff").strip():
+        return text
+    return text[start:]
 
 
 def _replace_named_entities(text: str) -> str:

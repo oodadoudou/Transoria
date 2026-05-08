@@ -453,6 +453,7 @@ def build_has_block_descendant_map(root: etree._Element) -> dict[etree._Element,
 
 
 def parse_xhtml_or_html(raw: bytes) -> etree._Element:
+    raw = trim_to_html_document_start(raw)
     try:
         return etree.fromstring(raw, parser=etree.XMLParser(recover=False, resolve_entities=True, no_network=True))
     except Exception:
@@ -468,6 +469,23 @@ def parse_xhtml_or_html(raw: bytes) -> etree._Element:
         return etree.fromstring(raw, parser=etree.HTMLParser(recover=True))
     except Exception as exc:
         raise ValueError("Failed to parse html/xhtml") from exc
+
+
+def trim_to_html_document_start(raw: bytes) -> bytes:
+    lowered = raw.lower()
+    marker_positions = [
+        pos
+        for marker in (b"<?xml", b"<!doctype", b"<html")
+        for pos in [lowered.find(marker)]
+        if pos >= 0
+    ]
+    if not marker_positions:
+        return raw
+    start = min(marker_positions)
+    prefix = raw[:start].lstrip(b"\xef\xbb\xbf").strip()
+    if not prefix:
+        return raw
+    return raw[start:]
 
 
 def parse_ncx_xml(raw: bytes) -> etree._Element:
