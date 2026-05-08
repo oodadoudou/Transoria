@@ -5,9 +5,13 @@
   <strong><a href="#english">English</a></strong>
 </p>
 
-![Model library / 模型库](assets/demo/model_page.jpg)
+![Translation run - Chinese UI / 翻译运行](assets/demo/translation-run-zh.jpg)
 
-![Translation run / 翻译运行](assets/demo/translate_run.jpg)
+![Term review - Chinese UI / 术语校对](assets/demo/term-review-zh.jpg)
+
+![Translation run - English UI](assets/demo/translation-run-en.jpg)
+
+![Term review - English UI](assets/demo/term-review-en.jpg)
 
 ---
 
