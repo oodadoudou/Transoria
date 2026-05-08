@@ -209,6 +209,13 @@
   border: 1px solid #d6a36b;
 }
 
+.statusDuplicate {
+  margin-left: 4px;
+  background: #f3eefc;
+  color: #6b3fa0;
+  border: 1px solid #b69ad8;
+}
+
 .statusEmpty {
   background: #fff;
   color: #b04038;

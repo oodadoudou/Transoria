@@ -14,7 +14,9 @@ later iteration) will, but a regular edit is a deterministic JSON patch.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -32,6 +34,12 @@ from transoria.runtime.cache import TaskNotFoundError
 _PROOFREADABLE_TRANSLATION_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED}
 )
+_POSSIBLE_DUPLICATE_TAG = "possible_duplicate"
+_POSSIBLE_DUPLICATE_REASON = "adjacent_translation_possible_duplicate"
+_DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH = 12
+_DUPLICATE_SCAN_TRANSLATION_RATIO = 0.86
+_DUPLICATE_SCAN_SOURCE_RATIO = 0.55
+_TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
 
 
 def _segment_sort_key(segment_id: str) -> tuple[int, int]:
@@ -73,6 +81,43 @@ def _collect_translations_from_cache(snapshot) -> dict[str, str]:
             for seg_id, text in records.items():
                 translations[str(seg_id)] = str(text)
     return translations
+
+
+def _similarity(left: str, right: str) -> float:
+    left_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", left)
+    right_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", right)
+    if not left_norm or not right_norm:
+        return 0.0
+    return SequenceMatcher(None, left_norm, right_norm, autojunk=False).ratio()
+
+
+def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
+    for left, right in zip(items, items[1:]):
+        left_dst = str(left.get("dst", "")).strip()
+        right_dst = str(right.get("dst", "")).strip()
+        if (
+            len(left_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
+            or len(right_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
+        ):
+            continue
+        if _similarity(left_dst, right_dst) < _DUPLICATE_SCAN_TRANSLATION_RATIO:
+            continue
+        if (
+            _similarity(str(left.get("src", "")), str(right.get("src", "")))
+            >= _DUPLICATE_SCAN_SOURCE_RATIO
+        ):
+            continue
+        for item in (left, right):
+            item["low_confidence"] = True
+            tags = item.setdefault("tags", [])
+            if isinstance(tags, list) and _POSSIBLE_DUPLICATE_TAG not in tags:
+                tags.append(_POSSIBLE_DUPLICATE_TAG)
+            reasons = item.setdefault("reasons", [])
+            if (
+                isinstance(reasons, list)
+                and _POSSIBLE_DUPLICATE_REASON not in reasons
+            ):
+                reasons.append(_POSSIBLE_DUPLICATE_REASON)
 
 
 def _build_handlers(service: TaskService) -> dict[str, object]:
@@ -197,6 +242,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 seen[seg_id] = item
 
         items = sorted(seen.values(), key=lambda i: _segment_sort_key(str(i["segment_id"])))
+        _tag_possible_adjacent_duplicates(items)
         return {
             "task_id": task_id,
             "task_status": snapshot.record.status.value,

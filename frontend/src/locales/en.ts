@@ -681,6 +681,9 @@ export const en: Messages = {
       statusSourceResidue: "Source residue",
       statusSourceResidueHint:
         "Translation kept source-language characters (Korean / Japanese / etc.) — manual review recommended.",
+      statusPossibleDuplicate: "Possible duplicate",
+      statusPossibleDuplicateHint:
+        "Adjacent source lines differ, but their translations are highly similar. Check for shifted or duplicated paragraphs.",
       editorEmpty: "Pick a row on the left to edit.",
       editorSrcLabel: "Source",
       editorDstLabel: "Translation",
@@ -692,11 +695,13 @@ export const en: Messages = {
         total: "{n} items",
         lowConfidence: "{n} low-confidence",
         sourceResidue: "{n} source-residue",
+        possibleDuplicate: "{n} possible duplicates",
         untranslated: "{n} untranslated",
       },
       filterPlaceholder: "Search source / target…",
       filterOnlyLowConfidence: "Low confidence",
       filterOnlySourceResidue: "Source residue",
+      filterOnlyPossibleDuplicate: "Possible duplicate",
       filterOnlyUntranslated: "Untranslated",
       filterOnlyTooShort: "Too short",
       filterOnlyTooLong: "Too long",

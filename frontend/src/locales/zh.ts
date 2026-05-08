@@ -667,6 +667,9 @@ export const zh: Messages = {
       statusSourceResidue: "原文残留",
       statusSourceResidueHint:
         "译文中保留了源语言字符（韩文/日文等），建议人工修正。",
+      statusPossibleDuplicate: "疑似重复",
+      statusPossibleDuplicateHint:
+        "相邻两段原文不同，但译文高度相似，建议检查是否发生段落错位或重复。",
       editorEmpty: "在左侧表格点选一条以编辑。",
       editorSrcLabel: "原文",
       editorDstLabel: "译文",
@@ -678,11 +681,13 @@ export const zh: Messages = {
         total: "共 {n} 条",
         lowConfidence: "{n} 低置信",
         sourceResidue: "{n} 原文残留",
+        possibleDuplicate: "{n} 疑似重复",
         untranslated: "{n} 未译",
       },
       filterPlaceholder: "搜索原文 / 译文…",
       filterOnlyLowConfidence: "低置信",
       filterOnlySourceResidue: "原文残留",
+      filterOnlyPossibleDuplicate: "疑似重复",
       filterOnlyUntranslated: "未译",
       filterOnlyTooShort: "过短",
       filterOnlyTooLong: "过长",

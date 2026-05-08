@@ -229,6 +229,11 @@ export function ProofreadingPage() {
         !item.tags?.includes("source_residue")
       )
         return false;
+      if (
+        filters.has("possible_duplicate") &&
+        !item.tags?.includes("possible_duplicate")
+      )
+        return false;
       if (filters.has("untranslated") && !isUntranslated(item)) return false;
       if (filters.has("too_short") && !hasReason(item, "length ratio", "< min")) {
         return false;
@@ -601,6 +606,9 @@ export function ProofreadingPage() {
   const residueCount =
     snapshot?.items.filter((item) => item.tags?.includes("source_residue"))
       .length ?? 0;
+  const possibleDuplicateCount =
+    snapshot?.items.filter((item) => item.tags?.includes("possible_duplicate"))
+      .length ?? 0;
   const untranslatedCount =
     snapshot?.items.filter((item) => isUntranslated(item)).length ?? 0;
   const totalCount = snapshot?.items.length ?? 0;
@@ -649,6 +657,7 @@ export function ProofreadingPage() {
           {format(m.stats.total, { n: totalCount })} ·{" "}
           {format(m.stats.lowConfidence, { n: lowConfCount })} ·{" "}
           {format(m.stats.sourceResidue, { n: residueCount })} ·{" "}
+          {format(m.stats.possibleDuplicate, { n: possibleDuplicateCount })} ·{" "}
           {format(m.stats.untranslated, { n: untranslatedCount })}
         </span>
         <span className={styles.filterChips}>
@@ -667,6 +676,14 @@ export function ProofreadingPage() {
             onClick={() => toggleFilter("source_residue")}
           >
             {m.filterOnlySourceResidue}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("possible_duplicate") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("possible_duplicate")}
+            onClick={() => toggleFilter("possible_duplicate")}
+          >
+            {m.filterOnlyPossibleDuplicate}
           </button>
           <button
             type="button"
@@ -837,6 +854,14 @@ export function ProofreadingPage() {
                             title={m.statusSourceResidueHint}
                           >
                             {m.statusSourceResidue}
+                          </span>
+                        ) : null}
+                        {item.tags?.includes("possible_duplicate") ? (
+                          <span
+                            className={`${styles.statusChip} ${styles.statusDuplicate}`}
+                            title={m.statusPossibleDuplicateHint}
+                          >
+                            {m.statusPossibleDuplicate}
                           </span>
                         ) : null}
                       </span>

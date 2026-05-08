@@ -162,6 +162,7 @@ export interface ModuleGlossaryRules {
 export type ProofreadingFilterKey =
   | "low_conf"
   | "source_residue"
+  | "possible_duplicate"
   | "untranslated"
   | "too_short"
   | "too_long"

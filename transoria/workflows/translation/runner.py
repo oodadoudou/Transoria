@@ -292,6 +292,7 @@ class TranslationSubtaskRunner:
 
         accumulated: dict[int, str] = {}
         rescued_indices: set[int] = set()
+        solo_retried_indices: set[int] = set()
         fallback_reasons_by_index: dict[int, str] = {}
         debug_attempts: list[dict[str, object]] = []
         metadata_by_index = {m.chunk_index: m for m in metadata}
@@ -439,6 +440,7 @@ class TranslationSubtaskRunner:
             # were echoed in the batch call usually get a real translation.
             still_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
             for meta, last_text, last_reasons in pending:
+                solo_retried_indices.add(meta.chunk_index)
                 current_text = last_text
                 current_reasons = last_reasons
                 for solo_round in range(self.low_confidence_max_retries):
@@ -572,6 +574,32 @@ class TranslationSubtaskRunner:
                 if tags:
                     entry["tags"] = tags
                 low_confidence.append(entry)
+
+            finalized_by_index = {
+                meta.chunk_index: finalized[meta.segment_id]
+                for meta in metadata
+                if meta.segment_id in finalized
+            }
+            post_retry_drift = set(
+                _detect_duplicate_drift(finalized_by_index, metadata)
+            )
+            if post_retry_drift:
+                unresolved = post_retry_drift - solo_retried_indices
+                if not unresolved:
+                    unresolved = post_retry_drift
+                for meta in metadata:
+                    if meta.chunk_index not in unresolved:
+                        continue
+                    finalized[meta.segment_id] = meta.original_text
+                    low_confidence.append(
+                        {
+                            "segment_id": meta.segment_id,
+                            "reasons": [
+                                "duplicate_drift_after_low_confidence_retry"
+                            ],
+                            "tags": ["source_residue"],
+                        }
+                    )
 
             payload: dict[str, object] = {
                 "version": SUBTASK_RESPONSE_VERSION,
@@ -793,6 +821,9 @@ _RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
 
 
 _DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 10
+_NEAR_DUPLICATE_DRIFT_MEDIUM_TEXT_LENGTH = 12
+_NEAR_DUPLICATE_MEDIUM_TRANSLATION_RATIO = 0.92
+_NEAR_DUPLICATE_MEDIUM_SOURCE_RATIO = 0.45
 _NEAR_DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 40
 _NEAR_DUPLICATE_TRANSLATION_RATIO = 0.70
 _NEAR_DUPLICATE_SOURCE_RATIO = 0.55
@@ -840,29 +871,29 @@ def _detect_duplicate_drift(
     items = [
         (idx, text.strip())
         for idx, text in translations_by_index.items()
-        if len(text.strip()) >= _NEAR_DUPLICATE_DRIFT_MIN_TEXT_LENGTH
+        if len(text.strip()) >= _NEAR_DUPLICATE_DRIFT_MEDIUM_TEXT_LENGTH
     ]
-    for left_pos, (left_idx, left_text) in enumerate(items):
+    items.sort(key=lambda item: item[0])
+    for (left_idx, left_text), (right_idx, right_text) in zip(items, items[1:]):
         left_meta = by_idx.get(left_idx)
-        if left_meta is None:
+        right_meta = by_idx.get(right_idx)
+        if left_meta is None or right_meta is None:
             continue
-        for right_idx, right_text in items[left_pos + 1:]:
-            right_meta = by_idx.get(right_idx)
-            if right_meta is None:
-                continue
-            if (
-                _text_similarity(left_text, right_text)
-                < _NEAR_DUPLICATE_TRANSLATION_RATIO
-            ):
-                continue
-            if (
-                _text_similarity(
-                    left_meta.original_text, right_meta.original_text
-                )
-                >= _NEAR_DUPLICATE_SOURCE_RATIO
-            ):
-                continue
-            suspicious.update((left_idx, right_idx))
+        translation_similarity = _text_similarity(left_text, right_text)
+        if len(left_text) >= _NEAR_DUPLICATE_DRIFT_MIN_TEXT_LENGTH:
+            translation_threshold = _NEAR_DUPLICATE_TRANSLATION_RATIO
+            source_threshold = _NEAR_DUPLICATE_SOURCE_RATIO
+        else:
+            translation_threshold = _NEAR_DUPLICATE_MEDIUM_TRANSLATION_RATIO
+            source_threshold = _NEAR_DUPLICATE_MEDIUM_SOURCE_RATIO
+        if translation_similarity < translation_threshold:
+            continue
+        if (
+            _text_similarity(left_meta.original_text, right_meta.original_text)
+            >= source_threshold
+        ):
+            continue
+        suspicious.update((left_idx, right_idx))
     return sorted(suspicious)
 
 

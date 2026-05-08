@@ -510,6 +510,8 @@ export interface Messages {
       statusEmpty: string;
       statusSourceResidue: string;
       statusSourceResidueHint: string;
+      statusPossibleDuplicate: string;
+      statusPossibleDuplicateHint: string;
       editorEmpty: string;
       editorSrcLabel: string;
       editorDstLabel: string;
@@ -521,11 +523,13 @@ export interface Messages {
         total: string;
         lowConfidence: string;
         sourceResidue: string;
+        possibleDuplicate: string;
         untranslated: string;
       };
       filterPlaceholder: string;
       filterOnlyLowConfidence: string;
       filterOnlySourceResidue: string;
+      filterOnlyPossibleDuplicate: string;
       filterOnlyUntranslated: string;
       filterOnlyTooShort: string;
       filterOnlyTooLong: string;
