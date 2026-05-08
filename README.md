@@ -5,21 +5,15 @@
   <strong><a href="#english">English</a></strong>
 </p>
 
-![Translation run - Chinese UI / 翻译运行](assets/demo/translation-run-zh.jpg)
-
-![Term review - Chinese UI / 术语校对](assets/demo/term-review-zh.jpg)
-
-![Translation run - English UI](assets/demo/translation-run-en.jpg)
-
-![Term review - English UI](assets/demo/term-review-en.jpg)
-
----
-
 ## 中文
 
 Transoria 是一个面向小说翻译的桌面应用：把 EPUB / TXT 小说交给它，得到翻译完成后的同结构输出。核心工作流包括 **术语提取**、**术语审查**、**翻译**、**校对**、**批量文本替换** 和 **EPUB 工具**。
 
 界面支持中英文切换。所有任务在本地运行，由你自己的 LLM API Key 调用模型。
+
+![翻译运行](assets/demo/translation-run-zh.jpg)
+
+![术语校对](assets/demo/term-review-zh.jpg)
 
 交流/问题反馈群 QQ：**1104197845**。欢迎加入，使用中遇到问题可以进群反馈。
 
@@ -125,6 +119,10 @@ Transoria is a desktop app for novel translation: provide EPUB / TXT novels and 
 The UI ships with both Chinese and English. All tasks run locally and call models via your own LLM API key.
 
 > The UI can be switched between Chinese and English from the top-right of the app.
+
+![Translation run](assets/demo/translation-run-en.jpg)
+
+![Term review](assets/demo/term-review-en.jpg)
 
 ### Copyright and Usage Notice
 
