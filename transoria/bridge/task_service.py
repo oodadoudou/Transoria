@@ -175,12 +175,17 @@ def _utc_now_iso() -> str:
 
 _CHUNK_SIZE_FLOOR = 8
 _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED = 32
+_TRANSLATION_CHUNK_CHAR_BUDGET = 12_000
 
 
 def _derive_chunk_size(input_token_limit: int) -> int:
     if input_token_limit <= 0:
         return _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED
     return max(_CHUNK_SIZE_FLOOR, input_token_limit // 16)
+
+
+def _count_source_chars(text: str) -> int:
+    return max(1, len(text))
 
 
 def _new_task_id(kind: str) -> str:
@@ -1602,6 +1607,8 @@ class TaskService:
             ),
             context_line_count=max(0, int(translation.context_lines)),
             chunk_size=_derive_chunk_size(model.input_token_limit),
+            chunk_token_limit=_TRANSLATION_CHUNK_CHAR_BUDGET,
+            token_counter=_count_source_chars,
             low_confidence_max_retries=max(
                 0, int(translation.low_confidence_max_retries)
             ),
