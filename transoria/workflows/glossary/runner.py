@@ -40,6 +40,7 @@ _FORMAT_RETRY_REMINDER = (
     "Output JSONLINE only. The first non-whitespace character must be \"{\". "
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
+_TRANSPORT_RETRY_BUDGET = 1
 
 
 def _output_contract_reminder(target_language: str) -> str:
@@ -143,7 +144,11 @@ class GlossarySubtaskRunner:
             return await retry_async(
                 operation,
                 model=self.model,
+                max_transport_retry_attempts=_TRANSPORT_RETRY_BUDGET,
                 should_retry=_should_retry_glossary,
+                is_format_retry_error=lambda exc: isinstance(
+                    exc, _GlossaryFormatRetry
+                ),
             )
         except _GlossaryFormatRetry as exc:
             if best_result is not None:

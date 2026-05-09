@@ -85,7 +85,9 @@ async def retry_async(
     *,
     model: ModelConfig,
     max_retry_attempts: int | None = None,
+    max_transport_retry_attempts: int | None = None,
     should_retry: Callable[[BaseException], bool] = is_transient_llm_error,
+    is_format_retry_error: Callable[[BaseException], bool] = _is_format_drift_error,
     sleep: Callable[[float], "asyncio.Future[None]"] = asyncio.sleep,
 ) -> T:
     """Run ``operation`` with exponential-backoff retries.
@@ -95,9 +97,11 @@ async def retry_async(
     is capped at ``min(2, model.retry_attempts)`` because more retries rarely
     self-heal a model that already produced semantically wrong output. Backoff
     doubles from ``retry_initial_backoff_seconds`` up to
-    ``retry_max_backoff_seconds``. ``max_retry_attempts`` lets callers cap
-    rescue paths below the profile-level budget without changing the user's
-    main-request retry policy. ``asyncio.CancelledError`` is re-raised verbatim.
+    ``retry_max_backoff_seconds``. ``max_retry_attempts`` caps every retry class;
+    ``max_transport_retry_attempts`` caps only transport-style retries so callers
+    can keep format self-repair without letting a wedged provider burn the full
+    profile-level budget. ``is_format_retry_error`` lets workflow-local format
+    errors share that budget. ``asyncio.CancelledError`` is re-raised verbatim.
     """
 
     retry_budget = model.retry_attempts
@@ -105,6 +109,10 @@ async def retry_async(
         retry_budget = min(retry_budget, max(0, max_retry_attempts))
     transport_remaining = max(0, retry_budget)
     format_remaining = min(_FORMAT_DRIFT_RETRY_BUDGET, transport_remaining)
+    if max_transport_retry_attempts is not None:
+        transport_remaining = min(
+            transport_remaining, max(0, max_transport_retry_attempts)
+        )
     backoff = max(0.0, model.retry_initial_backoff_seconds)
     max_backoff = max(backoff, model.retry_max_backoff_seconds)
 
@@ -116,7 +124,7 @@ async def retry_async(
         except BaseException as exc:
             if not should_retry(exc):
                 raise
-            if _is_format_drift_error(exc):
+            if is_format_retry_error(exc):
                 if format_remaining <= 0:
                     raise
                 format_remaining -= 1

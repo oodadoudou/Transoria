@@ -271,6 +271,13 @@ class GlossaryOrchestrator:
             self.on_executor_created(executor)
 
         snapshot = await executor.run(task_id)
+        if snapshot.record.status is TaskStatus.FAILED and _seed_split_rescue_subtasks(
+            self.cache,
+            snapshot,
+            config,
+            clock=self.clock,
+        ):
+            snapshot = await executor.run(task_id)
         if _stopped_after_all_subtasks_completed(snapshot):
             self.cache.save_task(
                 snapshot.record.with_status(TaskStatus.COMPLETED).with_updated_at(
@@ -494,6 +501,73 @@ def _stopped_after_all_subtasks_completed(snapshot: TaskSnapshot) -> bool:
         and progress.failed == 0
         and progress.completed == progress.total
     )
+
+
+def _seed_split_rescue_subtasks(
+    cache: TaskCache,
+    snapshot: TaskSnapshot,
+    config: GlossaryConfig,
+    *,
+    clock: ClockFn,
+) -> bool:
+    added = False
+    existing_ids = {subtask.id for subtask in snapshot.subtasks}
+    for subtask in snapshot.subtasks:
+        if subtask.status is not SubtaskStatus.FAILED:
+            continue
+        if ".s1." in subtask.id:
+            continue
+        if any(id_.startswith(f"{subtask.id}.s1.") for id_ in existing_ids):
+            continue
+        rescue_chunks = _split_failed_glossary_subtask(subtask, config)
+        if len(rescue_chunks) <= 1:
+            continue
+        child_ids: list[str] = []
+        for index, chunk in enumerate(rescue_chunks):
+            child_id = f"{subtask.id}.s1.{index}"
+            child_ids.append(child_id)
+            cache.save_subtask(
+                Subtask(
+                    id=child_id,
+                    task_id=subtask.task_id,
+                    status=SubtaskStatus.PENDING,
+                    request_payload=encode_glossary_payload(
+                        replace(chunk, chunk_id=child_id)
+                    ),
+                )
+            )
+            existing_ids.add(child_id)
+        cache.save_subtask(
+            replace(
+                subtask,
+                status=SubtaskStatus.SKIPPED,
+                last_error=f"split rescue seeded: {', '.join(child_ids)}",
+                last_error_at=clock(),
+            )
+        )
+        added = True
+    return added
+
+
+def _split_failed_glossary_subtask(
+    subtask: Subtask, config: GlossaryConfig
+) -> tuple[GlossaryChunk, ...]:
+    raw_source_file = subtask.request_payload.get("source_file")
+    text = str(subtask.request_payload.get("text", ""))
+    if not isinstance(raw_source_file, str) or not raw_source_file or not text.strip():
+        return ()
+    source_file = Path(raw_source_file)
+    use_tokens = config.token_counter is not None and config.chunk_token_limit > 0
+    child_token_limit = (
+        max(1, config.chunk_token_limit // 2) if use_tokens else config.chunk_token_limit
+    )
+    child_char_limit = max(1, config.chunk_char_limit // 2)
+    return build_glossary_chunks(
+        {source_file: (text,)},
+        chunk_char_limit=child_char_limit,
+        chunk_token_limit=child_token_limit,
+        token_counter=config.token_counter,
+    )
 # Aggregate
 
 
@@ -512,7 +586,7 @@ def _aggregate_candidates(
     for subtask in subtasks:
         if subtask.status is not SubtaskStatus.COMPLETED:
             continue
-        source_file = chunk_to_file.get(subtask.id)
+        source_file = chunk_to_file.get(subtask.id) or _subtask_source_file(subtask)
         if source_file is None:
             continue
         decoded_entries, decoded_issues = decode_glossary_subtask_response(
@@ -524,6 +598,13 @@ def _aggregate_candidates(
         {path: tuple(items) for path, items in candidates.items()},
         {path: tuple(items) for path, items in issues.items()},
     )
+
+
+def _subtask_source_file(subtask: Subtask) -> Path | None:
+    raw = subtask.request_payload.get("source_file")
+    if not isinstance(raw, str) or not raw:
+        return None
+    return Path(raw)
 
 
 __all__ = ["GlossaryArtifactSet", "GlossaryExtractionResult", "GlossaryOrchestrator"]
