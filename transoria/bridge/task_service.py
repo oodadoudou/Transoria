@@ -681,7 +681,7 @@ def _task_elapsed_seconds(record: TaskRecord) -> float:
     start = _parse_iso_timestamp(record.created_at)
     if start is None:
         return 0.0
-    if record.status in {TaskStatus.RUNNING, TaskStatus.PAUSING, TaskStatus.STOPPING}:
+    if record.status is TaskStatus.RUNNING:
         end = datetime.now(timezone.utc)
     else:
         end = _parse_iso_timestamp(record.updated_at) or datetime.now(timezone.utc)

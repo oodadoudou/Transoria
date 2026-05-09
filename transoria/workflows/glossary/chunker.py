@@ -49,6 +49,7 @@ _PAREN_RUBY_RE = re.compile(
     r"(?<=[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af])"
     r"[\(（]([\u3040-\u30ff\uac00-\ud7af]+)[\)）]"
 )
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[。！？!?…\.\n])\s*")
 
 
 def clean_glossary_source_text(text: str) -> str:
@@ -103,23 +104,24 @@ def build_glossary_chunks(
             # them before they pad chunks and inflate token cost.
             if is_translation_skippable(segment):
                 continue
-            join_cost = 1 if buffer else 0
-            segment_cost = cost(segment)
-            additional = segment_cost + join_cost
-            if buffer and buffer_cost + additional > budget:
-                chunks.append(
-                    GlossaryChunk(
-                        chunk_id=f"chunk-{chunk_index:05d}",
-                        source_file=source_file,
-                        text="\n".join(buffer),
+            for piece in _split_oversized_segment(segment, budget=budget, cost=cost):
+                join_cost = 1 if buffer else 0
+                segment_cost = cost(piece)
+                additional = segment_cost + join_cost
+                if buffer and buffer_cost + additional > budget:
+                    chunks.append(
+                        GlossaryChunk(
+                            chunk_id=f"chunk-{chunk_index:05d}",
+                            source_file=source_file,
+                            text="\n".join(buffer),
+                        )
                     )
-                )
-                chunk_index += 1
-                buffer = []
-                buffer_cost = 0
-                additional = segment_cost
-            buffer.append(segment)
-            buffer_cost += additional
+                    chunk_index += 1
+                    buffer = []
+                    buffer_cost = 0
+                    additional = segment_cost
+                buffer.append(piece)
+                buffer_cost += additional
         if buffer:
             chunks.append(
                 GlossaryChunk(
@@ -130,6 +132,49 @@ def build_glossary_chunks(
             )
             chunk_index += 1
     return tuple(chunks)
+
+
+def _split_oversized_segment(
+    text: str,
+    *,
+    budget: int,
+    cost: Callable[[str], int],
+) -> tuple[str, ...]:
+    if budget <= 0 or cost(text) <= budget:
+        return (text,)
+
+    pieces: list[str] = []
+    for sentence in _sentence_pieces(text):
+        if cost(sentence) <= budget:
+            pieces.append(sentence)
+        else:
+            pieces.extend(_hard_split(sentence, budget=budget))
+
+    merged: list[str] = []
+    current = ""
+    for piece in pieces:
+        candidate = current + piece if current else piece
+        if current and cost(candidate) > budget:
+            merged.append(current.strip())
+            current = piece
+        else:
+            current = candidate
+    if current.strip():
+        merged.append(current.strip())
+    return tuple(piece for piece in merged if piece)
+
+
+def _sentence_pieces(text: str) -> tuple[str, ...]:
+    parts = [part for part in _SENTENCE_BOUNDARY_RE.split(text) if part]
+    if not parts:
+        return (text,)
+    return tuple(parts)
+
+
+def _hard_split(text: str, *, budget: int) -> tuple[str, ...]:
+    if budget <= 0:
+        return (text,)
+    return tuple(text[index : index + budget] for index in range(0, len(text), budget))
 
 
 __all__ = ["GlossaryChunk", "build_glossary_chunks", "clean_glossary_source_text"]
