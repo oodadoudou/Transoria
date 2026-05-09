@@ -41,7 +41,7 @@ _FORMAT_RETRY_REMINDER = (
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
 _TRANSPORT_RETRY_BUDGET = 1
-_SOFT_TIMEOUT_CONCURRENCY_THRESHOLD = 8
+_SOFT_TIMEOUT_CONCURRENCY_THRESHOLD = 20
 _SOFT_TIMEOUT_SECONDS = 60.0
 
 
@@ -285,7 +285,7 @@ class GlossarySubtaskRunner:
 def _with_glossary_soft_timeout(model: ModelConfig) -> ModelConfig:
     if model.timeout_seconds <= _SOFT_TIMEOUT_SECONDS:
         return model
-    if model.concurrency_limit < _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
+    if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
         return model
     return replace(model, timeout_seconds=_SOFT_TIMEOUT_SECONDS)
 
