@@ -10,7 +10,7 @@ output.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Mapping
 
@@ -41,6 +41,8 @@ _FORMAT_RETRY_REMINDER = (
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
 _TRANSPORT_RETRY_BUDGET = 1
+_SOFT_TIMEOUT_CONCURRENCY_THRESHOLD = 8
+_SOFT_TIMEOUT_SECONDS = 60.0
 
 
 def _output_contract_reminder(target_language: str) -> str:
@@ -191,11 +193,27 @@ class GlossarySubtaskRunner:
             estimated = estimate_tokens_from_text(user_prompt)
             reservation = await self.tpm_limiter.reserve(estimated)
 
+        request_model = _with_glossary_soft_timeout(self.model)
+        if self.debug_log_dir is not None:
+            write_subtask_debug_log(
+                self.debug_log_dir,
+                chunk_id,
+                {
+                    "kind": "glossary",
+                    "status": "request_started",
+                    "system_prompt": "",
+                    "instruction_prompt": instruction_prompt,
+                    "user_prompt": user_prompt,
+                    "timeout_seconds": request_model.timeout_seconds,
+                    "attempt_index": attempt_index,
+                },
+            )
+
         response = None
         try:
             response = await self.client.chat(
                 ChatRequest(
-                    model=self.model,
+                    model=request_model,
                     system_prompt="",
                     user_prompt=user_prompt,
                     stream=self.stream,
@@ -262,6 +280,14 @@ class GlossarySubtaskRunner:
         ):
             raise _GlossaryFormatRetry(result)
         return result
+
+
+def _with_glossary_soft_timeout(model: ModelConfig) -> ModelConfig:
+    if model.timeout_seconds <= _SOFT_TIMEOUT_SECONDS:
+        return model
+    if model.concurrency_limit < _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
+        return model
+    return replace(model, timeout_seconds=_SOFT_TIMEOUT_SECONDS)
 
 
 def decode_glossary_subtask_response(
