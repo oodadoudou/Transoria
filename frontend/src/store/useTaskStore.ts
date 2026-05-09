@@ -22,12 +22,17 @@ export type GlossaryPage = "run" | "settings" | "prompt";
 
 export type GlossaryReviewPage = "run" | "review" | "settings" | "prompt";
 
-export type GeneralToolsPage = "batchReplacement" | "epubCompress" | "epubMerge";
+export type GeneralToolsPage =
+  | "batchReplacement"
+  | "epubCompress"
+  | "epubMerge"
+  | "epubConvert";
 
 const GENERAL_TOOLS_PAGES = [
   "batchReplacement",
   "epubCompress",
   "epubMerge",
+  "epubConvert",
 ] as const;
 
 export type AppSettingsPage = "general";

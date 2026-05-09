@@ -301,7 +301,8 @@ export type TaskKind =
   | "glossary_review"
   | "replacement"
   | "epub_compress"
-  | "epub_merge";
+  | "epub_merge"
+  | "epub_convert";
 
 /** Inline-credential payload used by the Add API Profile modal to
  *  test_connection / fetch_model_list before persisting the profile.
@@ -683,6 +684,62 @@ export interface EpubMergeReport {
   };
   result: EpubMergeReportResult;
   results: EpubMergeReportResult[];
+}
+
+export interface EpubConvertOptions {
+  output_dir: string;
+  recursive: boolean;
+}
+
+export interface EpubConvertAction {
+  id: string;
+  source_path: string;
+  output_path: string;
+  selected: boolean;
+}
+
+export interface EpubConvertPlan {
+  input_path: string;
+  mode: "file" | "folder" | string;
+  output_dir: string;
+  actions: EpubConvertAction[];
+  totals: { epub_files: number };
+}
+
+export interface EpubConvertArtifacts {
+  kind: "epub_convert";
+  output_folder: string;
+  report_path: string | null;
+  output_files: string[];
+  converted_count: number;
+  failed_count: number;
+}
+
+export interface EpubConvertReportResult {
+  action_id: string;
+  source_path: string;
+  output_path: string;
+  status: "converted" | "failed" | string;
+  segments_written: number;
+  characters_written: number;
+  spine_documents: number;
+  error: string;
+}
+
+export interface EpubConvertReport {
+  task_id: string;
+  generated_at: string;
+  input_path: string;
+  mode: string;
+  totals: {
+    actions: number;
+    converted: number;
+    failed: number;
+    segments_written: number;
+    characters_written: number;
+    spine_documents: number;
+  };
+  results: EpubConvertReportResult[];
 }
 
 export interface ReplacementReportOccurrence {

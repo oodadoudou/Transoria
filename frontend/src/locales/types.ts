@@ -305,6 +305,7 @@ export interface Messages {
       batchReplacement: string;
       epubCompress: string;
       epubMerge: string;
+      epubConvert: string;
     };
     appSettings: {
       general: string;
@@ -764,6 +765,7 @@ export interface Messages {
     sub: string;
     epubCompress: { title: string; sub: string };
     epubMerge: { title: string; sub: string };
+    epubConvert: { title: string; sub: string };
   };
   batchReplacement: {
     title: string;
@@ -870,6 +872,42 @@ export interface Messages {
     result: string;
     merged: string;
     warnings: string;
+  };
+  epubConvertTool: {
+    title: string;
+    sub: string;
+    folderMode: string;
+    fileMode: string;
+    inputFolder: string;
+    filePlaceholder: string;
+    chooseFile: string;
+    recursive: string;
+    outputHint: string;
+    scan: string;
+    execute: string;
+    stop: string;
+    previewLabel: string;
+    noPlan: string;
+    noActions: string;
+    epubsFound: string;
+    selectedCount: string;
+    select: string;
+    source: string;
+    output: string;
+    progressLabel: string;
+    statusLabel: string;
+    processedFiles: string;
+    failedFiles: string;
+    artifactsLabel: string;
+    convertedCount: string;
+    outputFiles: string;
+    viewReport: string;
+    hideReport: string;
+    segments: string;
+    characters: string;
+    documents: string;
+    result: string;
+    converted: string;
   };
   batchReplacementReport: {
     title: string;

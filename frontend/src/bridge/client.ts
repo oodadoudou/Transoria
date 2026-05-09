@@ -10,6 +10,11 @@ import type {
   EpubCompressOptions,
   EpubCompressPlan,
   EpubCompressReport,
+  EpubConvertAction,
+  EpubConvertArtifacts,
+  EpubConvertOptions,
+  EpubConvertPlan,
+  EpubConvertReport,
   EpubMergeAction,
   EpubMergeArtifacts,
   EpubMergeOptions,
@@ -760,6 +765,64 @@ export const epubMergeBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("epub_merge.list_failed_subtasks", { task_id: taskId });
+  },
+};
+
+export const epubConvertBridge = {
+  preview(
+    inputPath: string,
+    mode: "file" | "folder",
+    options: EpubConvertOptions,
+  ): Promise<EpubConvertPlan> {
+    return call("epub_convert.preview", {
+      input_path: inputPath,
+      mode,
+      options,
+    });
+  },
+  startTask(
+    requestId: string,
+    inputPath: string,
+    mode: "file" | "folder",
+    options: EpubConvertOptions,
+    actions: EpubConvertAction[],
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_convert.start_task", {
+      request_id: requestId,
+      input_path: inputPath,
+      mode,
+      options,
+      actions,
+    });
+  },
+  stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_convert.stop_task", { task_id: taskId });
+  },
+  pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_convert.pause_task", { task_id: taskId });
+  },
+  continueTask(
+    taskId: string,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("epub_convert.continue_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("epub_convert.probe_continuable", {});
+  },
+  readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("epub_convert.read_snapshot", { task_id: taskId });
+  },
+  listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
+    return call("epub_convert.list_recent_tasks", { limit });
+  },
+  readArtifacts(taskId: string): Promise<EpubConvertArtifacts> {
+    return call("epub_convert.read_artifacts", { task_id: taskId });
+  },
+  readReport(taskId: string): Promise<EpubConvertReport> {
+    return call("epub_convert.read_report", { task_id: taskId });
+  },
+  listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
+    return call("epub_convert.list_failed_subtasks", { task_id: taskId });
   },
 };
 

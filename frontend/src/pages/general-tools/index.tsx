@@ -1,6 +1,7 @@
 import type { GeneralToolsPage } from '@/store/useTaskStore';
 import { BatchReplacementPage } from './BatchReplacementPage';
 import { EpubCompressPage } from './EpubCompressPage';
+import { EpubConvertPage } from './EpubConvertPage';
 import { EpubMergePage } from './EpubMergePage';
 
 interface GeneralToolsModuleProps {
@@ -15,5 +16,7 @@ export function GeneralToolsModule({ page }: GeneralToolsModuleProps) {
       return <EpubCompressPage />;
     case 'epubMerge':
       return <EpubMergePage />;
+    case 'epubConvert':
+      return <EpubConvertPage />;
   }
 }
