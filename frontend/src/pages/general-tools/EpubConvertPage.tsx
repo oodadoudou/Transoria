@@ -22,12 +22,13 @@ import {
   useRuntimeStore,
 } from "@/store/useRuntimeStore";
 import { useToastStore } from "@/store/useToastStore";
+import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
 import styles from "./EpubConvertPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
 const MODE_SESSION_KEY = "transoria.generalTools.epubConvert.mode";
-const INPUT_SESSION_KEY = "transoria.generalTools.epubConvert.inputPath";
+const INPUT_LOCAL_KEY = "transoria.generalTools.epubConvert.inputPath";
 const OPTIONS_SESSION_KEY = "transoria.generalTools.epubConvert.options";
 const TERMINAL: ReadonlySet<string> = new Set([
   "completed",
@@ -49,7 +50,7 @@ export function EpubConvertPage() {
     MODE_SESSION_KEY,
     "folder",
   );
-  const [inputPath, setInputPath] = useSessionState(INPUT_SESSION_KEY, "");
+  const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
   const [options, setOptions] = useSessionState<EpubConvertOptions>(
     OPTIONS_SESSION_KEY,
     defaultOptions(),

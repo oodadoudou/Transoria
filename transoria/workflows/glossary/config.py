@@ -19,7 +19,7 @@ from transoria.workflows.fake_name import FakeNameSession
 DEFAULT_REFERENCE_EXAMPLE_LIMIT = 20
 DEFAULT_MAX_TERM_DISPLAY_LENGTH = 32
 DEFAULT_MIN_FREQUENCY = 1
-DEFAULT_CHUNK_CHAR_LIMIT = 4000
+DEFAULT_CHUNK_CHAR_LIMIT = 2000
 
 # Generic catch-all info values that add noise to novel glossaries.
 DEFAULT_INFO_BLACKLIST: tuple[str, ...] = ("其它", "其他", "other", "others")

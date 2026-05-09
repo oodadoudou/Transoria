@@ -38,6 +38,7 @@ from transoria.domain import (
     TaskStatus,
 )
 from transoria.formats.scanner import scan_input_directory
+from transoria.formats.epub_preflight import inspect_epub_directory_for_translation
 from transoria.llm.client import HttpxChatTransport, LlmClient
 from transoria.llm.config import ModelConfig
 from transoria.model_profiles import ModelProfileStore
@@ -185,6 +186,8 @@ def _utc_now_iso() -> str:
 _CHUNK_SIZE_FLOOR = 8
 _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED = 32
 _TRANSLATION_CHUNK_CHAR_BUDGET = 12_000
+_GLOSSARY_LEGACY_DEFAULT_CHUNK_TOKEN_LIMIT = 4_000
+_GLOSSARY_DEFAULT_CHUNK_TOKEN_LIMIT = 2_000
 
 
 def _derive_chunk_size(input_token_limit: int) -> int:
@@ -195,6 +198,12 @@ def _derive_chunk_size(input_token_limit: int) -> int:
 
 def _count_source_chars(text: str) -> int:
     return max(1, len(text))
+
+
+def _effective_glossary_chunk_token_limit(value: int) -> int:
+    if value == _GLOSSARY_LEGACY_DEFAULT_CHUNK_TOKEN_LIMIT:
+        return _GLOSSARY_DEFAULT_CHUNK_TOKEN_LIMIT
+    return max(0, value)
 
 
 def _new_task_id(kind: str) -> str:
@@ -1664,6 +1673,10 @@ class TaskService:
         output_dir = config.output_dir
         source_lang = config.source_language
         target_lang = config.target_language
+        preflight_warnings = [
+            warning.to_dict()
+            for warning in inspect_epub_directory_for_translation(input_dir)
+        ]
 
         self._purge_kind_for_start(
             kind="translation", task_kind=TaskKind.TRANSLATION
@@ -1683,6 +1696,7 @@ class TaskService:
                 "model_id": model.id,
                 "prompt_preset_id": preset.id,
                 "request_id": request_id,
+                "epub_preflight_warnings": preflight_warnings,
             },
         )
 
@@ -1700,7 +1714,11 @@ class TaskService:
             asyncio.run(self._translation_thread(task_id, config, running))
 
         self._spawn_thread(running, target=_async_runner, task_id=task_id)
-        return {"task_id": task_id, "started_at": started_at}
+        return {
+            "task_id": task_id,
+            "started_at": started_at,
+            "epub_preflight_warnings": preflight_warnings,
+        }
 
     async def _translation_thread(
         self,
@@ -1773,7 +1791,9 @@ class TaskService:
             ),
             max_term_display_length=max(1, int(glossary.max_term_display_length)),
             min_frequency=max(1, int(glossary.minimum_frequency)),
-            chunk_token_limit=max(0, int(glossary.chunk_token_limit)),
+            chunk_token_limit=_effective_glossary_chunk_token_limit(
+                int(glossary.chunk_token_limit)
+            ),
             allow_src_eq_dst=bool(glossary.keep_identical_src_dst),
             combine_folder_glossary=bool(glossary.merge_folder_glossary),
             normalize_widths=bool(glossary.normalize_widths),
@@ -2004,22 +2024,37 @@ class TaskService:
         self._maybe_cleanup_cache("glossary_review", task_id)
 
     def start_replacement(
-        self, *, request_id: str, rules: Sequence[ReplacementRule]
+        self,
+        *,
+        request_id: str,
+        rules: Sequence[ReplacementRule],
+        input_folder: str | None = None,
+        output_folder: str | None = None,
     ) -> dict[str, object]:
         with self._start_locks["replacement"]:
-            return self._start_replacement_locked(request_id=request_id, rules=rules)
+            return self._start_replacement_locked(
+                request_id=request_id,
+                rules=rules,
+                input_folder=input_folder,
+                output_folder=output_folder,
+            )
 
     def _start_replacement_locked(
-        self, *, request_id: str, rules: Sequence[ReplacementRule]
+        self,
+        *,
+        request_id: str,
+        rules: Sequence[ReplacementRule],
+        input_folder: str | None = None,
+        output_folder: str | None = None,
     ) -> dict[str, object]:
         settings = self.settings_store.load_all()
         replacement = settings.replacement
 
         input_dir = _require_directory(
-            replacement.input_folder, field="input_folder"
+            input_folder or replacement.input_folder, field="input_folder"
         )
         output_dir = _ensure_output_dir(
-            replacement.output_folder, field="output_folder"
+            output_folder or replacement.output_folder, field="output_folder"
         )
         if (
             not replacement.allow_same_folder

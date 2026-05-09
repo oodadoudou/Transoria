@@ -231,7 +231,24 @@ def register_tasks(router: BridgeRouter, *, service: TaskService) -> None:
                 field="rules",
             )
         rules = _coerce_rules(raw_rules)
-        return service.start_replacement(request_id=request_id, rules=rules)
+        input_folder = payload.get("input_folder")
+        output_folder = payload.get("output_folder")
+        if input_folder is not None and not isinstance(input_folder, str):
+            raise BridgeError.invalid_argument(
+                "input_folder must be a string.",
+                field="input_folder",
+            )
+        if output_folder is not None and not isinstance(output_folder, str):
+            raise BridgeError.invalid_argument(
+                "output_folder must be a string.",
+                field="output_folder",
+            )
+        return service.start_replacement(
+            request_id=request_id,
+            rules=rules,
+            input_folder=input_folder,
+            output_folder=output_folder,
+        )
 
     def stop_task(payload: Mapping[str, object]) -> dict[str, object]:
         return service.stop_task(

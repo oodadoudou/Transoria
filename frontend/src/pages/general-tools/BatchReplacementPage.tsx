@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format, useMessages } from "@/locales";
 import {
   BridgeError,
@@ -22,7 +22,6 @@ import { useToastStore } from "@/store/useToastStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
-import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import {
   EMPTY_SELECTION,
@@ -32,10 +31,13 @@ import {
 } from "@/components/RuleTable";
 import { useSearchShortcut } from "@/components/useSearchShortcut";
 import { tableRowKey, uniqueRows } from "@/utils/tableDedupe";
+import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
 import styles from "./BatchReplacementPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
+const INPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.inputFolder";
+const OUTPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.outputFolder";
 const RULES_SESSION_KEY = "transoria.generalTools.batchReplacement.rules";
 
 const TERMINAL: ReadonlySet<string> = new Set([
@@ -58,6 +60,8 @@ export function BatchReplacementPage() {
   const messages = useMessages();
   const moduleSettings = useModuleSettings("replacement");
   const draft = moduleSettings.draft;
+  const [inputFolder, setInputFolder] = useLocalState(INPUT_LOCAL_KEY, "");
+  const [outputFolder, setOutputFolder] = useLocalState(OUTPUT_LOCAL_KEY, "");
   const [rules, setRules] = useSessionState<ReplacementRule[]>(
     RULES_SESSION_KEY,
     [],
@@ -94,6 +98,7 @@ export function BatchReplacementPage() {
   const [issues, setIssues] = useState<ReplacementValidationIssue[]>([]);
   const [actionError, setActionError] = useState<BridgeError | null>(null);
   const [artifacts, setArtifacts] = useState<ReplacementArtifacts | null>(null);
+  const migratedSettingsPathRef = useRef(false);
   // Loaded once after a task settles into a terminal state and held in
   // memory so the user can re-open the modal without another fetch.
   // Cleared on Execute (next run) and on app restart (component unmount).
@@ -109,6 +114,14 @@ export function BatchReplacementPage() {
   );
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const failedModalMessages = messages.failedSubtasksModal;
+
+  useEffect(() => {
+    if (migratedSettingsPathRef.current) return;
+    if (!draft) return;
+    migratedSettingsPathRef.current = true;
+    if (!inputFolder && draft.input_folder) setInputFolder(draft.input_folder);
+    if (!outputFolder && draft.output_folder) setOutputFolder(draft.output_folder);
+  }, [draft, inputFolder, outputFolder, setInputFolder, setOutputFolder]);
 
   // Celebratory toast on truly clean completion. Replacement is
   // single-pass (no continue/rerun), so the failure dialog isn't
@@ -234,7 +247,12 @@ export function BatchReplacementPage() {
     setReportOpen(false);
     try {
       const requestId = `replace-${Date.now().toString(36)}`;
-      const { task_id } = await replacementBridge.startTask(requestId, rules);
+      const { task_id } = await replacementBridge.startTask(
+        requestId,
+        rules,
+        inputFolder,
+        outputFolder,
+      );
       setActiveTaskId("replacement", task_id);
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {
@@ -289,15 +307,15 @@ export function BatchReplacementPage() {
         <div className={styles.pickerStack}>
           <FolderPickerRow
             label={messages.batchReplacement.inputFolder}
-            value={draft.input_folder}
+            value={inputFolder}
             variant="input"
-            onChange={(p) => moduleSettings.update("input_folder", p)}
+            onChange={setInputFolder}
           />
           <FolderPickerRow
             label={messages.batchReplacement.outputFolder}
-            value={draft.output_folder}
+            value={outputFolder}
             variant="output"
-            onChange={(p) => moduleSettings.update("output_folder", p)}
+            onChange={setOutputFolder}
           />
         </div>
       </Panel>
@@ -379,8 +397,8 @@ export function BatchReplacementPage() {
             disabled={
               isRunning ||
               rules.length === 0 ||
-              !draft.input_folder ||
-              !draft.output_folder
+              !inputFolder ||
+              !outputFolder
             }
           >
             {messages.batchReplacement.execute}
@@ -496,16 +514,6 @@ export function BatchReplacementPage() {
         />
       ) : null}
 
-      <SettingsToolbar
-        saveState={moduleSettings.saveState}
-        lastError={moduleSettings.lastError}
-        onSave={() => {
-          void moduleSettings.saveNow({ explicit: true });
-        }}
-        onReset={() => {
-          void moduleSettings.reset();
-        }}
-      />
     </>
   );
 }

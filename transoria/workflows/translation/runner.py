@@ -56,6 +56,7 @@ from transoria.workflows.translation.rules import (
 SUBTASK_PAYLOAD_VERSION = 1
 SUBTASK_RESPONSE_VERSION = 2
 _SOURCE_FALLBACK_RESIDUE_RATIO = 0.15
+_RESCUE_TRANSPORT_RETRY_BUDGET = 1
 
 
 # When the first attempt produces non-JSONL output (prose, mixed text,
@@ -331,13 +332,44 @@ class TranslationSubtaskRunner:
                         system_prompt, user_prompt, log_label
                     )
 
-                response = await retry_async(_llm_call, model=self.model)
+                phase = "batch" if not debug_attempts else "partial_retry"
+                try:
+                    response = await retry_async(
+                        _llm_call,
+                        model=self.model,
+                        max_retry_attempts=(
+                            None
+                            if phase == "batch"
+                            else _RESCUE_TRANSPORT_RETRY_BUDGET
+                        ),
+                    )
+                except BaseException as exc:
+                    if phase == "batch" or not is_transient_llm_error(exc):
+                        raise
+                    for idx in sorted(pending_indices):
+                        if idx in metadata_by_index:
+                            fallback_reasons_by_index[idx] = (
+                                "partial_retry_transient_failed"
+                            )
+                    debug_attempts.append(
+                        {
+                            "phase": phase,
+                            "user_prompt": user_prompt,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    )
+                    pending_indices.clear()
+                    break
                 total_input += response.usage.input_tokens
                 total_output += response.usage.output_tokens
                 raw_content = self._restore_roster(response.content)
                 last_raw = raw_content
                 debug_attempts.append(
-                    {"user_prompt": user_prompt, "raw_response": raw_content}
+                    {
+                        "phase": phase,
+                        "user_prompt": user_prompt,
+                        "raw_response": raw_content,
+                    }
                 )
 
                 translations, missing = self._decode_partial(
@@ -482,12 +514,14 @@ class TranslationSubtaskRunner:
                             solo_response = await retry_async(
                                 _solo_llm_call,
                                 model=self.model,
+                                max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
                             )
                         else:
                             async with self.solo_retry_limiter:
                                 solo_response = await retry_async(
                                     _solo_llm_call,
                                     model=self.model,
+                                    max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
                                 )
                     except LlmRequestError as exc:
                         if not is_transient_llm_error(exc):
@@ -497,6 +531,7 @@ class TranslationSubtaskRunner:
                         )
                         debug_attempts.append(
                             {
+                                "phase": "low_confidence_solo_retry",
                                 "user_prompt": solo_user_prompt,
                                 "segment_id": meta.segment_id,
                                 "error": f"{type(exc).__name__}: {exc}",
@@ -508,6 +543,7 @@ class TranslationSubtaskRunner:
                     solo_raw = self._restore_roster(solo_response.content)
                     debug_attempts.append(
                         {
+                            "phase": "low_confidence_solo_retry",
                             "user_prompt": solo_user_prompt,
                             "raw_response": solo_raw,
                             "segment_id": meta.segment_id,

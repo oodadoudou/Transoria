@@ -84,6 +84,7 @@ async def retry_async(
     operation: Callable[[], Awaitable[T]],
     *,
     model: ModelConfig,
+    max_retry_attempts: int | None = None,
     should_retry: Callable[[BaseException], bool] = is_transient_llm_error,
     sleep: Callable[[float], "asyncio.Future[None]"] = asyncio.sleep,
 ) -> T:
@@ -94,10 +95,15 @@ async def retry_async(
     is capped at ``min(2, model.retry_attempts)`` because more retries rarely
     self-heal a model that already produced semantically wrong output. Backoff
     doubles from ``retry_initial_backoff_seconds`` up to
-    ``retry_max_backoff_seconds``. ``asyncio.CancelledError`` is re-raised verbatim.
+    ``retry_max_backoff_seconds``. ``max_retry_attempts`` lets callers cap
+    rescue paths below the profile-level budget without changing the user's
+    main-request retry policy. ``asyncio.CancelledError`` is re-raised verbatim.
     """
 
-    transport_remaining = max(0, model.retry_attempts)
+    retry_budget = model.retry_attempts
+    if max_retry_attempts is not None:
+        retry_budget = min(retry_budget, max(0, max_retry_attempts))
+    transport_remaining = max(0, retry_budget)
     format_remaining = min(_FORMAT_DRIFT_RETRY_BUDGET, transport_remaining)
     backoff = max(0.0, model.retry_initial_backoff_seconds)
     max_backoff = max(backoff, model.retry_max_backoff_seconds)

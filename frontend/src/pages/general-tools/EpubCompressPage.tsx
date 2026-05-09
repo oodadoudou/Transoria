@@ -22,12 +22,13 @@ import {
   useRuntimeStore,
 } from "@/store/useRuntimeStore";
 import { useToastStore } from "@/store/useToastStore";
+import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
 import styles from "./EpubCompressPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
 const MODE_SESSION_KEY = "transoria.generalTools.epubCompress.mode";
-const INPUT_SESSION_KEY = "transoria.generalTools.epubCompress.inputPath";
+const INPUT_LOCAL_KEY = "transoria.generalTools.epubCompress.inputPath";
 const OPTIONS_SESSION_KEY = "transoria.generalTools.epubCompress.options";
 const TERMINAL: ReadonlySet<string> = new Set([
   "completed",
@@ -54,7 +55,7 @@ export function EpubCompressPage() {
     MODE_SESSION_KEY,
     "folder",
   );
-  const [inputPath, setInputPath] = useSessionState(INPUT_SESSION_KEY, "");
+  const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
   const [options, setOptions] = useSessionState<EpubCompressOptions>(
     OPTIONS_SESSION_KEY,
     defaultOptions(text.defaultSuffix),

@@ -96,7 +96,7 @@ class GlossarySettings:
     reference_examples_per_term: int = 20
     max_term_display_length: int = 32
     minimum_frequency: int = 1
-    chunk_token_limit: int = 4000
+    chunk_token_limit: int = 2000
     merge_folder_glossary: bool = True
     keep_identical_src_dst: bool = False
     normalize_widths: bool = True

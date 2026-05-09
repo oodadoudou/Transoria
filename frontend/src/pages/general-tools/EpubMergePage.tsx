@@ -21,12 +21,13 @@ import {
   useRuntimeStore,
 } from "@/store/useRuntimeStore";
 import { useToastStore } from "@/store/useToastStore";
+import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
 import styles from "./EpubMergePage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
-const INPUT_DIR_SESSION_KEY = "transoria.generalTools.epubMerge.inputDir";
-const OUTPUT_DIR_SESSION_KEY = "transoria.generalTools.epubMerge.outputDir";
+const INPUT_DIR_LOCAL_KEY = "transoria.generalTools.epubMerge.inputDir";
+const OUTPUT_DIR_LOCAL_KEY = "transoria.generalTools.epubMerge.outputDir";
 const OUTPUT_FILENAME_SESSION_KEY =
   "transoria.generalTools.epubMerge.outputFilename";
 const OPTIONS_SESSION_KEY = "transoria.generalTools.epubMerge.options";
@@ -50,8 +51,8 @@ function defaultOptions(): EpubMergeOptions {
 export function EpubMergePage() {
   const messages = useMessages();
   const text = messages.epubMergeTool;
-  const [inputDir, setInputDir] = useSessionState(INPUT_DIR_SESSION_KEY, "");
-  const [outputDir, setOutputDir] = useSessionState(OUTPUT_DIR_SESSION_KEY, "");
+  const [inputDir, setInputDir] = useLocalState(INPUT_DIR_LOCAL_KEY, "");
+  const [outputDir, setOutputDir] = useLocalState(OUTPUT_DIR_LOCAL_KEY, "");
   const [outputFilename, setOutputFilename] = useSessionState(
     OUTPUT_FILENAME_SESSION_KEY,
     text.defaultOutputFilename,

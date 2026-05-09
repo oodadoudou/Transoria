@@ -191,6 +191,19 @@ export interface DialogPathResult {
   path: string | null;
 }
 
+export interface EpubPreflightWarning {
+  code: string;
+  path: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+export interface TranslationStartResult {
+  task_id: string;
+  started_at: string;
+  epub_preflight_warnings?: EpubPreflightWarning[];
+}
+
 export interface GlossaryFileResult extends DialogPathResult {
   format: "xlsx" | "json" | null;
 }

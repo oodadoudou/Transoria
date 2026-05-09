@@ -50,6 +50,7 @@ import type {
   TaskHeader,
   TaskSnapshot,
   TranslationArtifacts,
+  TranslationStartResult,
   UpdateCheckResult,
 } from "./types";
 
@@ -245,9 +246,7 @@ export const promptsBridge = {
 };
 
 export const translationBridge = {
-  startTask(
-    requestId: string,
-  ): Promise<{ task_id: string; started_at: string }> {
+  startTask(requestId: string): Promise<TranslationStartResult> {
     return call("translation.start_task", { request_id: requestId });
   },
   pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
@@ -615,11 +614,18 @@ export const replacementBridge = {
   startTask(
     requestId: string,
     rules: ReplacementRule[],
+    inputFolder?: string,
+    outputFolder?: string,
   ): Promise<{
     task_id: string;
     started_at: string;
   }> {
-    return call("replacement.start_task", { request_id: requestId, rules });
+    return call("replacement.start_task", {
+      request_id: requestId,
+      rules,
+      input_folder: inputFolder,
+      output_folder: outputFolder,
+    });
   },
   stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("replacement.stop_task", { task_id: taskId });
