@@ -710,14 +710,29 @@ class TranslationSubtaskRunner:
                 for meta in metadata:
                     if meta.chunk_index not in unresolved:
                         continue
-                    finalized[meta.segment_id] = meta.original_text
+                    current_text = finalized.get(meta.segment_id, "")
+                    tags = ["possible_duplicate"]
+                    if not current_text or (
+                        current_text.strip() == meta.original_text.strip()
+                    ):
+                        finalized[meta.segment_id] = meta.original_text
+                        tags = ["source_residue"]
+                    else:
+                        verdict = self._evaluate_confidence(
+                            meta.original_text, current_text
+                        )
+                        if any(
+                            "residue" in str(reason).lower()
+                            for reason in verdict.reasons
+                        ):
+                            tags.append("source_residue")
                     low_confidence.append(
                         {
                             "segment_id": meta.segment_id,
                             "reasons": [
                                 "duplicate_drift_after_low_confidence_retry"
                             ],
-                            "tags": ["source_residue"],
+                            "tags": tags,
                         }
                     )
 
