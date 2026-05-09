@@ -19,6 +19,15 @@ from transoria.llm.client import ChatRequest, LlmClient
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import DecodeIssue, GlossaryEntry, decode_glossary_jsonl
 from transoria.llm.retry import is_transient_llm_error, retry_async
+from transoria.llm.usage import estimate_tokens_from_text
+from transoria.prompts import PromptContext, PromptPreset, build_prompt
+from transoria.runtime.executor import SubtaskResult
+from transoria.runtime.key_pool import KeyPool
+from transoria.runtime.rate_limit import TpmLimiter
+from transoria.runtime.subtask import Subtask
+from transoria.workflows.debug_log import write_subtask_debug_log
+from transoria.workflows.fake_name import FakeNameSession
+from transoria.workflows.glossary.chunker import GlossaryChunk
 
 
 class _GlossaryFormatRetry(Exception):
@@ -70,15 +79,6 @@ def _should_retry_glossary(exc: BaseException) -> bool:
     if isinstance(exc, _GlossaryFormatRetry):
         return True
     return is_transient_llm_error(exc)
-from transoria.llm.usage import estimate_tokens_from_text
-from transoria.runtime.key_pool import KeyPool
-from transoria.runtime.rate_limit import TpmLimiter
-from transoria.prompts import PromptContext, PromptPreset, build_prompt
-from transoria.runtime.executor import SubtaskResult
-from transoria.runtime.subtask import Subtask
-from transoria.workflows.debug_log import write_subtask_debug_log
-from transoria.workflows.fake_name import FakeNameSession
-from transoria.workflows.glossary.chunker import GlossaryChunk
 
 
 SUBTASK_PAYLOAD_VERSION = 1
@@ -146,7 +146,7 @@ class GlossarySubtaskRunner:
             return await retry_async(
                 operation,
                 model=self.model,
-                max_transport_retry_attempts=_TRANSPORT_RETRY_BUDGET,
+                max_transport_retry_attempts=_transport_retry_budget(self.model),
                 should_retry=_should_retry_glossary,
                 is_format_retry_error=lambda exc: isinstance(
                     exc, _GlossaryFormatRetry
@@ -252,9 +252,12 @@ class GlossarySubtaskRunner:
                 chunk_id,
                 {
                     "kind": "glossary",
+                    "status": "request_completed",
                     "system_prompt": "",
                     "instruction_prompt": instruction_prompt,
                     "user_prompt": user_prompt,
+                    "timeout_seconds": request_model.timeout_seconds,
+                    "attempt_index": attempt_index,
                     "raw_response": response.content,
                     "restored_response": raw_content,
                     "entries": result_payload["entries"],
@@ -288,6 +291,12 @@ def _with_glossary_soft_timeout(model: ModelConfig) -> ModelConfig:
     if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
         return model
     return replace(model, timeout_seconds=_SOFT_TIMEOUT_SECONDS)
+
+
+def _transport_retry_budget(model: ModelConfig) -> int:
+    if model.concurrency_limit > _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
+        return 0
+    return _TRANSPORT_RETRY_BUDGET
 
 
 def decode_glossary_subtask_response(
