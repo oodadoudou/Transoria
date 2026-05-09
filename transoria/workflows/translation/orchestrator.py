@@ -55,6 +55,7 @@ from transoria.formats.text import (
     write_translated_txt,
 )
 from transoria.llm.client import LlmClient
+from transoria.llm.config import effective_concurrency_limit
 from transoria.runtime.cache import TaskCache
 from transoria.runtime.executor import (
     ProgressListener,
@@ -272,11 +273,15 @@ class TranslationOrchestrator:
 
             self.cache.write_seed(record, subtasks)
 
+        actual_concurrency = effective_concurrency_limit(config.model)
+        config = replace(
+            config, model=replace(config.model, concurrency_limit=actual_concurrency)
+        )
         runner = self.runner_factory(self.client, config)
         executor = TaskExecutor(
             cache=self.cache,
             runner=runner,
-            concurrency_limit=max(1, config.model.concurrency_limit),
+            concurrency_limit=actual_concurrency,
             rpm_limit=max(0, config.model.rpm_limit),
             progress=self.progress,
             clock=self.clock,
@@ -870,7 +875,7 @@ def _default_runner_factory(
         debug_log_dir=config.debug_log_dir,
         fake_name_roster=config.fake_name_roster,
         solo_retry_limiter=asyncio.Semaphore(
-            max(1, min(4, config.model.concurrency_limit))
+            max(1, min(4, effective_concurrency_limit(config.model)))
         ),
     )
 

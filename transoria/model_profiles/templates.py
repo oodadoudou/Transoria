@@ -59,7 +59,7 @@ class RecommendedDefaults:
     """
 
     timeout_seconds: float = 600.0
-    concurrency_limit: int = 4
+    concurrency_limit: int = 0
     rpm_limit: int = 60
     tpm_limit: int = 0
     retry_attempts: int = 10
@@ -122,7 +122,7 @@ _OPENAI_HINTS: Mapping[str, FieldHint] = {
     ),
     "concurrency_limit": FieldHint(
         description_key="modelHints.concurrency",
-        recommended_value="4",
+        recommended_value="Auto (0)",
         source_url="https://platform.openai.com/docs/guides/rate-limits",
     ),
     "rpm_limit": FieldHint(
@@ -157,7 +157,7 @@ _ANTHROPIC_HINTS: Mapping[str, FieldHint] = {
     ),
     "concurrency_limit": FieldHint(
         description_key="modelHints.concurrency",
-        recommended_value="4",
+        recommended_value="Auto (0)",
         source_url="https://docs.anthropic.com/en/api/rate-limits",
     ),
     "rpm_limit": FieldHint(
@@ -192,7 +192,7 @@ _GOOGLE_HINTS: Mapping[str, FieldHint] = {
     ),
     "concurrency_limit": FieldHint(
         description_key="modelHints.concurrency",
-        recommended_value="4",
+        recommended_value="Auto (0)",
         source_url="https://ai.google.dev/gemini-api/docs/quota",
     ),
     "rpm_limit": FieldHint(
@@ -226,7 +226,7 @@ _DEEPSEEK_HINTS: Mapping[str, FieldHint] = {
     ),
     "concurrency_limit": FieldHint(
         description_key="modelHints.concurrency",
-        recommended_value="4",
+        recommended_value="Auto (0)",
     ),
     "rpm_limit": FieldHint(
         description_key="modelHints.rpm",
@@ -259,7 +259,7 @@ _VOLCENGINE_HINTS: Mapping[str, FieldHint] = {
     ),
     "concurrency_limit": FieldHint(
         description_key="modelHints.concurrency",
-        recommended_value="4",
+        recommended_value="Auto (0)",
     ),
     "rpm_limit": FieldHint(
         description_key="modelHints.rpm",
@@ -291,7 +291,7 @@ _SAKURA_HINTS: Mapping[str, FieldHint] = {
     ),
     "concurrency_limit": FieldHint(
         description_key="modelHints.concurrency",
-        recommended_value="2",
+        recommended_value="Auto (0)",
     ),
     "rpm_limit": FieldHint(
         description_key="modelHints.rpm",
@@ -339,7 +339,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
             timeout_seconds=600.0,
-            concurrency_limit=4,
+            concurrency_limit=0,
             rpm_limit=60,
             max_output_tokens=4096,
             temperature=0.3,
@@ -359,7 +359,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         supports_fetch_model_list=False,
         recommended_defaults=RecommendedDefaults(
             timeout_seconds=600.0,
-            concurrency_limit=4,
+            concurrency_limit=0,
             rpm_limit=50,
             max_output_tokens=8192,
             temperature=1.0,
@@ -379,7 +379,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
             timeout_seconds=600.0,
-            concurrency_limit=4,
+            concurrency_limit=0,
             rpm_limit=60,
             max_output_tokens=8192,
             temperature=0.7,
@@ -396,7 +396,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
             timeout_seconds=600.0,
-            concurrency_limit=4,
+            concurrency_limit=0,
             rpm_limit=60,
             max_output_tokens=4096,
             temperature=0.3,
@@ -412,7 +412,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
             timeout_seconds=600.0,
-            concurrency_limit=4,
+            concurrency_limit=0,
             rpm_limit=60,
             max_output_tokens=4096,
             temperature=0.3,
@@ -428,7 +428,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
         supports_fetch_model_list=True,
         recommended_defaults=RecommendedDefaults(
             timeout_seconds=600.0,
-            concurrency_limit=2,
+            concurrency_limit=0,
             rpm_limit=0,
             max_output_tokens=2048,
             temperature=0.1,

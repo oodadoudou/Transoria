@@ -97,7 +97,7 @@ const EMPTY_DRAFT: Draft = {
   rotate_keys: true,
   thinking_level: "off",
   timeout_seconds: 60,
-  concurrency_limit: 2,
+  concurrency_limit: 0,
   rpm_limit: 60,
   tpm_limit: 0,
   retry_attempts: 2,

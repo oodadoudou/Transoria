@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from transoria.domain import SubtaskStatus, TaskKind, TaskStatus
 from transoria.llm.client import LlmClient
+from transoria.llm.config import effective_concurrency_limit
 from transoria.runtime.cache import TaskCache
 from transoria.runtime.executor import ProgressListener, SubtaskRunner, TaskExecutor
 from transoria.runtime.key_pool import KeyPool
@@ -191,11 +192,16 @@ class GlossaryReviewOrchestrator:
                 current_completed_batches=_settled_round_subtasks(round_subtasks),
             )
 
+            actual_concurrency = effective_concurrency_limit(config.model)
+            config = replace(
+                config,
+                model=replace(config.model, concurrency_limit=actual_concurrency),
+            )
             runner = self.runner_factory(self.client, config)
             executor = TaskExecutor(
                 cache=self.cache,
                 runner=runner,
-                concurrency_limit=max(1, config.model.concurrency_limit),
+                concurrency_limit=actual_concurrency,
                 rpm_limit=max(0, config.model.rpm_limit),
                 progress=self._round_progress_listener(
                     task_id=task_id,

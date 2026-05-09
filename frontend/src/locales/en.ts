@@ -125,7 +125,7 @@ export const en: Messages = {
     timeout:
       "Per-request HTTP timeout in seconds. Slower networks or large reasoning chunks may need higher values.",
     concurrency:
-      "How many requests run in parallel for this profile. Higher = faster but may hit per-key rate limits.",
+      "How many requests run in parallel for this profile. 0 means automatic; higher explicit values are faster but may hit per-key rate limits.",
     rpm: "Soft cap on requests per minute. The backend pre-throttles before each call to stay under this.",
     tpm: "Soft cap on tokens per minute. 0 disables the cap (use only when the provider exposes a TPM quota).",
     retry:

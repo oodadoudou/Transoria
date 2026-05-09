@@ -6,6 +6,9 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Mapping
 
+AUTO_CONCURRENCY_FALLBACK = 4
+AUTO_CONCURRENCY_MAX = 48
+
 
 class ProviderFormat(str, Enum):
     OPENAI = "openai"
@@ -52,7 +55,7 @@ class ModelConfig:
     api_keys: tuple[str, ...] = ()
     thinking_level: ThinkingLevel = ThinkingLevel.OFF
     timeout_seconds: float = 60.0
-    concurrency_limit: int = 2
+    concurrency_limit: int = 0
     rpm_limit: int = 60
     tpm_limit: int = 0
     rotate_keys: bool = True
@@ -183,7 +186,7 @@ class ModelConfig:
             api_keys=tuple(str(k) for k in api_keys_raw),
             thinking_level=thinking_level,
             timeout_seconds=float(data.get("timeout_seconds", 60.0)),
-            concurrency_limit=int(data.get("concurrency_limit", 2)),
+            concurrency_limit=int(data.get("concurrency_limit", 0)),
             rpm_limit=int(data.get("rpm_limit", 60)),
             tpm_limit=int(data.get("tpm_limit", 0)),
             rotate_keys=bool(data.get("rotate_keys", True)),
@@ -212,4 +215,19 @@ def _optional_float(value: object) -> float | None:
     return float(value)  # type: ignore[arg-type]
 
 
-__all__ = ["ProviderFormat", "ThinkingLevel", "ModelConfig"]
+def effective_concurrency_limit(model: ModelConfig) -> int:
+    if model.concurrency_limit > 0:
+        return model.concurrency_limit
+    if model.rpm_limit > 0:
+        return max(1, min(AUTO_CONCURRENCY_MAX, model.rpm_limit))
+    return AUTO_CONCURRENCY_FALLBACK
+
+
+__all__ = [
+    "AUTO_CONCURRENCY_FALLBACK",
+    "AUTO_CONCURRENCY_MAX",
+    "ProviderFormat",
+    "ThinkingLevel",
+    "ModelConfig",
+    "effective_concurrency_limit",
+]
