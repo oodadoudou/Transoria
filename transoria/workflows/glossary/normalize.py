@@ -25,6 +25,22 @@ from transoria.workflows.glossary.candidate import Candidate
 _MULTI_SPACE = re.compile(r"\s+")
 _SPLIT_DELIMITERS = re.compile(r"\s*[/／、,，;；]\s*")
 _DEFAULT_INFO_BLACKLIST = ("其它", "其他", "other", "others")
+_REJECTION_INFO_MARKERS = (
+    "过滤",
+    "排除",
+    "删除",
+    "忽略",
+    "不提取",
+    "不收录",
+    "filter",
+    "exclude",
+    "excluded",
+    "omit",
+    "skip",
+    "delete",
+    "remove",
+    "reject",
+)
 _BOUNDARY_PUNCT_STRIP = (
     "\"'"
     "「」『』《》〈〉()（）[]【】"
@@ -81,6 +97,8 @@ def normalize_candidates(
         if len(src) > max_term_display_length:
             continue
         if info and info.casefold() in blacklist:
+            continue
+        if _is_rejection_info(info):
             continue
         cleaned.append(GlossaryEntry(src=src, dst=dst, info=info))
 
@@ -154,6 +172,11 @@ def _contains_source_language(text: str, source_language: Language) -> bool:
     if source_language is Language.ENGLISH:
         return bool(re.search(r"[A-Za-z]", text))
     return True
+
+
+def _is_rejection_info(info: str) -> bool:
+    lowered = info.casefold()
+    return any(marker in lowered for marker in _REJECTION_INFO_MARKERS)
 
 
 def _group_key(src: str) -> str:

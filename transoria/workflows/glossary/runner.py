@@ -72,6 +72,9 @@ def _output_contract_reminder(target_language: str) -> str:
         "FINAL OUTPUT CONTRACT: output JSONLINE only. Each line must be one JSON "
         'object with exactly these keys: "src", "dst", "type". The "dst" and "type" values '
         "must be non-empty and follow the active prompt's taxonomy. "
+        "If the active prompt decides a candidate should be filtered, excluded, "
+        "deleted, skipped, ignored, or not extracted, omit that candidate entirely; "
+        "never output it as a glossary row with a filtered/excluded category. "
         f'The "dst" and "type" values must always be written in {target_language} — '
         "never mix languages, never fall back to English category names. "
         "No prose, no Markdown, no code fence."
