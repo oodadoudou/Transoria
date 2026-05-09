@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -57,6 +57,9 @@ SUBTASK_PAYLOAD_VERSION = 1
 SUBTASK_RESPONSE_VERSION = 2
 _SOURCE_FALLBACK_RESIDUE_RATIO = 0.15
 _RESCUE_TRANSPORT_RETRY_BUDGET = 1
+_HIGH_CONCURRENCY_THRESHOLD = 20
+_HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 120.0
+_HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
 
 
 # When the first attempt produces non-JSONL output (prose, mixed text,
@@ -241,6 +244,25 @@ def _decode_subtask_payload(
     return chunk, tuple(metadata)
 
 
+def _with_translation_request_timeout(model: ModelConfig, phase: str) -> ModelConfig:
+    if model.concurrency_limit <= _HIGH_CONCURRENCY_THRESHOLD:
+        return model
+    timeout = (
+        _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS
+        if phase == "batch"
+        else _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS
+    )
+    if model.timeout_seconds <= timeout:
+        return model
+    return replace(model, timeout_seconds=timeout)
+
+
+def _transport_retry_budget(model: ModelConfig) -> int | None:
+    if model.concurrency_limit > _HIGH_CONCURRENCY_THRESHOLD:
+        return 0
+    return None
+
+
 @dataclass(frozen=True)
 class TranslationSubtaskRunner:
     """Runs one translation subtask end-to-end.
@@ -327,24 +349,40 @@ class TranslationSubtaskRunner:
                 if not first_user_prompt:
                     first_user_prompt = user_prompt
 
+                phase = "batch" if not debug_attempts else "partial_retry"
+                request_model = _with_translation_request_timeout(self.model, phase)
+
                 async def _llm_call() -> object:
                     return await self._one_llm_call(
-                        system_prompt, user_prompt, log_label
+                        system_prompt,
+                        user_prompt,
+                        log_label,
+                        model=request_model,
                     )
 
-                phase = "batch" if not debug_attempts else "partial_retry"
                 try:
                     response = await retry_async(
                         _llm_call,
-                        model=self.model,
+                        model=request_model,
                         max_retry_attempts=(
                             None
                             if phase == "batch"
                             else _RESCUE_TRANSPORT_RETRY_BUDGET
                         ),
+                        max_transport_retry_attempts=_transport_retry_budget(
+                            self.model
+                        ),
                     )
                 except BaseException as exc:
                     if phase == "batch" or not is_transient_llm_error(exc):
+                        debug_attempts.append(
+                            {
+                                "phase": phase,
+                                "user_prompt": user_prompt,
+                                "timeout_seconds": request_model.timeout_seconds,
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        )
                         raise
                     for idx in sorted(pending_indices):
                         if idx in metadata_by_index:
@@ -355,6 +393,7 @@ class TranslationSubtaskRunner:
                         {
                             "phase": phase,
                             "user_prompt": user_prompt,
+                            "timeout_seconds": request_model.timeout_seconds,
                             "error": f"{type(exc).__name__}: {exc}",
                         }
                     )
@@ -368,6 +407,7 @@ class TranslationSubtaskRunner:
                     {
                         "phase": phase,
                         "user_prompt": user_prompt,
+                        "timeout_seconds": request_model.timeout_seconds,
                         "raw_response": raw_content,
                     }
                 )
@@ -502,26 +542,37 @@ class TranslationSubtaskRunner:
                         self._apply_roster(assemble_user_prompt(solo_chunk)),
                         format_retry=False,
                     )
+                    solo_request_model = _with_translation_request_timeout(
+                        self.model, "solo_retry"
+                    )
+
                     async def _solo_llm_call() -> object:
                         return await self._one_llm_call(
                             system_prompt,
                             solo_user_prompt,
                             f"{log_label} solo-retry {meta.segment_id}",
+                            model=solo_request_model,
                         )
 
                     try:
                         if self.solo_retry_limiter is None:
                             solo_response = await retry_async(
                                 _solo_llm_call,
-                                model=self.model,
+                                model=solo_request_model,
                                 max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
+                                max_transport_retry_attempts=_transport_retry_budget(
+                                    self.model
+                                ),
                             )
                         else:
                             async with self.solo_retry_limiter:
                                 solo_response = await retry_async(
                                     _solo_llm_call,
-                                    model=self.model,
+                                    model=solo_request_model,
                                     max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
+                                    max_transport_retry_attempts=_transport_retry_budget(
+                                        self.model
+                                    ),
                                 )
                     except LlmRequestError as exc:
                         if not is_transient_llm_error(exc):
@@ -534,6 +585,7 @@ class TranslationSubtaskRunner:
                                 "phase": "low_confidence_solo_retry",
                                 "user_prompt": solo_user_prompt,
                                 "segment_id": meta.segment_id,
+                                "timeout_seconds": solo_request_model.timeout_seconds,
                                 "error": f"{type(exc).__name__}: {exc}",
                             }
                         )
@@ -547,6 +599,7 @@ class TranslationSubtaskRunner:
                             "user_prompt": solo_user_prompt,
                             "raw_response": solo_raw,
                             "segment_id": meta.segment_id,
+                            "timeout_seconds": solo_request_model.timeout_seconds,
                         }
                     )
                     decoded = decode_translation_jsonl(solo_raw)
@@ -720,8 +773,14 @@ class TranslationSubtaskRunner:
         return restore_fake_name_text(roster, content)
 
     async def _one_llm_call(
-        self, system_prompt: str, user_prompt: str, log_label: str = ""
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        log_label: str = "",
+        *,
+        model: ModelConfig | None = None,
     ):
+        request_model = model or self.model
         reservation = -1
         if self.tpm_limiter is not None:
             estimated = estimate_tokens_from_text(
@@ -732,7 +791,7 @@ class TranslationSubtaskRunner:
         try:
             response = await self.client.chat(
                 ChatRequest(
-                    model=self.model,
+                    model=request_model,
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     stream=self.stream,
