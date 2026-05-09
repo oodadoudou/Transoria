@@ -74,6 +74,19 @@ RE_CDATA_SECTION = re.compile(rb"<!\[CDATA\[.*?\]\]>", re.DOTALL)
 RE_NCX_BARE_AMP = re.compile(
     rb"&(?!(?:[A-Za-z][A-Za-z0-9._:-]*|#[0-9]+|#[xX][0-9A-Fa-f]+);)"
 )
+VOID_TAG_PATTERN = (
+    rb"area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr"
+)
+RE_REDUNDANT_VOID_END_TAG = re.compile(
+    rb"(<(?P<tag>" + VOID_TAG_PATTERN + rb")\b[^>]*?/>)\s*</(?P=tag)\s*>",
+    re.IGNORECASE,
+)
+RE_EMPTY_VOID_PAIR = re.compile(
+    rb"<(?P<tag>"
+    + VOID_TAG_PATTERN
+    + rb")(?P<attrs>\b[^>/]*?)>\s*</(?P=tag)\s*>",
+    re.IGNORECASE,
+)
 
 
 class EpubTextKind(str, Enum):
@@ -454,21 +467,59 @@ def build_has_block_descendant_map(root: etree._Element) -> dict[etree._Element,
 
 def parse_xhtml_or_html(raw: bytes) -> etree._Element:
     raw = trim_to_html_document_start(raw)
-    try:
-        return etree.fromstring(raw, parser=etree.XMLParser(recover=False, resolve_entities=True, no_network=True))
-    except Exception:
-        pass
+    repaired = repair_redundant_void_end_tags(raw)
+    candidates = (raw,) if repaired == raw else (raw, repaired)
+    for candidate in candidates:
+        try:
+            root = etree.fromstring(
+                candidate,
+                parser=etree.XMLParser(
+                    recover=False,
+                    resolve_entities=True,
+                    no_network=True,
+                ),
+            )
+            if parsed_root_preserves_body(candidate, root):
+                return root
+        except Exception:
+            pass
 
-    fixed = normalize_html_named_entities_for_xml(raw)
-    try:
-        return etree.fromstring(fixed, parser=etree.XMLParser(recover=True, resolve_entities=True, no_network=True))
-    except Exception:
-        pass
+    for candidate in candidates:
+        fixed = normalize_html_named_entities_for_xml(candidate)
+        try:
+            root = etree.fromstring(
+                fixed,
+                parser=etree.XMLParser(
+                    recover=True,
+                    resolve_entities=True,
+                    no_network=True,
+                ),
+            )
+            if parsed_root_preserves_body(candidate, root):
+                return root
+        except Exception:
+            pass
 
     try:
         return etree.fromstring(raw, parser=etree.HTMLParser(recover=True))
     except Exception as exc:
         raise ValueError("Failed to parse html/xhtml") from exc
+
+
+def repair_redundant_void_end_tags(raw: bytes) -> bytes:
+    fixed = RE_REDUNDANT_VOID_END_TAG.sub(lambda match: match.group(1), raw)
+    return RE_EMPTY_VOID_PAIR.sub(
+        lambda match: b"<" + match.group("tag") + match.group("attrs") + b"/>",
+        fixed,
+    )
+
+
+def parsed_root_preserves_body(raw: bytes, root: etree._Element) -> bool:
+    if b"<body" not in raw.lower():
+        return True
+    if local_name(root.tag) == "body":
+        return True
+    return bool(root.xpath(".//*[local-name()='body']"))
 
 
 def trim_to_html_document_start(raw: bytes) -> bytes:
