@@ -855,10 +855,9 @@ export interface Messages {
     selectedCount: string;
     select: string;
     order: string;
+    orderHint: string;
     source: string;
     size: string;
-    moveUp: string;
-    moveDown: string;
     progressLabel: string;
     statusLabel: string;
     processedFiles: string;

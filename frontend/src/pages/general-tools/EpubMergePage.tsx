@@ -214,12 +214,16 @@ export function EpubMergePage() {
     );
   };
 
-  const moveAction = (index: number, direction: -1 | 1) => {
+  const moveActionToOrder = (index: number, rawOrder: string) => {
+    const order = Number.parseInt(rawOrder, 10);
+    if (!Number.isFinite(order)) return;
     setActions((prev) => {
       const next = [...prev];
-      const target = index + direction;
+      const target = Math.min(Math.max(order - 1, 0), next.length - 1);
       if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
+      if (target === index) return prev;
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
       return next.map((action, order) => ({ ...action, order }));
     });
   };
@@ -334,6 +338,7 @@ export function EpubMergePage() {
             </div>
             {actions.length > 0 ? (
               <div className={styles.tableWrap}>
+                <p className={styles.tableHint}>{text.orderHint}</p>
                 <table className={styles.table}>
                   <thead>
                     <tr>
@@ -358,25 +363,19 @@ export function EpubMergePage() {
                           />
                         </td>
                         <td>
-                          <div className={styles.orderControls}>
-                            <span>{index + 1}</span>
-                            <button
-                              type="button"
-                              className={styles.miniButton}
-                              onClick={() => moveAction(index, -1)}
-                              disabled={index === 0 || isRunning}
-                            >
-                              {text.moveUp}
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.miniButton}
-                              onClick={() => moveAction(index, 1)}
-                              disabled={index === actions.length - 1 || isRunning}
-                            >
-                              {text.moveDown}
-                            </button>
-                          </div>
+                          <input
+                            className={styles.orderInput}
+                            type="number"
+                            min={1}
+                            max={actions.length}
+                            value={index + 1}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) =>
+                              moveActionToOrder(index, event.target.value)
+                            }
+                            disabled={isRunning}
+                            aria-label={`${text.order} ${index + 1}`}
+                          />
                         </td>
                         <td>{action.source_path}</td>
                         <td>{formatBytes(action.size_bytes)}</td>

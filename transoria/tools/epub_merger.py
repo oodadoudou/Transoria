@@ -34,6 +34,22 @@ _HTML_MEDIA_TYPES = {"application/xhtml+xml", "text/html"}
 _NCX_MEDIA_TYPE = "application/x-dtbncx+xml"
 _NAV_PROPERTY = "nav"
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*]')
+_EXTRA_MARKER_PATTERN = re.compile(
+    r"외전|번외|특별|番外|外传|外傳|特别|特別|后日谈|後日談|spinoff|side\s*story|extra|special",
+    re.IGNORECASE,
+)
+_EXTRA_NUMBER_PATTERN = re.compile(
+    r"(?:외전|번외|특별|番外|外传|外傳|特别|特別|后日谈|後日談|spinoff|side\s*story|extra|special)\s*(\d+)",
+    re.IGNORECASE,
+)
+_ORDERED_UNIT_PATTERN = (
+    r"(?:권|卷|冊|册|화|話|话|장|章|회|回|부|部|편|篇|탄|巻|episode|ep|chapter|chap|ch|volume|vol)"
+)
+_ORDERED_NUMBER_PATTERN = re.compile(
+    rf"(?:(?:第|제)\s*(\d+)\s*{_ORDERED_UNIT_PATTERN}?|(\d+)\s*{_ORDERED_UNIT_PATTERN})",
+    re.IGNORECASE,
+)
+_DIGIT_PATTERN = re.compile(r"\d+")
 
 
 @dataclass(frozen=True)
@@ -184,7 +200,7 @@ def build_epub_merge_plan(
             and path.suffix.lower() == _EPUB_SUFFIX
             and path.resolve() != output_path
         ),
-        key=lambda path: _sort_key_korean(path.name),
+        key=lambda path: _sort_key_epub(path.name),
     )
     title = _safe_filename(output_path.stem)
     actions = tuple(
@@ -959,12 +975,50 @@ def _resolve_output_path(base: Path, options: EpubMergeOptions) -> Path:
     return (base / "merged.epub").resolve()
 
 
-def _sort_key_korean(filename: str) -> tuple[int, int, str]:
+def _sort_key_epub(
+    filename: str,
+) -> tuple[
+    tuple[tuple[int, str | int], ...],
+    int,
+    int,
+    tuple[tuple[int, str | int], ...],
+]:
     name = Path(filename).stem
-    is_extra = 1 if any(key in name.lower() for key in ("외전", "특별", "번외", "spinoff")) else 0
-    match = re.search(r"(?:제\s*)?(\d+)\s*(?:화|장|회|권|부|편|탄)?", name)
-    number = int(match.group(1)) if match else 999999
-    return (is_extra, number, filename)
+    is_extra = 1 if _EXTRA_MARKER_PATTERN.search(name) else 0
+    return (
+        _natural_key(_series_name_for_sort(name)),
+        is_extra,
+        _volume_number_for_sort(name, is_extra=bool(is_extra)),
+        _natural_key(filename),
+    )
+
+
+def _series_name_for_sort(name: str) -> str:
+    text = _EXTRA_MARKER_PATTERN.sub(" ", name)
+    text = _ORDERED_NUMBER_PATTERN.sub(" ", text)
+    text = _DIGIT_PATTERN.sub(" ", text)
+    text = re.sub(r"[\[\]【】()（）<>《》@#,_\-.]+", " ", text)
+    return " ".join(text.casefold().split())
+
+
+def _volume_number_for_sort(name: str, *, is_extra: bool) -> int:
+    if is_extra:
+        extra_match = _EXTRA_NUMBER_PATTERN.search(name)
+        if extra_match:
+            return int(extra_match.group(1))
+    ordered_match = _ORDERED_NUMBER_PATTERN.search(name)
+    if ordered_match:
+        return int(ordered_match.group(1) or ordered_match.group(2))
+    fallback = _DIGIT_PATTERN.search(name)
+    return int(fallback.group(0)) if fallback else 999999
+
+
+def _natural_key(text: str) -> tuple[tuple[int, str | int], ...]:
+    return tuple(
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in re.split(r"(\d+)", text.casefold())
+        if part
+    )
 
 
 def _find_opf_path(archive: zipfile.ZipFile) -> str:

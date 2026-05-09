@@ -153,25 +153,25 @@
   border-bottom: 0;
 }
 
-.miniButton {
+.tableHint {
+  margin: 0 0 8px;
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+}
+
+.orderInput {
+  width: 64px;
+  min-height: 34px;
   border: 1px solid var(--hairline-strong, #d8d0c5);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--panel, #fffaf3);
   color: var(--ink, #2a2620);
   font: inherit;
-  font-size: 12px;
-  padding: 4px 8px;
-  cursor: pointer;
+  text-align: center;
 }
 
-.miniButton:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.orderControls {
-  display: flex;
-  gap: 6px;
+.orderInput:disabled {
+  opacity: 0.55;
 }
 
 .reportToggle {

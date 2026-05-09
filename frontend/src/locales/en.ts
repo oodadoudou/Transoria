@@ -398,10 +398,10 @@ export const en: Messages = {
     selectedCount: "Selected",
     select: "Select",
     order: "Order",
+    orderHint:
+      "Files are naturally sorted by series, main volume, then side-story volume. Enter a target order number to reorder directly.",
     source: "Source file",
     size: "Size",
-    moveUp: "Move up",
-    moveDown: "Move down",
     progressLabel: "Progress",
     statusLabel: "Status",
     processedFiles: "Processed files",
