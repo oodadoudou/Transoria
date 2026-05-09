@@ -10,6 +10,7 @@ output.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Mapping
@@ -51,7 +52,8 @@ _FORMAT_RETRY_REMINDER = (
 )
 _TRANSPORT_RETRY_BUDGET = 1
 _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD = 20
-_SOFT_TIMEOUT_SECONDS = 60.0
+_SOFT_TIMEOUT_SECONDS = 30.0
+_HIGH_CONCURRENCY_SPLIT_CHAR_LIMIT = 1800
 
 
 def _output_contract_reminder(target_language: str) -> str:
@@ -117,6 +119,23 @@ class GlossarySubtaskRunner:
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
+        text_parts = _split_high_concurrency_text(self.model, text)
+        if len(text_parts) > 1:
+            results = []
+            for index, part in enumerate(text_parts, start=1):
+                results.append(
+                    await self._run_single(
+                        f"{chunk_id}.p{index}",
+                        source_file,
+                        part,
+                    )
+                )
+            return _merge_glossary_results(results)
+        return await self._run_single(chunk_id, source_file, text)
+
+    async def _run_single(
+        self, chunk_id: str, source_file: str, text: str
+    ) -> SubtaskResult:
         attempt_index = -1
         best_result: SubtaskResult | None = None
         best_score: tuple[int, int, int] | None = None
@@ -210,6 +229,7 @@ class GlossarySubtaskRunner:
             )
 
         response = None
+        request_started = time.monotonic()
         try:
             response = await self.client.chat(
                 ChatRequest(
@@ -221,6 +241,24 @@ class GlossarySubtaskRunner:
                     log_label=f"glossary {chunk_id}",
                 )
             )
+        except BaseException as exc:
+            if self.debug_log_dir is not None:
+                write_subtask_debug_log(
+                    self.debug_log_dir,
+                    chunk_id,
+                    {
+                        "kind": "glossary",
+                        "status": "request_failed",
+                        "system_prompt": "",
+                        "instruction_prompt": instruction_prompt,
+                        "user_prompt": user_prompt,
+                        "timeout_seconds": request_model.timeout_seconds,
+                        "elapsed_seconds": time.monotonic() - request_started,
+                        "attempt_index": attempt_index,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+            raise
         finally:
             if self.tpm_limiter is not None and reservation >= 0:
                 actual = (
@@ -257,6 +295,7 @@ class GlossarySubtaskRunner:
                     "instruction_prompt": instruction_prompt,
                     "user_prompt": user_prompt,
                     "timeout_seconds": request_model.timeout_seconds,
+                    "elapsed_seconds": time.monotonic() - request_started,
                     "attempt_index": attempt_index,
                     "raw_response": response.content,
                     "restored_response": raw_content,
@@ -291,6 +330,52 @@ def _with_glossary_soft_timeout(model: ModelConfig) -> ModelConfig:
     if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
         return model
     return replace(model, timeout_seconds=_SOFT_TIMEOUT_SECONDS)
+
+
+def _split_high_concurrency_text(model: ModelConfig, text: str) -> tuple[str, ...]:
+    if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
+        return (text,)
+    if len(text) <= _HIGH_CONCURRENCY_SPLIT_CHAR_LIMIT:
+        return (text,)
+    lines = text.splitlines()
+    if len(lines) < 2:
+        return (text,)
+    midpoint = len(lines) // 2
+    first = "\n".join(lines[:midpoint]).strip()
+    second = "\n".join(lines[midpoint:]).strip()
+    if not first or not second:
+        return (text,)
+    return (first, second)
+
+
+def _merge_glossary_results(results: list[SubtaskResult]) -> SubtaskResult:
+    entries: list[Mapping[str, object]] = []
+    issues: list[Mapping[str, object]] = []
+    input_tokens = 0
+    output_tokens = 0
+    for result in results:
+        input_tokens += result.input_tokens
+        output_tokens += result.output_tokens
+        try:
+            payload = json.loads(result.response_content)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        raw_entries = payload.get("entries", [])
+        raw_issues = payload.get("issues", [])
+        if isinstance(raw_entries, list):
+            entries.extend(item for item in raw_entries if isinstance(item, Mapping))
+        if isinstance(raw_issues, list):
+            issues.extend(item for item in raw_issues if isinstance(item, Mapping))
+    return SubtaskResult(
+        response_content=json.dumps(
+            {"entries": entries, "issues": issues},
+            ensure_ascii=False,
+        ),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
 
 
 def _transport_retry_budget(model: ModelConfig) -> int:

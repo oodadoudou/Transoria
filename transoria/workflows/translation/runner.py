@@ -259,8 +259,21 @@ def _with_translation_request_timeout(model: ModelConfig, phase: str) -> ModelCo
 
 def _transport_retry_budget(model: ModelConfig) -> int | None:
     if model.concurrency_limit > _HIGH_CONCURRENCY_THRESHOLD:
-        return 0
+        return 1
     return None
+
+
+def _should_retry_translation_error(model: ModelConfig, exc: BaseException) -> bool:
+    if model.concurrency_limit <= _HIGH_CONCURRENCY_THRESHOLD:
+        return is_transient_llm_error(exc)
+    if (
+        isinstance(exc, LlmRequestError)
+        and getattr(exc, "code", "") == "llm.transport_error"
+    ):
+        message = str(exc).lower()
+        if "timeout" in message:
+            return False
+    return is_transient_llm_error(exc)
 
 
 @dataclass(frozen=True)
@@ -371,6 +384,9 @@ class TranslationSubtaskRunner:
                         ),
                         max_transport_retry_attempts=_transport_retry_budget(
                             self.model
+                        ),
+                        should_retry=lambda exc: _should_retry_translation_error(
+                            self.model, exc
                         ),
                     )
                 except BaseException as exc:
@@ -563,6 +579,9 @@ class TranslationSubtaskRunner:
                                 max_transport_retry_attempts=_transport_retry_budget(
                                     self.model
                                 ),
+                                should_retry=lambda exc: _should_retry_translation_error(
+                                    self.model, exc
+                                ),
                             )
                         else:
                             async with self.solo_retry_limiter:
@@ -572,6 +591,9 @@ class TranslationSubtaskRunner:
                                     max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
                                     max_transport_retry_attempts=_transport_retry_budget(
                                         self.model
+                                    ),
+                                    should_retry=lambda exc: _should_retry_translation_error(
+                                        self.model, exc
                                     ),
                                 )
                     except LlmRequestError as exc:
