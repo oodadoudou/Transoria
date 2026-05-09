@@ -52,7 +52,7 @@ class EpubCompressOptions:
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "EpubCompressOptions":
         return cls(
-            suffix=str(data.get("suffix", "_压缩")),
+            suffix=str(data.get("suffix", "_压缩")).strip(),
             replace_original=bool(data.get("replace_original", False)),
             preserve_first_cover=bool(data.get("preserve_first_cover", False)),
             font_mode=_font_mode(data.get("font_mode", "deduplicate")),
@@ -165,12 +165,13 @@ def build_epub_compress_plan(
         if not resolved.exists() or not resolved.is_dir():
             raise ValueError(f"input folder does not exist: {input_path}")
         iterator = resolved.rglob("*") if options.recursive else resolved.glob("*")
+        suffix = _effective_output_suffix(options)
         files = sorted(
             path
             for path in iterator
             if path.is_file()
             and path.suffix.lower() == _EPUB_SUFFIX
-            and (options.replace_original or options.suffix not in path.stem)
+            and (options.replace_original or suffix not in path.stem)
         )
     else:
         raise ValueError(f"unsupported EPUB compress mode: {mode!r}")
@@ -551,8 +552,11 @@ def _relative_zip_href(base_dir: str, target: str) -> str:
 def _output_path_for(path: Path, options: EpubCompressOptions) -> Path:
     if options.replace_original:
         return path
-    suffix = options.suffix or "_压缩"
-    return path.with_name(f"{path.stem}{suffix}{path.suffix}")
+    return path.with_name(f"{path.stem}{_effective_output_suffix(options)}{path.suffix}")
+
+
+def _effective_output_suffix(options: EpubCompressOptions) -> str:
+    return options.suffix.strip() or "_压缩"
 
 
 def _unique_output(path: Path) -> Path:

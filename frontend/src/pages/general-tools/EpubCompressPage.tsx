@@ -155,8 +155,10 @@ export function EpubCompressPage() {
     setArtifacts(null);
     setReport(null);
     setShowReport(false);
+    const requestOptions = normalizeOptions(options, text.defaultSuffix);
+    setOptions(requestOptions);
     try {
-      const next = await epubCompressBridge.preview(inputPath, mode, options);
+      const next = await epubCompressBridge.preview(inputPath, mode, requestOptions);
       setPlan(next);
       setActions(next.actions);
     } catch (error) {
@@ -173,13 +175,15 @@ export function EpubCompressPage() {
     setArtifacts(null);
     setReport(null);
     setShowReport(false);
+    const requestOptions = normalizeOptions(options, text.defaultSuffix);
+    setOptions(requestOptions);
     try {
       const requestId = `epub-compress-${Date.now().toString(36)}`;
       const { task_id } = await epubCompressBridge.startTask(
         requestId,
         inputPath,
         mode,
-        options,
+        requestOptions,
         actions,
       );
       setActiveTaskId("epub_compress", task_id);
@@ -317,6 +321,9 @@ export function EpubCompressPage() {
             <input
               value={options.suffix}
               disabled={options.replace_original}
+              onBlur={() =>
+                setOptions((prev) => normalizeOptions(prev, text.defaultSuffix))
+              }
               onChange={(event) =>
                 setOptions((prev) => ({ ...prev, suffix: event.target.value }))
               }
@@ -467,6 +474,14 @@ export function EpubCompressPage() {
       ) : null}
     </>
   );
+}
+
+function normalizeOptions(
+  options: EpubCompressOptions,
+  defaultSuffix: string,
+): EpubCompressOptions {
+  const suffix = options.suffix.trim() || defaultSuffix;
+  return suffix === options.suffix ? options : { ...options, suffix };
 }
 
 function formatSaved(bytes: number, percent: number): string {
