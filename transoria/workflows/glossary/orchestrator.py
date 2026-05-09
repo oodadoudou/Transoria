@@ -326,6 +326,7 @@ class GlossaryOrchestrator:
                 max_term_display_length=config.max_term_display_length,
                 info_blacklist=config.info_blacklist,
                 allow_src_eq_dst=config.allow_src_eq_dst,
+                source_language=config.source_language,
                 target_language=config.target_language,
                 normalize_widths=config.normalize_widths,
             )

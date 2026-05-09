@@ -40,6 +40,7 @@ def normalize_candidates(
     max_term_display_length: int,
     info_blacklist: Iterable[str] = _DEFAULT_INFO_BLACKLIST,
     allow_src_eq_dst: bool = False,
+    source_language: Language | None = None,
     target_language: Language | None = None,
     normalize_widths: bool = True,
 ) -> tuple[Candidate, ...]:
@@ -66,6 +67,12 @@ def normalize_candidates(
         dst = _strip_boundary_punct(_collapse_whitespace(dst))
         info = entry.info.strip()
         if not src or not dst:
+            continue
+        if _is_rule_noise(src):
+            continue
+        if source_language is not None and not _contains_source_language(
+            src, source_language
+        ):
             continue
         if cn_converter is not None:
             dst = cn_converter(dst)
@@ -123,6 +130,30 @@ def _collapse_whitespace(text: str) -> str:
 
 def _strip_boundary_punct(text: str) -> str:
     return text.strip(_BOUNDARY_PUNCT_STRIP).strip()
+
+
+def _is_rule_noise(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return True
+    return all(
+        char.isspace()
+        or char.isnumeric()
+        or unicodedata.category(char).startswith(("P", "S"))
+        for char in stripped
+    )
+
+
+def _contains_source_language(text: str, source_language: Language) -> bool:
+    if source_language is Language.KOREAN:
+        return bool(re.search(r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]", text))
+    if source_language is Language.JAPANESE:
+        return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text))
+    if source_language in (Language.CHINESE_SIMPLIFIED, Language.CHINESE_TRADITIONAL):
+        return bool(re.search(r"[\u3400-\u9fff\uf900-\ufaff]", text))
+    if source_language is Language.ENGLISH:
+        return bool(re.search(r"[A-Za-z]", text))
+    return True
 
 
 def _group_key(src: str) -> str:

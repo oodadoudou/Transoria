@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Mapping
 
 from transoria.domain import Language, language_prompt_label
-from transoria.llm.client import ChatRequest, LlmClient
+from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import DecodeIssue, GlossaryEntry, decode_glossary_jsonl
 from transoria.llm.retry import is_transient_llm_error, retry_async
@@ -50,10 +50,11 @@ _FORMAT_RETRY_REMINDER = (
     "Output JSONLINE only. The first non-whitespace character must be \"{\". "
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
-_TRANSPORT_RETRY_BUDGET = 1
+_TRANSPORT_RETRY_BUDGET = 4
 _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD = 20
 _SOFT_TIMEOUT_SECONDS = 30.0
 _HIGH_CONCURRENCY_SPLIT_CHAR_LIMIT = 1800
+_HIGH_CONCURRENCY_MAX_SPLIT_DEPTH = 4
 
 
 def _output_contract_reminder(target_language: str) -> str:
@@ -77,9 +78,16 @@ def _output_contract_reminder(target_language: str) -> str:
     )
 
 
-def _should_retry_glossary(exc: BaseException) -> bool:
+def _should_retry_glossary_request(model: ModelConfig, exc: BaseException) -> bool:
     if isinstance(exc, _GlossaryFormatRetry):
         return True
+    if (
+        model.concurrency_limit > _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD
+        and isinstance(exc, LlmRequestError)
+        and getattr(exc, "code", "") == "llm.transport_error"
+        and "timeout" in str(exc).lower()
+    ):
+        return False
     return is_transient_llm_error(exc)
 
 
@@ -119,19 +127,43 @@ class GlossarySubtaskRunner:
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
+        return await self._run_resilient(chunk_id, source_file, text, depth=0)
+
+    async def _run_resilient(
+        self, chunk_id: str, source_file: str, text: str, *, depth: int
+    ) -> SubtaskResult:
         text_parts = _split_high_concurrency_text(self.model, text)
         if len(text_parts) > 1:
             results = []
             for index, part in enumerate(text_parts, start=1):
                 results.append(
-                    await self._run_single(
+                    await self._run_resilient(
                         f"{chunk_id}.p{index}",
                         source_file,
                         part,
+                        depth=depth + 1,
                     )
                 )
             return _merge_glossary_results(results)
-        return await self._run_single(chunk_id, source_file, text)
+        try:
+            return await self._run_single(chunk_id, source_file, text)
+        except LlmRequestError as exc:
+            if not _should_split_after_transport_timeout(self.model, exc, depth):
+                raise
+            rescue_parts = _split_text_in_half(text)
+            if len(rescue_parts) <= 1:
+                raise
+            results = []
+            for index, part in enumerate(rescue_parts, start=1):
+                results.append(
+                    await self._run_resilient(
+                        f"{chunk_id}.r{index}",
+                        source_file,
+                        part,
+                        depth=depth + 1,
+                    )
+                )
+            return _merge_glossary_results(results)
 
     async def _run_single(
         self, chunk_id: str, source_file: str, text: str
@@ -166,7 +198,9 @@ class GlossarySubtaskRunner:
                 operation,
                 model=self.model,
                 max_transport_retry_attempts=_transport_retry_budget(self.model),
-                should_retry=_should_retry_glossary,
+                should_retry=lambda exc: _should_retry_glossary_request(
+                    self.model, exc
+                ),
                 is_format_retry_error=lambda exc: isinstance(
                     exc, _GlossaryFormatRetry
                 ),
@@ -337,12 +371,34 @@ def _split_high_concurrency_text(model: ModelConfig, text: str) -> tuple[str, ..
         return (text,)
     if len(text) <= _HIGH_CONCURRENCY_SPLIT_CHAR_LIMIT:
         return (text,)
+    return _split_text_in_half(text)
+
+
+def _should_split_after_transport_timeout(
+    model: ModelConfig, exc: LlmRequestError, depth: int
+) -> bool:
+    if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
+        return False
+    if depth >= _HIGH_CONCURRENCY_MAX_SPLIT_DEPTH:
+        return False
+    if getattr(exc, "code", "") != "llm.transport_error":
+        return False
+    return "timeout" in str(exc).lower()
+
+
+def _split_text_in_half(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
-    if len(lines) < 2:
+    if len(lines) >= 2:
+        midpoint = len(lines) // 2
+        first = "\n".join(lines[:midpoint]).strip()
+        second = "\n".join(lines[midpoint:]).strip()
+        if first and second:
+            return (first, second)
+    if len(text) < 2:
         return (text,)
-    midpoint = len(lines) // 2
-    first = "\n".join(lines[:midpoint]).strip()
-    second = "\n".join(lines[midpoint:]).strip()
+    midpoint = len(text) // 2
+    first = text[:midpoint].strip()
+    second = text[midpoint:].strip()
     if not first or not second:
         return (text,)
     return (first, second)
@@ -379,8 +435,6 @@ def _merge_glossary_results(results: list[SubtaskResult]) -> SubtaskResult:
 
 
 def _transport_retry_budget(model: ModelConfig) -> int:
-    if model.concurrency_limit > _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
-        return 0
     return _TRANSPORT_RETRY_BUDGET
 
 
