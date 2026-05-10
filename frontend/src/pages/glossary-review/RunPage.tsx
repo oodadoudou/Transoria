@@ -271,8 +271,10 @@ export function RunPage() {
           100,
       )
     : null;
-  const percent =
+  const rawPercent =
     roundPercent ?? (total > 0 ? Math.floor((settled / total) * 100) : 0);
+  const percent =
+    snapshot.status === "completed" ? rawPercent : Math.min(rawPercent, 99);
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
   const roundDetail = roundProgress

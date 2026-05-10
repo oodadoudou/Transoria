@@ -3556,12 +3556,10 @@ class TaskService:
         ):
             return snapshot
         live = self.registry.get(record.id)
-        status = (
-            TaskStatus.RUNNING
-            if live is not None and not live.is_done
-            else TaskStatus.STOPPED
-        )
-        healed = record.with_status(status).with_updated_at(_utc_now_iso())
+        if live is not None and not live.is_done:
+            transient = record.with_status(TaskStatus.RUNNING)
+            return TaskSnapshot(record=transient, subtasks=snapshot.subtasks)
+        healed = record.with_status(TaskStatus.STOPPED).with_updated_at(_utc_now_iso())
         cache.save_task(healed)
         return TaskSnapshot(record=healed, subtasks=snapshot.subtasks)
 
