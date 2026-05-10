@@ -186,6 +186,10 @@ def _apply_doc_segments(
                     elem.text = translated_text
                 else:
                     elem.tail = translated_text
+            if _segment_uses_ruby(segment):
+                block = _resolve_elem(root, elem_by_path, segment.block_path)
+                if block is not None:
+                    _remove_ruby_annotations(block)
 
     if allow_bilingual:
         for block, clone in reversed(block_refs):
@@ -226,6 +230,17 @@ def _is_nav_or_metadata_doc(doc_path: str, root: etree._Element, segments) -> bo
     if any(segment.kind in {EpubTextKind.NAV, EpubTextKind.NCX} for segment in segments):
         return True
     return _is_nav_page(root)
+
+
+def _segment_uses_ruby(segment) -> bool:
+    return any("/ruby[" in part.path or "/rt[" in part.path or "/rp[" in part.path for part in segment.parts)
+
+
+def _remove_ruby_annotations(block: etree._Element) -> None:
+    for elem in list(block.xpath(".//*[local-name()='rt' or local-name()='rp']")):
+        parent = elem.getparent()
+        if parent is not None:
+            parent.remove(elem)
 
 
 def _is_nav_page(root: etree._Element) -> bool:

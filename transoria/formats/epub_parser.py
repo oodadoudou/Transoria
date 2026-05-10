@@ -65,6 +65,7 @@ SKIP_SUBTREE_TAGS = {
     "var",
     "noscript",
     "rt",
+    "rp",
 }
 
 RE_SLOT_INLINE_WHITESPACE = re.compile(r"[\r\n\t]+")
@@ -380,13 +381,19 @@ def append_segment(
             index=len(segments),
             doc_path=doc_path,
             block_path=block_path,
-            text="\n".join(part_texts),
+            text=join_segment_text(part_texts, parts),
             source_digest=sha1_with_null_separator(part_texts),
             kind=kind,
             parts=parts,
             row=row,
         )
     )
+
+
+def join_segment_text(part_texts: list[str], parts: list[EpubPartRef]) -> str:
+    if any("/ruby[" in part.path for part in parts):
+        return "".join(part_texts)
+    return "\n".join(part_texts)
 
 
 def collect_document_units(
