@@ -26,7 +26,43 @@ punctuation lists and works across Latin, CJK, Cyrillic, Hangul, etc.
 
 from __future__ import annotations
 
+import re
 import unicodedata
+
+from transoria.domain import Language
+
+
+_CJK_IDEOGRAPH_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+_HANGUL_RE = re.compile(r"[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af\uffa0-\uffdc]")
+_JAPANESE_RE = re.compile(
+    r"[\u3040-\u309f\u30a0-\u30ff\u31f0-\u31ff\uff66-\uff9f"
+    r"\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]"
+)
+_LATIN_RE = re.compile(r"[A-Za-z\u00c0-\u024f]")
+_CYRILLIC_RE = re.compile(r"[\u0400-\u04ff]")
+_ARABIC_RE = re.compile(r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]")
+_THAI_RE = re.compile(r"[\u0e00-\u0e7f]")
+
+_LANGUAGE_SCRIPT_RE: dict[Language, re.Pattern[str]] = {
+    Language.KOREAN: _HANGUL_RE,
+    Language.CHINESE_SIMPLIFIED: _CJK_IDEOGRAPH_RE,
+    Language.CHINESE_TRADITIONAL: _CJK_IDEOGRAPH_RE,
+    Language.ENGLISH: _LATIN_RE,
+    Language.JAPANESE: _JAPANESE_RE,
+    Language.RUSSIAN: _CYRILLIC_RE,
+    Language.ARABIC: _ARABIC_RE,
+    Language.GERMAN: _LATIN_RE,
+    Language.FRENCH: _LATIN_RE,
+    Language.POLISH: _LATIN_RE,
+    Language.SPANISH: _LATIN_RE,
+    Language.ITALIAN: _LATIN_RE,
+    Language.PORTUGUESE: _LATIN_RE,
+    Language.HUNGARIAN: _LATIN_RE,
+    Language.TURKISH: _LATIN_RE,
+    Language.THAI: _THAI_RE,
+    Language.INDONESIAN: _LATIN_RE,
+    Language.VIETNAMESE: _LATIN_RE,
+}
 
 
 def is_translation_skippable(text: str) -> bool:
@@ -47,4 +83,18 @@ def is_translation_skippable(text: str) -> bool:
     return True
 
 
-__all__ = ["is_translation_skippable"]
+def should_translate_for_language(
+    text: str, *, source_language: Language, target_language: Language
+) -> bool:
+    """False when a segment is already clearly in the target script."""
+
+    if is_translation_skippable(text):
+        return False
+    source_re = _LANGUAGE_SCRIPT_RE.get(source_language)
+    target_re = _LANGUAGE_SCRIPT_RE.get(target_language)
+    if source_re is None or target_re is None or source_re.pattern == target_re.pattern:
+        return True
+    return bool(source_re.search(text) or not target_re.search(text))
+
+
+__all__ = ["is_translation_skippable", "should_translate_for_language"]

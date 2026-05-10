@@ -71,7 +71,7 @@ from transoria.workflows.translation.chunker import (
     build_chunks,
 )
 from transoria.workflows.translation.config import TranslationConfig
-from transoria.workflows.prefilter import is_translation_skippable
+from transoria.workflows.prefilter import should_translate_for_language
 from transoria.workflows.translation.preprocessor import (
     preprocess_segment,
     strip_drm_invisibles,
@@ -579,14 +579,22 @@ def _prepare_segments(
             # Strip DRM invisible chars so confidence checks and bilingual
             # output see the same clean text the LLM does.
             source_text = strip_drm_invisibles(raw_source_text)
-            if is_translation_skippable(source_text):
+            if not should_translate_for_language(
+                source_text,
+                source_language=config.source_language,
+                target_language=config.target_language,
+            ):
                 continue
             preprocessed = preprocess_segment(
                 source_text,
                 text_preserve_rules=config.text_preserve_rules,
                 pre_replacements=config.pre_replacements,
             )
-            if is_translation_skippable(preprocessed.prompt_text):
+            if not should_translate_for_language(
+                preprocessed.prompt_text,
+                source_language=config.source_language,
+                target_language=config.target_language,
+            ):
                 continue
             prepared = PreparedSegment(
                 segment_id=f"{parsed.file_index}:{segment_index}",
