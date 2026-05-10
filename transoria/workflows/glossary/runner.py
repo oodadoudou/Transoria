@@ -9,6 +9,7 @@ output.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from dataclasses import dataclass, replace
@@ -137,17 +138,13 @@ class GlossarySubtaskRunner:
     ) -> SubtaskResult:
         text_parts = _split_high_concurrency_text(self.model, text)
         if len(text_parts) > 1:
-            results = []
-            for index, part in enumerate(text_parts, start=1):
-                results.append(
-                    await self._run_resilient(
-                        f"{chunk_id}.p{index}",
-                        source_file,
-                        part,
-                        depth=depth + 1,
-                    )
-                )
-            return _merge_glossary_results(results)
+            return await self._run_split_parts(
+                chunk_id,
+                source_file,
+                text_parts,
+                suffix="p",
+                depth=depth,
+            )
         try:
             return await self._run_single(chunk_id, source_file, text)
         except LlmRequestError as exc:
@@ -156,17 +153,41 @@ class GlossarySubtaskRunner:
             rescue_parts = _split_text_in_half(text)
             if len(rescue_parts) <= 1:
                 raise
-            results = []
-            for index, part in enumerate(rescue_parts, start=1):
-                results.append(
-                    await self._run_resilient(
-                        f"{chunk_id}.r{index}",
-                        source_file,
-                        part,
-                        depth=depth + 1,
-                    )
+            return await self._run_split_parts(
+                chunk_id,
+                source_file,
+                rescue_parts,
+                suffix="r",
+                depth=depth,
+            )
+
+    async def _run_split_parts(
+        self,
+        chunk_id: str,
+        source_file: str,
+        parts: tuple[str, ...],
+        *,
+        suffix: str,
+        depth: int,
+    ) -> SubtaskResult:
+        results = await asyncio.gather(
+            *(
+                self._run_resilient(
+                    f"{chunk_id}.{suffix}{index}",
+                    source_file,
+                    part,
+                    depth=depth + 1,
                 )
-            return _merge_glossary_results(results)
+                for index, part in enumerate(parts, start=1)
+            ),
+            return_exceptions=True,
+        )
+        completed_results: list[SubtaskResult] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+            completed_results.append(result)
+        return _merge_glossary_results(completed_results)
 
     async def _run_single(
         self, chunk_id: str, source_file: str, text: str
