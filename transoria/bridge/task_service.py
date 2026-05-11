@@ -1940,6 +1940,7 @@ class TaskService:
             novel_background=review.novel_background,
             review_rounds=max(1, int(review.review_rounds)),
             batch_size=max(1, int(review.batch_size)),
+            retry_attempts=max(0, int(review.retry_attempts)),
             model=model,
             prompt_preset=preset,
         )

@@ -399,7 +399,7 @@ export const en: Messages = {
     select: "Select",
     order: "Order",
     orderHint:
-      "Files are naturally sorted by series, main volume, then side-story volume. Enter a target order number to reorder directly.",
+      "Files are naturally sorted by series, main volume, then side-story volume. Drag rows or enter a target order number to adjust.",
     source: "Source file",
     size: "Size",
     progressLabel: "Progress",
@@ -898,6 +898,9 @@ export const en: Messages = {
       batchSize: "Terms per batch",
       batchSizeHelp:
         "How many terms each model request reviews. Smaller is steadier; larger uses fewer requests.",
+      retryAttempts: "Retry attempts",
+      retryAttemptsHelp:
+        "Extra retries per batch for transient network, rate-limit, or timeout errors. Wait time increases between retries. Set to 0 to use only the model profile retry setting.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed.",

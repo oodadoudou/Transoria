@@ -389,7 +389,8 @@ export const zh: Messages = {
     selectedCount: "已选择",
     select: "选择",
     order: "顺序",
-    orderHint: "默认按系列名、正文卷数、外传卷数自然排序；可直接输入目标序号调整顺序。",
+    orderHint:
+      "默认按系列名、正文卷数、外传卷数自然排序；可拖拽调整，也可直接输入目标序号。",
     source: "原文件",
     size: "大小",
     progressLabel: "进度",
@@ -879,6 +880,9 @@ export const zh: Messages = {
       batchSize: "每批术语数",
       batchSizeHelp:
         "每个模型请求包含多少条术语。较小更稳，较大更省请求数。",
+      retryAttempts: "重试次数",
+      retryAttemptsHelp:
+        "瞬时网络错误、限速或超时时，每批最多额外重试几次。等待时间会递增；设为 0 则只使用模型配置里的重试次数。",
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。",

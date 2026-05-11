@@ -158,6 +158,7 @@ export interface GlossaryReviewSettings {
   novel_background: string;
   review_rounds: number;
   batch_size: number;
+  retry_attempts: number;
   auto_open_output_folder: boolean;
   timeout_seconds: number;
 }

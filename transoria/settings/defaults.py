@@ -114,6 +114,7 @@ class GlossaryReviewSettings:
     novel_background: str = ""
     review_rounds: int = 1
     batch_size: int = 20
+    retry_attempts: int = 3
     auto_open_output_folder: bool = False
     timeout_seconds: int = 600
 

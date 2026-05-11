@@ -50,7 +50,6 @@ CHARACTER_CATEGORY_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-_DEFAULT_RETRY_ATTEMPTS = 3
 _DEFAULT_RETRY_INITIAL_BACKOFF_SECONDS = 1.0
 _DEFAULT_RETRY_MAX_BACKOFF_SECONDS = 8.0
 
@@ -101,7 +100,7 @@ def _default_runner_factory(
         client=client,
         model=replace(
             config.model,
-            retry_attempts=max(config.model.retry_attempts, _DEFAULT_RETRY_ATTEMPTS),
+            retry_attempts=max(config.model.retry_attempts, config.retry_attempts),
             retry_initial_backoff_seconds=max(
                 config.model.retry_initial_backoff_seconds,
                 _DEFAULT_RETRY_INITIAL_BACKOFF_SECONDS,

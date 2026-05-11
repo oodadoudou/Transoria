@@ -659,6 +659,8 @@ export interface Messages {
       reviewRoundsHelp: string;
       batchSize: string;
       batchSizeHelp: string;
+      retryAttempts: string;
+      retryAttemptsHelp: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
       openOutputOnComplete: string;

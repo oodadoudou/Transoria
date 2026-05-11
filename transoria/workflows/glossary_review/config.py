@@ -20,6 +20,7 @@ class GlossaryReviewConfig:
     novel_background: str
     review_rounds: int
     batch_size: int
+    retry_attempts: int
     model: ModelConfig
     prompt_preset: PromptPreset
     stream: bool = False

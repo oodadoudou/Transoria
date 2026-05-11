@@ -155,6 +155,16 @@ export function SettingsPage() {
         </ToggleRow>
         <ToggleRow label="" hint="">
           <NumberField
+            label={settings.retryAttempts}
+            value={draft.retry_attempts}
+            onChange={(v) => moduleSettings.update("retry_attempts", v)}
+            help={settings.retryAttemptsHelp}
+            min={0}
+            max={20}
+          />
+        </ToggleRow>
+        <ToggleRow label="" hint="">
+          <NumberField
             label={settings.timeoutSeconds}
             value={draft.timeout_seconds}
             onChange={(v) => moduleSettings.update("timeout_seconds", v)}

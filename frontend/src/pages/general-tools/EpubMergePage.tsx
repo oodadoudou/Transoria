@@ -67,6 +67,7 @@ export function EpubMergePage() {
   const [artifacts, setArtifacts] = useState<EpubMergeArtifacts | null>(null);
   const [report, setReport] = useState<EpubMergeReport | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [draggingActionId, setDraggingActionId] = useState<string | null>(null);
   const snapshot = useRunSnapshot("epub_merge");
   usePollRunSnapshot("epub_merge");
   const setActiveTaskId = useRuntimeStore((state) => state.setActiveTaskId);
@@ -228,6 +229,26 @@ export function EpubMergePage() {
     });
   };
 
+  const moveActionByDrag = (
+    sourceId: string,
+    targetId: string,
+    insertAfter: boolean,
+  ) => {
+    if (sourceId === targetId) return;
+    setActions((prev) => {
+      const sourceIndex = prev.findIndex((action) => action.id === sourceId);
+      const targetIndex = prev.findIndex((action) => action.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(sourceIndex, 1);
+      const adjustedTarget =
+        sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+      const insertIndex = adjustedTarget + (insertAfter ? 1 : 0);
+      next.splice(insertIndex, 0, moved);
+      return next.map((action, order) => ({ ...action, order }));
+    });
+  };
+
   return (
     <>
       <Panel title={text.title} subtitle={text.sub}>
@@ -350,7 +371,32 @@ export function EpubMergePage() {
                   </thead>
                   <tbody>
                     {actions.map((action, index) => (
-                      <tr key={action.id}>
+                      <tr
+                        key={action.id}
+                        className={
+                          draggingActionId === action.id
+                            ? styles.dragging
+                            : undefined
+                        }
+                        onDragOver={(event) => {
+                          if (!draggingActionId || isRunning) return;
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(event) => {
+                          if (!draggingActionId || isRunning) return;
+                          event.preventDefault();
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          const insertAfter =
+                            event.clientY > rect.top + rect.height / 2;
+                          moveActionByDrag(
+                            draggingActionId,
+                            action.id,
+                            insertAfter,
+                          );
+                          setDraggingActionId(null);
+                        }}
+                      >
                         <td>
                           <input
                             type="checkbox"
@@ -363,19 +409,39 @@ export function EpubMergePage() {
                           />
                         </td>
                         <td>
-                          <input
-                            className={styles.orderInput}
-                            type="number"
-                            min={1}
-                            max={actions.length}
-                            value={index + 1}
-                            onFocus={(event) => event.currentTarget.select()}
-                            onChange={(event) =>
-                              moveActionToOrder(index, event.target.value)
-                            }
-                            disabled={isRunning}
-                            aria-label={`${text.order} ${index + 1}`}
-                          />
+                          <div className={styles.orderControls}>
+                            <button
+                              type="button"
+                              className={styles.dragHandle}
+                              draggable={!isRunning}
+                              disabled={isRunning}
+                              onDragStart={(event) => {
+                                setDraggingActionId(action.id);
+                                event.dataTransfer.effectAllowed = "move";
+                                event.dataTransfer.setData(
+                                  "text/plain",
+                                  action.id,
+                                );
+                              }}
+                              onDragEnd={() => setDraggingActionId(null)}
+                              aria-label={`${text.order} ${index + 1}`}
+                            >
+                              ::
+                            </button>
+                            <input
+                              className={styles.orderInput}
+                              type="number"
+                              min={1}
+                              max={actions.length}
+                              value={index + 1}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onChange={(event) =>
+                                moveActionToOrder(index, event.target.value)
+                              }
+                              disabled={isRunning}
+                              aria-label={`${text.order} ${index + 1}`}
+                            />
+                          </div>
                         </td>
                         <td>{action.source_path}</td>
                         <td>{formatBytes(action.size_bytes)}</td>
