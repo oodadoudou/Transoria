@@ -50,6 +50,8 @@ CHARACTER_CATEGORY_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
+_DEFAULT_RETRY_ATTEMPTS = 3
+
 
 @dataclass(frozen=True)
 class ReviewHistoryItem:
@@ -95,7 +97,10 @@ def _default_runner_factory(
     )
     return GlossaryReviewSubtaskRunner(
         client=client,
-        model=config.model,
+        model=replace(
+            config.model,
+            retry_attempts=max(config.model.retry_attempts, _DEFAULT_RETRY_ATTEMPTS),
+        ),
         prompt_preset=config.prompt_preset,
         tpm_limiter=tpm_limiter,
         key_pool=key_pool,
