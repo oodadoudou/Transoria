@@ -604,6 +604,7 @@ export interface Messages {
       title: string;
       sub: string;
       progress: string;
+      preparing: string;
       failedSubtasks: string;
       runtimeTuning: string;
       activeConfig: string;

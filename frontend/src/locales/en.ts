@@ -835,6 +835,8 @@ export const en: Messages = {
       title: "Run Glossary Extraction",
       sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references TXT alongside the source folder.",
       progress: "Progress",
+      preparing:
+        "Scanning input files, parsing text, and preparing chunks. This can take a few dozen seconds for large folders or complex EPUBs.",
       failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",

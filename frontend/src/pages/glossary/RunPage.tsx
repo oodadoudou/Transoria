@@ -158,6 +158,8 @@ export function RunPage() {
   const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
+  const isPreparing =
+    !snapshot.isIdle && snapshot.status === "running" && total === 0;
   const showFailures =
     snapshot.failures.length > 0 &&
     snapshot.status !== "running" &&
@@ -283,6 +285,8 @@ export function RunPage() {
               itemLabel={run.liveCounter.chunksLabel}
             />
           </>
+        ) : isPreparing ? (
+          <div className={styles.preparingNotice}>{run.preparing}</div>
         ) : null}
       </Panel>
 

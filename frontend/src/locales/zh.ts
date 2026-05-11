@@ -818,6 +818,7 @@ export const zh: Messages = {
       title: "执行术语提取",
       sub: "启动、监控并停止术语提取任务。输出 XLSX、JSON 与参考 TXT 三件套,放在源文件夹同级。",
       progress: "进度",
+      preparing: "正在扫描输入文件、解析文本并准备分块。文件较多或 EPUB 结构复杂时，这一步可能需要几十秒。",
       failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
