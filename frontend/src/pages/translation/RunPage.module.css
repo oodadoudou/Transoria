@@ -100,54 +100,6 @@
   user-select: text;
 }
 
-.preflightBox {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border: 1px solid rgba(211, 143, 98, 0.32);
-  border-radius: var(--radius-inset);
-  background: #fff8f2;
-  color: #6f3c20;
-}
-
-.preflightBox strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.preflightBox ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.preflightBox li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 4px 7px;
-  border: 1px solid rgba(211, 143, 98, 0.28);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
-  font-size: 11px;
-}
-
-.preflightBox code {
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: inherit;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  opacity: 0.78;
-}
-
 .reviewActionRow {
   display: flex;
   justify-content: flex-start;

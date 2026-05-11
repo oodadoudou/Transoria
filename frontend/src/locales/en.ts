@@ -94,18 +94,6 @@ export const en: Messages = {
     continueHint:
       "Continue only reruns {failed} failed / {pending} unfinished chunks.",
     taskControls: "Task controls",
-    epubPreflightTitle: "EPUB preflight warning",
-    epubPreflightDetail:
-      "{count} structure warning(s): {items}. Translation will continue; please review the output if needed.",
-    epubPreflightLabels: {
-      missing_cover: "missing cover declaration",
-      empty_spine: "empty spine",
-      first_spine_empty: "first spine document has no body text",
-      empty_spine_documents: "empty chapters",
-      missing_spine_item: "missing spine reference",
-      unreadable_spine_item: "unreadable spine document",
-      inspection_failed: "inspection failed",
-    },
   },
   bilingual: {
     label: "Bilingual output",
@@ -262,6 +250,11 @@ export const en: Messages = {
     cachePurgeResult: "Deleted {count} tasks.",
     cachePurgeSkipped: "{count} active tasks were skipped.",
     cacheModalClose: "Close",
+    cacheLargeTitle: "Task cache is getting large",
+    cacheLargeBody:
+      "Task cache is using {size}. Consider clearing old cache from App Settings to avoid using too much disk space.",
+    cacheLargeLater: "Later",
+    cacheLargeOpenSettings: "Open settings",
   },
   settingsToolbar: {
     save: "Save",

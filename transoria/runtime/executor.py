@@ -36,27 +36,11 @@ class SubtaskRunner(Protocol):
     async def run(self, subtask: Subtask) -> SubtaskResult: ...
 
 
+@dataclass(frozen=True)
 class ProgressEvent:
-    def __init__(
-        self,
-        *,
-        changed_subtask_id: str,
-        timestamp: str,
-        snapshot: TaskSnapshot | None = None,
-        snapshot_loader: Callable[[], TaskSnapshot] | None = None,
-    ) -> None:
-        self.changed_subtask_id = changed_subtask_id
-        self.timestamp = timestamp
-        self._snapshot = snapshot
-        self._snapshot_loader = snapshot_loader
-
-    @property
-    def snapshot(self) -> TaskSnapshot:
-        if self._snapshot is None:
-            if self._snapshot_loader is None:
-                raise RuntimeError("ProgressEvent snapshot is unavailable")
-            self._snapshot = self._snapshot_loader()
-        return self._snapshot
+    snapshot: TaskSnapshot
+    changed_subtask_id: str
+    timestamp: str
 
 
 ProgressListener = Callable[[ProgressEvent], None]
@@ -415,12 +399,13 @@ class TaskExecutor:
     def _fire_progress(self, task_id: str, subtask_id: str) -> None:
         if self.progress is None:
             return
+        snapshot = self.cache.load(task_id)
         try:
             self.progress(
                 ProgressEvent(
+                    snapshot=snapshot,
                     changed_subtask_id=subtask_id,
                     timestamp=self.clock(),
-                    snapshot_loader=lambda: self.cache.load(task_id),
                 )
             )
         except Exception:  # pragma: no cover — listener errors must not break runtime

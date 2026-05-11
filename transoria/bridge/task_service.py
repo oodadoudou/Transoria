@@ -38,7 +38,6 @@ from transoria.domain import (
     TaskStatus,
 )
 from transoria.formats.scanner import scan_input_directory
-from transoria.formats.epub_preflight import inspect_epub_directory_for_translation
 from transoria.llm.client import HttpxChatTransport, LlmClient
 from transoria.llm.config import ModelConfig
 from transoria.model_profiles import ModelProfileStore
@@ -1697,10 +1696,6 @@ class TaskService:
         output_dir = config.output_dir
         source_lang = config.source_language
         target_lang = config.target_language
-        preflight_warnings = [
-            warning.to_dict()
-            for warning in inspect_epub_directory_for_translation(input_dir)
-        ]
 
         self._purge_kind_for_start(
             kind="translation", task_kind=TaskKind.TRANSLATION
@@ -1720,7 +1715,6 @@ class TaskService:
                 "model_id": model.id,
                 "prompt_preset_id": preset.id,
                 "request_id": request_id,
-                "epub_preflight_warnings": preflight_warnings,
             },
         )
 
@@ -1741,7 +1735,6 @@ class TaskService:
         return {
             "task_id": task_id,
             "started_at": started_at,
-            "epub_preflight_warnings": preflight_warnings,
         }
 
     async def _translation_thread(
