@@ -5,6 +5,7 @@ import { useSettingsStore } from "./store/useSettingsStore";
 import { SubNav, crumbFor } from "./components/SubNav";
 import { Rail } from "./components/Rail";
 import { StatusBar } from "./components/StatusBar";
+import { CacheSizeReminder } from "./components/CacheSizeReminder";
 import { ModelModule } from "./pages/model";
 import { TranslationModule } from "./pages/translation";
 import { GlossaryModule } from "./pages/glossary";
@@ -74,7 +75,9 @@ export function App() {
             void updatePrompt.applyAutoUpdate();
           }}
         />
-      ) : null}
+      ) : (
+        <CacheSizeReminder />
+      )}
       <ToastHost />
     </div>
   );

@@ -250,6 +250,11 @@ export const en: Messages = {
     cachePurgeResult: "Deleted {count} tasks.",
     cachePurgeSkipped: "{count} active tasks were skipped.",
     cacheModalClose: "Close",
+    cacheLargeTitle: "Task cache is getting large",
+    cacheLargeBody:
+      "Task cache is using {size}. Consider clearing old cache from App Settings to avoid using too much disk space.",
+    cacheLargeLater: "Later",
+    cacheLargeOpenSettings: "Open settings",
   },
   settingsToolbar: {
     save: "Save",

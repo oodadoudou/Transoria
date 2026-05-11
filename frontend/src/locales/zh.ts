@@ -242,6 +242,11 @@ export const zh: Messages = {
     cachePurgeResult: "已清理 {count} 个任务。",
     cachePurgeSkipped: "{count} 个正在运行的任务被跳过。",
     cacheModalClose: "关闭",
+    cacheLargeTitle: "任务缓存较大",
+    cacheLargeBody:
+      "当前任务缓存已占用 {size}。建议到应用设置里清理旧缓存，避免占用过多磁盘空间。",
+    cacheLargeLater: "稍后",
+    cacheLargeOpenSettings: "去清理缓存",
   },
   settingsToolbar: {
     save: "保存",

@@ -226,6 +226,10 @@ export interface Messages {
     cachePurgeResult: string;
     cachePurgeSkipped: string;
     cacheModalClose: string;
+    cacheLargeTitle: string;
+    cacheLargeBody: string;
+    cacheLargeLater: string;
+    cacheLargeOpenSettings: string;
   };
   settingsToolbar: {
     save: string;

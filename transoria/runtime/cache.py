@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -75,14 +76,14 @@ class TaskCache:
         path = self.task_dir(task_id) / _TASK_FILENAME
         if not path.exists():
             raise TaskNotFoundError(task_id)
-        return TaskRecord.from_json(path.read_text(encoding="utf-8"))
+        return TaskRecord.from_dict(_read_json_mapping(path))
 
     def load_subtasks(self, task_id: str) -> tuple[Subtask, ...]:
         directory = self.task_dir(task_id) / _SUBTASKS_DIRNAME
         if not directory.exists():
             return ()
         subtasks = [
-            Subtask.from_json(child.read_text(encoding="utf-8"))
+            Subtask.from_dict(_read_json_mapping(child))
             for child in sorted(directory.iterdir())
             if child.is_file() and child.suffix == ".json"
         ]
@@ -100,7 +101,7 @@ class TaskCache:
                 continue
             try:
                 records.append(
-                    TaskRecord.from_json(task_file.read_text(encoding="utf-8"))
+                    TaskRecord.from_dict(_read_json_mapping(task_file))
                 )
             except (OSError, ValueError, json.JSONDecodeError):
                 continue
@@ -151,9 +152,30 @@ def _validate_id(value: str, *, kind: str) -> None:
 
 
 def _atomic_write_text(path: Path, content: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _read_json_mapping(path: Path) -> dict[str, object]:
+    raw = path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        if exc.msg != "Extra data":
+            raise
+        payload, end = json.JSONDecoder().raw_decode(raw)
+        if raw[end:].strip() and not isinstance(payload, dict):
+            raise
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON root must be an object: {path}")
+    return payload
 
 
 __all__ = ["TaskCache", "TaskNotFoundError"]
