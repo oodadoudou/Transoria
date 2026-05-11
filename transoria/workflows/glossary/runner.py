@@ -9,7 +9,6 @@ output.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from dataclasses import dataclass, replace
@@ -54,8 +53,7 @@ _FORMAT_RETRY_REMINDER = (
 _TRANSPORT_RETRY_BUDGET = 4
 _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD = 20
 _SOFT_TIMEOUT_SECONDS = 30.0
-_HIGH_CONCURRENCY_SPLIT_CHAR_LIMIT = 1800
-_HIGH_CONCURRENCY_MAX_SPLIT_DEPTH = 4
+_HIGH_CONCURRENCY_MAX_SPLIT_DEPTH = 1
 
 
 def _output_contract_reminder(target_language: str) -> str:
@@ -136,15 +134,6 @@ class GlossarySubtaskRunner:
     async def _run_resilient(
         self, chunk_id: str, source_file: str, text: str, *, depth: int
     ) -> SubtaskResult:
-        text_parts = _split_high_concurrency_text(self.model, text)
-        if len(text_parts) > 1:
-            return await self._run_split_parts(
-                chunk_id,
-                source_file,
-                text_parts,
-                suffix="p",
-                depth=depth,
-            )
         try:
             return await self._run_single(chunk_id, source_file, text)
         except LlmRequestError as exc:
@@ -170,23 +159,16 @@ class GlossarySubtaskRunner:
         suffix: str,
         depth: int,
     ) -> SubtaskResult:
-        results = await asyncio.gather(
-            *(
-                self._run_resilient(
+        completed_results: list[SubtaskResult] = []
+        for index, part in enumerate(parts, start=1):
+            completed_results.append(
+                await self._run_resilient(
                     f"{chunk_id}.{suffix}{index}",
                     source_file,
                     part,
                     depth=depth + 1,
                 )
-                for index, part in enumerate(parts, start=1)
-            ),
-            return_exceptions=True,
-        )
-        completed_results: list[SubtaskResult] = []
-        for result in results:
-            if isinstance(result, BaseException):
-                raise result
-            completed_results.append(result)
+            )
         return _merge_glossary_results(completed_results)
 
     async def _run_single(
@@ -388,14 +370,6 @@ def _with_glossary_soft_timeout(model: ModelConfig) -> ModelConfig:
     if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
         return model
     return replace(model, timeout_seconds=_SOFT_TIMEOUT_SECONDS)
-
-
-def _split_high_concurrency_text(model: ModelConfig, text: str) -> tuple[str, ...]:
-    if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
-        return (text,)
-    if len(text) <= _HIGH_CONCURRENCY_SPLIT_CHAR_LIMIT:
-        return (text,)
-    return _split_text_in_half(text)
 
 
 def _should_split_after_transport_timeout(
