@@ -28,6 +28,7 @@ from typing import Callable, Mapping
 from uuid import uuid4
 
 from transoria.domain import SubtaskStatus, TaskKind, TaskStatus
+from transoria.domain import language_prompt_label
 from transoria.formats.epub_parser import parse_epub_file
 from transoria.formats.scanner import scan_input_directory
 from transoria.formats.text import parse_txt_file
@@ -198,6 +199,22 @@ class GlossaryOrchestrator:
         )
 
         if not chunks:
+            chunks_without_language_filter = build_glossary_chunks(
+                source_segments_by_file,
+                chunk_char_limit=config.chunk_char_limit,
+                chunk_token_limit=config.chunk_token_limit,
+                token_counter=config.token_counter,
+            )
+            if chunks_without_language_filter:
+                return self._finalize_empty(
+                    config,
+                    started_at,
+                    reason=(
+                        "未检测到配置源语言的可提取文本：当前源语言为 "
+                        f"{language_prompt_label(config.source_language)}。请确认输入文件语言"
+                        "与术语提取设置一致，或切换到正确的源语言后重试。"
+                    ),
+                )
             return self._finalize_empty(
                 config,
                 started_at,
