@@ -284,10 +284,7 @@ export function RunPage() {
       })
     : undefined;
   const canViewReport = Boolean(activeTaskId && snapshot.status === "completed");
-  const showFailures =
-    snapshot.failures.length > 0 &&
-    snapshot.status !== "running" &&
-    snapshot.status !== "pending";
+  const showFailures = snapshot.failures.length > 0;
 
   return (
     <>
@@ -355,9 +352,14 @@ export function RunPage() {
               ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
               : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
           </Pill>
-          <span className={styles.failuresHint}>
-            {failedModalMessages.continueHint}
-          </span>
+          {snapshot.status === "failed" ||
+          snapshot.status === "stopped" ||
+          snapshot.status === "paused" ||
+          (snapshot.status === "completed" && snapshot.progress.failed > 0) ? (
+            <span className={styles.failuresHint}>
+              {failedModalMessages.continueHint}
+            </span>
+          ) : null}
         </div>
       ) : null}
 

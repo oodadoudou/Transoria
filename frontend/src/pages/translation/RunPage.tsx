@@ -218,10 +218,7 @@ export function RunPage() {
     Boolean(activeTaskId) &&
     snapshot.status === "completed" &&
     snapshot.lowConfidence.total > 0;
-  const showFailures =
-    snapshot.failures.length > 0 &&
-    snapshot.status !== "running" &&
-    snapshot.status !== "pending";
+  const showFailures = snapshot.failures.length > 0;
   const preflightWarnings = getPreflightWarnings(taskMetadata);
 
   return (

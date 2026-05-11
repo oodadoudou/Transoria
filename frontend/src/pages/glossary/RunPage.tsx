@@ -160,10 +160,7 @@ export function RunPage() {
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
   const isPreparing =
     !snapshot.isIdle && snapshot.status === "running" && total === 0;
-  const showFailures =
-    snapshot.failures.length > 0 &&
-    snapshot.status !== "running" &&
-    snapshot.status !== "pending";
+  const showFailures = snapshot.failures.length > 0;
 
   return (
     <>

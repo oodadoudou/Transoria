@@ -159,6 +159,8 @@ export function ProofreadingPage() {
   const [regenerating, setRegenerating] = useState<
     "translated" | "bilingual" | null
   >(null);
+  const [regenerateFeedback, setRegenerateFeedback] =
+    useState<Feedback | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [inflightRetranslates, setInflightRetranslates] = useState<
     Record<string, string>
@@ -213,6 +215,7 @@ export function ProofreadingPage() {
     setSelectedSegmentId(null);
     setSelectedSegmentIds(new Set());
     setSelectionAnchorId(null);
+    setRegenerateFeedback(null);
     proofreadingBridge
       .loadSnapshot(activeTaskId)
       .then((next) => {
@@ -503,7 +506,7 @@ export function ProofreadingPage() {
   const handleRegenerate = async (bilingual = false) => {
     if (!activeTaskId || regenerating) return;
     setRegenerating(bilingual ? "bilingual" : "translated");
-    setFeedback(null);
+    setRegenerateFeedback(null);
     try {
       const result = await proofreadingBridge.regenerateOutputs(
         activeTaskId,
@@ -515,7 +518,7 @@ export function ProofreadingPage() {
         const reason = result.failed_files
           .map((f) => formatRegenerateFailure(f, m))
           .join("; ");
-        setFeedback({
+        setRegenerateFeedback({
           kind: "error",
           text:
             total > 0
@@ -523,13 +526,13 @@ export function ProofreadingPage() {
               : format(m.regenerateFailed, { reason }),
         });
       } else {
-        setFeedback({
+        setRegenerateFeedback({
           kind: "success",
           text: format(m.regenerateSuccess, { n: total }),
         });
       }
     } catch (err) {
-      setFeedback({
+      setRegenerateFeedback({
         kind: "error",
         text: format(m.regenerateFailed, {
           reason: BridgeError.isBridgeError(err)
@@ -821,6 +824,17 @@ export function ProofreadingPage() {
             ? m.regenerating
             : m.regenerateBilingualAction}
         </Pill>
+        {regenerateFeedback ? (
+          <span
+            className={`${styles.regenerateNotice} ${
+              regenerateFeedback.kind === "error"
+                ? styles.regenerateNoticeError
+                : styles.regenerateNoticeSuccess
+            }`}
+          >
+            {regenerateFeedback.text}
+          </span>
+        ) : null}
       </div>
 
       <div className={styles.toggleRow}>

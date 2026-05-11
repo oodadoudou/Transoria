@@ -312,6 +312,21 @@
   color: var(--muted);
 }
 
+.regenerateNotice {
+  flex: 0 1 auto;
+  max-width: min(520px, 100%);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.regenerateNoticeSuccess {
+  color: #2c7a55;
+}
+
+.regenerateNoticeError {
+  color: #b04038;
+}
+
 .debugHint {
   font-size: 11.5px;
   color: var(--muted);
