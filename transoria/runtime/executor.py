@@ -360,24 +360,6 @@ class TaskExecutor:
         self, task_id: str, *, stopped: bool, paused: bool
     ) -> TaskSnapshot:
         snapshot = self.cache.load(task_id)
-        if not stopped and not paused:
-            repaired = False
-            for subtask in snapshot.subtasks:
-                if subtask.status is SubtaskStatus.PENDING:
-                    self.cache.save_subtask(
-                        replace(
-                            subtask,
-                            status=SubtaskStatus.FAILED,
-                            last_error=(
-                                "[executor.dangling_pending] "
-                                "Executor finished while this subtask was still pending."
-                            ),
-                            last_error_at=self.clock(),
-                        )
-                    )
-                    repaired = True
-            if repaired:
-                snapshot = self.cache.load(task_id)
         progress = snapshot.progress()
         # Stop wins over pause if both fired.
         if stopped:

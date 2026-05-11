@@ -5,6 +5,7 @@ import {
   glossaryBridge,
   glossaryReviewBridge,
   translationBridge,
+  type EpubPreflightWarning,
   type ProbeContinuable,
 } from "@/bridge";
 import {
@@ -12,6 +13,7 @@ import {
   useRuntimeStore,
   type RunKind,
 } from "@/store/useRuntimeStore";
+import { useToastStore } from "@/store/useToastStore";
 import styles from "./RunControls.module.css";
 
 interface RunControlsProps {
@@ -47,6 +49,15 @@ const EMPTY_PROBE: ProbeContinuable = {
   failed: 0,
 };
 
+function getEpubPreflightWarnings(
+  result: unknown,
+): EpubPreflightWarning[] {
+  if (!result || typeof result !== "object") return [];
+  const warnings = (result as { epub_preflight_warnings?: unknown })
+    .epub_preflight_warnings;
+  return Array.isArray(warnings) ? (warnings as EpubPreflightWarning[]) : [];
+}
+
 export function RunControls({ kind }: RunControlsProps) {
   const messages = useMessages();
   const labels = messages.runControls;
@@ -76,19 +87,6 @@ export function RunControls({ kind }: RunControlsProps) {
   // of inactivity, or when status leaves the active set.
   const [restartClicks, setRestartClicks] = useState(0);
   const restartResetTimer = useRef<number | null>(null);
-
-  const refreshProbe = useCallback(() => {
-    void bridge
-      .probeContinuable()
-      .then(setProbe)
-      .catch((error) => {
-        if (BridgeError.isBridgeError(error)) {
-          setProbe(EMPTY_PROBE);
-          return;
-        }
-        throw error;
-      });
-  }, [bridge]);
 
   // Refresh `probe_continuable` on mount and whenever the live status
   // crosses a boundary that could change continuability (RUNNING ↔
@@ -127,9 +125,31 @@ export function RunControls({ kind }: RunControlsProps) {
       setPendingAction(actionKind);
       setLastError(kind, null);
       try {
-        await action();
+        const result = await action();
+        if (kind === "translation") {
+          const warnings = getEpubPreflightWarnings(result);
+          if (warnings.length > 0) {
+            const labels = messages.runControls.epubPreflightLabels;
+            const items = Array.from(
+              new Set(
+                warnings.map((warning) => labels[warning.code] ?? warning.code),
+              ),
+            )
+              .slice(0, 4)
+              .join("、");
+            useToastStore.getState().push({
+              variant: "warning",
+              title: messages.runControls.epubPreflightTitle,
+              detail: messages.runControls.epubPreflightDetail
+                .replace("{count}", String(warnings.length))
+                .replace("{items}", items),
+              durationMs: 7000,
+            });
+          }
+        }
         await refreshActiveTask(kind);
-        refreshProbe();
+        const next = await bridge.probeContinuable();
+        setProbe(next);
       } catch (error) {
         if (BridgeError.isBridgeError(error)) {
           setLastError(kind, error);
@@ -141,7 +161,7 @@ export function RunControls({ kind }: RunControlsProps) {
         setPendingAction(null);
       }
     },
-    [kind, refreshActiveTask, refreshProbe, setLastError],
+    [bridge, kind, messages.runControls, refreshActiveTask, setLastError],
   );
 
   const performStart = useCallback(

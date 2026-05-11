@@ -110,11 +110,6 @@
   background: var(--panel-soft);
 }
 
-.spacerCell {
-  padding: 0 !important;
-  border-bottom: 0 !important;
-}
-
 .activeRow {
   background: var(--panel-soft);
   outline: 2px solid var(--action);

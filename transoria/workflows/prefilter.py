@@ -2,7 +2,7 @@
 
 A line of source text is "translation-skippable" when, after stripping
 whitespace, it contains no letter characters — only digits, punctuation,
-symbols, whitespace, or a fixed bibliographic identifier. Examples:
+symbols, or whitespace. Examples:
 
 - ``""`` — empty paragraph break
 - ``"   "`` — whitespace only
@@ -11,7 +11,6 @@ symbols, whitespace, or a fixed bibliographic identifier. Examples:
 - ``"..."`` — pure punctuation beat
 - ``"(1)"`` — figure label
 - ``"🎉"`` — emoji line
-- ``"ISBN | 979-11-01-87478-2"`` — fixed identifier line
 
 These lines have no meaningful content for either translation or
 glossary extraction, so the orchestrator skips them: the writer keeps
@@ -43,7 +42,6 @@ _LATIN_RE = re.compile(r"[A-Za-z\u00c0-\u024f]")
 _CYRILLIC_RE = re.compile(r"[\u0400-\u04ff]")
 _ARABIC_RE = re.compile(r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]")
 _THAI_RE = re.compile(r"[\u0e00-\u0e7f]")
-_ISBN_PREFIX_RE = re.compile(r"^\s*ISBN(?:-1[03])?\s*(?:[:：|｜]\s*)?", re.IGNORECASE)
 
 _LANGUAGE_SCRIPT_RE: dict[Language, re.Pattern[str]] = {
     Language.KOREAN: _HANGUL_RE,
@@ -79,21 +77,10 @@ def is_translation_skippable(text: str) -> bool:
     stripped = text.strip()
     if not stripped:
         return True
-    if is_fixed_identifier_line(stripped):
-        return True
     for char in stripped:
         if unicodedata.category(char).startswith("L"):
             return False
     return True
-
-
-def is_fixed_identifier_line(text: str) -> bool:
-    stripped = text.strip()
-    match = _ISBN_PREFIX_RE.match(stripped)
-    if match is None:
-        return False
-    compact = re.sub(r"[-\s]", "", stripped[match.end() :])
-    return bool(re.fullmatch(r"(?:97[89]\d{10}|\d{9}[\dXx])", compact))
 
 
 def should_translate_for_language(
@@ -123,7 +110,6 @@ def contains_source_language_script(text: str, source_language: Language) -> boo
 
 __all__ = [
     "contains_source_language_script",
-    "is_fixed_identifier_line",
     "is_translation_skippable",
     "should_translate_for_language",
 ]

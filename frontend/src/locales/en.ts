@@ -94,6 +94,18 @@ export const en: Messages = {
     continueHint:
       "Continue only reruns {failed} failed / {pending} unfinished chunks.",
     taskControls: "Task controls",
+    epubPreflightTitle: "EPUB preflight warning",
+    epubPreflightDetail:
+      "{count} structure warning(s): {items}. Translation will continue; please review the output if needed.",
+    epubPreflightLabels: {
+      missing_cover: "missing cover declaration",
+      empty_spine: "empty spine",
+      first_spine_empty: "first spine document has no body text",
+      empty_spine_documents: "empty chapters",
+      missing_spine_item: "missing spine reference",
+      unreadable_spine_item: "unreadable spine document",
+      inspection_failed: "inspection failed",
+    },
   },
   bilingual: {
     label: "Bilingual output",
@@ -250,11 +262,6 @@ export const en: Messages = {
     cachePurgeResult: "Deleted {count} tasks.",
     cachePurgeSkipped: "{count} active tasks were skipped.",
     cacheModalClose: "Close",
-    cacheLargeTitle: "Task cache is getting large",
-    cacheLargeBody:
-      "Task cache is using {size}. Consider clearing old cache from App Settings to avoid using too much disk space.",
-    cacheLargeLater: "Later",
-    cacheLargeOpenSettings: "Open settings",
   },
   settingsToolbar: {
     save: "Save",
@@ -591,8 +598,6 @@ export const en: Messages = {
       title: "Run Translation",
       sub: "Start, monitor, and stop the active translation job. Folder and language choices are configured in Settings.",
       progress: "Progress",
-      preparing:
-        "Scanning input files, filtering segments that do not need translation, and preparing chunks. This can take a few dozen seconds for large folders or complex EPUBs.",
       failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
@@ -830,8 +835,6 @@ export const en: Messages = {
       title: "Run Glossary Extraction",
       sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references TXT alongside the source folder.",
       progress: "Progress",
-      preparing:
-        "Scanning input files, parsing text, and preparing chunks. This can take a few dozen seconds for large folders or complex EPUBs.",
       failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
@@ -911,8 +914,6 @@ export const en: Messages = {
       title: "Run Glossary Review",
       sub: "Review an XLSX glossary, report only changed rows, and write the final XLSX. For better AI review, configure the novel background in Settings.",
       progress: "Progress",
-      preparing:
-        "Reading the glossary, loading reference text, and preparing review batches. This can take a few dozen seconds for large inputs.",
       activeConfig: "Active configuration",
       activeModel: "Model",
       activePrompt: "Prompt",

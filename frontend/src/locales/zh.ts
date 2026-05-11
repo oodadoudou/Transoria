@@ -93,6 +93,18 @@ export const zh: Messages = {
     restartHint: "再点 {count} 次以重跑",
     continueHint: "继续只会重跑失败 {failed} 个 / 未完成 {pending} 个分块。",
     taskControls: "任务控制",
+    epubPreflightTitle: "EPUB 体检提醒",
+    epubPreflightDetail:
+      "发现 {count} 个结构提醒：{items}。这不会阻止翻译，只建议后续留意输出。",
+    epubPreflightLabels: {
+      missing_cover: "缺少封面声明",
+      empty_spine: "spine 为空",
+      first_spine_empty: "首个 spine 文档无正文",
+      empty_spine_documents: "存在空章节",
+      missing_spine_item: "spine 引用缺失",
+      unreadable_spine_item: "spine 文档无法解析",
+      inspection_failed: "体检失败",
+    },
   },
   bilingual: {
     label: "双语输出",
@@ -242,11 +254,6 @@ export const zh: Messages = {
     cachePurgeResult: "已清理 {count} 个任务。",
     cachePurgeSkipped: "{count} 个正在运行的任务被跳过。",
     cacheModalClose: "关闭",
-    cacheLargeTitle: "任务缓存较大",
-    cacheLargeBody:
-      "当前任务缓存已占用 {size}。建议到应用设置里清理旧缓存，避免占用过多磁盘空间。",
-    cacheLargeLater: "稍后",
-    cacheLargeOpenSettings: "去清理缓存",
   },
   settingsToolbar: {
     save: "保存",
@@ -579,8 +586,6 @@ export const zh: Messages = {
       title: "执行翻译",
       sub: "启动、监控并停止当前翻译任务。文件夹与语言对在「设置」页配置。",
       progress: "进度",
-      preparing:
-        "正在扫描输入文件、过滤无需翻译的段落并准备分块。文件较多或 EPUB 结构复杂时，这一步可能需要几十秒。",
       failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
@@ -813,7 +818,6 @@ export const zh: Messages = {
       title: "执行术语提取",
       sub: "启动、监控并停止术语提取任务。输出 XLSX、JSON 与参考 TXT 三件套,放在源文件夹同级。",
       progress: "进度",
-      preparing: "正在扫描输入文件、解析文本并准备分块。文件较多或 EPUB 结构复杂时，这一步可能需要几十秒。",
       failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
@@ -892,8 +896,6 @@ export const zh: Messages = {
       title: "执行术语审查",
       sub: "审查 XLSX 术语表，只把有改动的条目写入报告，并输出最终 XLSX。为了让 AI 更好地校对，建议在设置页配置小说背景。",
       progress: "进度",
-      preparing:
-        "正在读取术语表、参考文本并准备审查批次。文件较大时，这一步可能需要几十秒。",
       activeConfig: "当前配置",
       activeModel: "模型",
       activePrompt: "Prompt",

@@ -277,9 +277,6 @@ export function RunPage() {
     snapshot.status === "completed" ? rawPercent : Math.min(rawPercent, 99);
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
-  const isPreparing =
-    !snapshot.isIdle && snapshot.status === "running" && total === 0;
-  const hasProgressBlocks = snapshot.subtasks.length > 0 || total > 0;
   const roundDetail = roundProgress
     ? format(run.roundOverall, {
         current: roundCurrent,
@@ -287,7 +284,10 @@ export function RunPage() {
       })
     : undefined;
   const canViewReport = Boolean(activeTaskId && snapshot.status === "completed");
-  const showFailures = snapshot.failures.length > 0;
+  const showFailures =
+    snapshot.failures.length > 0 &&
+    snapshot.status !== "running" &&
+    snapshot.status !== "pending";
 
   return (
     <>
@@ -355,14 +355,9 @@ export function RunPage() {
               ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
               : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
           </Pill>
-          {snapshot.status === "failed" ||
-          snapshot.status === "stopped" ||
-          snapshot.status === "paused" ||
-          (snapshot.status === "completed" && snapshot.progress.failed > 0) ? (
-            <span className={styles.failuresHint}>
-              {failedModalMessages.continueHint}
-            </span>
-          ) : null}
+          <span className={styles.failuresHint}>
+            {failedModalMessages.continueHint}
+          </span>
         </div>
       ) : null}
 
@@ -417,7 +412,7 @@ export function RunPage() {
             </span>
           </div>
         ) : null}
-        {hasProgressBlocks ? (
+        {snapshot.subtasks.length > 0 ? (
           <>
             <LiveRequestCounter
               progress={snapshot.progress}
@@ -427,12 +422,9 @@ export function RunPage() {
             />
             <ChunkStatusGrid
               subtasks={snapshot.subtasks}
-              progress={snapshot.progress}
               itemLabel={run.liveCounter.chunksLabel}
             />
           </>
-        ) : isPreparing ? (
-          <div className={styles.preparingNotice}>{run.preparing}</div>
         ) : null}
       </Panel>
 

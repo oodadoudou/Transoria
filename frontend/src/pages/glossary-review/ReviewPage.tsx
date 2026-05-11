@@ -3,7 +3,6 @@ import { BridgeError, glossaryReviewBridge, type GlossaryReviewFinalRow, type Gl
 import { format, useMessages } from "@/locales";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
-import { useVirtualWindow } from "@/hooks/useVirtualWindow";
 import styles from "./ReviewPage.module.css";
 import { ImportFinalGlossaryConfirmModal } from "./ImportFinalGlossaryConfirmModal";
 import {
@@ -165,13 +164,6 @@ export function ReviewPage() {
     (draft.src !== selected.src ||
       draft.dst !== selected.dst ||
       draft.info !== selected.info);
-  const ROW_HEIGHT = 43;
-  const virtual = useVirtualWindow({
-    count: rows.length,
-    rowHeight: ROW_HEIGHT,
-    defaultViewportHeight: 520,
-  });
-  const visibleRows = rows.slice(virtual.startIndex, virtual.endIndex);
 
   const selectRow = (row: GlossaryReviewFinalRow) => {
     setSelectedRowIndex(row.row_index);
@@ -438,8 +430,6 @@ export function ReviewPage() {
           className={styles.tableWrap}
           tabIndex={0}
           onKeyDown={handleTableKeyDown}
-          ref={virtual.containerRef}
-          onScroll={virtual.handleScroll}
         >
           {loading ? (
             <div className={styles.empty}>{labels.loading}</div>
@@ -490,24 +480,13 @@ export function ReviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {virtual.startIndex > 0 ? (
-                  <tr aria-hidden="true">
-                    <td
-                      className={styles.spacerCell}
-                      colSpan={6}
-                      style={{ height: virtual.topForIndex(virtual.startIndex) }}
-                    />
-                  </tr>
-                ) : null}
-                {visibleRows.map((row, index) => (
+                {rows.map((row, index) => (
                   <tr
                     key={row.row_index}
                     className={`${selectedRowIndices.has(row.row_index) ? styles.selectedRow : ""} ${
                       row.row_index === selectedRowIndex ? styles.activeRow : ""
                     }`.trim()}
-                    onClick={(event) =>
-                      handleRowClick(event, row, virtual.startIndex + index)
-                    }
+                    onClick={(event) => handleRowClick(event, row, index)}
                   >
                     <td className={styles.selectColumn}>
                       <input
@@ -516,7 +495,7 @@ export function ReviewPage() {
                         readOnly
                         onClick={(event) => {
                           event.stopPropagation();
-                          handleRowClick(event, row, virtual.startIndex + index);
+                          handleRowClick(event, row, index);
                         }}
                       />
                     </td>
@@ -527,19 +506,6 @@ export function ReviewPage() {
                     <td className={styles.mono}>{row.frequency || "—"}</td>
                   </tr>
                 ))}
-                {virtual.endIndex < rows.length ? (
-                  <tr aria-hidden="true">
-                    <td
-                      className={styles.spacerCell}
-                      colSpan={6}
-                      style={{
-                        height:
-                          virtual.totalHeight -
-                          virtual.topForIndex(virtual.endIndex),
-                      }}
-                    />
-                  </tr>
-                ) : null}
               </tbody>
             </table>
           )}
