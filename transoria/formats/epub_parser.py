@@ -606,8 +606,26 @@ def build_elem_path(root: etree._Element, elem: etree._Element) -> str:
     return "/" + "/".join(reversed(segments))
 
 
+def iter_elem_path_pairs(root: etree._Element) -> Iterator[tuple[etree._Element, str]]:
+    root_path = f"/{local_name(root.tag)}"
+    stack: list[tuple[etree._Element, str]] = [(root, root_path)]
+    while stack:
+        parent, parent_path = stack.pop()
+        yield parent, parent_path
+
+        counters: dict[str, int] = {}
+        child_entries: list[tuple[etree._Element, str]] = []
+        for child in iter_children_elements(parent):
+            name = local_name(child.tag)
+            position = counters.get(name, 0) + 1
+            counters[name] = position
+            child_entries.append((child, f"{parent_path}/{name}[{position}]"))
+
+        stack.extend(reversed(child_entries))
+
+
 def build_elem_path_map(root: etree._Element) -> dict[etree._Element, str]:
-    return {elem: build_elem_path(root, elem) for elem in iter_elements(root)}
+    return {elem: path for elem, path in iter_elem_path_pairs(root)}
 
 
 def build_elem_by_path(root: etree._Element) -> dict[str, etree._Element]:
