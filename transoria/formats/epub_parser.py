@@ -419,14 +419,32 @@ def collect_document_units(
 
     collect_direct_slots = is_block and has_block_descendant
     if collect_direct_slots and elem.text:
-        units.append((elem_path, [(EpubPartRef(slot="text", path=elem_path), elem.text)]))
+        units.append(
+            (elem_path, [(EpubPartRef(slot="text", path=elem_path), elem.text)])
+        )
 
     for child in iter_children_elements(elem):
-        units.extend(
-            collect_document_units(root, child, path_map, in_skipped_map, has_block_descendant_map)
-        )
+        if (
+            collect_direct_slots
+            and local_name(child.tag) not in BLOCK_TAGS
+            and not has_block_descendant_map.get(child, False)
+        ):
+            slots = iter_inline_text_slots(child, path_map)
+            if slots:
+                units.append((elem_path, slots))
+        else:
+            units.extend(
+                collect_document_units(
+                    root, child, path_map, in_skipped_map, has_block_descendant_map
+                )
+            )
         if collect_direct_slots and child.tail:
-                units.append((elem_path, [(EpubPartRef(slot="tail", path=path_map[child]), child.tail)]))
+            units.append(
+                (
+                    elem_path,
+                    [(EpubPartRef(slot="tail", path=path_map[child]), child.tail)],
+                )
+            )
 
     return units
 
@@ -449,6 +467,26 @@ def iter_translatable_text_slots(
                 results.append((EpubPartRef(slot="tail", path=path_map[child]), child.tail))
 
     walk(block)
+    return results
+
+
+def iter_inline_text_slots(
+    elem: etree._Element,
+    path_map: dict[etree._Element, str],
+) -> list[tuple[EpubPartRef, str]]:
+    results: list[tuple[EpubPartRef, str]] = []
+
+    def walk(node: etree._Element) -> None:
+        if local_name(node.tag) in SKIP_SUBTREE_TAGS or local_name(node.tag) in BLOCK_TAGS:
+            return
+        if node.text:
+            results.append((EpubPartRef(slot="text", path=path_map[node]), node.text))
+        for child in iter_children_elements(node):
+            walk(child)
+            if child.tail:
+                results.append((EpubPartRef(slot="tail", path=path_map[child]), child.tail))
+
+    walk(elem)
     return results
 
 
