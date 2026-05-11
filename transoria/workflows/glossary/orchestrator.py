@@ -194,6 +194,7 @@ class GlossaryOrchestrator:
             chunk_char_limit=config.chunk_char_limit,
             chunk_token_limit=config.chunk_token_limit,
             token_counter=config.token_counter,
+            source_language=config.source_language,
         )
 
         if not chunks:
@@ -203,7 +204,8 @@ class GlossaryOrchestrator:
                 reason=(
                     "Files were parsed successfully but produced no chunks for "
                     "the LLM (text segments may all be shorter than the chunk "
-                    "limit's minimum, or filtered out by ruby/preserve rules)."
+                    "limit's minimum, filtered out by ruby/preserve rules, or "
+                    "not match the configured source language)."
                 ),
             )
 
@@ -573,6 +575,7 @@ def _split_failed_glossary_subtask(
         chunk_char_limit=child_char_limit,
         chunk_token_limit=child_token_limit,
         token_counter=config.token_counter,
+        source_language=config.source_language,
     )
 # Aggregate
 

@@ -97,4 +97,19 @@ def should_translate_for_language(
     return bool(source_re.search(text) or not target_re.search(text))
 
 
-__all__ = ["is_translation_skippable", "should_translate_for_language"]
+def contains_source_language_script(text: str, source_language: Language) -> bool:
+    """True when text carries a script signal for the configured source language."""
+
+    if is_translation_skippable(text):
+        return False
+    source_re = _LANGUAGE_SCRIPT_RE.get(source_language)
+    if source_re is None:
+        return True
+    return bool(source_re.search(text))
+
+
+__all__ = [
+    "contains_source_language_script",
+    "is_translation_skippable",
+    "should_translate_for_language",
+]

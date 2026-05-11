@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
+from transoria.domain import Language
+from transoria.workflows.prefilter import contains_source_language_script
 from transoria.workflows.prefilter import is_translation_skippable
 
 
@@ -65,6 +67,7 @@ def build_glossary_chunks(
     chunk_char_limit: int,
     chunk_token_limit: int = 0,
     token_counter: Callable[[str], int] | None = None,
+    source_language: Language | None = None,
 ) -> tuple[GlossaryChunk, ...]:
     """Build chunks across all input files, in deterministic file order.
 
@@ -103,6 +106,10 @@ def build_glossary_chunks(
             # carry no proper-noun candidates worth extracting; drop
             # them before they pad chunks and inflate token cost.
             if is_translation_skippable(segment):
+                continue
+            if source_language is not None and not contains_source_language_script(
+                segment, source_language
+            ):
                 continue
             for piece in _split_oversized_segment(segment, budget=budget, cost=cost):
                 join_cost = 1 if buffer else 0
