@@ -413,6 +413,7 @@ export interface Messages {
       liveCounter: {
         progressLabel: string;
         inflightLabel: string;
+        longestLabel: string;
         chunksLabel: string;
       };
       tuning: {
@@ -556,6 +557,7 @@ export interface Messages {
       taskFolderHint: string;
       retranslateAction: string;
       retranslateSelectedAction: string;
+      retranslateFilteredAction: string;
       retranslating: string;
       retranslateSuccess: string;
       retranslateSelectedDone: string;
@@ -618,6 +620,7 @@ export interface Messages {
       liveCounter: {
         progressLabel: string;
         inflightLabel: string;
+        longestLabel: string;
         chunksLabel: string;
       };
       tuning: {
@@ -701,6 +704,7 @@ export interface Messages {
       liveCounter: {
         progressLabel: string;
         inflightLabel: string;
+        longestLabel: string;
         chunksLabel: string;
       };
     };

@@ -294,6 +294,7 @@ class TaskExecutor:
             subtask,
             status=SubtaskStatus.RUNNING,
             attempt_count=subtask.attempt_count + 1,
+            started_at=self.clock(),
             last_error="",
             last_error_at="",
         )
@@ -329,6 +330,7 @@ class TaskExecutor:
                     status=SubtaskStatus.FAILED,
                     last_error=f"{code_prefix}{type(exc).__name__}: {exc}",
                     last_error_at=self.clock(),
+                    started_at="",
                 )
                 self.cache.save_subtask(failed)
                 self._fire_progress(task_id, failed.id)
@@ -341,6 +343,7 @@ class TaskExecutor:
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
                 last_error="",
+                started_at="",
             )
             self.cache.save_subtask(completed)
             self._fire_progress(task_id, completed.id)

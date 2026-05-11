@@ -32,6 +32,7 @@ import {
   QuickSwitchModal,
   type QuickSwitchItem,
 } from "@/components/QuickSwitchModal";
+import type { EpubPreflightWarning } from "@/bridge";
 import styles from "./RunPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -55,6 +56,9 @@ export function RunPage() {
   const snapshot = useRunSnapshot("translation");
   const activeTaskId = useRuntimeStore(
     (state) => state.translation.activeTaskId,
+  );
+  const taskMetadata = useRuntimeStore(
+    (state) => state.translation.snapshot?.metadata,
   );
   usePollRunSnapshot("translation");
 
@@ -214,6 +218,11 @@ export function RunPage() {
     Boolean(activeTaskId) &&
     snapshot.status === "completed" &&
     snapshot.lowConfidence.total > 0;
+  const showFailures =
+    snapshot.failures.length > 0 &&
+    snapshot.status !== "running" &&
+    snapshot.status !== "pending";
+  const preflightWarnings = getPreflightWarnings(taskMetadata);
 
   return (
     <>
@@ -264,7 +273,7 @@ export function RunPage() {
         />
       ) : null}
 
-      {snapshot.failures.length > 0 ? (
+      {showFailures ? (
         <div className={styles.failuresPillRow}>
           <Pill
             variant="ghost"
@@ -311,6 +320,22 @@ export function RunPage() {
             <code>{activeTaskId}</code>
           </div>
         ) : null}
+        {preflightWarnings.length > 0 ? (
+          <div className={styles.preflightBox}>
+            <strong>{messages.runControls.epubPreflightTitle}</strong>
+            <ul>
+              {preflightWarnings.slice(0, 5).map((warning, index) => (
+                <li key={`${warning.code}-${warning.path}-${index}`}>
+                  <span>
+                    {messages.runControls.epubPreflightLabels[warning.code] ??
+                      warning.code}
+                  </span>
+                  {warning.path ? <code>{basename(warning.path)}</code> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className={styles.progressCard}>
           <ProgressRing percent={percent} completed={settled} total={total} />
           <div className={styles.statGrid}>
@@ -334,6 +359,7 @@ export function RunPage() {
               progress={snapshot.progress}
               label={run.liveCounter.progressLabel}
               inflightLabel={run.liveCounter.inflightLabel}
+              longestLabel={run.liveCounter.longestLabel}
             />
             <ChunkStatusGrid
               subtasks={snapshot.subtasks}
@@ -359,6 +385,17 @@ export function RunPage() {
       <RunControls kind="translation" />
     </>
   );
+}
+
+function getPreflightWarnings(
+  metadata: Record<string, unknown> | undefined,
+): EpubPreflightWarning[] {
+  const raw = metadata?.epub_preflight_warnings;
+  return Array.isArray(raw) ? (raw as EpubPreflightWarning[]) : [];
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
 interface ActiveCardProps {

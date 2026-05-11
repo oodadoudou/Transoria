@@ -385,6 +385,7 @@ export interface TaskProgress {
   skipped: number;
   elapsed_seconds: number;
   rate_per_second: number;
+  longest_running_seconds: number;
 }
 
 export interface TaskUsage {
@@ -403,6 +404,8 @@ export type SubtaskStatusValue =
 export interface SubtaskMini {
   id: string;
   status: SubtaskStatusValue;
+  attempts?: number;
+  started_at?: string;
   /** Populated only for ``failed`` subtasks; the chunk-grid tooltip
    * surfaces this so users can hover a red square and see the LLM /
    * decoder error instead of guessing why it failed. */

@@ -284,6 +284,10 @@ export function RunPage() {
       })
     : undefined;
   const canViewReport = Boolean(activeTaskId && snapshot.status === "completed");
+  const showFailures =
+    snapshot.failures.length > 0 &&
+    snapshot.status !== "running" &&
+    snapshot.status !== "pending";
 
   return (
     <>
@@ -336,7 +340,7 @@ export function RunPage() {
         />
       ) : null}
 
-      {snapshot.failures.length > 0 ? (
+      {showFailures ? (
         <div className={styles.failuresPillRow}>
           <Pill
             variant="ghost"
@@ -414,6 +418,7 @@ export function RunPage() {
               progress={snapshot.progress}
               label={run.liveCounter.progressLabel}
               inflightLabel={run.liveCounter.inflightLabel}
+              longestLabel={run.liveCounter.longestLabel}
             />
             <ChunkStatusGrid
               subtasks={snapshot.subtasks}

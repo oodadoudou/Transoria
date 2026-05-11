@@ -158,6 +158,10 @@ export function RunPage() {
   const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
+  const showFailures =
+    snapshot.failures.length > 0 &&
+    snapshot.status !== "running" &&
+    snapshot.status !== "pending";
 
   return (
     <>
@@ -208,7 +212,7 @@ export function RunPage() {
         />
       ) : null}
 
-      {snapshot.failures.length > 0 ? (
+      {showFailures ? (
         <div className={styles.failuresPillRow}>
           <Pill
             variant="ghost"
@@ -272,6 +276,7 @@ export function RunPage() {
               progress={snapshot.progress}
               label={run.liveCounter.progressLabel}
               inflightLabel={run.liveCounter.inflightLabel}
+              longestLabel={run.liveCounter.longestLabel}
             />
             <ChunkStatusGrid
               subtasks={snapshot.subtasks}

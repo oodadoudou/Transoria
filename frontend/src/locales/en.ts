@@ -616,6 +616,7 @@ export const en: Messages = {
       liveCounter: {
         progressLabel: "Done {done} / {total}",
         inflightLabel: "In-flight {n}",
+        longestLabel: "longest {time}",
         chunksLabel: "Chunk status",
       },
       tuning: {
@@ -774,6 +775,7 @@ export const en: Messages = {
       taskFolderHint: "Output: {path}",
       retranslateAction: "Retranslate",
       retranslateSelectedAction: "Retranslate {n} selected",
+      retranslateFilteredAction: "Retranslate current list ({n})",
       retranslating: "Retranslating…",
       retranslateSuccess: "Retranslated and saved to cache.",
       retranslateSelectedDone:
@@ -849,6 +851,7 @@ export const en: Messages = {
       liveCounter: {
         progressLabel: "Done {done} / {total}",
         inflightLabel: "In-flight {n}",
+        longestLabel: "longest {time}",
         chunksLabel: "Chunk status",
       },
       tuning: {
@@ -945,6 +948,7 @@ export const en: Messages = {
       liveCounter: {
         progressLabel: "Done {done} / {total}",
         inflightLabel: "In-flight {n}",
+        longestLabel: "longest {time}",
         chunksLabel: "Batch status",
       },
     },

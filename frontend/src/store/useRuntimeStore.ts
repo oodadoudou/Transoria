@@ -300,6 +300,7 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
         skipped: 0,
         elapsed_seconds: 0,
         rate_per_second: 0,
+        longest_running_seconds: 0,
       },
       roundProgress: runtime.snapshot?.round_progress ?? null,
       usage: runtime.snapshot?.usage ?? {

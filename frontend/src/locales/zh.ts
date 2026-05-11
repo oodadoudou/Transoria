@@ -603,6 +603,7 @@ export const zh: Messages = {
       liveCounter: {
         progressLabel: "已处理 {done} / {total}",
         inflightLabel: "正在请求 {n}",
+        longestLabel: "最久 {time}",
         chunksLabel: "分块状态",
       },
       tuning: {
@@ -759,6 +760,7 @@ export const zh: Messages = {
       taskFolderHint: "输出位置：{path}",
       retranslateAction: "重翻此条",
       retranslateSelectedAction: "重翻选中 {n} 条",
+      retranslateFilteredAction: "重翻当前列表 {n} 条",
       retranslating: "重翻中…",
       retranslateSuccess: "已重翻并写入缓存。",
       retranslateSelectedDone:
@@ -831,6 +833,7 @@ export const zh: Messages = {
       liveCounter: {
         progressLabel: "已处理 {done} / {total}",
         inflightLabel: "正在请求 {n}",
+        longestLabel: "最久 {time}",
         chunksLabel: "分块状态",
       },
       tuning: {
@@ -923,6 +926,7 @@ export const zh: Messages = {
       liveCounter: {
         progressLabel: "已处理 {done} / {total}",
         inflightLabel: "正在请求 {n}",
+        longestLabel: "最久 {time}",
         chunksLabel: "批次状态",
       },
     },

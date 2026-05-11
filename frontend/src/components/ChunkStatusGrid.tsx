@@ -43,7 +43,18 @@ function cellTooltip(
   index: number,
   itemLabel: string,
 ): string {
-  const head = `${itemLabel} ${index + 1} · ${subtask.id} · ${subtask.status}`;
+  const parts = [
+    `${itemLabel} ${index + 1}`,
+    subtask.id,
+    subtask.status,
+  ];
+  if (subtask.attempts && subtask.attempts > 0) {
+    parts.push(`attempt ${subtask.attempts}`);
+  }
+  if (subtask.status === "running" && subtask.started_at) {
+    parts.push(`started ${subtask.started_at}`);
+  }
+  const head = parts.join(" · ");
   // Failed-chunk users want to know *why*. The wire shape only carries
   // ``last_error`` on FAILED subtasks (gated server-side) so the
   // tooltip stays compact for the common green-grid case.

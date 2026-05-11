@@ -533,7 +533,9 @@ def _format_header(record: TaskRecord) -> dict[str, object]:
     }
 
 
-def _progress_to_block(progress, *, elapsed_seconds: float) -> dict[str, object]:
+def _progress_to_block(
+    progress, *, elapsed_seconds: float, longest_running_seconds: float = 0.0
+) -> dict[str, object]:
     return {
         "total": progress.total,
         "pending": progress.pending,
@@ -543,6 +545,7 @@ def _progress_to_block(progress, *, elapsed_seconds: float) -> dict[str, object]
         "skipped": progress.skipped,
         "elapsed_seconds": elapsed_seconds,
         "rate_per_second": progress.rate_per_second,
+        "longest_running_seconds": longest_running_seconds,
     }
 
 
@@ -592,6 +595,7 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
     progress = snapshot.progress(elapsed_seconds=elapsed_seconds)
     usage = snapshot.usage()
     metadata = dict(snapshot.record.metadata)
+    longest_running_seconds = _longest_running_seconds(snapshot)
     # When subtasks/ has been pruned post-completion (see
     # ``_maybe_cleanup_cache``), the live progress recomputes to 0/0;
     # surface the frozen totals stashed in metadata instead so the Run
@@ -614,6 +618,7 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
                 "rate_per_second": _coerce_float(
                     frozen_progress.get("rate_per_second"), 0.0
                 ),
+                "longest_running_seconds": 0.0,
             }
         else:
             progress_block = _progress_to_block(progress, elapsed_seconds=elapsed_seconds)
@@ -629,7 +634,11 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
         else:
             usage_block = _usage_to_block(usage)
     else:
-        progress_block = _progress_to_block(progress, elapsed_seconds=elapsed_seconds)
+        progress_block = _progress_to_block(
+            progress,
+            elapsed_seconds=elapsed_seconds,
+            longest_running_seconds=longest_running_seconds,
+        )
         usage_block = _usage_to_block(usage)
     low_conf_block = _low_confidence_summary(snapshot, metadata)
     return {
@@ -650,6 +659,8 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
             {
                 "id": s.id,
                 "status": s.status.value,
+                "attempts": s.attempt_count,
+                "started_at": s.started_at if s.status is SubtaskStatus.RUNNING else "",
                 "last_error": s.last_error if s.status is SubtaskStatus.FAILED else "",
             }
             for s in snapshot.subtasks
@@ -704,6 +715,19 @@ def _task_elapsed_seconds(record: TaskRecord) -> float:
     else:
         end = _parse_iso_timestamp(record.updated_at) or datetime.now(timezone.utc)
     return max(0.0, (end - start).total_seconds())
+
+
+def _longest_running_seconds(snapshot: TaskSnapshot) -> float:
+    now = datetime.now(timezone.utc)
+    longest = 0.0
+    for subtask in snapshot.subtasks:
+        if subtask.status is not SubtaskStatus.RUNNING:
+            continue
+        started = _parse_iso_timestamp(subtask.started_at)
+        if started is None:
+            continue
+        longest = max(longest, (now - started).total_seconds())
+    return max(0.0, longest)
 
 
 def _parse_iso_timestamp(value: str) -> datetime | None:

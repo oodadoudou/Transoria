@@ -656,6 +656,24 @@ export function ProofreadingPage() {
       return;
     }
     const ids = Array.from(selectedSegmentIds).sort(compareSegmentIds);
+    await retranslateIds(ids);
+  };
+
+  const handleRetranslateFiltered = async () => {
+    if (filteredItems.length === 0 || batchRetranslating) return;
+    if (
+      dirty &&
+      selectedSegmentId &&
+      filteredItems.some((item) => item.segment_id === selectedSegmentId)
+    ) {
+      setFeedback({ kind: "error", text: m.retranslateSaveDirtyFirst });
+      return;
+    }
+    const ids = filteredItems.map((item) => item.segment_id);
+    await retranslateIds(ids);
+  };
+
+  const retranslateIds = async (ids: string[]) => {
     setBatchRetranslating(true);
     let completedCount = 0;
     let staleCount = 0;
@@ -877,6 +895,18 @@ export function ProofreadingPage() {
             disabled={!filteredItems.some((item) => riskRank(item) < 4)}
           >
             {m.nextRiskAction}
+          </button>
+          <button
+            type="button"
+            className={styles.filterChip}
+            onClick={() => void handleRetranslateFiltered()}
+            disabled={batchRetranslating || filteredItems.length === 0}
+          >
+            {batchRetranslating
+              ? m.retranslating
+              : format(m.retranslateFilteredAction, {
+                  n: filteredItems.length,
+                })}
           </button>
         </span>
       </div>

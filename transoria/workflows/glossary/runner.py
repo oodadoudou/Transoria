@@ -73,7 +73,8 @@ def _output_contract_reminder(target_language: str) -> str:
         "must be non-empty and follow the active prompt's taxonomy. "
         "If the active prompt decides a candidate should be filtered, excluded, "
         "deleted, skipped, ignored, or not extracted, omit that candidate entirely; "
-        "never output it as a glossary row with a filtered/excluded category. "
+        "never output it as a glossary row with a filtered/excluded, generic, common, "
+        "ordinary, optional, or low-value category. "
         f'The "dst" and "type" values must always be written in {target_language} — '
         "never mix languages, never fall back to English category names. "
         "No prose, no Markdown, no code fence."
