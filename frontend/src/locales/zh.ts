@@ -579,6 +579,8 @@ export const zh: Messages = {
       title: "执行翻译",
       sub: "启动、监控并停止当前翻译任务。文件夹与语言对在「设置」页配置。",
       progress: "进度",
+      startupNotice:
+        "正在解析输入文件并准备分块。EPUB 较大或结构复杂时，这一步可能需要等待几十秒。",
       failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
@@ -811,6 +813,8 @@ export const zh: Messages = {
       title: "执行术语提取",
       sub: "启动、监控并停止术语提取任务。输出 XLSX、JSON 与参考 TXT 三件套,放在源文件夹同级。",
       progress: "进度",
+      startupNotice:
+        "正在解析输入文件并准备术语提取分块。EPUB 较大或结构复杂时，这一步可能需要等待几十秒。",
       failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
@@ -889,6 +893,8 @@ export const zh: Messages = {
       title: "执行术语审查",
       sub: "审查 XLSX 术语表，只把有改动的条目写入报告，并输出最终 XLSX。为了让 AI 更好地校对，建议在设置页配置小说背景。",
       progress: "进度",
+      startupNotice:
+        "正在读取术语表和参考文本，并准备审查批次。文件较大时，这一步可能需要等待几十秒。",
       activeConfig: "当前配置",
       activeModel: "模型",
       activePrompt: "Prompt",

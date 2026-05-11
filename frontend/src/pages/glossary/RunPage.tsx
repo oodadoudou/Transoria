@@ -162,6 +162,10 @@ export function RunPage() {
     snapshot.failures.length > 0 &&
     snapshot.status !== "running" &&
     snapshot.status !== "pending";
+  const showStartupNotice =
+    Boolean(activeTaskId) &&
+    (snapshot.status === "pending" || snapshot.status === "running") &&
+    snapshot.progress.total === 0;
 
   return (
     <>
@@ -270,6 +274,9 @@ export function RunPage() {
             />
           </div>
         </div>
+        {showStartupNotice ? (
+          <p className={styles.startupNotice}>{run.startupNotice}</p>
+        ) : null}
         {snapshot.subtasks.length > 0 ? (
           <>
             <LiveRequestCounter

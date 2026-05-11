@@ -591,6 +591,8 @@ export const en: Messages = {
       title: "Run Translation",
       sub: "Start, monitor, and stop the active translation job. Folder and language choices are configured in Settings.",
       progress: "Progress",
+      startupNotice:
+        "Parsing input files and preparing chunks. Large or complex EPUB files may take a few dozen seconds.",
       failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
@@ -828,6 +830,8 @@ export const en: Messages = {
       title: "Run Glossary Extraction",
       sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references TXT alongside the source folder.",
       progress: "Progress",
+      startupNotice:
+        "Parsing input files and preparing glossary chunks. Large or complex EPUB files may take a few dozen seconds.",
       failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
@@ -907,6 +911,8 @@ export const en: Messages = {
       title: "Run Glossary Review",
       sub: "Review an XLSX glossary, report only changed rows, and write the final XLSX. For better AI review, configure the novel background in Settings.",
       progress: "Progress",
+      startupNotice:
+        "Reading the glossary and reference text, then preparing review batches. Large files may take a few dozen seconds.",
       activeConfig: "Active configuration",
       activeModel: "Model",
       activePrompt: "Prompt",
