@@ -74,6 +74,12 @@
   align-items: center;
 }
 
+.preparingNotice {
+  margin-top: 18px;
+  color: var(--muted);
+  font-weight: 650;
+}
+
 .taskIdStrip {
   display: flex;
   align-items: center;

@@ -395,6 +395,7 @@ export interface Messages {
       title: string;
       sub: string;
       progress: string;
+      preparing: string;
       failedSubtasks: string;
       runtimeTuning: string;
       activeConfig: string;
@@ -673,6 +674,7 @@ export interface Messages {
       title: string;
       sub: string;
       progress: string;
+      preparing: string;
       activeConfig: string;
       activeModel: string;
       activePrompt: string;

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { SubtaskMini } from "@/bridge";
+import type { SubtaskMini, TaskProgress } from "@/bridge";
 import styles from "./ChunkStatusGrid.module.css";
 
 interface ChunkStatusGridProps {
   subtasks: SubtaskMini[];
+  progress?: TaskProgress;
   itemLabel?: string;
 }
 
@@ -14,12 +15,16 @@ const CANVAS_HEIGHT = 16;
 
 export function ChunkStatusGrid({
   subtasks,
+  progress,
   itemLabel = "Chunk",
 }: ChunkStatusGridProps) {
   // SKIPPED subtasks are split-parent placeholders whose work is done
   // by their child subtasks; rendering them leaves a stray gray cell
   // in an otherwise-green grid even though every line is translated.
   const visible = subtasks.filter((s) => s.status !== "skipped");
+  if (visible.length === 0 && progress && progress.total > 0) {
+    return <SummaryGrid progress={progress} itemLabel={itemLabel} />;
+  }
   if (visible.length === 0) return null;
   if (visible.length > CANVAS_THRESHOLD) {
     return <CanvasGrid subtasks={visible} itemLabel={itemLabel} />;
@@ -36,6 +41,58 @@ export function ChunkStatusGrid({
       ))}
     </div>
   );
+}
+
+function SummaryGrid({
+  progress,
+  itemLabel,
+}: {
+  progress: TaskProgress;
+  itemLabel: string;
+}) {
+  const visible = buildSummarySubtasks(progress);
+  if (visible.length === 0) return null;
+  if (visible.length > CANVAS_THRESHOLD) {
+    return <CanvasGrid subtasks={visible} itemLabel={itemLabel} />;
+  }
+  return (
+    <div className={styles.grid} role="list" aria-label={itemLabel}>
+      {visible.map((subtask, index) => (
+        <span
+          key={subtask.id}
+          role="listitem"
+          className={`${styles.cell} ${styles[subtask.status] ?? ""}`.trim()}
+          title={cellTooltip(subtask, index, itemLabel)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function buildSummarySubtasks(progress: TaskProgress): SubtaskMini[] {
+  const subtasks: SubtaskMini[] = [];
+  appendSummarySubtasks(subtasks, "completed", progress.completed);
+  appendSummarySubtasks(subtasks, "failed", progress.failed);
+  appendSummarySubtasks(subtasks, "running", progress.running);
+  appendSummarySubtasks(subtasks, "pending", progress.pending);
+  appendSummarySubtasks(subtasks, "skipped", progress.skipped);
+  return subtasks.slice(0, progress.total);
+}
+
+function appendSummarySubtasks(
+  subtasks: SubtaskMini[],
+  status: SubtaskMini["status"],
+  count: number,
+): void {
+  for (let i = 0; i < Math.max(0, count); i += 1) {
+    subtasks.push({
+      id: `${status}-${subtasks.length + 1}`,
+      status,
+      attempts: 0,
+      started_at: "",
+      last_error: "",
+    });
+  }
 }
 
 function cellTooltip(
@@ -108,13 +165,7 @@ function CanvasGrid({
     ctx.clearRect(0, 0, width, CANVAS_HEIGHT);
 
     const root = getComputedStyle(document.documentElement);
-    const palette: Record<SubtaskMini["status"], string> = {
-      pending: cssVar(root, "--hairline-strong", "#d8d2c7"),
-      running: cssVar(root, "--accent", "#ad9d7a"),
-      completed: cssVar(root, "--success", "#2f7d57"),
-      failed: cssVar(root, "--warn", "#b6541b"),
-      skipped: cssVar(root, "--muted", "#7a7166"),
-    };
+    const palette = statusPalette(root);
 
     const n = subtasks.length;
     // When cellWidth < 1 multiple subtasks fold into one pixel column;
@@ -167,6 +218,18 @@ const STATUS_PRIORITY: Record<SubtaskMini["status"], number> = {
   skipped: 2,
   pending: 1,
 };
+
+function statusPalette(
+  root: CSSStyleDeclaration,
+): Record<SubtaskMini["status"], string> {
+  return {
+    pending: cssVar(root, "--hairline-strong", "#d8d2c7"),
+    running: cssVar(root, "--accent", "#ad9d7a"),
+    completed: cssVar(root, "--success", "#2f7d57"),
+    failed: cssVar(root, "--warn", "#b6541b"),
+    skipped: cssVar(root, "--muted", "#7a7166"),
+  };
+}
 
 function cssVar(
   style: CSSStyleDeclaration,

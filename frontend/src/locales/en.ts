@@ -598,6 +598,8 @@ export const en: Messages = {
       title: "Run Translation",
       sub: "Start, monitor, and stop the active translation job. Folder and language choices are configured in Settings.",
       progress: "Progress",
+      preparing:
+        "Scanning input files, filtering segments that do not need translation, and preparing chunks. This can take a few dozen seconds for large folders or complex EPUBs.",
       failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
@@ -916,6 +918,8 @@ export const en: Messages = {
       title: "Run Glossary Review",
       sub: "Review an XLSX glossary, report only changed rows, and write the final XLSX. For better AI review, configure the novel background in Settings.",
       progress: "Progress",
+      preparing:
+        "Reading the glossary, loading reference text, and preparing review batches. This can take a few dozen seconds for large inputs.",
       activeConfig: "Active configuration",
       activeModel: "Model",
       activePrompt: "Prompt",

@@ -277,6 +277,9 @@ export function RunPage() {
     snapshot.status === "completed" ? rawPercent : Math.min(rawPercent, 99);
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
+  const isPreparing =
+    !snapshot.isIdle && snapshot.status === "running" && total === 0;
+  const hasProgressBlocks = snapshot.subtasks.length > 0 || total > 0;
   const roundDetail = roundProgress
     ? format(run.roundOverall, {
         current: roundCurrent,
@@ -414,7 +417,7 @@ export function RunPage() {
             </span>
           </div>
         ) : null}
-        {snapshot.subtasks.length > 0 ? (
+        {hasProgressBlocks ? (
           <>
             <LiveRequestCounter
               progress={snapshot.progress}
@@ -424,9 +427,12 @@ export function RunPage() {
             />
             <ChunkStatusGrid
               subtasks={snapshot.subtasks}
+              progress={snapshot.progress}
               itemLabel={run.liveCounter.chunksLabel}
             />
           </>
+        ) : isPreparing ? (
+          <div className={styles.preparingNotice}>{run.preparing}</div>
         ) : null}
       </Panel>
 

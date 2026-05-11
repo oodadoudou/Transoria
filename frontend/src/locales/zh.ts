@@ -586,6 +586,8 @@ export const zh: Messages = {
       title: "执行翻译",
       sub: "启动、监控并停止当前翻译任务。文件夹与语言对在「设置」页配置。",
       progress: "进度",
+      preparing:
+        "正在扫描输入文件、过滤无需翻译的段落并准备分块。文件较多或 EPUB 结构复杂时，这一步可能需要几十秒。",
       failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
@@ -897,6 +899,8 @@ export const zh: Messages = {
       title: "执行术语审查",
       sub: "审查 XLSX 术语表，只把有改动的条目写入报告，并输出最终 XLSX。为了让 AI 更好地校对，建议在设置页配置小说背景。",
       progress: "进度",
+      preparing:
+        "正在读取术语表、参考文本并准备审查批次。文件较大时，这一步可能需要几十秒。",
       activeConfig: "当前配置",
       activeModel: "模型",
       activePrompt: "Prompt",

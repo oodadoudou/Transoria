@@ -160,6 +160,7 @@ export function RunPage() {
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
   const isPreparing =
     !snapshot.isIdle && snapshot.status === "running" && total === 0;
+  const hasProgressBlocks = snapshot.subtasks.length > 0 || total > 0;
   const showFailures = snapshot.failures.length > 0;
 
   return (
@@ -269,7 +270,7 @@ export function RunPage() {
             />
           </div>
         </div>
-        {snapshot.subtasks.length > 0 ? (
+        {hasProgressBlocks ? (
           <>
             <LiveRequestCounter
               progress={snapshot.progress}
@@ -279,6 +280,7 @@ export function RunPage() {
             />
             <ChunkStatusGrid
               subtasks={snapshot.subtasks}
+              progress={snapshot.progress}
               itemLabel={run.liveCounter.chunksLabel}
             />
           </>
