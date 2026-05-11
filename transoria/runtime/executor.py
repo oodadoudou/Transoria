@@ -36,11 +36,27 @@ class SubtaskRunner(Protocol):
     async def run(self, subtask: Subtask) -> SubtaskResult: ...
 
 
-@dataclass(frozen=True)
 class ProgressEvent:
-    snapshot: TaskSnapshot
-    changed_subtask_id: str
-    timestamp: str
+    def __init__(
+        self,
+        *,
+        changed_subtask_id: str,
+        timestamp: str,
+        snapshot: TaskSnapshot | None = None,
+        snapshot_loader: Callable[[], TaskSnapshot] | None = None,
+    ) -> None:
+        self.changed_subtask_id = changed_subtask_id
+        self.timestamp = timestamp
+        self._snapshot = snapshot
+        self._snapshot_loader = snapshot_loader
+
+    @property
+    def snapshot(self) -> TaskSnapshot:
+        if self._snapshot is None:
+            if self._snapshot_loader is None:
+                raise RuntimeError("ProgressEvent snapshot is unavailable")
+            self._snapshot = self._snapshot_loader()
+        return self._snapshot
 
 
 ProgressListener = Callable[[ProgressEvent], None]
@@ -360,6 +376,24 @@ class TaskExecutor:
         self, task_id: str, *, stopped: bool, paused: bool
     ) -> TaskSnapshot:
         snapshot = self.cache.load(task_id)
+        if not stopped and not paused:
+            repaired = False
+            for subtask in snapshot.subtasks:
+                if subtask.status is SubtaskStatus.PENDING:
+                    self.cache.save_subtask(
+                        replace(
+                            subtask,
+                            status=SubtaskStatus.FAILED,
+                            last_error=(
+                                "[executor.dangling_pending] "
+                                "Executor finished while this subtask was still pending."
+                            ),
+                            last_error_at=self.clock(),
+                        )
+                    )
+                    repaired = True
+            if repaired:
+                snapshot = self.cache.load(task_id)
         progress = snapshot.progress()
         # Stop wins over pause if both fired.
         if stopped:
@@ -381,13 +415,12 @@ class TaskExecutor:
     def _fire_progress(self, task_id: str, subtask_id: str) -> None:
         if self.progress is None:
             return
-        snapshot = self.cache.load(task_id)
         try:
             self.progress(
                 ProgressEvent(
-                    snapshot=snapshot,
                     changed_subtask_id=subtask_id,
                     timestamp=self.clock(),
+                    snapshot_loader=lambda: self.cache.load(task_id),
                 )
             )
         except Exception:  # pragma: no cover — listener errors must not break runtime

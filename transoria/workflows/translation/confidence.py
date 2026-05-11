@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass
 
 from transoria.domain import Language
+from transoria.workflows.prefilter import is_fixed_identifier_line
 
 
 _PUNCTUATION_CHARS = (
@@ -61,6 +62,10 @@ def evaluate_segment_confidence(
             is_low_confidence=True,
             reasons=("empty translation for non-empty source",),
         )
+    if is_fixed_identifier_line(source_text) and _same_fixed_identifier(
+        source_text, translated_text
+    ):
+        return ConfidenceVerdict(is_low_confidence=False)
 
     ratio = len(translated_text) / max(len(source_text), 1)
     if ratio < min_length_ratio:
@@ -198,6 +203,12 @@ def _too_similar(source_text: str, translated_text: str) -> bool:
 
 def _normalize_for_similarity(text: str) -> str:
     return re.sub(r"\s+", "", text).casefold()
+
+
+def _same_fixed_identifier(source_text: str, translated_text: str) -> bool:
+    compact_source = re.sub(r"[-\s:：|｜]", "", source_text).casefold()
+    compact_translated = re.sub(r"[-\s:：|｜]", "", translated_text).casefold()
+    return compact_source == compact_translated
 
 
 __all__ = ["ConfidenceVerdict", "evaluate_segment_confidence"]
