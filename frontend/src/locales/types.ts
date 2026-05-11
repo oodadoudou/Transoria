@@ -86,9 +86,6 @@ export interface Messages {
     restartHint: string;
     continueHint: string;
     taskControls: string;
-    epubPreflightTitle: string;
-    epubPreflightDetail: string;
-    epubPreflightLabels: Record<string, string>;
   };
   bilingual: {
     label: string;

@@ -93,18 +93,6 @@ export const zh: Messages = {
     restartHint: "再点 {count} 次以重跑",
     continueHint: "继续只会重跑失败 {failed} 个 / 未完成 {pending} 个分块。",
     taskControls: "任务控制",
-    epubPreflightTitle: "EPUB 体检提醒",
-    epubPreflightDetail:
-      "发现 {count} 个结构提醒：{items}。这不会阻止翻译，只建议后续留意输出。",
-    epubPreflightLabels: {
-      missing_cover: "缺少封面声明",
-      empty_spine: "spine 为空",
-      first_spine_empty: "首个 spine 文档无正文",
-      empty_spine_documents: "存在空章节",
-      missing_spine_item: "spine 引用缺失",
-      unreadable_spine_item: "spine 文档无法解析",
-      inspection_failed: "体检失败",
-    },
   },
   bilingual: {
     label: "双语输出",
