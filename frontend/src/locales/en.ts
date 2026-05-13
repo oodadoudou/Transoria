@@ -306,13 +306,13 @@ export const en: Messages = {
   },
   batchReplacement: {
     title: "Batch Replacement",
-    sub: "Apply imported arrow rules (`source->target`) to TXT and EPUB files.",
+    sub: "Apply imported TXT arrow rules or Reeden reader .red replacement rules to TXT and EPUB files.",
     inputFolder: "Input folder",
     outputFolder: "Output folder",
     rulesLabel: "Rules",
-    importRules: "Import TXT rules",
+    importRules: "Import TXT / RED rules",
     noRules:
-      "No rules imported. Import a TXT file with `source->target` lines.",
+      "No rules imported. Import a TXT file with `source->target` lines, or a Reeden reader .red replacement-rule file.",
     execute: "Execute",
     stop: "Stop",
     progressLabel: "Progress",

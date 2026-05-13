@@ -9,6 +9,8 @@ to keep their dependency surface explicit.
 
 from __future__ import annotations
 
+import gzip
+import json
 import re
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -17,7 +19,7 @@ from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.bridge.task_service import TaskService
-from transoria.formats.text import parse_txt_file
+from transoria.formats.text import decode_text_bytes, parse_txt_file
 from transoria.tools.replacement import ReplacementRule
 
 
@@ -66,6 +68,83 @@ def _parse_rule_line(
     )
 
 
+_RED_HEADER = b"RED\x01"
+_RED_RULE_FIELDS = ("rule", "替换原文", "原文", "src", "source", "from", "pattern")
+_RED_TARGET_FIELDS = ("target", "替换后", "替换为", "dst", "to", "replacement")
+
+
+def _first_string(payload: Mapping[str, object], keys: Sequence[str]) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str):
+            return value
+    return None
+
+
+def _load_red_json(path: Path) -> object:
+    raw = path.read_bytes()
+    if raw.startswith(_RED_HEADER):
+        raw = raw[len(_RED_HEADER) :]
+    if raw.startswith(b"\x1f\x8b"):
+        raw = gzip.decompress(raw)
+    text, _encoding = decode_text_bytes(raw)
+    return json.loads(text)
+
+
+def _iter_red_items(payload: object) -> Sequence[object]:
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, Mapping):
+        for key in ("data", "rules", "items"):
+            items = payload.get(key)
+            if isinstance(items, list):
+                return items
+    return ()
+
+
+def _parse_red_rules(path: Path) -> dict[str, object]:
+    try:
+        payload = _load_red_json(path)
+    except (
+        OSError,
+        UnicodeDecodeError,
+        gzip.BadGzipFile,
+        json.JSONDecodeError,
+    ) as exc:
+        raise BridgeError(
+            "bridge.io_error",
+            f"cannot read RED rule file: {exc}",
+            retryable=isinstance(exc, OSError),
+            details={"path": str(path)},
+        ) from exc
+
+    rules: list[dict[str, object]] = []
+    warnings: list[dict[str, object]] = []
+    for index, item in enumerate(_iter_red_items(payload), start=1):
+        if not isinstance(item, Mapping):
+            warnings.append(
+                {"line_number": index, "message": "rule item is not an object"}
+            )
+            continue
+        src = (_first_string(item, _RED_RULE_FIELDS) or "").strip()
+        dst = (_first_string(item, _RED_TARGET_FIELDS) or "").strip()
+        if not src:
+            warnings.append({"line_number": index, "message": "empty source phrase"})
+            continue
+        rules.append(
+            {
+                "src": src,
+                "dst": dst,
+                "regex": bool(item.get("isRegex", item.get("regex", False))),
+                "case_sensitive": True,
+                "enabled": bool(item.get("enabled", True)),
+            }
+        )
+    if not rules and not warnings:
+        warnings.append({"line_number": 0, "message": "missing RED rule list"})
+    return {"rules": rules, "parse_warnings": warnings}
+
+
 def import_rules(payload: Mapping[str, object]) -> dict[str, object]:
     path_str = expect_string(payload, "path")
     path = Path(path_str)
@@ -74,6 +153,8 @@ def import_rules(payload: Mapping[str, object]) -> dict[str, object]:
             f"rule file does not exist: {path_str!r}",
             details={"path": path_str},
         )
+    if path.suffix.casefold() == ".red":
+        return _parse_red_rules(path)
     # Reuse the txt parser's tolerant detection (utf-8 → BOM-checked
     # utf-16 → chardet → cp949/euc-kr/gbk/big5/shift_jis fallback) so
     # users can drop legacy-encoded rule files without converting first.
