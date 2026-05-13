@@ -2073,14 +2073,6 @@ class TaskService:
         output_dir = _ensure_output_dir(
             output_folder or replacement.output_folder, field="output_folder"
         )
-        if (
-            not replacement.allow_same_folder
-            and input_dir.resolve() == output_dir.resolve()
-        ):
-            raise BridgeError.invalid_argument(
-                "input_folder and output_folder must differ unless allow_same_folder is true.",
-                field="output_folder",
-            )
 
         if not rules:
             raise BridgeError.invalid_argument(
