@@ -57,6 +57,7 @@ SUBTASK_PAYLOAD_VERSION = 1
 SUBTASK_RESPONSE_VERSION = 2
 _SOURCE_FALLBACK_RESIDUE_RATIO = 0.15
 _RESCUE_TRANSPORT_RETRY_BUDGET = 1
+_TRANSLATION_TRANSPORT_RETRY_BUDGET = 1
 _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 120.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
@@ -257,10 +258,8 @@ def _with_translation_request_timeout(model: ModelConfig, phase: str) -> ModelCo
     return replace(model, timeout_seconds=timeout)
 
 
-def _transport_retry_budget(model: ModelConfig) -> int | None:
-    if model.concurrency_limit > _HIGH_CONCURRENCY_THRESHOLD:
-        return 1
-    return None
+def _transport_retry_budget(_model: ModelConfig) -> int:
+    return _TRANSLATION_TRANSPORT_RETRY_BUDGET
 
 
 def _should_retry_translation_error(model: ModelConfig, exc: BaseException) -> bool:
@@ -374,20 +373,23 @@ class TranslationSubtaskRunner:
                     )
 
                 try:
-                    response = await retry_async(
-                        _llm_call,
-                        model=request_model,
-                        max_retry_attempts=(
-                            None
-                            if phase == "batch"
-                            else _RESCUE_TRANSPORT_RETRY_BUDGET
+                    response = await asyncio.wait_for(
+                        retry_async(
+                            _llm_call,
+                            model=request_model,
+                            max_retry_attempts=(
+                                None
+                                if phase == "batch"
+                                else _RESCUE_TRANSPORT_RETRY_BUDGET
+                            ),
+                            max_transport_retry_attempts=_transport_retry_budget(
+                                self.model
+                            ),
+                            should_retry=lambda exc: _should_retry_translation_error(
+                                self.model, exc
+                            ),
                         ),
-                        max_transport_retry_attempts=_transport_retry_budget(
-                            self.model
-                        ),
-                        should_retry=lambda exc: _should_retry_translation_error(
-                            self.model, exc
-                        ),
+                        timeout=request_model.timeout_seconds,
                     )
                 except BaseException as exc:
                     if phase == "batch" or not is_transient_llm_error(exc):
@@ -572,20 +574,8 @@ class TranslationSubtaskRunner:
 
                     try:
                         if self.solo_retry_limiter is None:
-                            solo_response = await retry_async(
-                                _solo_llm_call,
-                                model=solo_request_model,
-                                max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
-                                max_transport_retry_attempts=_transport_retry_budget(
-                                    self.model
-                                ),
-                                should_retry=lambda exc: _should_retry_translation_error(
-                                    self.model, exc
-                                ),
-                            )
-                        else:
-                            async with self.solo_retry_limiter:
-                                solo_response = await retry_async(
+                            solo_response = await asyncio.wait_for(
+                                retry_async(
                                     _solo_llm_call,
                                     model=solo_request_model,
                                     max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
@@ -595,8 +585,26 @@ class TranslationSubtaskRunner:
                                     should_retry=lambda exc: _should_retry_translation_error(
                                         self.model, exc
                                     ),
+                                ),
+                                timeout=solo_request_model.timeout_seconds,
+                            )
+                        else:
+                            async with self.solo_retry_limiter:
+                                solo_response = await asyncio.wait_for(
+                                    retry_async(
+                                        _solo_llm_call,
+                                        model=solo_request_model,
+                                        max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
+                                        max_transport_retry_attempts=_transport_retry_budget(
+                                            self.model
+                                        ),
+                                        should_retry=lambda exc: _should_retry_translation_error(
+                                            self.model, exc
+                                        ),
+                                    ),
+                                    timeout=solo_request_model.timeout_seconds,
                                 )
-                    except LlmRequestError as exc:
+                    except (LlmRequestError, TimeoutError) as exc:
                         if not is_transient_llm_error(exc):
                             raise
                         current_reasons = tuple(current_reasons) + (
