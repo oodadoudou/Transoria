@@ -3462,7 +3462,7 @@ class TaskService:
 
         existing = self.registry.get(task_id)
         if existing is None or existing.is_done:
-            return existing
+            return None
         if snapshot_status in _TERMINAL_TASK_STATES:
             existing.mark_done()
             return None
@@ -3538,7 +3538,8 @@ class TaskService:
         record = snapshot.record
         if record.status not in _ZOMBIE_TASK_STATES:
             return snapshot
-        if self.registry.get(record.id) is not None:
+        live = self.registry.get(record.id)
+        if live is not None and not live.is_done:
             return snapshot
         healed = record.with_status(TaskStatus.STOPPED).with_updated_at(
             _utc_now_iso()

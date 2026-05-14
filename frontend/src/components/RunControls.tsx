@@ -121,6 +121,14 @@ export function RunControls({ kind }: RunControlsProps) {
       } catch (error) {
         if (BridgeError.isBridgeError(error)) {
           setLastError(kind, error);
+          if (actionKind === "continue") {
+            try {
+              const next = await bridge.probeContinuable();
+              setProbe(next);
+            } catch {
+              setProbe(EMPTY_PROBE);
+            }
+          }
           return;
         }
         throw error;
