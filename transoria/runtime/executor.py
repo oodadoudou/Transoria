@@ -66,6 +66,10 @@ class TaskExecutor:
     # cancellation kicks in. The wait is bounded so a wedged HTTP call
     # cannot block Stop forever.
     stop_drain_seconds: float = 0.0
+    # Optional hard ceiling for one RUNNING subtask. This is intentionally
+    # executor-level so a stuck runner cannot hold a worker forever even if
+    # the lower HTTP/client timeout fails to unwind.
+    subtask_timeout_seconds: float = 0.0
 
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
     _pause_request: asyncio.Event = field(
@@ -304,7 +308,19 @@ class TaskExecutor:
         self._active_runners += 1
         try:
             try:
-                result = await self.runner.run(running)
+                if self.subtask_timeout_seconds > 0:
+                    try:
+                        result = await asyncio.wait_for(
+                            self.runner.run(running),
+                            timeout=self.subtask_timeout_seconds,
+                        )
+                    except TimeoutError as exc:
+                        raise TimeoutError(
+                            "Subtask exceeded "
+                            f"{self.subtask_timeout_seconds:.0f}s timeout"
+                        ) from exc
+                else:
+                    result = await self.runner.run(running)
             except asyncio.CancelledError:
                 # Stop requested while in-flight: leave the subtask in
                 # PENDING so the next run picks it up. Re-raise so the

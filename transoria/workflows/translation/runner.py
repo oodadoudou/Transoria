@@ -652,6 +652,9 @@ class TranslationSubtaskRunner:
                         finalized[meta.segment_id] = retry_final
                         current_text = None  # signal: passed
                         break
+                    if retry_final.strip() == current_text.strip():
+                        current_reasons = verdict.reasons
+                        break
                     # Still low-conf: keep tracking the current best as
                     # whatever has the *least* source-language residue.
                     # An attempt that's mostly Chinese is preferable to a
