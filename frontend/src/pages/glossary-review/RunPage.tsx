@@ -569,6 +569,22 @@ function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
   }, [action, query, report.rows]);
   const restoreKey = (row: GlossaryReviewReportRow) =>
     `${row.round}-${row.row_index}-${row.src}`;
+  const actionLabel = (row: GlossaryReviewReportRow) => {
+    switch (row.action) {
+      case "modify":
+        return labels.actionModify;
+      case "delete":
+        return labels.actionDelete;
+      case "category":
+        return labels.actionCategory;
+      case "modify_category":
+        return labels.actionModifyCategory;
+      case "name_consistency":
+        return labels.actionNameConsistency;
+      default:
+        return row.action;
+    }
+  };
   const restoreDelete = async (row: GlossaryReviewReportRow) => {
     const key = restoreKey(row);
     setRestoring(key);
@@ -614,6 +630,7 @@ function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
             <option value="delete">{labels.actionDelete}</option>
             <option value="category">{labels.actionCategory}</option>
             <option value="modify_category">{labels.actionModifyCategory}</option>
+            <option value="name_consistency">{labels.actionNameConsistency}</option>
           </select>
         </div>
         {rows.length === 0 ? (
@@ -642,7 +659,7 @@ function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
                   return (
                     <tr key={`${row.round}-${row.row_index}-${row.action}`}>
                       <td>{row.round}</td>
-                      <td>{row.action}</td>
+                      <td>{actionLabel(row)}</td>
                       <td>{row.src}</td>
                       <td>{row.original_dst}</td>
                       <td>{row.suggested_dst}</td>

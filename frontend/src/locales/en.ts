@@ -964,6 +964,7 @@ export const en: Messages = {
       actionDelete: "Delete",
       actionCategory: "Category",
       actionModifyCategory: "Translation + category",
+      actionNameConsistency: "Name consistency",
       empty: "No changed rows to show.",
       columns: {
         round: "Round",

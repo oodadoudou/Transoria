@@ -22,6 +22,8 @@ from transoria.runtime.subtask import Subtask
 from transoria.workflows.debug_log import write_subtask_debug_log
 
 SUBTASK_PAYLOAD_VERSION = 1
+SUBTASK_MODE_REVIEW = "review"
+SUBTASK_MODE_CHARACTER_CONSISTENCY = "character_consistency"
 
 VALID_ACTIONS: frozenset[str] = frozenset(
     {"keep", "modify", "delete", "category", "modify_category"}
@@ -52,9 +54,11 @@ def encode_review_payload(
     batch_index: int,
     rows: tuple[Mapping[str, object], ...],
     novel_background: str,
+    mode: str = SUBTASK_MODE_REVIEW,
 ) -> dict[str, object]:
     return {
         "version": SUBTASK_PAYLOAD_VERSION,
+        "mode": mode,
         "round": round_index,
         "batch": batch_index,
         "novel_background": novel_background,
@@ -124,18 +128,27 @@ class GlossaryReviewSubtaskRunner:
         rows = payload.get("rows", [])
         if not isinstance(rows, list) or not rows:
             raise ValueError(f"Invalid glossary review payload: {payload!r}")
+        mode = str(payload.get("mode", SUBTASK_MODE_REVIEW))
 
         instruction_prompt = build_prompt(
             self.prompt_preset,
             PromptContext(),
             thinking=self.model.thinking_prompt_enabled,
         )
-        user_prompt = _build_user_prompt(
-            instruction_prompt=instruction_prompt,
-            novel_background=str(payload.get("novel_background", "")),
-            round_index=round_index,
-            rows=tuple(item for item in rows if isinstance(item, Mapping)),
-        )
+        payload_rows = tuple(item for item in rows if isinstance(item, Mapping))
+        if mode == SUBTASK_MODE_CHARACTER_CONSISTENCY:
+            user_prompt = _build_character_consistency_prompt(
+                instruction_prompt=instruction_prompt,
+                novel_background=str(payload.get("novel_background", "")),
+                rows=payload_rows,
+            )
+        else:
+            user_prompt = _build_user_prompt(
+                instruction_prompt=instruction_prompt,
+                novel_background=str(payload.get("novel_background", "")),
+                round_index=round_index,
+                rows=payload_rows,
+            )
         reservation = -1
         if self.tpm_limiter is not None:
             reservation = await self.tpm_limiter.reserve(
@@ -172,6 +185,7 @@ class GlossaryReviewSubtaskRunner:
                 subtask.id,
                 {
                     "kind": "glossary_review",
+                    "mode": mode,
                     "instruction_prompt": instruction_prompt,
                     "user_prompt": user_prompt,
                     "raw_response": response.content,
@@ -238,6 +252,56 @@ def _build_user_prompt(
             '"decisions" array. Each item must match this shape:\n'
             + json.dumps(contract, ensure_ascii=False)
             + "\nUse keep for unchanged rows. Do not include prose or Markdown."
+        ),
+    ]
+    return "\n\n".join(part for part in parts if part)
+
+
+def _build_character_consistency_prompt(
+    *,
+    instruction_prompt: str,
+    novel_background: str,
+    rows: tuple[Mapping[str, object], ...],
+) -> str:
+    row_payload = [
+        {
+            "row_index": int(row.get("row_index", 0)),
+            "src": str(row.get("src", "")),
+            "dst": str(row.get("dst", "")),
+            "info": str(row.get("info", "")),
+            "context": str(row.get("context", "")),
+        }
+        for row in rows
+    ]
+    contract = {
+        "row_index": 2,
+        "action": "keep | modify",
+        "suggested_dst": "required only when action is modify",
+        "reason": "short reason",
+    }
+    parts = [
+        instruction_prompt,
+        "[Final Character Consistency Review]",
+        "[Novel Background]\n" + (novel_background or "(empty)"),
+        (
+            "[Rules]\n"
+            "This is the final safety pass after all normal glossary review rounds. "
+            "Only check character-name consistency across source languages. Korean "
+            "names are the main risk: the same Hangul name, spacing variant, honorific "
+            "form, nickname, or partial mention may receive different Chinese names. "
+            "Also handle Japanese, Chinese, and other supported source languages when "
+            "rows clearly refer to the same named person or stable alias. Make only "
+            "the Chinese dst names consistent. Do not merge rows. Do not delete rows. "
+            "Do not change src or category/info. Do not force unrelated people with "
+            "the same surname, generic title, or common word into one name. If "
+            "uncertain, keep."
+        ),
+        "[Character Rows]\n" + json.dumps(row_payload, ensure_ascii=False, indent=2),
+        (
+            "[Output Contract]\n"
+            "Output JSON only. Return either a JSON array or an object with a "
+            '"decisions" array. Use keep for unchanged rows. Each item must match:\n'
+            + json.dumps(contract, ensure_ascii=False)
         ),
     ]
     return "\n\n".join(part for part in parts if part)
@@ -317,4 +381,6 @@ __all__ = [
     "ReviewDecision",
     "decode_review_response",
     "encode_review_payload",
+    "SUBTASK_MODE_CHARACTER_CONSISTENCY",
+    "SUBTASK_MODE_REVIEW",
 ]

@@ -501,7 +501,12 @@ export interface GlossaryReviewInputCandidates {
 
 export interface GlossaryReviewReportRow {
   round: number;
-  action: "modify" | "delete" | "category" | "modify_category";
+  action:
+    | "modify"
+    | "delete"
+    | "category"
+    | "modify_category"
+    | "name_consistency";
   row_index: number;
   src: string;
   original_dst: string;

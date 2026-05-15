@@ -723,6 +723,7 @@ export interface Messages {
       actionDelete: string;
       actionCategory: string;
       actionModifyCategory: string;
+      actionNameConsistency: string;
       empty: string;
       columns: {
         round: string;

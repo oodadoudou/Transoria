@@ -942,6 +942,7 @@ export const zh: Messages = {
       actionDelete: "删除",
       actionCategory: "改分类",
       actionModifyCategory: "改译文+分类",
+      actionNameConsistency: "命名一致性",
       empty: "没有需要展示的改动。",
       columns: {
         round: "轮次",

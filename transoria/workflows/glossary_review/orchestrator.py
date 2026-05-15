@@ -31,6 +31,8 @@ from transoria.workflows.glossary_review.loader import (
 )
 from transoria.workflows.glossary_review.runner import (
     ReviewDecision,
+    SUBTASK_MODE_CHARACTER_CONSISTENCY,
+    SUBTASK_MODE_REVIEW,
     decode_review_response,
     encode_review_payload,
     GlossaryReviewSubtaskRunner,
@@ -152,7 +154,9 @@ class GlossaryReviewOrchestrator:
             )
 
         final_snapshot: TaskSnapshot | None = None
-        for round_index in range(1, config.review_rounds + 1):
+        total_rounds = config.review_rounds + 1
+        for round_index in range(1, total_rounds + 1):
+            is_consistency_round = round_index > config.review_rounds
             rows, _report_rows = self._replay_completed(loaded.rows, self.cache.load(task_id))
             rows = attach_reference_contexts(rows, review_input.reference_text)
             history = self._review_history(loaded.rows, self.cache.load(task_id))
@@ -162,6 +166,7 @@ class GlossaryReviewOrchestrator:
                 config=config,
                 rows=rows,
                 history=history,
+                consistency_only=is_consistency_round,
             )
             round_subtasks = [
                 subtask
@@ -171,7 +176,7 @@ class GlossaryReviewOrchestrator:
             if not round_subtasks:
                 self._save_round_progress(
                     task_id,
-                    total_rounds=config.review_rounds,
+                    total_rounds=total_rounds,
                     current_round=round_index,
                     completed_rounds=round_index,
                     current_total_batches=0,
@@ -184,7 +189,7 @@ class GlossaryReviewOrchestrator:
             ):
                 self._save_round_progress(
                     task_id,
-                    total_rounds=config.review_rounds,
+                    total_rounds=total_rounds,
                     current_round=round_index,
                     completed_rounds=round_index,
                     current_total_batches=len(round_subtasks),
@@ -199,7 +204,7 @@ class GlossaryReviewOrchestrator:
             ]
             self._save_round_progress(
                 task_id,
-                total_rounds=config.review_rounds,
+                total_rounds=total_rounds,
                 current_round=round_index,
                 completed_rounds=round_index - 1,
                 current_total_batches=len(round_subtasks),
@@ -219,7 +224,7 @@ class GlossaryReviewOrchestrator:
                 rpm_limit=max(0, config.model.rpm_limit),
                 progress=self._round_progress_listener(
                     task_id=task_id,
-                    total_rounds=config.review_rounds,
+                    total_rounds=total_rounds,
                     current_round=round_index,
                     current_total_batches=len(round_subtasks),
                 ),
@@ -247,7 +252,7 @@ class GlossaryReviewOrchestrator:
                     changed_count=0,
                     final_status=final_snapshot.record.status,
                 )
-            if round_index < config.review_rounds:
+            if round_index < total_rounds:
                 self.cache.save_task(
                     final_snapshot.record.with_status(
                         TaskStatus.RUNNING
@@ -256,7 +261,7 @@ class GlossaryReviewOrchestrator:
                 final_snapshot = self.cache.load(task_id)
             self._save_round_progress(
                 task_id,
-                total_rounds=config.review_rounds,
+                total_rounds=total_rounds,
                 current_round=round_index,
                 completed_rounds=round_index,
                 current_total_batches=len(round_subtasks),
@@ -383,7 +388,7 @@ class GlossaryReviewOrchestrator:
                 "output_filename": config.output_filename,
                 "input_xlsx": str(loaded.workbook_path),
                 "reference_files": [str(path) for path in reference_files],
-                "review_rounds_total": config.review_rounds,
+                "review_rounds_total": config.review_rounds + 1,
                 "review_round_current": 0,
                 "review_round_completed": 0,
                 "review_round_total_batches": 0,
@@ -405,15 +410,26 @@ class GlossaryReviewOrchestrator:
         config: GlossaryReviewConfig,
         rows: tuple[GlossaryReviewRow, ...],
         history: Mapping[str, tuple[ReviewHistoryItem, ...]] | None = None,
+        consistency_only: bool = False,
     ) -> None:
         if any(
             _subtask_round(subtask) == round_index
             for subtask in self.cache.load_subtasks(task_id)
         ):
             return
-        for subtask in self._build_round_subtasks(
-            task_id, round_index=round_index, config=config, rows=rows, history=history
-        ):
+        if consistency_only:
+            subtasks = self._build_character_consistency_subtasks(
+                task_id, round_index=round_index, config=config, rows=rows
+            )
+        else:
+            subtasks = self._build_round_subtasks(
+                task_id,
+                round_index=round_index,
+                config=config,
+                rows=rows,
+                history=history,
+            )
+        for subtask in subtasks:
             self.cache.save_subtask(subtask)
 
     def _build_round_subtasks(
@@ -453,6 +469,36 @@ class GlossaryReviewOrchestrator:
             )
         return subtasks
 
+    def _build_character_consistency_subtasks(
+        self,
+        task_id: str,
+        *,
+        round_index: int,
+        config: GlossaryReviewConfig,
+        rows: tuple[GlossaryReviewRow, ...],
+    ) -> list[Subtask]:
+        active_rows = [
+            row for row in rows if not row.deleted and _is_character_category(row.info)
+        ]
+        if not active_rows:
+            return []
+        payload_rows = tuple(
+            _row_payload(row, config=config, history=None) for row in active_rows
+        )
+        return [
+            Subtask(
+                id=f"round-{round_index:02d}-character-consistency",
+                task_id=task_id,
+                request_payload=encode_review_payload(
+                    round_index=round_index,
+                    batch_index=0,
+                    rows=payload_rows,
+                    novel_background=config.novel_background,
+                    mode=SUBTASK_MODE_CHARACTER_CONSISTENCY,
+                ),
+            )
+        ]
+
     def _reset_failed_round_subtasks(self, task_id: str, *, round_index: int) -> None:
         for subtask in self.cache.load_subtasks(task_id):
             if _subtask_round(subtask) != round_index:
@@ -482,7 +528,13 @@ class GlossaryReviewOrchestrator:
                 current = rows.get(decision.row_index)
                 if current is None:
                     continue
-                updated, report = _apply_decision(current, decision, round_index)
+                updated, report = _apply_decision(
+                    current,
+                    decision,
+                    round_index,
+                    consistency_only=_subtask_mode(subtask)
+                    == SUBTASK_MODE_CHARACTER_CONSISTENCY,
+                )
                 rows[decision.row_index] = updated
                 if report is not None:
                     report_rows.append(report)
@@ -503,7 +555,11 @@ class GlossaryReviewOrchestrator:
                 if current is None:
                     continue
                 updated, _report = _apply_decision(
-                    current, decision, _subtask_round(subtask)
+                    current,
+                    decision,
+                    _subtask_round(subtask),
+                    consistency_only=_subtask_mode(subtask)
+                    == SUBTASK_MODE_CHARACTER_CONSISTENCY,
                 )
                 history.setdefault(current.src, []).append(
                     ReviewHistoryItem(
@@ -533,7 +589,7 @@ def _row_payload(
         "tier": tier,
         "instruction": instruction,
         "history_context": history_context,
-        "is_character": any(keyword in row.info for keyword in CHARACTER_CATEGORY_KEYWORDS),
+        "is_character": _is_character_category(row.info),
         "current_category": row.info,
         "context": row.context,
     }
@@ -611,6 +667,17 @@ def _subtask_round(subtask: Subtask) -> int:
         return 0
 
 
+def _subtask_mode(subtask: Subtask) -> str:
+    mode = str(subtask.request_payload.get("mode", SUBTASK_MODE_REVIEW))
+    if mode == SUBTASK_MODE_CHARACTER_CONSISTENCY:
+        return mode
+    return SUBTASK_MODE_REVIEW
+
+
+def _is_character_category(category: str) -> bool:
+    return any(keyword in category for keyword in CHARACTER_CATEGORY_KEYWORDS)
+
+
 def _settled_round_subtasks(subtasks: tuple[Subtask, ...] | list[Subtask]) -> int:
     return sum(
         1
@@ -621,7 +688,11 @@ def _settled_round_subtasks(subtasks: tuple[Subtask, ...] | list[Subtask]) -> in
 
 
 def _apply_decision(
-    row: GlossaryReviewRow, decision: ReviewDecision, round_index: int
+    row: GlossaryReviewRow,
+    decision: ReviewDecision,
+    round_index: int,
+    *,
+    consistency_only: bool = False,
 ) -> tuple[GlossaryReviewRow, dict[str, object] | None]:
     if row.deleted:
         return row, None
@@ -631,12 +702,17 @@ def _apply_decision(
     next_dst = row.dst
     next_info = row.info
 
-    if decision.action == "delete":
-        deleted = True
-    if decision.action in {"modify", "modify_category"} and decision.suggested_dst:
+    if consistency_only:
+        if decision.action not in {"modify", "modify_category"} or not decision.suggested_dst:
+            return row, None
         next_dst = decision.suggested_dst
-    if decision.action in {"category", "modify_category"} and decision.suggested_info:
-        next_info = decision.suggested_info
+    elif decision.action == "delete":
+        deleted = True
+    else:
+        if decision.action in {"modify", "modify_category"} and decision.suggested_dst:
+            next_dst = decision.suggested_dst
+        if decision.action in {"category", "modify_category"} and decision.suggested_info:
+            next_info = decision.suggested_info
 
     changed_dst = next_dst != original_dst
     changed_info = next_info != original_info
@@ -654,6 +730,8 @@ def _apply_decision(
     )
     if deleted:
         action = "delete"
+    elif consistency_only:
+        action = "name_consistency"
     elif changed_dst and changed_info:
         action = "modify_category"
     elif changed_dst:
