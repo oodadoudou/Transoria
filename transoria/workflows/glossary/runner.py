@@ -51,8 +51,7 @@ _FORMAT_RETRY_REMINDER = (
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
 _TRANSPORT_RETRY_BUDGET = 4
-_SOFT_TIMEOUT_CONCURRENCY_THRESHOLD = 20
-_SOFT_TIMEOUT_SECONDS = 30.0
+_SOFT_TIMEOUT_SECONDS = 90.0
 _HIGH_CONCURRENCY_MAX_SPLIT_DEPTH = 1
 
 
@@ -85,8 +84,7 @@ def _should_retry_glossary_request(model: ModelConfig, exc: BaseException) -> bo
     if isinstance(exc, _GlossaryFormatRetry):
         return True
     if (
-        model.concurrency_limit > _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD
-        and isinstance(exc, LlmRequestError)
+        isinstance(exc, LlmRequestError)
         and getattr(exc, "code", "") == "llm.transport_error"
         and "timeout" in str(exc).lower()
     ):
@@ -368,16 +366,12 @@ class GlossarySubtaskRunner:
 def _with_glossary_soft_timeout(model: ModelConfig) -> ModelConfig:
     if model.timeout_seconds <= _SOFT_TIMEOUT_SECONDS:
         return model
-    if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
-        return model
     return replace(model, timeout_seconds=_SOFT_TIMEOUT_SECONDS)
 
 
 def _should_split_after_transport_timeout(
     model: ModelConfig, exc: LlmRequestError, depth: int
 ) -> bool:
-    if model.concurrency_limit <= _SOFT_TIMEOUT_CONCURRENCY_THRESHOLD:
-        return False
     if depth >= _HIGH_CONCURRENCY_MAX_SPLIT_DEPTH:
         return False
     if getattr(exc, "code", "") != "llm.transport_error":
