@@ -210,6 +210,11 @@ export const zh: Messages = {
     uiScaleHint: "界面密度 (0.85–1.5)。",
     proxyUrl: "代理 URL",
     proxyUrlHint: "用于 LLM 与更新检查的 HTTP(S) 代理。留空表示不启用。",
+    taskSoundNotifications: "任务提示音",
+    taskSoundNotificationsHint:
+      "任务成功完成、或最终仍有失败分块时播放不同提示音。默认关闭。",
+    taskSoundOn: "开",
+    taskSoundOff: "关",
     aboutLabel: "关于",
     updatesLabel: "更新",
     checkForUpdates: "检查更新",

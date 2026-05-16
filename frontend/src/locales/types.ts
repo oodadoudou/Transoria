@@ -195,6 +195,10 @@ export interface Messages {
     uiScaleHint: string;
     proxyUrl: string;
     proxyUrlHint: string;
+    taskSoundNotifications: string;
+    taskSoundNotificationsHint: string;
+    taskSoundOn: string;
+    taskSoundOff: string;
     aboutLabel: string;
     updatesLabel: string;
     checkForUpdates: string;

@@ -13,6 +13,7 @@ import {
   translationBridge,
 } from "@/bridge";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { playTaskSound } from "@/utils/taskSounds";
 import type {
   TaskFailure,
   GlossaryReviewRoundProgress,
@@ -60,6 +61,7 @@ const ERROR_HISTORY_CAP = 10;
 // fresh on each app start.
 const seenInFlightTaskIds = new Set<string>();
 const autoOpenedTaskIds = new Set<string>();
+const soundNotifiedTaskIds = new Set<string>();
 // Per-task-id dismissal tracking for the completion-with-failures
 // dialog. Module-level so navigating away and back doesn't re-open
 // the dialog the user already answered.
@@ -244,6 +246,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         bridges[kind].listFailedSubtasks(taskId),
       ]);
       void maybeOpenOutputFolder(kind, taskId, snapshot.header.status);
+      maybePlayTaskSound(taskId, snapshot);
       set((state) =>
         withKind(state, kind, {
           snapshot,
@@ -391,4 +394,22 @@ async function maybeOpenOutputFolder(
   } catch (error) {
     useRuntimeStore.getState().setLastError(kind, asBridgeError(error));
   }
+}
+
+function maybePlayTaskSound(taskId: string, snapshot: TaskSnapshot): void {
+  const status = snapshot.header.status;
+  if (status === "running" || status === "pending" || status === "stopping") {
+    seenInFlightTaskIds.add(taskId);
+    return;
+  }
+  if (!TERMINAL_STATUSES.has(status)) return;
+  if (status === "stopped") return;
+  if (!seenInFlightTaskIds.has(taskId)) return;
+  if (soundNotifiedTaskIds.has(taskId)) return;
+  const enabled =
+    useSettingsStore.getState().app.draft?.task_sound_notifications ?? false;
+  if (!enabled) return;
+  soundNotifiedTaskIds.add(taskId);
+  const hasFailures = snapshot.progress.failed > 0;
+  playTaskSound(status === "failed" || hasFailures ? "attention" : "success");
 }

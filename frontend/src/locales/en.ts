@@ -218,6 +218,11 @@ export const en: Messages = {
     uiScaleHint: "Visual density (0.85–1.5).",
     proxyUrl: "Proxy URL",
     proxyUrlHint: "HTTP(S) proxy used by LLM and update calls. Empty disables.",
+    taskSoundNotifications: "Task sounds",
+    taskSoundNotificationsHint:
+      "Play different sounds when a task finishes successfully or finishes with failed chunks. Off by default.",
+    taskSoundOn: "On",
+    taskSoundOff: "Off",
     aboutLabel: "About",
     updatesLabel: "Updates",
     checkForUpdates: "Check for updates",

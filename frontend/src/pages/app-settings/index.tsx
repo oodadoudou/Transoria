@@ -129,6 +129,25 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
                 mono
               />
             </SettingRow>
+            <SettingRow
+              label={appSettingsExtra.taskSoundNotifications}
+              hint={appSettingsExtra.taskSoundNotificationsHint}
+            >
+              <Segmented<"on" | "off">
+                ariaLabel={appSettingsExtra.taskSoundNotifications}
+                options={[
+                  { id: "on", label: appSettingsExtra.taskSoundOn },
+                  { id: "off", label: appSettingsExtra.taskSoundOff },
+                ]}
+                value={draft.task_sound_notifications ? "on" : "off"}
+                onChange={(v) =>
+                  moduleSettings.update(
+                    "task_sound_notifications",
+                    v === "on",
+                  )
+                }
+              />
+            </SettingRow>
           </>
         ) : null}
       </Panel>

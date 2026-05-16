@@ -72,6 +72,7 @@ export interface AppSettings {
   interface_language: "en" | "zh";
   ui_scale: number;
   proxy_url: string;
+  task_sound_notifications: boolean;
   active_translation_model_id: string | null;
   active_glossary_model_id: string | null;
   active_glossary_review_model_id: string | null;

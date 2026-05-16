@@ -25,6 +25,7 @@ class AppSettings:
     interface_language: InterfaceLanguage = "zh"
     ui_scale: float = 1.0
     proxy_url: str = ""
+    task_sound_notifications: bool = False
     active_translation_model_id: str | None = None
     active_glossary_model_id: str | None = None
     active_glossary_review_model_id: str | None = None
