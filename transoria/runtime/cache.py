@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,7 @@ from transoria.runtime.task_record import TaskRecord, TaskSnapshot
 
 _TASK_FILENAME = "task.json"
 _SUBTASKS_DIRNAME = "subtasks"
+_ATOMIC_REPLACE_RETRY_DELAYS = (0.02, 0.05, 0.1)
 
 # Restrict task/subtask ids to safe filename characters so we never need to
 # percent-encode or worry about path traversal. Workflows generate ids; tests
@@ -155,7 +157,14 @@ def _atomic_write_text(path: Path, content: str) -> None:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
         tmp.write_text(content, encoding="utf-8")
-        os.replace(tmp, path)
+        for delay in (*_ATOMIC_REPLACE_RETRY_DELAYS, None):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                if delay is None:
+                    raise
+                time.sleep(delay)
     finally:
         try:
             tmp.unlink()

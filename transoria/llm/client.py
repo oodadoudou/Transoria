@@ -242,6 +242,11 @@ class HttpxChatTransport:
 # HTTP statuses that warrant rotating to the next API key.
 _ROTATABLE_STATUSES: frozenset[int] = frozenset({401, 403, 429})
 
+
+def _is_account_limit_response(body: object) -> bool:
+    text = repr(body)
+    return "SetLimitExceeded" in text or "Safe Experience Mode" in text
+
 # OpenAI-compatible thinking flag. We always state our intent
 # explicitly: ``disabled`` when the user wants OFF, ``enabled``
 # otherwise. Reasoning-default providers (DeepSeek-V3.2, GLM-Zero,
@@ -518,6 +523,12 @@ class LlmClient:
                 output_tokens=response.usage.output_tokens if response else 0,
             )
 
+            if result.status_code == 429 and _is_account_limit_response(result.body):
+                raise LlmRequestError(
+                    f"HTTP 429 account limit from {_redact_url(url)}: {result.body!r}",
+                    code="llm.http_error",
+                )
+
             if (
                 result.status_code in _ROTATABLE_STATUSES
                 and request.model.rotate_keys
@@ -614,6 +625,12 @@ class LlmClient:
                     f"HTTP {result.status_code} (auth failure) from {_redact_url(url)}: {result.body!r}"
                 )
                 continue
+
+            if result.status_code == 429 and _is_account_limit_response(result.body):
+                raise LlmRequestError(
+                    f"HTTP 429 account limit from {_redact_url(url)}: {result.body!r}",
+                    code="llm.http_error",
+                )
 
             if result.status_code == 429:
                 # Per-key rate limit — try the next key without evicting.
