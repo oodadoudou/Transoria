@@ -703,9 +703,12 @@ def _apply_decision(
     next_info = row.info
 
     if consistency_only:
-        if decision.action not in {"modify", "modify_category"} or not decision.suggested_dst:
+        if decision.action not in {"modify", "category", "modify_category"}:
             return row, None
-        next_dst = decision.suggested_dst
+        if decision.action in {"modify", "modify_category"} and decision.suggested_dst:
+            next_dst = decision.suggested_dst
+        if decision.action in {"category", "modify_category"} and decision.suggested_info:
+            next_info = decision.suggested_info
     elif decision.action == "delete":
         deleted = True
     else:

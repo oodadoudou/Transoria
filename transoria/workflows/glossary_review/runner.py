@@ -275,8 +275,9 @@ def _build_character_consistency_prompt(
     ]
     contract = {
         "row_index": 2,
-        "action": "keep | modify",
-        "suggested_dst": "required only when action is modify",
+        "action": "keep | modify | category | modify_category",
+        "suggested_dst": "required when action changes translation",
+        "suggested_info": "required when action changes category",
         "reason": "short reason",
     }
     parts = [
@@ -290,11 +291,15 @@ def _build_character_consistency_prompt(
             "names are the main risk: the same Hangul name, spacing variant, honorific "
             "form, nickname, or partial mention may receive different Chinese names. "
             "Also handle Japanese, Chinese, and other supported source languages when "
-            "rows clearly refer to the same named person or stable alias. Make only "
-            "the Chinese dst names consistent. Do not merge rows. Do not delete rows. "
-            "Do not change src or category/info. Do not force unrelated people with "
-            "the same surname, generic title, or common word into one name. If "
-            "uncertain, keep."
+            "rows clearly refer to the same named person or stable alias. Make Chinese "
+            "dst names and character info/category labels consistent. Use category "
+            "or modify_category when entries for the same character use conflicting "
+            "character labels, including gender, role type, alias type, or another "
+            "user-defined category meaning. Choose the label best supported by context "
+            "and novel background. Do not merge rows. Do not "
+            "delete rows. Do not change src. Do not force unrelated people with the "
+            "same surname, generic title, or common word into one name. If uncertain, "
+            "keep."
         ),
         "[Character Rows]\n" + json.dumps(row_payload, ensure_ascii=False, indent=2),
         (
