@@ -70,6 +70,7 @@ export interface AppMetadata {
 
 export interface AppSettings {
   interface_language: "en" | "zh";
+  color_theme: "light" | "dark";
   ui_scale: number;
   proxy_url: string;
   task_sound_notifications: boolean;

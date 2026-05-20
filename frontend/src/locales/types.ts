@@ -191,6 +191,10 @@ export interface Messages {
     caseSensitive: string;
   };
   appSettingsExtra: {
+    colorTheme: string;
+    colorThemeHint: string;
+    colorThemeLight: string;
+    colorThemeDark: string;
     uiScale: string;
     uiScaleHint: string;
     proxyUrl: string;

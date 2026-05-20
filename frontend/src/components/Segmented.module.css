@@ -28,7 +28,7 @@
 .itemActive,
 .itemActive:hover {
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
 }
 
 .item:active {

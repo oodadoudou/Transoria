@@ -47,7 +47,7 @@
 
 .help[aria-expanded='true'] {
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
   border-color: var(--action);
 }
 

@@ -53,7 +53,7 @@
 
 .help[aria-expanded='true'] {
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
   border-color: var(--action);
 }
 
@@ -78,12 +78,12 @@
 }
 
 .input:hover:not(:read-only) {
-  background: #ebeae3;
+  background: var(--panel);
 }
 
 .input:focus-visible {
   border-color: var(--action);
-  background: #fff;
+  background: var(--panel);
   box-shadow: none;
 }
 

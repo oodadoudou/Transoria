@@ -206,6 +206,10 @@ export const zh: Messages = {
     caseSensitive: "区分大小写",
   },
   appSettingsExtra: {
+    colorTheme: "配色",
+    colorThemeHint: "切换应用界面的亮色 / 深色外观。默认亮色。",
+    colorThemeLight: "亮色",
+    colorThemeDark: "深色",
     uiScale: "界面缩放",
     uiScaleHint: "界面密度 (0.85–1.5)。",
     proxyUrl: "代理 URL",

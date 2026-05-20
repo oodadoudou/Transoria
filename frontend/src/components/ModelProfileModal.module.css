@@ -114,7 +114,7 @@
 }
 
 .templateCard:hover {
-  background: #ebeae3;
+  background: var(--panel);
   border-color: var(--hairline-strong, #d8d2c7);
 }
 

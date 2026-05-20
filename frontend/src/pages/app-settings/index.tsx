@@ -62,6 +62,7 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
   }, []);
 
   const interfaceLanguage = draft?.interface_language ?? locale;
+  const colorTheme = draft?.color_theme === "dark" ? "dark" : "light";
 
   const handleLanguageChange = async (next: Locale) => {
     const previous = locale;
@@ -105,6 +106,20 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
         </SettingRow>
         {draft ? (
           <>
+            <SettingRow
+              label={appSettingsExtra.colorTheme}
+              hint={appSettingsExtra.colorThemeHint}
+            >
+              <Segmented<"light" | "dark">
+                ariaLabel={appSettingsExtra.colorTheme}
+                options={[
+                  { id: "light", label: appSettingsExtra.colorThemeLight },
+                  { id: "dark", label: appSettingsExtra.colorThemeDark },
+                ]}
+                value={colorTheme}
+                onChange={(v) => moduleSettings.update("color_theme", v)}
+              />
+            </SettingRow>
             <SettingRow
               label={appSettingsExtra.uiScale}
               hint={appSettingsExtra.uiScaleHint}

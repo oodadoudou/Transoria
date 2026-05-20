@@ -74,11 +74,11 @@
 .active,
 .active:hover {
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
 }
 
 .active.parent {
-  color: #fff;
+  color: var(--action-fg);
 }
 
 .ind {

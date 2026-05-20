@@ -59,7 +59,7 @@
 .button.primary {
   background: var(--accent, #c47b3a);
   border-color: var(--accent, #c47b3a);
-  color: #fff;
+  color: var(--action-fg);
 }
 
 .button.primary:hover:not(:disabled) {

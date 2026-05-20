@@ -18,11 +18,13 @@ SettingsModule = Literal[
 
 ChineseOutputForm = Literal["simplified", "traditional"]
 InterfaceLanguage = Literal["en", "zh"]
+ColorTheme = Literal["light", "dark"]
 
 
 @dataclass(frozen=True)
 class AppSettings:
     interface_language: InterfaceLanguage = "zh"
+    color_theme: ColorTheme = "light"
     ui_scale: float = 1.0
     proxy_url: str = ""
     task_sound_notifications: bool = False
@@ -388,6 +390,7 @@ __all__ = [
     "AllSettings",
     "AppSettings",
     "ChineseOutputForm",
+    "ColorTheme",
     "GlossarySettings",
     "GlossaryReviewSettings",
     "InterfaceLanguage",

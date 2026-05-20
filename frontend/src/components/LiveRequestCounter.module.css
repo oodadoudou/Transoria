@@ -33,7 +33,7 @@
 @keyframes chipFlash {
   0% {
     background: var(--accent, #ad9d7a);
-    color: #fff;
+    color: var(--action-fg);
     border-color: var(--accent, #ad9d7a);
   }
   100% {

@@ -28,6 +28,9 @@ export function App() {
   const interfaceLanguage = useSettingsStore(
     (state) => state.app.draft?.interface_language,
   );
+  const colorTheme = useSettingsStore(
+    (state) => state.app.draft?.color_theme ?? "light",
+  );
   useSettingsSaveToast();
   const updatePrompt = useUpdatePrompt();
 
@@ -40,6 +43,11 @@ export function App() {
       setLocale(interfaceLanguage);
     }
   }, [interfaceLanguage, locale, setLocale]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme =
+      colorTheme === "dark" ? "dark" : "light";
+  }, [colorTheme]);
 
   const onRunPage = isRunPage(route);
   const crumb = crumbFor(route, messages);

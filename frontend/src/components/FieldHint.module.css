@@ -31,7 +31,7 @@
 
 .trigger[aria-expanded="true"] {
   background: var(--ink, #2c2620);
-  color: #fff;
+  color: var(--canvas);
   border-color: var(--ink, #2c2620);
 }
 

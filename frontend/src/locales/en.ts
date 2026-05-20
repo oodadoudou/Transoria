@@ -214,6 +214,10 @@ export const en: Messages = {
     caseSensitive: "case",
   },
   appSettingsExtra: {
+    colorTheme: "Color theme",
+    colorThemeHint: "Switch the app between light and dark appearance. Light is the default.",
+    colorThemeLight: "Light",
+    colorThemeDark: "Dark",
     uiScale: "UI scale",
     uiScaleHint: "Visual density (0.85–1.5).",
     proxyUrl: "Proxy URL",

@@ -19,7 +19,7 @@
 }
 
 .field:hover {
-  background: #ebeae3;
+  background: var(--panel);
 }
 
 .field:active {

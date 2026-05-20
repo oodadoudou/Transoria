@@ -18,7 +18,7 @@
 
 .text:focus-visible {
   border-color: var(--action);
-  background: #fff;
+  background: var(--panel);
 }
 
 .mono {
