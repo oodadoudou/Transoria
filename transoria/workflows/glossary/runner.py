@@ -50,7 +50,8 @@ _FORMAT_RETRY_REMINDER = (
     "Output JSONLINE only. The first non-whitespace character must be \"{\". "
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
-_TRANSPORT_RETRY_BUDGET = 4
+_GLOSSARY_RETRY_BUDGET = 1
+_TRANSPORT_RETRY_BUDGET = 1
 _SOFT_TIMEOUT_SECONDS = 90.0
 _HIGH_CONCURRENCY_MAX_SPLIT_DEPTH = 1
 
@@ -202,6 +203,7 @@ class GlossarySubtaskRunner:
             return await retry_async(
                 operation,
                 model=self.model,
+                max_retry_attempts=_GLOSSARY_RETRY_BUDGET,
                 max_transport_retry_attempts=_transport_retry_budget(self.model),
                 should_retry=lambda exc: _should_retry_glossary_request(
                     self.model, exc
@@ -348,17 +350,9 @@ class GlossarySubtaskRunner:
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )
-        # Decoder produced nothing usable from a non-trivial response —
-        # signal retry. ``result`` is attached so the run() outer handler
-        # can return it if all attempts fail (instead of silently losing
-        # the token usage record).
-        if (
-            len(decoded.entries) == 0
-            and len(issues) >= _FORMAT_RETRY_MIN_ISSUES
-        ) or (
-            len(decoded.entries) > 0
-            and len(issues) > 0
-        ):
+        # Partial rows are useful for glossary extraction; only retry when
+        # the response produced no usable entry and clearly missed the schema.
+        if len(decoded.entries) == 0 and len(issues) >= _FORMAT_RETRY_MIN_ISSUES:
             raise _GlossaryFormatRetry(result)
         return result
 
