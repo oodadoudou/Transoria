@@ -905,6 +905,14 @@ class TranslationSubtaskRunner:
             and decoded_order == sorted_expected[: len(decoded_order)]
         ):
             return {}, frozenset(expected)
+        if (
+            len(metadata) >= _DENSE_PREFIX_PARTIAL_MIN_SEGMENTS
+            and decoded.lines
+            and len(decoded.lines) < len(expected)
+            and decoded_order == sorted_expected[: len(decoded_order)]
+            and not _all_sources_equivalent(metadata)
+        ):
+            return {}, frozenset(expected)
         if context_lines and len(decoded.lines) > len(expected):
             return {}, frozenset(expected)
         if decoded_indices == expected and len(decoded.lines) == len(expected):
@@ -972,6 +980,7 @@ _FENCE_RESCUE_PATTERN = re.compile(
 _RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
 
 
+_DENSE_PREFIX_PARTIAL_MIN_SEGMENTS = 8
 _DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 10
 _NEAR_DUPLICATE_DRIFT_MEDIUM_TEXT_LENGTH = 12
 _NEAR_DUPLICATE_MEDIUM_TRANSLATION_RATIO = 0.92
