@@ -191,7 +191,7 @@ def parse_epub_file(path: Path, *, buffer_archive: bool = False) -> EpubDocument
 
 def parse_package(archive: zipfile.ZipFile) -> EpubPackageInfo:
     opf_path = parse_container_opf_path(archive)
-    opf_root = etree.fromstring(read_archive_entry(archive, opf_path))
+    opf_root = parse_epub_xml(read_archive_entry(archive, opf_path))
     opf_version = opf_root.get("version") or "2.0"
     try:
         opf_version_major = int(opf_version.split(".", 1)[0])
@@ -215,7 +215,7 @@ def parse_package(archive: zipfile.ZipFile) -> EpubPackageInfo:
 
 
 def parse_container_opf_path(archive: zipfile.ZipFile) -> str:
-    root = etree.fromstring(read_archive_entry(archive, "META-INF/container.xml"))
+    root = parse_epub_xml(read_archive_entry(archive, "META-INF/container.xml"))
     nodes = root.xpath(
         "./ocf:rootfiles/ocf:rootfile[@full-path]",
         namespaces={"ocf": OCF_NAMESPACE},
@@ -590,6 +590,25 @@ def parse_ncx_xml(raw: bytes) -> etree._Element:
     except Exception:
         fixed = fix_ncx_bare_ampersands(raw)
         return etree.fromstring(fixed, parser=etree.XMLParser(recover=True, resolve_entities=True, no_network=True))
+
+
+def parse_epub_xml(raw: bytes) -> etree._Element:
+    try:
+        return etree.fromstring(
+            raw,
+            parser=etree.XMLParser(recover=False, resolve_entities=True, no_network=True),
+        )
+    except etree.XMLSyntaxError:
+        fixed = normalize_epub_xml_entities(raw)
+        return etree.fromstring(
+            fixed,
+            parser=etree.XMLParser(recover=True, resolve_entities=True, no_network=True),
+        )
+
+
+def normalize_epub_xml_entities(raw: bytes) -> bytes:
+    fixed = normalize_html_named_entities_for_xml(raw)
+    return replace_outside_cdata(fixed, RE_NCX_BARE_AMP, lambda match: b"&amp;")
 
 
 def normalize_html_named_entities_for_xml(raw: bytes) -> bytes:
