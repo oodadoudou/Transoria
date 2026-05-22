@@ -1503,22 +1503,11 @@ class TaskService:
             encode_subtask_payload,
         )
 
-        model_id = str(metadata.get("model_id", ""))
-        if not model_id:
-            raise BridgeError.invalid_argument(
-                "task metadata is missing model_id (cache predates B.5.1).",
-            )
-        model = self.profile_store.get(model_id)
-        if model is None:
-            raise BridgeError.not_found(
-                f"model profile {model_id!r} no longer exists.",
-                details={"model_id": model_id},
-            )
-        if not model.api_keys:
-            raise BridgeError.invalid_argument(
-                f"model profile {model_id!r} has no API key configured.",
-                details={"model_id": model_id},
-            )
+        settings = self.settings_store.load_all()
+        model = self._resolve_model_profile(
+            settings.app.active_translation_model_id,
+            field="active_translation_model_id",
+        )
 
         preset_data = metadata.get("prompt_preset")
         if not isinstance(preset_data, Mapping):
