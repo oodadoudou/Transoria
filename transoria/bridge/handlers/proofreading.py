@@ -42,6 +42,18 @@ _DUPLICATE_SCAN_SOURCE_RATIO = 0.55
 _TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
 
 
+def _optional_string(payload: Mapping[str, object], key: str) -> str | None:
+    value = payload.get(key)
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        raise BridgeError.invalid_argument(
+            f"{key} must be a string.",
+            field=key,
+        )
+    return value
+
+
 def _segment_sort_key(segment_id: str) -> tuple[int, int]:
     """Sort items by ``(file_index, segment_index)`` so the校对 table
     follows the original chapter order across all source files."""
@@ -452,6 +464,8 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         return service.start_retranslate(
             task_id=expect_string(payload, "task_id"),
             segment_id=expect_string(payload, "segment_id"),
+            model_id=_optional_string(payload, "model_id"),
+            prompt_preset_id=_optional_string(payload, "prompt_preset_id"),
         )
 
     def retranslate_status(payload: Mapping[str, object]) -> dict[str, object]:

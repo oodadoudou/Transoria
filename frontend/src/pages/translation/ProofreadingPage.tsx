@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import { format, useMessages } from "@/locales";
+import { format, useI18n, useMessages } from "@/locales";
 import {
   BridgeError,
   proofreadingBridge,
@@ -13,7 +13,14 @@ import {
 } from "@/store/useTaskStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import {
+  QuickSwitchModal,
+  type QuickSwitchItem,
+} from "@/components/QuickSwitchModal";
 import { useVirtualWindow } from "@/hooks/useVirtualWindow";
+import { useModelProfiles } from "@/store/useModelProfilesStore";
+import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { useModuleSettings } from "@/store/useSettingsStore";
 import styles from "./ProofreadingPage.module.css";
 
 type FeedbackKind = "info" | "error" | "success";
@@ -164,6 +171,72 @@ export function ProofreadingPage() {
     Record<string, string>
   >({});
   const [batchRetranslating, setBatchRetranslating] = useState(false);
+  const appSettings = useModuleSettings("app");
+  const profiles = useModelProfiles();
+  const promptPresets = usePromptPresets("translation");
+  const translationPromptSlice = promptPresets.translation;
+  const locale = useI18n((state) => state.locale);
+  const [proofreadingModelId, setProofreadingModelId] = useState<string | null>(
+    null,
+  );
+  const [proofreadingPromptId, setProofreadingPromptId] = useState<
+    string | null
+  >(null);
+  const [proofreadingModelOverridden, setProofreadingModelOverridden] =
+    useState(false);
+  const [proofreadingPromptOverridden, setProofreadingPromptOverridden] =
+    useState(false);
+  const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
+  const activeTranslationModelId =
+    appSettings.draft?.active_translation_model_id ?? null;
+  const activeTranslationPromptId =
+    appSettings.draft?.active_translation_prompt_id ??
+    translationPromptSlice.activeId ??
+    null;
+  const localeDefaultPromptId = `default-translation-${locale}`;
+  const fallbackPromptId =
+    activeTranslationPromptId ??
+    (translationPromptSlice.presets.some((preset) => preset.id === localeDefaultPromptId)
+      ? localeDefaultPromptId
+      : translationPromptSlice.presets.find((preset) => preset.enabled)?.id ?? null);
+  const modelItems = useMemo<QuickSwitchItem[]>(
+    () =>
+      profiles.profiles
+        .filter((profile) => profile.api_key_status !== "missing")
+        .map((profile) => ({
+          id: profile.id,
+          name: profile.display_name,
+          description: profile.model_id,
+        })),
+    [profiles.profiles],
+  );
+  const promptItems = useMemo<QuickSwitchItem[]>(
+    () =>
+      translationPromptSlice.presets
+        .filter((preset) => preset.enabled)
+        .map((preset) => ({
+          id: preset.id,
+          name: preset.name,
+          description: preset.description || preset.system_prompt.slice(0, 80),
+        })),
+    [translationPromptSlice.presets],
+  );
+  const selectedProofreadingModel = profiles.profiles.find(
+    (profile) => profile.id === proofreadingModelId,
+  );
+  const selectedProofreadingPrompt = translationPromptSlice.presets.find(
+    (preset) => preset.id === proofreadingPromptId,
+  );
+
+  useEffect(() => {
+    if (proofreadingModelOverridden) return;
+    setProofreadingModelId(activeTranslationModelId ?? modelItems[0]?.id ?? null);
+  }, [activeTranslationModelId, modelItems, proofreadingModelOverridden]);
+
+  useEffect(() => {
+    if (proofreadingPromptOverridden) return;
+    setProofreadingPromptId(fallbackPromptId ?? null);
+  }, [fallbackPromptId, proofreadingPromptOverridden]);
 
   // Initial: load task list.
   useEffect(() => {
@@ -620,6 +693,10 @@ export function ProofreadingPage() {
       const { request_id } = await proofreadingBridge.retranslateSegment(
         activeTaskId,
         segmentId,
+        {
+          modelId: proofreadingModelId,
+          promptPresetId: proofreadingPromptId,
+        },
       );
       setInflightRetranslates((prev) => ({
         ...prev,
@@ -822,6 +899,66 @@ export function ProofreadingPage() {
             : m.regenerateBilingualAction}
         </Pill>
       </div>
+
+      <div className={styles.retranslateConfigRow}>
+        <button
+          type="button"
+          className={styles.retranslateConfigButton}
+          onClick={() => setSwitchOpen("model")}
+        >
+          <span className={styles.retranslateConfigLabel}>
+            {m.retranslateModel}
+          </span>
+          <span className={styles.retranslateConfigName}>
+            {selectedProofreadingModel?.display_name ?? "—"}
+          </span>
+          <span className={styles.retranslateConfigSwitch}>
+            {m.switchModelPrompt}
+          </span>
+        </button>
+        <button
+          type="button"
+          className={styles.retranslateConfigButton}
+          onClick={() => setSwitchOpen("prompt")}
+        >
+          <span className={styles.retranslateConfigLabel}>
+            {m.retranslatePrompt}
+          </span>
+          <span className={styles.retranslateConfigName}>
+            {selectedProofreadingPrompt?.name ?? "—"}
+          </span>
+          <span className={styles.retranslateConfigSwitch}>
+            {m.switchModelPrompt}
+          </span>
+        </button>
+      </div>
+
+      {switchOpen === "model" ? (
+        <QuickSwitchModal
+          title={m.retranslateModelPickerTitle}
+          items={modelItems}
+          activeId={proofreadingModelId}
+          emptyMessage={messages.quickSwitch.emptyModel}
+          onSelect={(id) => {
+            setProofreadingModelOverridden(true);
+            setProofreadingModelId(id);
+          }}
+          onClose={() => setSwitchOpen(null)}
+        />
+      ) : null}
+      {switchOpen === "prompt" ? (
+        <QuickSwitchModal
+          title={m.retranslatePromptPickerTitle}
+          items={promptItems}
+          activeId={proofreadingPromptId}
+          emptyMessage={messages.quickSwitch.emptyPrompt}
+          onSelect={(id) => {
+            setProofreadingPromptOverridden(true);
+            setProofreadingPromptId(id);
+          }}
+          onClose={() => setSwitchOpen(null)}
+        />
+      ) : null}
 
       <div className={styles.toggleRow}>
         <span>

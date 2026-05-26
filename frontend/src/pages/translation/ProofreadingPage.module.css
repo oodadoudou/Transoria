@@ -29,6 +29,54 @@
   max-width: 100%;
 }
 
+.retranslateConfigRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.retranslateConfigButton {
+  display: inline-grid;
+  grid-template-columns: auto minmax(64px, 150px) auto;
+  align-items: center;
+  gap: 6px;
+  max-width: min(100%, 300px);
+  padding: 5px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.retranslateConfigButton:hover {
+  border-color: var(--action);
+}
+
+.retranslateConfigLabel {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.retranslateConfigName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.retranslateConfigSwitch {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .searchInput {
   width: 100%;
   padding: 8px 12px;

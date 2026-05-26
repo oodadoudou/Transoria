@@ -173,6 +173,8 @@ class RetranslateJob:
     task_id: str
     segment_id: str
     original_dst: str
+    model_id: str | None = None
+    prompt_preset_id: str | None = None
     status: str = "pending"
     result_dst: str = ""
     error: str = ""
@@ -1333,7 +1335,12 @@ class TaskService:
                 pass
 
     def start_retranslate(
-        self, *, task_id: str, segment_id: str
+        self,
+        *,
+        task_id: str,
+        segment_id: str,
+        model_id: str | None = None,
+        prompt_preset_id: str | None = None,
     ) -> dict[str, object]:
         try:
             snapshot = self.cache.load(task_id)
@@ -1390,6 +1397,8 @@ class TaskService:
                 task_id=task_id,
                 segment_id=segment_id,
                 original_dst=original_dst,
+                model_id=model_id,
+                prompt_preset_id=prompt_preset_id,
                 status="pending",
                 created_at=time.monotonic(),
             )
@@ -1454,7 +1463,12 @@ class TaskService:
         job.status = "running"
         try:
             new_dst = asyncio.run(
-                self._call_runner_for_retranslate(seg_data, metadata)
+                self._call_runner_for_retranslate(
+                    seg_data,
+                    metadata,
+                    model_id=job.model_id,
+                    prompt_preset_id=job.prompt_preset_id,
+                )
             )
         except BridgeError as exc:
             job.error = f"{exc.code}: {exc.payload.message}"
@@ -1489,6 +1503,9 @@ class TaskService:
         self,
         seg_data: Mapping[str, object],
         metadata: Mapping[str, object],
+        *,
+        model_id: str | None = None,
+        prompt_preset_id: str | None = None,
     ) -> str:
         from transoria.workflows.translation.chunker import (  # noqa: PLC0415
             ChunkSegment,
@@ -1505,16 +1522,28 @@ class TaskService:
 
         settings = self.settings_store.load_all()
         model = self._resolve_model_profile(
-            settings.app.active_translation_model_id,
-            field="active_translation_model_id",
+            model_id or settings.app.active_translation_model_id,
+            field="proofreading_model_id"
+            if model_id
+            else "active_translation_model_id",
         )
 
-        preset_data = metadata.get("prompt_preset")
-        if not isinstance(preset_data, Mapping):
-            raise BridgeError.invalid_argument(
-                "task metadata is missing prompt_preset snapshot (cache predates B.5.1).",
+        if prompt_preset_id:
+            preset = self._resolve_prompt_preset(
+                prompt_preset_id, kind=PromptKind.TRANSLATION
             )
-        preset = PromptPreset.from_dict(preset_data)
+        elif settings.app.active_translation_prompt_id:
+            preset = self._resolve_prompt_preset(
+                settings.app.active_translation_prompt_id,
+                kind=PromptKind.TRANSLATION,
+            )
+        else:
+            preset_data = metadata.get("prompt_preset")
+            if not isinstance(preset_data, Mapping):
+                raise BridgeError.invalid_argument(
+                    "task metadata is missing prompt_preset snapshot (cache predates B.5.1).",
+                )
+            preset = PromptPreset.from_dict(preset_data)
 
         try:
             source_language = Language(str(metadata.get("source_language", "")))

@@ -565,6 +565,11 @@ export interface Messages {
       replacementNoMatch: string;
       replacementDone: string;
       taskFolderHint: string;
+      retranslateModel: string;
+      retranslatePrompt: string;
+      retranslateModelPickerTitle: string;
+      retranslatePromptPickerTitle: string;
+      switchModelPrompt: string;
       retranslateAction: string;
       retranslateSelectedAction: string;
       retranslateFilteredAction: string;

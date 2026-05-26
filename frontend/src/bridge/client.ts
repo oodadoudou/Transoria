@@ -341,10 +341,13 @@ export const proofreadingBridge = {
   retranslateSegment(
     taskId: string,
     segmentId: string,
+    options?: { modelId?: string | null; promptPresetId?: string | null },
   ): Promise<{ request_id: string; status: string }> {
     return call("proofreading.retranslate_segment", {
       task_id: taskId,
       segment_id: segmentId,
+      model_id: options?.modelId ?? null,
+      prompt_preset_id: options?.promptPresetId ?? null,
     });
   },
   retranslateStatus(requestId: string): Promise<{
