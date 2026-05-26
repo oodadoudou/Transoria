@@ -18,6 +18,38 @@
   min-width: 0;
 }
 
+.inlineFeedback {
+  flex: 1 1 240px;
+  min-width: 180px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.inlineFeedbackSuccess {
+  color: var(--success);
+}
+
+.inlineFeedbackError {
+  color: var(--danger);
+}
+
+.copyButton {
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.copyButton:hover {
+  border-color: var(--accent);
+}
+
 .taskSelect {
   font: inherit;
   font-size: 12.5px;
@@ -365,6 +397,17 @@
   color: var(--muted);
   font-family: var(--font-mono);
   word-break: break-word;
+}
+
+.debugHintRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.debugHintRow .debugHint {
+  min-width: 0;
 }
 
 .dirty {

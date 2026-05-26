@@ -775,6 +775,10 @@ export const zh: Messages = {
       retranslateSuccess: "已重翻并写入缓存。",
       retranslateSelectedDone:
         "批量重翻完成：成功 {done} 条，丢弃 {stale} 条，失败 {failed} 条。",
+      retranslateSelectedDoneWithReasons: "{summary} 失败原因：{reasons}。",
+      retranslateUndoAction: "撤回上次重翻",
+      retranslateUndoRunning: "撤回中…",
+      retranslateUndoDone: "已撤回 {n} 条重翻结果。",
       retranslateSaveDirtyFirst: "当前选中译文有未保存修改，请先保存再批量重翻。",
       retranslateFailed: "重翻失败：{reason}",
       retranslateStale: "您已手动修改，本次重翻结果已丢弃。",
@@ -782,6 +786,10 @@ export const zh: Messages = {
       retranslateRejectedRunning: "任务正在运行中，请先停止再重翻。",
       selectRowLabel: "选择 {id}",
       subtaskHint: "来源分块：{ids}",
+      copyTaskId: "复制任务 ID",
+      copyTaskIdDone: "已复制任务 ID。",
+      copySubtaskIds: "复制来源分块",
+      copySubtaskIdsDone: "已复制来源分块。",
     },
   },
   glossary: {

@@ -576,6 +576,10 @@ export interface Messages {
       retranslating: string;
       retranslateSuccess: string;
       retranslateSelectedDone: string;
+      retranslateSelectedDoneWithReasons: string;
+      retranslateUndoAction: string;
+      retranslateUndoRunning: string;
+      retranslateUndoDone: string;
       retranslateSaveDirtyFirst: string;
       retranslateFailed: string;
       retranslateStale: string;
@@ -583,6 +587,10 @@ export interface Messages {
       retranslateRejectedRunning: string;
       selectRowLabel: string;
       subtaskHint: string;
+      copyTaskId: string;
+      copyTaskIdDone: string;
+      copySubtaskIds: string;
+      copySubtaskIdsDone: string;
     };
   };
   glossary: {

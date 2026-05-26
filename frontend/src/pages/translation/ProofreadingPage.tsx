@@ -40,6 +40,17 @@ interface RegenerateFailedFile {
   details?: Record<string, unknown>;
 }
 
+type RetranslateStatus = "completed" | "stale" | "failed" | "timeout";
+
+interface RetranslateOutcome {
+  status: RetranslateStatus;
+  reason?: string;
+}
+
+interface RetranslateUndo {
+  entries: Array<{ segmentId: string; dst: string }>;
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -100,6 +111,17 @@ function compareSegmentIds(left: string, right: string): number {
   const [leftFile, leftSegment] = segmentSortKey(left);
   const [rightFile, rightSegment] = segmentSortKey(right);
   return leftFile - rightFile || leftSegment - rightSegment;
+}
+
+function summarizeReasons(reasons: string[]): string {
+  const counts = new Map<string, number>();
+  for (const raw of reasons) {
+    const reason = raw.trim() || "unknown";
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([reason, count]) => `${reason} ×${count}`)
+    .join("；");
 }
 
 function formatRegenerateFailure(
@@ -166,11 +188,16 @@ export function ProofreadingPage() {
   const [regenerating, setRegenerating] = useState<
     "translated" | "bilingual" | null
   >(null);
+  const [regenerateFeedback, setRegenerateFeedback] =
+    useState<Feedback | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [inflightRetranslates, setInflightRetranslates] = useState<
     Record<string, string>
   >({});
   const [batchRetranslating, setBatchRetranslating] = useState(false);
+  const [retranslateUndo, setRetranslateUndo] =
+    useState<RetranslateUndo | null>(null);
+  const [undoingRetranslate, setUndoingRetranslate] = useState(false);
   const appSettings = useModuleSettings("app");
   const profiles = useModelProfiles();
   const promptPresets = usePromptPresets("translation");
@@ -415,6 +442,7 @@ export function ProofreadingPage() {
         };
       });
       setSavedTick((t) => t + 1);
+      setRetranslateUndo(null);
     } catch (err) {
       setFeedback({
         kind: "error",
@@ -512,6 +540,7 @@ export function ProofreadingPage() {
       await saveReplacement(selectedItem.segment_id, next);
       setDraftDst(next);
       setSavedTick((t) => t + 1);
+      setRetranslateUndo(null);
       setFeedback({
         kind: "success",
         text: format(m.replacementDone, { n: 1 }),
@@ -557,6 +586,7 @@ export function ProofreadingPage() {
       );
       if (selectedChange) setDraftDst(selectedChange.dst);
       setSavedTick((t) => t + 1);
+      setRetranslateUndo(null);
       setFeedback({
         kind: "success",
         text: format(m.replacementDone, { n: changes.length }),
@@ -573,10 +603,27 @@ export function ProofreadingPage() {
     }
   };
 
+  const copyToClipboard = async (
+    text: string,
+    successText: string,
+  ): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setFeedback({ kind: "success", text: successText });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: BridgeError.isBridgeError(err)
+          ? `${err.code}: ${err.message}`
+          : String(err),
+      });
+    }
+  };
+
   const handleRegenerate = async (bilingual = false) => {
     if (!activeTaskId || regenerating) return;
     setRegenerating(bilingual ? "bilingual" : "translated");
-    setFeedback(null);
+    setRegenerateFeedback(null);
     try {
       const result = await proofreadingBridge.regenerateOutputs(
         activeTaskId,
@@ -588,7 +635,7 @@ export function ProofreadingPage() {
         const reason = result.failed_files
           .map((f) => formatRegenerateFailure(f, m))
           .join("; ");
-        setFeedback({
+        setRegenerateFeedback({
           kind: "error",
           text:
             total > 0
@@ -596,13 +643,13 @@ export function ProofreadingPage() {
               : format(m.regenerateFailed, { reason }),
         });
       } else {
-        setFeedback({
+        setRegenerateFeedback({
           kind: "success",
           text: format(m.regenerateSuccess, { n: total }),
         });
       }
     } catch (err) {
-      setFeedback({
+      setRegenerateFeedback({
         kind: "error",
         text: format(m.regenerateFailed, {
           reason: BridgeError.isBridgeError(err)
@@ -618,7 +665,8 @@ export function ProofreadingPage() {
   const pollRetranslate = (
     segmentId: string,
     requestId: string,
-  ): Promise<"completed" | "stale" | "failed" | "timeout"> =>
+    showFeedback = true,
+  ): Promise<RetranslateOutcome> =>
     new Promise((resolve) => {
       const startedAt = Date.now();
       const tick = async () => {
@@ -639,39 +687,42 @@ export function ProofreadingPage() {
             );
             if (selectedSegmentId === segmentId) setDraftDst(status.result_dst);
             finish();
-            resolve("completed");
+            resolve({ status: "completed" });
             return;
           }
           if (status.status === "stale") {
             finish();
-            resolve("stale");
+            resolve({ status: "stale" });
             return;
           }
           if (status.status === "failed") {
-            setFeedback({
-              kind: "error",
-              text: format(m.retranslateFailed, { reason: status.error }),
-            });
+            if (showFeedback) {
+              setFeedback({
+                kind: "error",
+                text: format(m.retranslateFailed, { reason: status.error }),
+              });
+            }
             finish();
-            resolve("failed");
+            resolve({ status: "failed", reason: status.error });
             return;
           }
         } catch (err) {
-          setFeedback({
-            kind: "error",
-            text: format(m.retranslateFailed, {
-              reason: BridgeError.isBridgeError(err)
-                ? `${err.code}: ${err.message}`
-                : String(err),
-            }),
-          });
+          const reason = BridgeError.isBridgeError(err)
+            ? `${err.code}: ${err.message}`
+            : String(err);
+          if (showFeedback) {
+            setFeedback({
+              kind: "error",
+              text: format(m.retranslateFailed, { reason }),
+            });
+          }
           finish();
-          resolve("failed");
+          resolve({ status: "failed", reason });
           return;
         }
         if (Date.now() - startedAt > 60_000) {
           finish();
-          resolve("timeout");
+          resolve({ status: "timeout", reason: m.retranslateTimeout });
           return;
         }
         setTimeout(tick, 500);
@@ -686,9 +737,15 @@ export function ProofreadingPage() {
       void tick();
     });
 
-  const runRetranslateSegment = async (segmentId: string) => {
-    if (!activeTaskId || inflightRetranslates[segmentId]) return "failed";
-    setFeedback(null);
+  const runRetranslateSegment = async (
+    segmentId: string,
+    options: { showFeedback?: boolean } = {},
+  ): Promise<RetranslateOutcome> => {
+    const showFeedback = options.showFeedback ?? true;
+    if (!activeTaskId || inflightRetranslates[segmentId]) {
+      return { status: "failed", reason: "retranslate request is already running" };
+    }
+    if (showFeedback) setFeedback(null);
     try {
       const { request_id } = await proofreadingBridge.retranslateSegment(
         activeTaskId,
@@ -702,26 +759,30 @@ export function ProofreadingPage() {
         ...prev,
         [segmentId]: request_id,
       }));
-      return await pollRetranslate(segmentId, request_id);
+      return await pollRetranslate(segmentId, request_id, showFeedback);
     } catch (err) {
       const text = BridgeError.isBridgeError(err)
         ? err.code === "bridge.conflict"
           ? m.retranslateRejectedRunning
           : `${err.code}: ${err.message}`
         : String(err);
-      setFeedback({ kind: "error", text });
-      return "failed";
+      if (showFeedback) setFeedback({ kind: "error", text });
+      return { status: "failed", reason: text };
     }
   };
 
   const handleRetranslate = async () => {
     if (!selectedItem) return;
+    const previous = selectedItem.dst;
     const result = await runRetranslateSegment(selectedItem.segment_id);
-    if (result === "completed") {
+    if (result.status === "completed") {
+      setRetranslateUndo({
+        entries: [{ segmentId: selectedItem.segment_id, dst: previous }],
+      });
       setFeedback({ kind: "success", text: m.retranslateSuccess });
-    } else if (result === "stale") {
+    } else if (result.status === "stale") {
       setFeedback({ kind: "info", text: m.retranslateStale });
-    } else if (result === "timeout") {
+    } else if (result.status === "timeout") {
       setFeedback({ kind: "error", text: m.retranslateTimeout });
     }
   };
@@ -752,26 +813,83 @@ export function ProofreadingPage() {
 
   const retranslateIds = async (ids: string[]) => {
     setBatchRetranslating(true);
+    const previousById = new Map(
+      (snapshot?.items ?? []).map((item) => [item.segment_id, item.dst]),
+    );
+    const undoEntries: RetranslateUndo["entries"] = [];
     let completedCount = 0;
     let staleCount = 0;
     let failedCount = 0;
+    const failedReasons: string[] = [];
     try {
       for (const segmentId of ids) {
-        const result = await runRetranslateSegment(segmentId);
-        if (result === "completed") completedCount += 1;
-        else if (result === "stale") staleCount += 1;
-        else failedCount += 1;
+        const result = await runRetranslateSegment(segmentId, {
+          showFeedback: false,
+        });
+        if (result.status === "completed") {
+          completedCount += 1;
+          const previous = previousById.get(segmentId);
+          if (previous !== undefined) {
+            undoEntries.push({ segmentId, dst: previous });
+          }
+        } else if (result.status === "stale") staleCount += 1;
+        else {
+          failedCount += 1;
+          failedReasons.push(result.reason ?? "unknown");
+        }
       }
+      const baseText = format(m.retranslateSelectedDone, {
+        done: completedCount,
+        stale: staleCount,
+        failed: failedCount,
+      });
       setFeedback({
         kind: failedCount > 0 ? "error" : staleCount > 0 ? "info" : "success",
-        text: format(m.retranslateSelectedDone, {
-          done: completedCount,
-          stale: staleCount,
-          failed: failedCount,
-        }),
+        text:
+          failedReasons.length > 0
+            ? format(m.retranslateSelectedDoneWithReasons, {
+                summary: baseText,
+                reasons: summarizeReasons(failedReasons),
+              })
+            : baseText,
       });
+      setRetranslateUndo(
+        undoEntries.length > 0 ? { entries: undoEntries } : null,
+      );
     } finally {
       setBatchRetranslating(false);
+    }
+  };
+
+  const handleUndoRetranslate = async () => {
+    if (!activeTaskId || !retranslateUndo || undoingRetranslate || dirty) return;
+    setUndoingRetranslate(true);
+    setFeedback(null);
+    try {
+      for (const entry of retranslateUndo.entries) {
+        await saveReplacement(entry.segmentId, entry.dst);
+      }
+      const selectedEntry = retranslateUndo.entries.find(
+        (entry) => entry.segmentId === selectedSegmentId,
+      );
+      if (selectedEntry) setDraftDst(selectedEntry.dst);
+      setSavedTick((t) => t + 1);
+      setFeedback({
+        kind: "success",
+        text: format(m.retranslateUndoDone, {
+          n: retranslateUndo.entries.length,
+        }),
+      });
+      setRetranslateUndo(null);
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: BridgeError.isBridgeError(err)
+          ? `${err.code}: ${err.message}`
+          : String(err),
+      });
+    } finally {
+      setUndoingRetranslate(false);
     }
   };
 
@@ -876,6 +994,17 @@ export function ProofreadingPage() {
             </option>
           ))}
         </select>
+        {activeTaskId ? (
+          <button
+            type="button"
+            className={styles.copyButton}
+            onClick={() =>
+              void copyToClipboard(activeTaskId, m.copyTaskIdDone)
+            }
+          >
+            {m.copyTaskId}
+          </button>
+        ) : null}
         <span className={styles.grow}>
           {snapshot ? (
             <span className={styles.editorHint}>
@@ -898,6 +1027,19 @@ export function ProofreadingPage() {
             ? m.regenerating
             : m.regenerateBilingualAction}
         </Pill>
+        {regenerateFeedback ? (
+          <span
+            className={`${styles.inlineFeedback} ${
+              regenerateFeedback.kind === "error"
+                ? styles.inlineFeedbackError
+                : regenerateFeedback.kind === "success"
+                  ? styles.inlineFeedbackSuccess
+                  : ""
+            }`}
+          >
+            {regenerateFeedback.text}
+          </span>
+        ) : null}
       </div>
 
       <div className={styles.retranslateConfigRow}>
@@ -1265,16 +1407,39 @@ export function ProofreadingPage() {
                         n: selectedCount,
                       })}
                 </Pill>
+                <Pill
+                  variant="ghost"
+                  onClick={() => void handleUndoRetranslate()}
+                  disabled={!retranslateUndo || undoingRetranslate || dirty}
+                >
+                  {undoingRetranslate
+                    ? m.retranslateUndoRunning
+                    : m.retranslateUndoAction}
+                </Pill>
                 <Pill onClick={() => void handleSave()} disabled={!dirty}>
                   {m.editorSaveAction}
                 </Pill>
               </span>
             </div>
             {selectedItem.subtask_ids?.length ? (
-              <div className={styles.debugHint}>
-                {format(m.subtaskHint, {
-                  ids: selectedItem.subtask_ids.join(", "),
-                })}
+              <div className={styles.debugHintRow}>
+                <div className={styles.debugHint}>
+                  {format(m.subtaskHint, {
+                    ids: selectedItem.subtask_ids.join(", "),
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className={styles.copyButton}
+                  onClick={() =>
+                    void copyToClipboard(
+                      selectedItem.subtask_ids?.join(", ") ?? "",
+                      m.copySubtaskIdsDone,
+                    )
+                  }
+                >
+                  {m.copySubtaskIds}
+                </button>
               </div>
             ) : null}
           </div>

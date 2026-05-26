@@ -789,6 +789,10 @@ export const en: Messages = {
       retranslateSuccess: "Retranslated and saved to cache.",
       retranslateSelectedDone:
         "Batch retranslate finished: {done} completed, {stale} discarded, {failed} failed.",
+      retranslateSelectedDoneWithReasons: "{summary} Failure reasons: {reasons}.",
+      retranslateUndoAction: "Undo last retranslate",
+      retranslateUndoRunning: "Undoing…",
+      retranslateUndoDone: "Undid {n} retranslated item(s).",
       retranslateSaveDirtyFirst:
         "The current selected translation has unsaved edits. Save it before batch retranslating.",
       retranslateFailed: "Retranslate failed: {reason}",
@@ -799,6 +803,10 @@ export const en: Messages = {
         "Task is running; stop it before retranslating.",
       selectRowLabel: "Select {id}",
       subtaskHint: "Source subtask(s): {ids}",
+      copyTaskId: "Copy task ID",
+      copyTaskIdDone: "Copied task ID.",
+      copySubtaskIds: "Copy source subtasks",
+      copySubtaskIdsDone: "Copied source subtasks.",
     },
   },
   glossary: {
