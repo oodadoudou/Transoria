@@ -798,7 +798,7 @@ def _parse_ncx_navpoint(
     html_href_map: Mapping[str, str],
 ) -> _NavEntry | None:
     label = _clean_text(
-        "".join(text for text in node.findall(".//{*}navLabel/{*}text") for text in [text.text or ""])
+        "".join(text.text or "" for text in node.findall("./{*}navLabel/{*}text"))
     )
     content = node.find("./{*}content")
     href = _map_nav_href(content.get("src", "") if content is not None else "", base_dir, html_href_map)
@@ -903,9 +903,33 @@ def _clean_nav_entries(entries: Iterable[_NavEntry]) -> tuple[_NavEntry, ...]:
         children = _clean_nav_entries(entry.children)
         if _is_cover_page_title(entry.title) or _is_generic_nav_title(entry.title):
             rows.extend(children)
+        elif len(children) == 1 and _same_nav_target(entry, children[0]) and _same_nav_title(entry, children[0]):
+            rows.append(_NavEntry(title=entry.title, href=entry.href))
+        elif _is_cover_page_href(entry.href):
+            non_cover_children = tuple(
+                child
+                for child in children
+                if not _is_cover_page_title(child.title) and not _is_cover_page_href(child.href)
+            )
+            if len(non_cover_children) == 1 and _same_nav_title(entry, non_cover_children[0]):
+                rows.append(_NavEntry(title=entry.title, href=non_cover_children[0].href))
+            else:
+                rows.append(_NavEntry(title=entry.title, href=entry.href, children=children))
         else:
             rows.append(_NavEntry(title=entry.title, href=entry.href, children=children))
     return tuple(rows)
+
+
+def _same_nav_target(left: _NavEntry, right: _NavEntry) -> bool:
+    return left.href == right.href
+
+
+def _same_nav_title(left: _NavEntry, right: _NavEntry) -> bool:
+    return _normalize_nav_title(left.title) == _normalize_nav_title(right.title)
+
+
+def _normalize_nav_title(title: str) -> str:
+    return re.sub(r"\s+", "", title).lower()
 
 
 def _map_nav_href(src: str, base_dir: str, html_href_map: Mapping[str, str]) -> str:
@@ -1212,7 +1236,7 @@ def _local_name(tag: str) -> str:
 
 def _is_cover_page_href(href: str) -> bool:
     name = Path(href).name.lower()
-    return name.startswith(("cover", "titlepage", "title_page", "표지", "커버"))
+    return name.startswith(("cover", "auto_cover", "titlepage", "title_page", "표지", "커버"))
 
 
 def _is_cover_page_title(title: str) -> bool:
