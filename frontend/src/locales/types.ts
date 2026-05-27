@@ -1148,6 +1148,16 @@ export interface Messages {
     title: string;
     fileLabel: string;
     affectedLabel: string;
+    failureTypes: {
+      timeout: string;
+      rateLimit: string;
+      connection: string;
+      format: string;
+      lineCount: string;
+      languageMismatch: string;
+      emptyInput: string;
+      unknown: string;
+    };
     noMessage: string;
     empty: string;
     close: string;

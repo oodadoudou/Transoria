@@ -12,9 +12,20 @@ interface FailedSubtasksModalProps {
 interface FailureGroup {
   code: string;
   message: string;
+  type: FailureType;
   sourceFiles: string[];
   failures: TaskFailure[];
 }
+
+type FailureType =
+  | "timeout"
+  | "rateLimit"
+  | "connection"
+  | "format"
+  | "lineCount"
+  | "languageMismatch"
+  | "emptyInput"
+  | "unknown";
 
 export function FailedSubtasksModal({
   failures,
@@ -65,6 +76,9 @@ export function FailedSubtasksModal({
                       aria-expanded={isOpen}
                     >
                       <code className={styles.groupCode}>{group.code}</code>
+                      <span className={styles.groupType}>
+                        {messages.failureTypes[group.type]}
+                      </span>
                       <span className={styles.groupMessage}>
                         {group.message || messages.noMessage}
                       </span>
@@ -136,6 +150,7 @@ function buildGroups(failures: TaskFailure[]): FailureGroup[] {
       buckets.set(key, {
         code,
         message,
+        type: classifyFailure(code, message),
         sourceFiles: failure.source_file ? [failure.source_file] : [],
         failures: [failure],
       });
@@ -144,4 +159,59 @@ function buildGroups(failures: TaskFailure[]): FailureGroup[] {
   return Array.from(buckets.values()).sort(
     (a, b) => b.failures.length - a.failures.length,
   );
+}
+
+function classifyFailure(code: string, message: string): FailureType {
+  const haystack = `${code} ${message}`.toLowerCase();
+  if (
+    haystack.includes("429") ||
+    haystack.includes("rate") ||
+    haystack.includes("限流") ||
+    haystack.includes("too many requests")
+  ) {
+    return "rateLimit";
+  }
+  if (haystack.includes("timeout") || haystack.includes("timed out")) {
+    return "timeout";
+  }
+  if (
+    haystack.includes("connect") ||
+    haystack.includes("network") ||
+    haystack.includes("readerror") ||
+    haystack.includes("transport")
+  ) {
+    return "connection";
+  }
+  if (
+    haystack.includes("line_count") ||
+    haystack.includes("line count") ||
+    haystack.includes("行数")
+  ) {
+    return "lineCount";
+  }
+  if (
+    haystack.includes("json") ||
+    haystack.includes("format") ||
+    haystack.includes("decode") ||
+    haystack.includes("格式")
+  ) {
+    return "format";
+  }
+  if (
+    haystack.includes("source language") ||
+    haystack.includes("configured source") ||
+    haystack.includes("源语言") ||
+    haystack.includes("未检测到")
+  ) {
+    return "languageMismatch";
+  }
+  if (
+    haystack.includes("empty") ||
+    haystack.includes("no chunks") ||
+    haystack.includes("no usable") ||
+    haystack.includes("空")
+  ) {
+    return "emptyInput";
+  }
+  return "unknown";
 }

@@ -106,6 +106,17 @@
   flex-shrink: 0;
 }
 
+.groupType {
+  font-size: 11px;
+  color: var(--text-warn, #6b3a1f);
+  background: var(--surface-warn, #fdf2ec);
+  border: 1px solid var(--surface-warn-border, #e0b0a0);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .groupMessage {
   flex: 1;
   font-size: 12.5px;
