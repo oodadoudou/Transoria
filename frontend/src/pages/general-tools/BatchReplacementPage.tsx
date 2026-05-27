@@ -32,13 +32,12 @@ import {
 import { useSearchShortcut } from "@/components/useSearchShortcut";
 import { tableRowKey, uniqueRows } from "@/utils/tableDedupe";
 import { useLocalState } from "@/utils/localState";
-import { useSessionState } from "@/utils/sessionState";
 import styles from "./BatchReplacementPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
 const INPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.inputFolder";
 const OUTPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.outputFolder";
-const RULES_SESSION_KEY = "transoria.generalTools.batchReplacement.rules";
+const RULES_LOCAL_KEY = "transoria.generalTools.batchReplacement.rules";
 
 const TERMINAL: ReadonlySet<string> = new Set([
   "completed",
@@ -62,8 +61,8 @@ export function BatchReplacementPage() {
   const draft = moduleSettings.draft;
   const [inputFolder, setInputFolder] = useLocalState(INPUT_LOCAL_KEY, "");
   const [outputFolder, setOutputFolder] = useLocalState(OUTPUT_LOCAL_KEY, "");
-  const [rules, setRules] = useSessionState<ReplacementRule[]>(
-    RULES_SESSION_KEY,
+  const [rules, setRules] = useLocalState<ReplacementRule[]>(
+    RULES_LOCAL_KEY,
     [],
   );
   const [ruleSelection, setRuleSelection] =
