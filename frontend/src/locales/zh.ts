@@ -241,6 +241,8 @@ export const zh: Messages = {
     cacheModalHint: "选择要清理的范围。当前在跑的任务不会被删除。",
     cachePurgeAll: "全部清除",
     cachePurgeAllHint: "删除所有任务缓存（包括最近的）。",
+    cachePurgeCompleted: "只清已完成任务",
+    cachePurgeCompletedHint: "保留失败、停止和未跑完的任务，方便继续排查或恢复。",
     cachePurgeMonth: "清除一个月之前",
     cachePurgeMonthHint: "保留最近 30 天内的任务。",
     cachePurgeWeek: "清除一周之前",

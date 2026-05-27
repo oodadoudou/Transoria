@@ -249,6 +249,9 @@ export const en: Messages = {
     cacheModalHint: "Pick a scope to clean. In-flight tasks are never deleted.",
     cachePurgeAll: "Delete all",
     cachePurgeAllHint: "Remove every cached task, including the latest.",
+    cachePurgeCompleted: "Completed tasks only",
+    cachePurgeCompletedHint:
+      "Keep failed, stopped, and unfinished tasks for recovery or debugging.",
     cachePurgeMonth: "Older than 30 days",
     cachePurgeMonthHint: "Keep tasks updated within the last 30 days.",
     cachePurgeWeek: "Older than 7 days",

@@ -1194,6 +1194,7 @@ class TaskService:
           - ``"all"``                   — every entry (with active threads skipped)
           - ``"older_than_days"``       — entries with ``updated_at`` older than
                                           ``days`` days from now (active skipped)
+          - ``"completed"``             — entries whose task status is completed
 
         Active in-flight tasks are never deleted regardless of scope —
         their thread would keep writing to a now-gone directory and
@@ -1202,11 +1203,14 @@ class TaskService:
         100% stats from the wiped run.
         """
 
-        if scope not in {"all", "older_than_days"}:
+        if scope not in {"all", "older_than_days", "completed"}:
             raise BridgeError.invalid_argument(
                 f"unsupported purge scope: {scope!r}",
                 field="scope",
-                details={"scope": scope, "allowed": ["all", "older_than_days"]},
+                details={
+                    "scope": scope,
+                    "allowed": ["all", "older_than_days", "completed"],
+                },
             )
         cutoff: datetime | None = None
         if scope == "older_than_days":
@@ -1229,6 +1233,8 @@ class TaskService:
             running = self._resolve_live_running(record.id, record.status)
             if running is not None and not running.is_done:
                 skipped_active.append(record.id)
+                continue
+            if scope == "completed" and record.status is not TaskStatus.COMPLETED:
                 continue
             if cutoff is not None:
                 try:

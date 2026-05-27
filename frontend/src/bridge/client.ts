@@ -551,7 +551,7 @@ export const tasksBridge = {
     return call("tasks.summarize_caches", {});
   },
   purgeCaches(
-    scope: "all" | "older_than_days",
+    scope: "all" | "older_than_days" | "completed",
     days?: number,
   ): Promise<{
     scope: string;

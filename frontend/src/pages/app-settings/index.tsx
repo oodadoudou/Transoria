@@ -450,7 +450,10 @@ function CacheCleanupModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const purge = async (scope: "all" | "older_than_days", days?: number) => {
+  const purge = async (
+    scope: "all" | "older_than_days" | "completed",
+    days?: number,
+  ) => {
     if (cleanupBlocked) return;
     setBusy(true);
     setError(null);
@@ -531,6 +534,21 @@ function CacheCleanupModal({
                   </span>
                   <span className={modalStyles.choiceHint}>
                     {labels.cachePurgeAllHint}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={modalStyles.choice}
+                disabled={busy || cleanupBlocked}
+                onClick={() => void purge("completed")}
+              >
+                <span className={modalStyles.choiceText}>
+                  <span className={modalStyles.choiceLabel}>
+                    {labels.cachePurgeCompleted}
+                  </span>
+                  <span className={modalStyles.choiceHint}>
+                    {labels.cachePurgeCompletedHint}
                   </span>
                 </span>
               </button>

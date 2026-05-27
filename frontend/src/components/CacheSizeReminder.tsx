@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { tasksBridge } from "@/bridge";
+import { dialogsBridge, tasksBridge } from "@/bridge";
 import { format, useMessages } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -22,7 +22,10 @@ export function CacheSizeReminder() {
   const labels = useMessages().appSettingsExtra;
   const hydrated = useSettingsStore((state) => state.hydrated);
   const navigate = useTaskStore((state) => state.navigate);
-  const [cacheBytes, setCacheBytes] = useState<number | null>(null);
+  const [cacheInfo, setCacheInfo] = useState<{
+    bytes: number;
+    root: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -34,7 +37,10 @@ export function CacheSizeReminder() {
       .then((summary) => {
         if (cancelled) return;
         if (summary.total_bytes >= CACHE_REMINDER_THRESHOLD_BYTES) {
-          setCacheBytes(summary.total_bytes);
+          setCacheInfo({
+            bytes: summary.total_bytes,
+            root: summary.cache_root,
+          });
         }
       })
       .catch(() => {});
@@ -46,10 +52,10 @@ export function CacheSizeReminder() {
 
   const dismiss = () => {
     window.sessionStorage.setItem(DISMISSED_KEY, "1");
-    setCacheBytes(null);
+    setCacheInfo(null);
   };
 
-  if (cacheBytes === null) return null;
+  if (cacheInfo === null) return null;
 
   return (
     <div className={modalStyles.overlay} role="presentation">
@@ -74,7 +80,9 @@ export function CacheSizeReminder() {
         </header>
         <div className={modalStyles.body}>
           <p className={modalStyles.hint}>
-            {format(labels.cacheLargeBody, { size: formatBytes(cacheBytes) })}
+            {format(labels.cacheLargeBody, {
+              size: formatBytes(cacheInfo.bytes),
+            })}
           </p>
           <div className={modalStyles.choices}>
             <button
@@ -88,6 +96,19 @@ export function CacheSizeReminder() {
               <span className={modalStyles.choiceText}>
                 <span className={modalStyles.choiceLabel}>
                   {labels.cacheLargeOpenSettings}
+                </span>
+              </span>
+            </button>
+            <button
+              className={modalStyles.choice}
+              onClick={() => {
+                void dialogsBridge.openDirectory(cacheInfo.root).catch(() => {});
+              }}
+              type="button"
+            >
+              <span className={modalStyles.choiceText}>
+                <span className={modalStyles.choiceLabel}>
+                  {labels.cacheOpenAction}
                 </span>
               </span>
             </button>

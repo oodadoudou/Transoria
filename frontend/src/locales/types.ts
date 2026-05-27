@@ -224,6 +224,8 @@ export interface Messages {
     cacheModalHint: string;
     cachePurgeAll: string;
     cachePurgeAllHint: string;
+    cachePurgeCompleted: string;
+    cachePurgeCompletedHint: string;
     cachePurgeMonth: string;
     cachePurgeMonthHint: string;
     cachePurgeWeek: string;
