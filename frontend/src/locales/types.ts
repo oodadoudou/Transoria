@@ -872,6 +872,7 @@ export interface Messages {
     inputFolder: string;
     outputFile: string;
     outputFolder: string;
+    outputFolderHint: string;
     outputFilename: string;
     outputFilenameHint: string;
     recursive: string;

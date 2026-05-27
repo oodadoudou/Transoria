@@ -4,6 +4,12 @@
   gap: 10px;
 }
 
+.folderHint {
+  margin: 6px 0 0;
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+}
+
 .actionRow {
   display: flex;
   align-items: center;

@@ -268,6 +268,7 @@ export function EpubMergePage() {
             compact
           />
         </div>
+        <p className={styles.folderHint}>{text.outputFolderHint}</p>
         <div className={styles.fileRow}>
           <label className={`${styles.field} ${styles.compactField}`}>
             <span>{text.outputFilename}</span>

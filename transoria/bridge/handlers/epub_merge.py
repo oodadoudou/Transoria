@@ -24,7 +24,7 @@ def register(router: BridgeRouter, *, service: TaskService) -> None:
     def start_task(payload: Mapping[str, object]) -> dict[str, object]:
         request_id = expect_string(payload, "request_id")
         input_dir = expect_string(payload, "input_dir")
-        output_path = expect_string(payload, "output_path")
+        output_path = expect_string(payload, "output_path", allow_empty=True)
         options = payload.get("options", {})
         raw_actions = payload.get("actions")
         if not isinstance(options, Mapping):

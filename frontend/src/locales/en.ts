@@ -384,6 +384,7 @@ export const en: Messages = {
     inputFolder: "Folder to merge",
     outputFile: "Output EPUB",
     outputFolder: "Output folder",
+    outputFolderHint: "Optional. If blank, the input folder is used.",
     outputFilename: "Output filename",
     outputFilenameHint:
       "Default: `merged.epub`; the merged EPUB title is written as `merged`. You can rename it. Avoid names that already exist in the input folder to prevent path conflicts.",

@@ -375,6 +375,7 @@ export const zh: Messages = {
     inputFolder: "待合并文件夹",
     outputFile: "输出 EPUB",
     outputFolder: "输出目录",
+    outputFolderHint: "可留空；未配置时默认输出到输入目录。",
     outputFilename: "输出文件名",
     outputFilenameHint:
       "默认生成「合并.epub」，书内标题也会写为「合并」。可自行改名；尽量不要与输入目录里已有 EPUB 同名，避免路径冲突。",
