@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import {
   BridgeError,
+  dialogsBridge,
   epubMergeBridge,
   type EpubMergeAction,
   type EpubMergeArtifacts,
@@ -67,6 +68,7 @@ export function EpubMergePage() {
   const [artifacts, setArtifacts] = useState<EpubMergeArtifacts | null>(null);
   const [report, setReport] = useState<EpubMergeReport | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [artifactFeedback, setArtifactFeedback] = useState<string | null>(null);
   const [draggingActionId, setDraggingActionId] = useState<string | null>(null);
   const snapshot = useRunSnapshot("epub_merge");
   usePollRunSnapshot("epub_merge");
@@ -141,6 +143,7 @@ export function EpubMergePage() {
     setArtifacts(null);
     setReport(null);
     setShowReport(false);
+    setArtifactFeedback(null);
     try {
       const requestedOutput = composeOutputPath(
         outputDir,
@@ -169,6 +172,7 @@ export function EpubMergePage() {
     setArtifacts(null);
     setReport(null);
     setShowReport(false);
+    setArtifactFeedback(null);
     try {
       const requestId = `epub-merge-${Date.now().toString(36)}`;
       const outputPath =
@@ -478,6 +482,32 @@ export function EpubMergePage() {
                 value={artifacts.output_files.join("\n") || "-"}
               />
             </div>
+            <div className={styles.artifactActions}>
+              <Pill
+                variant="ghost"
+                onClick={() =>
+                  void openOutputFolder(artifacts.output_folder, setArtifactFeedback)
+                }
+              >
+                {text.openOutputFolder}
+              </Pill>
+              <Pill
+                variant="ghost"
+                onClick={() =>
+                  void copyOutputPaths(
+                    artifacts.output_files,
+                    text.copyOutputPathsDone,
+                    setArtifactFeedback,
+                  )
+                }
+                disabled={artifacts.output_files.length === 0}
+              >
+                {text.copyOutputPaths}
+              </Pill>
+              {artifactFeedback ? (
+                <span className={styles.artifactFeedback}>{artifactFeedback}</span>
+              ) : null}
+            </div>
             {report ? (
               <div className={styles.reportToggle}>
                 <Pill variant="ghost" onClick={() => setShowReport((prev) => !prev)}>
@@ -520,6 +550,39 @@ export function EpubMergePage() {
       </Panel>
     </>
   );
+}
+
+async function openOutputFolder(
+  folder: string,
+  setFeedback: (message: string | null) => void,
+) {
+  try {
+    await dialogsBridge.openDirectory(folder);
+    setFeedback(null);
+  } catch (error) {
+    setFeedback(
+      BridgeError.isBridgeError(error)
+        ? `${error.code}: ${error.message}`
+        : String(error),
+    );
+  }
+}
+
+async function copyOutputPaths(
+  paths: string[],
+  successMessage: string,
+  setFeedback: (message: string | null) => void,
+) {
+  try {
+    await navigator.clipboard.writeText(paths.join("\n"));
+    setFeedback(successMessage);
+  } catch (error) {
+    setFeedback(
+      BridgeError.isBridgeError(error)
+        ? `${error.code}: ${error.message}`
+        : String(error),
+    );
+  }
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

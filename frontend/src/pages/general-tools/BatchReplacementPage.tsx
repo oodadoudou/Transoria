@@ -97,6 +97,7 @@ export function BatchReplacementPage() {
   const [issues, setIssues] = useState<ReplacementValidationIssue[]>([]);
   const [actionError, setActionError] = useState<BridgeError | null>(null);
   const [artifacts, setArtifacts] = useState<ReplacementArtifacts | null>(null);
+  const [artifactFeedback, setArtifactFeedback] = useState<string | null>(null);
   const migratedSettingsPathRef = useRef(false);
   // Loaded once after a task settles into a terminal state and held in
   // memory so the user can re-open the modal without another fetch.
@@ -238,6 +239,7 @@ export function BatchReplacementPage() {
   const handleExecute = async () => {
     setActionError(null);
     setArtifacts(null);
+    setArtifactFeedback(null);
     // Drop the previous report so the modal trigger disappears until
     // the new run completes — matches the spec ("cleared on next
     // replacement").
@@ -472,6 +474,32 @@ export function BatchReplacementPage() {
               value={NUM.format(artifacts.output_files.length)}
             />
           </div>
+          <div className={styles.artifactActions}>
+            <Pill
+              variant="ghost"
+              onClick={() =>
+                void openOutputFolder(artifacts.output_folder, setArtifactFeedback)
+              }
+            >
+              {messages.batchReplacement.openOutputFolder}
+            </Pill>
+            <Pill
+              variant="ghost"
+              onClick={() =>
+                void copyOutputPaths(
+                  artifacts.output_files,
+                  messages.batchReplacement.copyOutputPathsDone,
+                  setArtifactFeedback,
+                )
+              }
+              disabled={artifacts.output_files.length === 0}
+            >
+              {messages.batchReplacement.copyOutputPaths}
+            </Pill>
+            {artifactFeedback ? (
+              <span className={styles.artifactFeedback}>{artifactFeedback}</span>
+            ) : null}
+          </div>
           {artifacts.output_files.length > 0 ? (
             <ul className={styles.artifactList}>
               {artifacts.output_files.map((path) => (
@@ -515,6 +543,39 @@ export function BatchReplacementPage() {
 
     </>
   );
+}
+
+async function openOutputFolder(
+  folder: string,
+  setFeedback: (message: string | null) => void,
+) {
+  try {
+    await dialogsBridge.openDirectory(folder);
+    setFeedback(null);
+  } catch (error) {
+    setFeedback(
+      BridgeError.isBridgeError(error)
+        ? `${error.code}: ${error.message}`
+        : String(error),
+    );
+  }
+}
+
+async function copyOutputPaths(
+  paths: string[],
+  successMessage: string,
+  setFeedback: (message: string | null) => void,
+) {
+  try {
+    await navigator.clipboard.writeText(paths.join("\n"));
+    setFeedback(successMessage);
+  } catch (error) {
+    setFeedback(
+      BridgeError.isBridgeError(error)
+        ? `${error.code}: ${error.message}`
+        : String(error),
+    );
+  }
 }
 
 interface StatProps {

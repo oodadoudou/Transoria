@@ -77,6 +77,19 @@
   gap: 12px;
 }
 
+.artifactActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.artifactFeedback {
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+}
+
 .stat {
   display: flex;
   flex-direction: column;

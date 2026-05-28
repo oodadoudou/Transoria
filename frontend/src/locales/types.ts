@@ -823,6 +823,9 @@ export interface Messages {
     noArtifacts: string;
     outputFiles: string;
     statisticsFile: string;
+    openOutputFolder: string;
+    copyOutputPaths: string;
+    copyOutputPathsDone: string;
     viewReport: string;
   };
   epubCompressTool: {
@@ -859,6 +862,9 @@ export interface Messages {
     artifactsLabel: string;
     compressedCount: string;
     outputFiles: string;
+    openOutputFolder: string;
+    copyOutputPaths: string;
+    copyOutputPathsDone: string;
     viewReport: string;
     hideReport: string;
     saved: string;
@@ -900,6 +906,9 @@ export interface Messages {
     artifactsLabel: string;
     mergedCount: string;
     outputFiles: string;
+    openOutputFolder: string;
+    copyOutputPaths: string;
+    copyOutputPathsDone: string;
     viewReport: string;
     hideReport: string;
     chapters: string;
@@ -938,6 +947,9 @@ export interface Messages {
     artifactsLabel: string;
     convertedCount: string;
     outputFiles: string;
+    openOutputFolder: string;
+    copyOutputPaths: string;
+    copyOutputPathsDone: string;
     viewReport: string;
     hideReport: string;
     segments: string;

@@ -211,6 +211,19 @@
   margin-top: 10px;
 }
 
+.artifactActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.artifactFeedback {
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+}
+
 @media (max-width: 900px) {
   .folderGrid {
     grid-template-columns: minmax(0, 1fr);

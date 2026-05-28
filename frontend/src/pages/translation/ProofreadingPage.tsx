@@ -977,7 +977,59 @@ export function ProofreadingPage() {
       .length ?? 0;
   const untranslatedCount =
     snapshot?.items.filter((item) => isUntranslated(item)).length ?? 0;
+  const tooShortCount =
+    snapshot?.items.filter((item) => hasReason(item, "too", "short")).length ??
+    0;
+  const tooLongCount =
+    snapshot?.items.filter((item) => hasReason(item, "too", "long")).length ?? 0;
+  const formatRescueCount =
+    snapshot?.items.filter(
+      (item) =>
+        hasReason(item, "format", "rescue") ||
+        hasReason(item, "format", "fallback"),
+    ).length ?? 0;
   const totalCount = snapshot?.items.length ?? 0;
+  const riskCards: Array<{
+    key: ProofreadingFilterKey;
+    label: string;
+    count: number;
+  }> = [
+    {
+      key: "low_conf",
+      label: m.filterOnlyLowConfidence,
+      count: lowConfCount,
+    },
+    {
+      key: "source_residue",
+      label: m.filterOnlySourceResidue,
+      count: residueCount,
+    },
+    {
+      key: "possible_duplicate",
+      label: m.filterOnlyPossibleDuplicate,
+      count: possibleDuplicateCount,
+    },
+    {
+      key: "untranslated",
+      label: m.filterOnlyUntranslated,
+      count: untranslatedCount,
+    },
+    {
+      key: "too_short",
+      label: m.filterOnlyTooShort,
+      count: tooShortCount,
+    },
+    {
+      key: "too_long",
+      label: m.filterOnlyTooLong,
+      count: tooLongCount,
+    },
+    {
+      key: "format_rescue",
+      label: m.filterOnlyFormatRescue,
+      count: formatRescueCount,
+    },
+  ];
 
   return (
     <Panel title={m.title} subtitle={m.sub}>
@@ -1100,6 +1152,27 @@ export function ProofreadingPage() {
           }}
           onClose={() => setSwitchOpen(null)}
         />
+      ) : null}
+
+      {snapshot ? (
+        <div className={styles.riskDashboard}>
+          {riskCards.map((card) => {
+            const active = filters.has(card.key);
+            return (
+              <button
+                key={card.key}
+                type="button"
+                className={`${styles.riskCard} ${active ? styles.riskCardActive : ""} ${card.count === 0 ? styles.riskCardDisabled : ""}`.trim()}
+                disabled={card.count === 0 && !active}
+                aria-pressed={active}
+                onClick={() => toggleFilter(card.key)}
+              >
+                <span className={styles.riskCardLabel}>{card.label}</span>
+                <span className={styles.riskCardValue}>{card.count}</span>
+              </button>
+            );
+          })}
+        </div>
       ) : null}
 
       <div className={styles.toggleRow}>

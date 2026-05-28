@@ -61,6 +61,7 @@ export function EpubConvertPage() {
   const [artifacts, setArtifacts] = useState<EpubConvertArtifacts | null>(null);
   const [report, setReport] = useState<EpubConvertReport | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [artifactFeedback, setArtifactFeedback] = useState<string | null>(null);
   const snapshot = useRunSnapshot("epub_convert");
   usePollRunSnapshot("epub_convert");
   const setActiveTaskId = useRuntimeStore((state) => state.setActiveTaskId);
@@ -144,6 +145,7 @@ export function EpubConvertPage() {
     setArtifacts(null);
     setReport(null);
     setShowReport(false);
+    setArtifactFeedback(null);
     try {
       const next = await epubConvertBridge.preview(inputPath, mode, {
         ...options,
@@ -165,6 +167,7 @@ export function EpubConvertPage() {
     setArtifacts(null);
     setReport(null);
     setShowReport(false);
+    setArtifactFeedback(null);
     try {
       const requestId = `epub-convert-${Date.now().toString(36)}`;
       const { task_id } = await epubConvertBridge.startTask(
@@ -368,6 +371,32 @@ export function EpubConvertPage() {
               value={NUM.format(artifacts.output_files.length)}
             />
           </div>
+          <div className={styles.artifactActions}>
+            <Pill
+              variant="ghost"
+              onClick={() =>
+                void openOutputFolder(artifacts.output_folder, setArtifactFeedback)
+              }
+            >
+              {text.openOutputFolder}
+            </Pill>
+            <Pill
+              variant="ghost"
+              onClick={() =>
+                void copyOutputPaths(
+                  artifacts.output_files,
+                  text.copyOutputPathsDone,
+                  setArtifactFeedback,
+                )
+              }
+              disabled={artifacts.output_files.length === 0}
+            >
+              {text.copyOutputPaths}
+            </Pill>
+            {artifactFeedback ? (
+              <span className={styles.artifactFeedback}>{artifactFeedback}</span>
+            ) : null}
+          </div>
           {report ? (
             <div className={styles.reportToggle}>
               <Pill variant="ghost" onClick={() => setShowReport((v) => !v)}>
@@ -409,6 +438,39 @@ export function EpubConvertPage() {
       ) : null}
     </>
   );
+}
+
+async function openOutputFolder(
+  folder: string,
+  setFeedback: (message: string | null) => void,
+) {
+  try {
+    await dialogsBridge.openDirectory(folder);
+    setFeedback(null);
+  } catch (error) {
+    setFeedback(
+      BridgeError.isBridgeError(error)
+        ? `${error.code}: ${error.message}`
+        : String(error),
+    );
+  }
+}
+
+async function copyOutputPaths(
+  paths: string[],
+  successMessage: string,
+  setFeedback: (message: string | null) => void,
+) {
+  try {
+    await navigator.clipboard.writeText(paths.join("\n"));
+    setFeedback(successMessage);
+  } catch (error) {
+    setFeedback(
+      BridgeError.isBridgeError(error)
+        ? `${error.code}: ${error.message}`
+        : String(error),
+    );
+  }
 }
 
 interface StatProps {

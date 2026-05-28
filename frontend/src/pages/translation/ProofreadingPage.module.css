@@ -129,6 +129,60 @@
   flex-wrap: wrap;
 }
 
+.riskDashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.riskCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.riskCard:hover {
+  border-color: var(--action);
+}
+
+.riskCardActive {
+  border-color: var(--action);
+  background: var(--panel);
+}
+
+.riskCardDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.riskCardDisabled:hover {
+  border-color: var(--hairline);
+}
+
+.riskCardLabel {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.25;
+}
+
+.riskCardValue {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .filterChips {
   display: inline-flex;
   gap: 6px;
