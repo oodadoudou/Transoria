@@ -36,12 +36,17 @@ _PROOFREADABLE_TRANSLATION_STATUSES = frozenset(
 )
 _POSSIBLE_DUPLICATE_TAG = "possible_duplicate"
 _POSSIBLE_DUPLICATE_REASON = "adjacent_translation_possible_duplicate"
-_DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH = 12
+_DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH = 4
 _DUPLICATE_SCAN_WINDOW = 3
-_DUPLICATE_SCAN_TRANSLATION_RATIO = 0.82
-_DUPLICATE_SCAN_OVERLAP_RATIO = 0.72
-_DUPLICATE_SCAN_SOURCE_RATIO = 0.72
-_DUPLICATE_SCAN_MIN_DELTA = 0.18
+_DUPLICATE_SCAN_TRANSLATION_RATIO = 0.92
+_DUPLICATE_SCAN_OVERLAP_RATIO = 0.88
+_DUPLICATE_SCAN_SHORT_TRANSLATION_RATIO = 0.98
+_DUPLICATE_SCAN_SHORT_TEXT_LENGTH = 16
+_DUPLICATE_SCAN_SHORT_SOURCE_RATIO = 0.35
+_DUPLICATE_SCAN_SOURCE_RATIO = 0.56
+_DUPLICATE_SCAN_MIN_DELTA = 0.32
+_DUPLICATE_SCAN_TAGGED_PARTNER_RATIO = 0.74
+_DUPLICATE_SCAN_TAGGED_PARTNER_OVERLAP = 0.74
 _TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
 
 
@@ -121,25 +126,35 @@ def _overlap_ratio(left: str, right: str) -> float:
     return overlap / shortest
 
 
+def _normalized_length(text: str) -> int:
+    return len(_normalized_similarity_text(text))
+
+
 def _looks_like_duplicate_translation(
     left_src: str,
     right_src: str,
     left_dst: str,
     right_dst: str,
 ) -> bool:
-    if (
-        len(left_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
-        or len(right_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
-    ):
+    shortest_translation = min(
+        _normalized_length(left_dst),
+        _normalized_length(right_dst),
+    )
+    if shortest_translation < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH:
         return False
     source_overlap = max(
         _similarity(left_src, right_src),
         _overlap_ratio(left_src, right_src),
     )
-    if source_overlap >= _DUPLICATE_SCAN_SOURCE_RATIO:
-        return False
     translation_similarity = _similarity(left_dst, right_dst)
     translation_overlap = _overlap_ratio(left_dst, right_dst)
+    if shortest_translation < _DUPLICATE_SCAN_SHORT_TEXT_LENGTH:
+        return (
+            source_overlap < _DUPLICATE_SCAN_SHORT_SOURCE_RATIO
+            and translation_similarity >= _DUPLICATE_SCAN_SHORT_TRANSLATION_RATIO
+        )
+    if source_overlap >= _DUPLICATE_SCAN_SOURCE_RATIO:
+        return False
     if translation_similarity >= _DUPLICATE_SCAN_TRANSLATION_RATIO:
         return True
     return (
@@ -148,8 +163,31 @@ def _looks_like_duplicate_translation(
     )
 
 
+def _looks_like_tagged_duplicate_partner(
+    left_src: str,
+    right_src: str,
+    left_dst: str,
+    right_dst: str,
+) -> bool:
+    shortest_translation = min(
+        _normalized_length(left_dst),
+        _normalized_length(right_dst),
+    )
+    if shortest_translation < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH:
+        return False
+    source_overlap = max(
+        _similarity(left_src, right_src),
+        _overlap_ratio(left_src, right_src),
+    )
+    if source_overlap >= _DUPLICATE_SCAN_SOURCE_RATIO:
+        return False
+    return (
+        _similarity(left_dst, right_dst) >= _DUPLICATE_SCAN_TAGGED_PARTNER_RATIO
+        or _overlap_ratio(left_dst, right_dst) >= _DUPLICATE_SCAN_TAGGED_PARTNER_OVERLAP
+    )
+
+
 def _mark_possible_duplicate(item: dict[str, object]) -> None:
-    item["low_confidence"] = True
     tags = item.setdefault("tags", [])
     if isinstance(tags, list) and _POSSIBLE_DUPLICATE_TAG not in tags:
         tags.append(_POSSIBLE_DUPLICATE_TAG)
@@ -159,6 +197,28 @@ def _mark_possible_duplicate(item: dict[str, object]) -> None:
 
 
 def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
+    tagged_indices = {
+        index
+        for index, item in enumerate(items)
+        if _POSSIBLE_DUPLICATE_TAG in item.get("tags", [])
+    }
+    for index in tagged_indices:
+        left = items[index]
+        left_dst = str(left.get("dst", "")).strip()
+        left_src = str(left.get("src", ""))
+        window_start = max(0, index - _DUPLICATE_SCAN_WINDOW)
+        window_end = min(len(items), index + _DUPLICATE_SCAN_WINDOW + 1)
+        for right in items[window_start:window_end]:
+            if right is left:
+                continue
+            if _looks_like_tagged_duplicate_partner(
+                left_src,
+                str(right.get("src", "")),
+                left_dst,
+                str(right.get("dst", "")).strip(),
+            ):
+                _mark_possible_duplicate(right)
+
     for left_index, left in enumerate(items):
         left_dst = str(left.get("dst", "")).strip()
         left_src = str(left.get("src", ""))
