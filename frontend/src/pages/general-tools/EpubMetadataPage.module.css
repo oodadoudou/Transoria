@@ -1,0 +1,102 @@
+.pathGrid,
+.editGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.pathGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.editGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.field span,
+.statLabel {
+  color: var(--muted, #7a7166);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.field input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 8px;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  font: inherit;
+  padding: 7px 10px;
+}
+
+.fileRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.feedback {
+  color: var(--accent, #2f855a);
+  font-size: 12.5px;
+}
+
+.actionError {
+  color: var(--text-warn, #6b3a1f);
+  font-size: 12.5px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--panel-soft, #f5f0e9);
+  border-radius: var(--radius-inset, 10px);
+}
+
+.statValue {
+  color: var(--ink, #2a2620);
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  color: var(--muted, #7a7166);
+  font-size: 12.5px;
+  font-style: italic;
+  padding: 6px 0;
+}
+
+@media (max-width: 1050px) {
+  .pathGrid,
+  .editGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

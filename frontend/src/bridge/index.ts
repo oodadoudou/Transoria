@@ -14,6 +14,7 @@ export {
   proofreadingBridge,
   epubCompressBridge,
   epubConvertBridge,
+  epubMetadataBridge,
   epubMergeBridge,
   replacementBridge,
   rulesBridge,

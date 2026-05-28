@@ -320,6 +320,7 @@ export interface Messages {
       epubCompress: string;
       epubMerge: string;
       epubConvert: string;
+      epubMetadata: string;
     };
     appSettings: {
       general: string;
@@ -803,6 +804,7 @@ export interface Messages {
     epubCompress: { title: string; sub: string };
     epubMerge: { title: string; sub: string };
     epubConvert: { title: string; sub: string };
+    epubMetadata: { title: string; sub: string };
   };
   batchReplacement: {
     title: string;
@@ -957,6 +959,30 @@ export interface Messages {
     documents: string;
     result: string;
     converted: string;
+  };
+  epubMetadataTool: {
+    title: string;
+    sub: string;
+    inputFile: string;
+    inputPlaceholder: string;
+    outputFile: string;
+    titleLabel: string;
+    authorLabel: string;
+    coverFile: string;
+    chooseEpub: string;
+    chooseOutput: string;
+    chooseCover: string;
+    read: string;
+    apply: string;
+    openOutput: string;
+    currentLabel: string;
+    currentTitle: string;
+    currentAuthors: string;
+    currentCover: string;
+    coverPresent: string;
+    coverMissing: string;
+    noMetadata: string;
+    saved: string;
   };
   batchReplacementReport: {
     title: string;

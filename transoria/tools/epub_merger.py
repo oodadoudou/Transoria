@@ -336,8 +336,9 @@ class _EpubMerger:
     def merge(self, sources: list[Path], output: Path) -> dict[str, object]:
         self.title = _safe_filename(output.stem)
         output.parent.mkdir(parents=True, exist_ok=True)
+        wrap_source_nav = len(sources) > 1
         for epub_index, source in enumerate(sources):
-            self._merge_source(epub_index, source)
+            self._merge_source(epub_index, source, wrap_source_nav=wrap_source_nav)
         if not self.spine:
             raise ValueError("no readable spine documents found in selected EPUB files")
         self._add_package_files()
@@ -365,7 +366,7 @@ class _EpubMerger:
             "_tmp_output": tmp_output,
         }
 
-    def _merge_source(self, epub_index: int, source: Path) -> None:
+    def _merge_source(self, epub_index: int, source: Path, *, wrap_source_nav: bool) -> None:
         file_stats = {
             "source_path": str(source),
             "title": source.stem,
@@ -501,14 +502,15 @@ class _EpubMerger:
                     self.stats["chapters_written"] += 1
 
                 if copied_html:
-                    self.nav.append(
-                        _build_book_nav_entry(
+                    self.nav.extend(
+                        _build_book_nav_entries(
                             archive=archive,
                             manifest_items=manifest_items,
                             opf_dir=opf_dir,
                             book_title=book_title,
                             copied_html=copied_html,
                             html_href_map=html_href_map,
+                            wrap_source=wrap_source_nav,
                         )
                     )
 
@@ -723,7 +725,7 @@ def _clamp_int(value: object, *, default: int, low: int, high: int) -> int:
     return max(low, min(high, parsed))
 
 
-def _build_book_nav_entry(
+def _build_book_nav_entries(
     *,
     archive: zipfile.ZipFile,
     manifest_items: list[dict[str, str]],
@@ -731,7 +733,8 @@ def _build_book_nav_entry(
     book_title: str,
     copied_html: list[_CopiedHtml],
     html_href_map: Mapping[str, str],
-) -> _NavEntry:
+    wrap_source: bool,
+) -> tuple[_NavEntry, ...]:
     first_content = next((item for item in copied_html if not item.is_cover), copied_html[0])
     original_entries = _extract_original_nav_entries(
         archive=archive,
@@ -742,9 +745,13 @@ def _build_book_nav_entry(
     children = _clean_nav_entries(original_entries)
     if len(children) <= 1:
         children = _fallback_nav_children(book_title, copied_html)
+    if not wrap_source:
+        if children:
+            return children
+        return (_NavEntry(title=first_content.title or book_title, href=first_content.new_href),)
     if len(children) <= 1:
         children = ()
-    return _NavEntry(title=book_title, href=first_content.new_href, children=children)
+    return (_NavEntry(title=book_title, href=first_content.new_href, children=children),)
 
 
 def _extract_original_nav_entries(

@@ -26,13 +26,15 @@ export type GeneralToolsPage =
   | "batchReplacement"
   | "epubCompress"
   | "epubMerge"
-  | "epubConvert";
+  | "epubConvert"
+  | "epubMetadata";
 
 const GENERAL_TOOLS_PAGES = [
   "batchReplacement",
   "epubCompress",
   "epubMerge",
   "epubConvert",
+  "epubMetadata",
 ] as const;
 
 export type AppSettingsPage = "general";

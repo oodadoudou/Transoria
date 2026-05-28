@@ -37,8 +37,11 @@ _PROOFREADABLE_TRANSLATION_STATUSES = frozenset(
 _POSSIBLE_DUPLICATE_TAG = "possible_duplicate"
 _POSSIBLE_DUPLICATE_REASON = "adjacent_translation_possible_duplicate"
 _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH = 12
-_DUPLICATE_SCAN_TRANSLATION_RATIO = 0.86
-_DUPLICATE_SCAN_SOURCE_RATIO = 0.55
+_DUPLICATE_SCAN_WINDOW = 3
+_DUPLICATE_SCAN_TRANSLATION_RATIO = 0.82
+_DUPLICATE_SCAN_OVERLAP_RATIO = 0.72
+_DUPLICATE_SCAN_SOURCE_RATIO = 0.72
+_DUPLICATE_SCAN_MIN_DELTA = 0.18
 _TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
 
 
@@ -95,41 +98,80 @@ def _collect_translations_from_cache(snapshot) -> dict[str, str]:
     return translations
 
 
+def _normalized_similarity_text(text: str) -> str:
+    return _TEXT_SIMILARITY_NORMALIZE_RE.sub("", text)
+
+
 def _similarity(left: str, right: str) -> float:
-    left_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", left)
-    right_norm = _TEXT_SIMILARITY_NORMALIZE_RE.sub("", right)
+    left_norm = _normalized_similarity_text(left)
+    right_norm = _normalized_similarity_text(right)
     if not left_norm or not right_norm:
         return 0.0
     return SequenceMatcher(None, left_norm, right_norm, autojunk=False).ratio()
 
 
+def _overlap_ratio(left: str, right: str) -> float:
+    left_norm = _normalized_similarity_text(left)
+    right_norm = _normalized_similarity_text(right)
+    shortest = min(len(left_norm), len(right_norm))
+    if shortest == 0:
+        return 0.0
+    matcher = SequenceMatcher(None, left_norm, right_norm, autojunk=False)
+    overlap = sum(block.size for block in matcher.get_matching_blocks())
+    return overlap / shortest
+
+
+def _looks_like_duplicate_translation(
+    left_src: str,
+    right_src: str,
+    left_dst: str,
+    right_dst: str,
+) -> bool:
+    if (
+        len(left_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
+        or len(right_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
+    ):
+        return False
+    source_overlap = max(
+        _similarity(left_src, right_src),
+        _overlap_ratio(left_src, right_src),
+    )
+    if source_overlap >= _DUPLICATE_SCAN_SOURCE_RATIO:
+        return False
+    translation_similarity = _similarity(left_dst, right_dst)
+    translation_overlap = _overlap_ratio(left_dst, right_dst)
+    if translation_similarity >= _DUPLICATE_SCAN_TRANSLATION_RATIO:
+        return True
+    return (
+        translation_overlap >= _DUPLICATE_SCAN_OVERLAP_RATIO
+        and translation_overlap - source_overlap >= _DUPLICATE_SCAN_MIN_DELTA
+    )
+
+
+def _mark_possible_duplicate(item: dict[str, object]) -> None:
+    item["low_confidence"] = True
+    tags = item.setdefault("tags", [])
+    if isinstance(tags, list) and _POSSIBLE_DUPLICATE_TAG not in tags:
+        tags.append(_POSSIBLE_DUPLICATE_TAG)
+    reasons = item.setdefault("reasons", [])
+    if isinstance(reasons, list) and _POSSIBLE_DUPLICATE_REASON not in reasons:
+        reasons.append(_POSSIBLE_DUPLICATE_REASON)
+
+
 def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
-    for left, right in zip(items, items[1:]):
+    for left_index, left in enumerate(items):
         left_dst = str(left.get("dst", "")).strip()
-        right_dst = str(right.get("dst", "")).strip()
-        if (
-            len(left_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
-            or len(right_dst) < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
-        ):
-            continue
-        if _similarity(left_dst, right_dst) < _DUPLICATE_SCAN_TRANSLATION_RATIO:
-            continue
-        if (
-            _similarity(str(left.get("src", "")), str(right.get("src", "")))
-            >= _DUPLICATE_SCAN_SOURCE_RATIO
-        ):
-            continue
-        for item in (left, right):
-            item["low_confidence"] = True
-            tags = item.setdefault("tags", [])
-            if isinstance(tags, list) and _POSSIBLE_DUPLICATE_TAG not in tags:
-                tags.append(_POSSIBLE_DUPLICATE_TAG)
-            reasons = item.setdefault("reasons", [])
-            if (
-                isinstance(reasons, list)
-                and _POSSIBLE_DUPLICATE_REASON not in reasons
+        left_src = str(left.get("src", ""))
+        for right in items[left_index + 1 : left_index + 1 + _DUPLICATE_SCAN_WINDOW]:
+            right_dst = str(right.get("dst", "")).strip()
+            if _looks_like_duplicate_translation(
+                left_src,
+                str(right.get("src", "")),
+                left_dst,
+                right_dst,
             ):
-                reasons.append(_POSSIBLE_DUPLICATE_REASON)
+                _mark_possible_duplicate(left)
+                _mark_possible_duplicate(right)
 
 
 def _build_handlers(service: TaskService) -> dict[str, object]:

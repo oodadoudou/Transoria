@@ -79,6 +79,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
           { page: "epubCompress", label: gt.epubCompress },
           { page: "epubMerge", label: gt.epubMerge },
           { page: "epubConvert", label: gt.epubConvert },
+          { page: "epubMetadata", label: gt.epubMetadata },
         ],
       },
     ],

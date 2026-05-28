@@ -328,7 +328,6 @@ class TranslationSubtaskRunner:
         log_label = f"translation {subtask_id}" if subtask_id else "translation"
 
         accumulated: dict[int, str] = {}
-        rescued_indices: set[int] = set()
         solo_retried_indices: set[int] = set()
         fallback_reasons_by_index: dict[int, str] = {}
         debug_attempts: list[dict[str, object]] = []
@@ -453,16 +452,6 @@ class TranslationSubtaskRunner:
                     pending_indices = set(suspicious)
 
                 if retries_remaining <= 0:
-                    pending_meta = tuple(
-                        metadata_by_index[i] for i in sorted(pending_indices)
-                    )
-                    rescued = _positional_rescue(last_raw, pending_meta)
-                    if rescued is not None:
-                        for idx, text in rescued.items():
-                            accumulated[idx] = text
-                            rescued_indices.add(idx)
-                        pending_indices.clear()
-                        break
                     fallback_reason = (
                         "duplicate_drift_after_max_retries"
                         if all(
@@ -498,8 +487,6 @@ class TranslationSubtaskRunner:
                 extra_reasons: list[str] = []
                 if fallback_reason:
                     extra_reasons.append(fallback_reason)
-                if meta.chunk_index in rescued_indices:
-                    extra_reasons.append("positional_rescue_after_format_failure")
                 if (
                     (verdict.is_low_confidence or fallback_reason)
                     and self.low_confidence_max_retries > 0
@@ -970,16 +957,6 @@ def _chunk_log_id(chunk) -> str:  # noqa: ANN001 — accepts TranslationChunk
     return f"chunk-{chunk.segments[0].segment_id.replace(':', '_')}"
 
 
-_THINKING_RESCUE_PATTERN = re.compile(
-    r"<(?:why|think)>.*?</(?:why|think)>", re.DOTALL | re.IGNORECASE
-)
-_FENCE_RESCUE_PATTERN = re.compile(
-    r"```(?:jsonline|jsonl|json|markdown|md)?\s*\n(.*?)\n```",
-    re.DOTALL | re.IGNORECASE,
-)
-_RESCUE_PROSE_REJECT_PATTERN = re.compile(r"^\s*[\{\[]")
-
-
 _DENSE_PREFIX_PARTIAL_MIN_SEGMENTS = 8
 _DUPLICATE_DRIFT_MIN_TEXT_LENGTH = 10
 _NEAR_DUPLICATE_DRIFT_MEDIUM_TEXT_LENGTH = 12
@@ -1123,40 +1100,6 @@ def _build_subchunk_from_pending(
         context_lines=original.context_lines if include_context else (),
         glossary_entries=original.glossary_entries,
     )
-
-
-def _positional_rescue(
-    raw: str, metadata: tuple["_SegmentPayload", ...]
-) -> dict[int, str] | None:
-    """Last-resort accept of plain-text translations by source position.
-
-    Only triggers when the cleaned response has *exactly* one non-empty
-    line per expected segment AND none of those lines look like JSON
-    fragments. The strict shape predicate prevents silently aligning
-    against a half-broken JSON response (which would corrupt the result
-    instead of failing loudly).
-    """
-
-    if not metadata:
-        return None
-    cleaned = _THINKING_RESCUE_PATTERN.sub("", raw)
-    fence = _FENCE_RESCUE_PATTERN.search(cleaned)
-    if fence is not None:
-        cleaned = fence.group(1)
-    candidate_lines = [
-        line.strip() for line in cleaned.splitlines() if line.strip()
-    ]
-    if len(candidate_lines) != len(metadata):
-        return None
-    for line in candidate_lines:
-        if _RESCUE_PROSE_REJECT_PATTERN.match(line):
-            # Looks like a half-parsed JSON fragment — refuse to guess.
-            return None
-    ordered_meta = sorted(metadata, key=lambda m: m.chunk_index)
-    return {
-        meta.chunk_index: text
-        for meta, text in zip(ordered_meta, candidate_lines)
-    }
 
 
 __all__ = [

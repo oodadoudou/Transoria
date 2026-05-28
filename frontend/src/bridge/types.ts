@@ -758,6 +758,25 @@ export interface EpubConvertReport {
   results: EpubConvertReportResult[];
 }
 
+export interface EpubMetadataInfo {
+  input_path: string;
+  package_path: string;
+  title: string;
+  authors: string[];
+  cover_href: string;
+  cover_archive_path: string;
+  has_cover: boolean;
+}
+
+export interface EpubMetadataApplyResult {
+  input_path: string;
+  output_path: string;
+  title: string;
+  authors: string[];
+  cover_updated: boolean;
+  metadata_updated: boolean;
+}
+
 export interface ReplacementReportOccurrence {
   file_path: string;
   char_offset: number;

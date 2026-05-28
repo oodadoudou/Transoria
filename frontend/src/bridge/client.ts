@@ -15,6 +15,8 @@ import type {
   EpubConvertOptions,
   EpubConvertPlan,
   EpubConvertReport,
+  EpubMetadataApplyResult,
+  EpubMetadataInfo,
   EpubMergeAction,
   EpubMergeArtifacts,
   EpubMergeOptions,
@@ -110,6 +112,9 @@ export const dialogsBridge = {
   },
   chooseEpubFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, ["epub"]);
+  },
+  chooseImageFile(initialPath?: string): Promise<DialogPathResult> {
+    return nativeDialogs.chooseFile(initialPath, ["jpg", "jpeg", "png", "webp"]);
   },
   chooseSavePath(
     defaultFilename: string,
@@ -832,6 +837,27 @@ export const epubConvertBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("epub_convert.list_failed_subtasks", { task_id: taskId });
+  },
+};
+
+export const epubMetadataBridge = {
+  read(inputPath: string): Promise<EpubMetadataInfo> {
+    return call("epub_metadata.read", { input_path: inputPath });
+  },
+  apply(
+    inputPath: string,
+    outputPath: string,
+    title: string,
+    author: string,
+    coverPath: string,
+  ): Promise<EpubMetadataApplyResult> {
+    return call("epub_metadata.apply", {
+      input_path: inputPath,
+      output_path: outputPath,
+      title,
+      author,
+      cover_path: coverPath,
+    });
   },
 };
 

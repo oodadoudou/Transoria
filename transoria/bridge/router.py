@@ -143,6 +143,9 @@ def build_default_router(
     from transoria.bridge.handlers.epub_convert import (  # noqa: PLC0415
         register as register_epub_convert,
     )
+    from transoria.bridge.handlers.epub_metadata import (  # noqa: PLC0415
+        register as register_epub_metadata,
+    )
     from transoria.bridge.handlers.settings import (  # noqa: PLC0415
         default_store,
         register as register_settings,
@@ -233,6 +236,7 @@ def build_default_router(
     register_epub_compress(router, service=task_service)
     register_epub_merge(router, service=task_service)
     register_epub_convert(router, service=task_service)
+    register_epub_metadata(router)
     register_glossary_imports(router, cache_root=cache_root)
     register_translation_rules(router)
     register_proofreading(router, service=task_service)
