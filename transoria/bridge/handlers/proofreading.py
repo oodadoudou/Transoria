@@ -87,15 +87,18 @@ def _decode_response(text: str) -> dict[str, Any]:
     return payload
 
 
-def _collect_translations_from_cache(snapshot) -> dict[str, str]:
-    """Walk every subtask and union all ``translations`` maps. Later
-    subtasks (split children) override earlier ones because the
-    orchestrator's split path leaves the parent in SKIPPED with stale
-    translations and the children carry the authoritative output."""
+def _decoded_subtask_responses(snapshot) -> list[tuple[Any, dict[str, Any]]]:
+    return [
+        (subtask, _decode_response(subtask.response_content or ""))
+        for subtask in snapshot.subtasks
+    ]
 
+
+def _collect_translations_from_responses(
+    decoded_responses: list[tuple[Any, dict[str, Any]]],
+) -> dict[str, str]:
     translations: dict[str, str] = {}
-    for subtask in snapshot.subtasks:
-        payload = _decode_response(subtask.response_content or "")
+    for _subtask, payload in decoded_responses:
         records = payload.get("translations", {})
         if isinstance(records, dict):
             for seg_id, text in records.items():
@@ -103,27 +106,48 @@ def _collect_translations_from_cache(snapshot) -> dict[str, str]:
     return translations
 
 
+def _collect_translations_from_cache(snapshot) -> dict[str, str]:
+    """Walk every subtask and union all ``translations`` maps. Later
+    subtasks (split children) override earlier ones because the
+    orchestrator's split path leaves the parent in SKIPPED with stale
+    translations and the children carry the authoritative output."""
+
+    return _collect_translations_from_responses(_decoded_subtask_responses(snapshot))
+
+
 def _normalized_similarity_text(text: str) -> str:
     return _TEXT_SIMILARITY_NORMALIZE_RE.sub("", text)
+
+
+def _similarity_from_normalized(left_norm: str, right_norm: str) -> float:
+    if not left_norm or not right_norm:
+        return 0.0
+    if left_norm == right_norm:
+        return 1.0
+    return SequenceMatcher(None, left_norm, right_norm, autojunk=False).ratio()
 
 
 def _similarity(left: str, right: str) -> float:
     left_norm = _normalized_similarity_text(left)
     right_norm = _normalized_similarity_text(right)
-    if not left_norm or not right_norm:
+    return _similarity_from_normalized(left_norm, right_norm)
+
+
+def _overlap_ratio_from_normalized(left_norm: str, right_norm: str) -> float:
+    shortest = min(len(left_norm), len(right_norm))
+    if shortest == 0:
         return 0.0
-    return SequenceMatcher(None, left_norm, right_norm, autojunk=False).ratio()
+    if left_norm == right_norm:
+        return 1.0
+    matcher = SequenceMatcher(None, left_norm, right_norm, autojunk=False)
+    overlap = sum(block.size for block in matcher.get_matching_blocks())
+    return overlap / shortest
 
 
 def _overlap_ratio(left: str, right: str) -> float:
     left_norm = _normalized_similarity_text(left)
     right_norm = _normalized_similarity_text(right)
-    shortest = min(len(left_norm), len(right_norm))
-    if shortest == 0:
-        return 0.0
-    matcher = SequenceMatcher(None, left_norm, right_norm, autojunk=False)
-    overlap = sum(block.size for block in matcher.get_matching_blocks())
-    return overlap / shortest
+    return _overlap_ratio_from_normalized(left_norm, right_norm)
 
 
 def _normalized_length(text: str) -> int:
@@ -197,41 +221,136 @@ def _mark_possible_duplicate(item: dict[str, object]) -> None:
 
 
 def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
+    sources = [str(item.get("src", "")) for item in items]
+    destinations = [str(item.get("dst", "")).strip() for item in items]
+    source_norms = [_normalized_similarity_text(source) for source in sources]
+    destination_norms = [
+        _normalized_similarity_text(destination) for destination in destinations
+    ]
+    destination_lengths = [len(destination) for destination in destination_norms]
+    translation_metric_cache: dict[tuple[int, int], tuple[float, float, int]] = {}
+    source_overlap_cache: dict[tuple[int, int], float] = {}
+
+    def pair_key(left_index: int, right_index: int) -> tuple[int, int]:
+        return (
+            (left_index, right_index)
+            if left_index < right_index
+            else (right_index, left_index)
+        )
+
+    def translation_metrics(
+        left_index: int, right_index: int
+    ) -> tuple[float, float, int]:
+        key = pair_key(left_index, right_index)
+        cached = translation_metric_cache.get(key)
+        if cached is not None:
+            return cached
+        translation_similarity = _similarity_from_normalized(
+            destination_norms[left_index],
+            destination_norms[right_index],
+        )
+        translation_overlap = _overlap_ratio_from_normalized(
+            destination_norms[left_index],
+            destination_norms[right_index],
+        )
+        shortest_translation = min(
+            destination_lengths[left_index],
+            destination_lengths[right_index],
+        )
+        cached = (translation_similarity, translation_overlap, shortest_translation)
+        translation_metric_cache[key] = cached
+        return cached
+
+    def source_overlap(left_index: int, right_index: int) -> float:
+        key = pair_key(left_index, right_index)
+        cached = source_overlap_cache.get(key)
+        if cached is not None:
+            return cached
+        source_similarity = _similarity_from_normalized(
+            source_norms[left_index],
+            source_norms[right_index],
+        )
+        cached = max(
+            source_similarity,
+            _overlap_ratio_from_normalized(
+                source_norms[left_index],
+                source_norms[right_index],
+            ),
+        )
+        source_overlap_cache[key] = cached
+        return cached
+
+    def duplicate_match(left_index: int, right_index: int) -> bool:
+        (
+            translation_similarity,
+            translation_overlap,
+            shortest_translation,
+        ) = translation_metrics(left_index, right_index)
+        if shortest_translation < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH:
+            return False
+        if shortest_translation < _DUPLICATE_SCAN_SHORT_TEXT_LENGTH:
+            return (
+                translation_similarity >= _DUPLICATE_SCAN_SHORT_TRANSLATION_RATIO
+                and source_overlap(left_index, right_index)
+                < _DUPLICATE_SCAN_SHORT_SOURCE_RATIO
+            )
+        if (
+            translation_similarity < _DUPLICATE_SCAN_TRANSLATION_RATIO
+            and translation_overlap < _DUPLICATE_SCAN_OVERLAP_RATIO
+        ):
+            return False
+        overlap = source_overlap(left_index, right_index)
+        if overlap >= _DUPLICATE_SCAN_SOURCE_RATIO:
+            return False
+        if translation_similarity >= _DUPLICATE_SCAN_TRANSLATION_RATIO:
+            return True
+        return translation_overlap - overlap >= _DUPLICATE_SCAN_MIN_DELTA
+
+    def tagged_partner_match(left_index: int, right_index: int) -> bool:
+        (
+            translation_similarity,
+            translation_overlap,
+            shortest_translation,
+        ) = translation_metrics(left_index, right_index)
+        if shortest_translation < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH:
+            return False
+        if (
+            translation_similarity < _DUPLICATE_SCAN_TAGGED_PARTNER_RATIO
+            and translation_overlap < _DUPLICATE_SCAN_TAGGED_PARTNER_OVERLAP
+        ):
+            return False
+        return source_overlap(left_index, right_index) < _DUPLICATE_SCAN_SOURCE_RATIO
+
     tagged_indices = {
         index
         for index, item in enumerate(items)
         if _POSSIBLE_DUPLICATE_TAG in item.get("tags", [])
     }
     for index in tagged_indices:
-        left = items[index]
-        left_dst = str(left.get("dst", "")).strip()
-        left_src = str(left.get("src", ""))
         window_start = max(0, index - _DUPLICATE_SCAN_WINDOW)
         window_end = min(len(items), index + _DUPLICATE_SCAN_WINDOW + 1)
-        for right in items[window_start:window_end]:
-            if right is left:
+        for right_index in range(window_start, window_end):
+            if right_index == index:
                 continue
-            if _looks_like_tagged_duplicate_partner(
-                left_src,
-                str(right.get("src", "")),
-                left_dst,
-                str(right.get("dst", "")).strip(),
+            if (
+                min(destination_lengths[index], destination_lengths[right_index])
+                < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
             ):
-                _mark_possible_duplicate(right)
+                continue
+            if tagged_partner_match(index, right_index):
+                _mark_possible_duplicate(items[right_index])
 
     for left_index, left in enumerate(items):
-        left_dst = str(left.get("dst", "")).strip()
-        left_src = str(left.get("src", ""))
-        for right in items[left_index + 1 : left_index + 1 + _DUPLICATE_SCAN_WINDOW]:
-            right_dst = str(right.get("dst", "")).strip()
-            if _looks_like_duplicate_translation(
-                left_src,
-                str(right.get("src", "")),
-                left_dst,
-                right_dst,
+        right_end = min(len(items), left_index + _DUPLICATE_SCAN_WINDOW + 1)
+        for right_index in range(left_index + 1, right_end):
+            if (
+                min(destination_lengths[left_index], destination_lengths[right_index])
+                < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH
             ):
+                continue
+            if duplicate_match(left_index, right_index):
                 _mark_possible_duplicate(left)
-                _mark_possible_duplicate(right)
+                _mark_possible_duplicate(items[right_index])
 
 
 def _build_handlers(service: TaskService) -> dict[str, object]:
@@ -283,12 +402,12 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         # Aggregate per-segment data across subtasks. Latest write wins
         # (split children override the parent) so edits via update_segment
         # always read back consistently.
-        translations = _collect_translations_from_cache(snapshot)
+        decoded_responses = _decoded_subtask_responses(snapshot)
+        translations = _collect_translations_from_responses(decoded_responses)
         low_conf_ids: set[str] = set()
         seg_tags: dict[str, list[str]] = {}
         seg_reasons: dict[str, list[str]] = {}
-        for subtask in snapshot.subtasks:
-            resp = _decode_response(subtask.response_content or "")
+        for _subtask, resp in decoded_responses:
             entries = resp.get("low_confidence", [])
             if isinstance(entries, list):
                 for entry in entries:
@@ -532,6 +651,40 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         _flat, prepared_per_file = _prepare_segments(parsed_files, config)
 
         translations_by_segment = _collect_translations_from_cache(snapshot)
+        if snapshot.record.status is TaskStatus.COMPLETED:
+            mismatched_files = []
+            for parsed in parsed_files:
+                prepared_segments = prepared_per_file.get(parsed.file_index, [])
+                expected_segments = len(prepared_segments)
+                matched_segments = sum(
+                    1
+                    for segment in prepared_segments
+                    if segment.segment_id in translations_by_segment
+                )
+                if 0 < matched_segments < expected_segments:
+                    mismatched_files.append(
+                        {
+                            "path": str(parsed.document.path),
+                            "reason": (
+                                "completed task cache no longer matches parsed source "
+                                "segments"
+                            ),
+                            "code": "cache_segment_mismatch",
+                            "details": {
+                                "expected_segments": expected_segments,
+                                "matched_segments": matched_segments,
+                                "missing_segments": expected_segments
+                                - matched_segments,
+                            },
+                        }
+                    )
+            if mismatched_files:
+                return {
+                    "task_id": task_id,
+                    "translated_files": [],
+                    "bilingual_files": [],
+                    "failed_files": mismatched_files,
+                }
         try:
             translated, bilingual, failed = _write_outputs(
                 parsed_files,

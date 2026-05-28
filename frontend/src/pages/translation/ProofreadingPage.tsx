@@ -341,65 +341,73 @@ export function ProofreadingPage() {
   }, [activeTaskId]);
 
   // Sync draft when selection changes.
+  const itemsBySegmentId = useMemo(() => {
+    const map = new Map<string, ProofreadingItem>();
+    for (const item of snapshot?.items ?? []) {
+      map.set(item.segment_id, item);
+    }
+    return map;
+  }, [snapshot]);
+
   const selectedItem = useMemo<ProofreadingItem | null>(() => {
-    if (!snapshot || !selectedSegmentId) return null;
-    return (
-      snapshot.items.find((item) => item.segment_id === selectedSegmentId) ??
-      null
-    );
-  }, [snapshot, selectedSegmentId]);
+    if (!selectedSegmentId) return null;
+    return itemsBySegmentId.get(selectedSegmentId) ?? null;
+  }, [itemsBySegmentId, selectedSegmentId]);
 
   useEffect(() => {
     setDraftDst(selectedItem?.dst ?? "");
   }, [selectedItem]);
 
-  const filteredItems = useMemo(() => {
+  const sortedItems = useMemo(() => {
     if (!snapshot) return [] as ProofreadingItem[];
+    return [...snapshot.items].sort(
+      (left, right) =>
+        riskRank(left) - riskRank(right) ||
+        compareSegmentIds(left.segment_id, right.segment_id),
+    );
+  }, [snapshot]);
+
+  const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return [...snapshot.items]
-      .filter((item) => {
-        if (filters.has("low_conf") && !item.low_confidence) return false;
-        if (
-          filters.has("source_residue") &&
-          !item.tags?.includes("source_residue")
-        )
-          return false;
-        if (
-          filters.has("possible_duplicate") &&
-          !item.tags?.includes("possible_duplicate")
-        )
-          return false;
-        if (filters.has("untranslated") && !isUntranslated(item)) return false;
-        if (
-          filters.has("too_short") &&
-          !hasReason(item, "length ratio", "< min")
-        ) {
-          return false;
-        }
-        if (
-          filters.has("too_long") &&
-          !hasReason(item, "length ratio", "> max")
-        ) {
-          return false;
-        }
-        if (
-          filters.has("format_rescue") &&
-          !hasReason(item, "positional_rescue_after_format_failure")
-        ) {
-          return false;
-        }
-        if (!q) return true;
-        return (
-          item.src.toLowerCase().includes(q) ||
-          item.dst.toLowerCase().includes(q)
-        );
-      })
-      .sort(
-        (left, right) =>
-          riskRank(left) - riskRank(right) ||
-          compareSegmentIds(left.segment_id, right.segment_id),
+    if (!q && filters.size === 0) return sortedItems;
+    return sortedItems.filter((item) => {
+      if (filters.has("low_conf") && !item.low_confidence) return false;
+      if (
+        filters.has("source_residue") &&
+        !item.tags?.includes("source_residue")
+      )
+        return false;
+      if (
+        filters.has("possible_duplicate") &&
+        !item.tags?.includes("possible_duplicate")
+      )
+        return false;
+      if (filters.has("untranslated") && !isUntranslated(item)) return false;
+      if (
+        filters.has("too_short") &&
+        !hasReason(item, "length ratio", "< min")
+      ) {
+        return false;
+      }
+      if (
+        filters.has("too_long") &&
+        !hasReason(item, "length ratio", "> max")
+      ) {
+        return false;
+      }
+      if (
+        filters.has("format_rescue") &&
+        !hasReason(item, "positional_rescue_after_format_failure")
+      ) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        item.src.toLowerCase().includes(q) ||
+        item.dst.toLowerCase().includes(q)
       );
-  }, [snapshot, search, filters]);
+    });
+  }, [sortedItems, search, filters]);
 
   const dirty = selectedItem !== null && draftDst !== (selectedItem?.dst ?? "");
 
@@ -959,6 +967,37 @@ export function ProofreadingPage() {
     if (nextIndex >= 0) virtual.scrollToIndex(nextIndex);
   };
 
+  const riskCounts = useMemo(() => {
+    const counts = {
+      lowConf: 0,
+      residue: 0,
+      possibleDuplicate: 0,
+      untranslated: 0,
+      tooShort: 0,
+      tooLong: 0,
+      formatRescue: 0,
+      total: snapshot?.items.length ?? 0,
+    };
+    if (!snapshot) return counts;
+    for (const item of snapshot.items) {
+      if (item.low_confidence) counts.lowConf += 1;
+      if (item.tags?.includes("source_residue")) counts.residue += 1;
+      if (item.tags?.includes("possible_duplicate")) {
+        counts.possibleDuplicate += 1;
+      }
+      if (isUntranslated(item)) counts.untranslated += 1;
+      if (hasReason(item, "too", "short")) counts.tooShort += 1;
+      if (hasReason(item, "too", "long")) counts.tooLong += 1;
+      if (
+        hasReason(item, "format", "rescue") ||
+        hasReason(item, "format", "fallback")
+      ) {
+        counts.formatRescue += 1;
+      }
+    }
+    return counts;
+  }, [snapshot]);
+
   if (tasks !== null && tasks.length === 0) {
     return (
       <Panel title={m.title} subtitle={m.sub}>
@@ -967,28 +1006,14 @@ export function ProofreadingPage() {
     );
   }
 
-  const lowConfCount =
-    snapshot?.items.filter((item) => item.low_confidence).length ?? 0;
-  const residueCount =
-    snapshot?.items.filter((item) => item.tags?.includes("source_residue"))
-      .length ?? 0;
-  const possibleDuplicateCount =
-    snapshot?.items.filter((item) => item.tags?.includes("possible_duplicate"))
-      .length ?? 0;
-  const untranslatedCount =
-    snapshot?.items.filter((item) => isUntranslated(item)).length ?? 0;
-  const tooShortCount =
-    snapshot?.items.filter((item) => hasReason(item, "too", "short")).length ??
-    0;
-  const tooLongCount =
-    snapshot?.items.filter((item) => hasReason(item, "too", "long")).length ?? 0;
-  const formatRescueCount =
-    snapshot?.items.filter(
-      (item) =>
-        hasReason(item, "format", "rescue") ||
-        hasReason(item, "format", "fallback"),
-    ).length ?? 0;
-  const totalCount = snapshot?.items.length ?? 0;
+  const lowConfCount = riskCounts.lowConf;
+  const residueCount = riskCounts.residue;
+  const possibleDuplicateCount = riskCounts.possibleDuplicate;
+  const untranslatedCount = riskCounts.untranslated;
+  const tooShortCount = riskCounts.tooShort;
+  const tooLongCount = riskCounts.tooLong;
+  const formatRescueCount = riskCounts.formatRescue;
+  const totalCount = riskCounts.total;
   const riskCards: Array<{
     key: ProofreadingFilterKey;
     label: string;
