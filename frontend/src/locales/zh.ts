@@ -785,8 +785,6 @@ export const zh: Messages = {
       filterOnlySourceResidue: "原文残留",
       filterOnlyPossibleDuplicate: "疑似重复",
       filterOnlyUntranslated: "未译",
-      filterOnlyTooShort: "过短",
-      filterOnlyTooLong: "过长",
       filterOnlyFormatRescue: "格式兜底",
       filterAll: "全部",
       nextRiskAction: "下一条风险",

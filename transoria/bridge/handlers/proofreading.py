@@ -127,6 +127,22 @@ def _similarity_from_normalized(left_norm: str, right_norm: str) -> float:
     return SequenceMatcher(None, left_norm, right_norm, autojunk=False).ratio()
 
 
+def _similarity_and_overlap_from_normalized(
+    left_norm: str, right_norm: str
+) -> tuple[float, float]:
+    if not left_norm or not right_norm:
+        return (0.0, 0.0)
+    if left_norm == right_norm:
+        return (1.0, 1.0)
+    matcher = SequenceMatcher(None, left_norm, right_norm, autojunk=False)
+    blocks = matcher.get_matching_blocks()
+    matches = sum(block.size for block in blocks)
+    similarity = matcher.ratio()
+    shortest = min(len(left_norm), len(right_norm))
+    overlap = matches / shortest if shortest > 0 else 0.0
+    return (similarity, overlap)
+
+
 def _similarity(left: str, right: str) -> float:
     left_norm = _normalized_similarity_text(left)
     right_norm = _normalized_similarity_text(right)
@@ -245,13 +261,11 @@ def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
         cached = translation_metric_cache.get(key)
         if cached is not None:
             return cached
-        translation_similarity = _similarity_from_normalized(
-            destination_norms[left_index],
-            destination_norms[right_index],
-        )
-        translation_overlap = _overlap_ratio_from_normalized(
-            destination_norms[left_index],
-            destination_norms[right_index],
+        translation_similarity, translation_overlap = (
+            _similarity_and_overlap_from_normalized(
+                destination_norms[left_index],
+                destination_norms[right_index],
+            )
         )
         shortest_translation = min(
             destination_lengths[left_index],
@@ -266,17 +280,13 @@ def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
         cached = source_overlap_cache.get(key)
         if cached is not None:
             return cached
-        source_similarity = _similarity_from_normalized(
-            source_norms[left_index],
-            source_norms[right_index],
-        )
-        cached = max(
-            source_similarity,
-            _overlap_ratio_from_normalized(
+        source_similarity, source_common_overlap = (
+            _similarity_and_overlap_from_normalized(
                 source_norms[left_index],
                 source_norms[right_index],
-            ),
+            )
         )
+        cached = max(source_similarity, source_common_overlap)
         source_overlap_cache[key] = cached
         return cached
 

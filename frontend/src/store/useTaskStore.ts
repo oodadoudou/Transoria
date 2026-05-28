@@ -171,8 +171,6 @@ export type ProofreadingFilterKey =
   | "source_residue"
   | "possible_duplicate"
   | "untranslated"
-  | "too_short"
-  | "too_long"
   | "format_rescue";
 
 export interface ProofreadingLaunchState {

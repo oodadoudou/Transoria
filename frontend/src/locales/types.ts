@@ -550,8 +550,6 @@ export interface Messages {
       filterOnlySourceResidue: string;
       filterOnlyPossibleDuplicate: string;
       filterOnlyUntranslated: string;
-      filterOnlyTooShort: string;
-      filterOnlyTooLong: string;
       filterOnlyFormatRescue: string;
       filterAll: string;
       nextRiskAction: string;

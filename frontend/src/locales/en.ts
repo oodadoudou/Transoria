@@ -800,8 +800,6 @@ export const en: Messages = {
       filterOnlySourceResidue: "Source residue",
       filterOnlyPossibleDuplicate: "Possible duplicate",
       filterOnlyUntranslated: "Untranslated",
-      filterOnlyTooShort: "Too short",
-      filterOnlyTooLong: "Too long",
       filterOnlyFormatRescue: "Format rescue",
       filterAll: "All",
       nextRiskAction: "Next risk",

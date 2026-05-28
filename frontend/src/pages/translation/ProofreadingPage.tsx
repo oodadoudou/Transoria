@@ -51,6 +51,34 @@ interface RetranslateUndo {
   entries: Array<{ segmentId: string; dst: string }>;
 }
 
+interface ProofreadingItemMeta {
+  rank: number;
+  fileIndex: number;
+  segmentIndex: number;
+  sourceResidue: boolean;
+  possibleDuplicate: boolean;
+  untranslated: boolean;
+  formatRescue: boolean;
+}
+
+interface RiskCounts {
+  lowConf: number;
+  residue: number;
+  possibleDuplicate: number;
+  untranslated: number;
+  formatRescue: number;
+  total: number;
+}
+
+const EMPTY_RISK_COUNTS: RiskCounts = {
+  lowConf: 0,
+  residue: 0,
+  possibleDuplicate: 0,
+  untranslated: 0,
+  formatRescue: 0,
+  total: 0,
+};
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -83,18 +111,16 @@ function isUntranslated(item: ProofreadingItem): boolean {
 }
 
 function hasReason(item: ProofreadingItem, ...needles: string[]): boolean {
-  const reasons = item.reasons ?? [];
-  return reasons.some((reason) =>
-    needles.every((needle) => reason.toLowerCase().includes(needle)),
-  );
+  return hasReasonText(item.reasons, ...needles);
 }
 
-function riskRank(item: ProofreadingItem): number {
-  if (item.tags?.includes("source_residue")) return 0;
-  if (item.tags?.includes("possible_duplicate")) return 1;
-  if (isUntranslated(item)) return 2;
-  if (item.low_confidence) return 3;
-  return 4;
+function hasReasonText(
+  reasons: string[] | undefined,
+  ...needles: string[]
+): boolean {
+  return (reasons ?? []).some((reason) =>
+    needles.every((needle) => reason.toLowerCase().includes(needle)),
+  );
 }
 
 function segmentSortKey(segmentId: string): [number, number] {
@@ -340,61 +366,72 @@ export function ProofreadingPage() {
     };
   }, [activeTaskId]);
 
-  // Sync draft when selection changes.
-  const itemsBySegmentId = useMemo(() => {
-    const map = new Map<string, ProofreadingItem>();
+  const proofreadingIndex = useMemo(() => {
+    const itemsBySegmentId = new Map<string, ProofreadingItem>();
+    const metaBySegmentId = new Map<string, ProofreadingItemMeta>();
+    const riskCounts = { ...EMPTY_RISK_COUNTS, total: snapshot?.items.length ?? 0 };
     for (const item of snapshot?.items ?? []) {
-      map.set(item.segment_id, item);
+      itemsBySegmentId.set(item.segment_id, item);
+      const [fileIndex, segmentIndex] = segmentSortKey(item.segment_id);
+      const sourceResidue = item.tags?.includes("source_residue") ?? false;
+      const possibleDuplicate =
+        item.tags?.includes("possible_duplicate") ?? false;
+      const untranslated = isUntranslated(item);
+      const formatRescue =
+        hasReasonText(item.reasons, "format", "rescue") ||
+        hasReasonText(item.reasons, "format", "fallback");
+      let rank = 4;
+      if (sourceResidue) rank = 0;
+      else if (possibleDuplicate) rank = 1;
+      else if (untranslated) rank = 2;
+      else if (item.low_confidence) rank = 3;
+      metaBySegmentId.set(item.segment_id, {
+        rank,
+        fileIndex,
+        segmentIndex,
+        sourceResidue,
+        possibleDuplicate,
+        untranslated,
+        formatRescue,
+      });
+      if (item.low_confidence) riskCounts.lowConf += 1;
+      if (sourceResidue) riskCounts.residue += 1;
+      if (possibleDuplicate) riskCounts.possibleDuplicate += 1;
+      if (untranslated) riskCounts.untranslated += 1;
+      if (formatRescue) riskCounts.formatRescue += 1;
     }
-    return map;
+    const sortedItems = [...(snapshot?.items ?? [])].sort((left, right) => {
+      const leftMeta = metaBySegmentId.get(left.segment_id);
+      const rightMeta = metaBySegmentId.get(right.segment_id);
+      if (!leftMeta || !rightMeta) return 0;
+      return (
+        leftMeta.rank - rightMeta.rank ||
+        leftMeta.fileIndex - rightMeta.fileIndex ||
+        leftMeta.segmentIndex - rightMeta.segmentIndex
+      );
+    });
+    return { itemsBySegmentId, metaBySegmentId, riskCounts, sortedItems };
   }, [snapshot]);
 
+  // Sync draft when selection changes.
   const selectedItem = useMemo<ProofreadingItem | null>(() => {
     if (!selectedSegmentId) return null;
-    return itemsBySegmentId.get(selectedSegmentId) ?? null;
-  }, [itemsBySegmentId, selectedSegmentId]);
+    return proofreadingIndex.itemsBySegmentId.get(selectedSegmentId) ?? null;
+  }, [proofreadingIndex, selectedSegmentId]);
 
   useEffect(() => {
     setDraftDst(selectedItem?.dst ?? "");
   }, [selectedItem]);
 
-  const sortedItems = useMemo(() => {
-    if (!snapshot) return [] as ProofreadingItem[];
-    return [...snapshot.items].sort(
-      (left, right) =>
-        riskRank(left) - riskRank(right) ||
-        compareSegmentIds(left.segment_id, right.segment_id),
-    );
-  }, [snapshot]);
-
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q && filters.size === 0) return sortedItems;
-    return sortedItems.filter((item) => {
+    if (!q && filters.size === 0) return proofreadingIndex.sortedItems;
+    return proofreadingIndex.sortedItems.filter((item) => {
+      const meta = proofreadingIndex.metaBySegmentId.get(item.segment_id);
       if (filters.has("low_conf") && !item.low_confidence) return false;
-      if (
-        filters.has("source_residue") &&
-        !item.tags?.includes("source_residue")
-      )
-        return false;
-      if (
-        filters.has("possible_duplicate") &&
-        !item.tags?.includes("possible_duplicate")
-      )
-        return false;
-      if (filters.has("untranslated") && !isUntranslated(item)) return false;
-      if (
-        filters.has("too_short") &&
-        !hasReason(item, "length ratio", "< min")
-      ) {
-        return false;
-      }
-      if (
-        filters.has("too_long") &&
-        !hasReason(item, "length ratio", "> max")
-      ) {
-        return false;
-      }
+      if (filters.has("source_residue") && !meta?.sourceResidue) return false;
+      if (filters.has("possible_duplicate") && !meta?.possibleDuplicate) return false;
+      if (filters.has("untranslated") && !meta?.untranslated) return false;
       if (
         filters.has("format_rescue") &&
         !hasReason(item, "positional_rescue_after_format_failure")
@@ -407,7 +444,7 @@ export function ProofreadingPage() {
         item.dst.toLowerCase().includes(q)
       );
     });
-  }, [sortedItems, search, filters]);
+  }, [proofreadingIndex, search, filters]);
 
   const dirty = selectedItem !== null && draftDst !== (selectedItem?.dst ?? "");
 
@@ -420,6 +457,14 @@ export function ProofreadingPage() {
   const endIndex = virtual.endIndex;
   const visibleItems = filteredItems.slice(startIndex, endIndex);
   const selectedCount = selectedSegmentIds.size;
+  const filteredHasRisk = useMemo(
+    () =>
+      filteredItems.some(
+        (item) =>
+          (proofreadingIndex.metaBySegmentId.get(item.segment_id)?.rank ?? 4) < 4,
+      ),
+    [filteredItems, proofreadingIndex],
+  );
 
   const handleSave = async () => {
     if (!activeTaskId || !selectedItem || !dirty) return;
@@ -958,7 +1003,10 @@ export function ProofreadingPage() {
       ...filteredItems.slice(start),
       ...filteredItems.slice(0, start),
     ];
-    const next = ordered.find((item) => riskRank(item) < 4);
+    const next = ordered.find(
+      (item) =>
+        (proofreadingIndex.metaBySegmentId.get(item.segment_id)?.rank ?? 4) < 4,
+    );
     if (!next) return;
     const nextIndex = filteredItems.findIndex(
       (item) => item.segment_id === next.segment_id,
@@ -966,37 +1014,6 @@ export function ProofreadingPage() {
     selectSingleSegment(next.segment_id);
     if (nextIndex >= 0) virtual.scrollToIndex(nextIndex);
   };
-
-  const riskCounts = useMemo(() => {
-    const counts = {
-      lowConf: 0,
-      residue: 0,
-      possibleDuplicate: 0,
-      untranslated: 0,
-      tooShort: 0,
-      tooLong: 0,
-      formatRescue: 0,
-      total: snapshot?.items.length ?? 0,
-    };
-    if (!snapshot) return counts;
-    for (const item of snapshot.items) {
-      if (item.low_confidence) counts.lowConf += 1;
-      if (item.tags?.includes("source_residue")) counts.residue += 1;
-      if (item.tags?.includes("possible_duplicate")) {
-        counts.possibleDuplicate += 1;
-      }
-      if (isUntranslated(item)) counts.untranslated += 1;
-      if (hasReason(item, "too", "short")) counts.tooShort += 1;
-      if (hasReason(item, "too", "long")) counts.tooLong += 1;
-      if (
-        hasReason(item, "format", "rescue") ||
-        hasReason(item, "format", "fallback")
-      ) {
-        counts.formatRescue += 1;
-      }
-    }
-    return counts;
-  }, [snapshot]);
 
   if (tasks !== null && tasks.length === 0) {
     return (
@@ -1006,14 +1023,12 @@ export function ProofreadingPage() {
     );
   }
 
-  const lowConfCount = riskCounts.lowConf;
-  const residueCount = riskCounts.residue;
-  const possibleDuplicateCount = riskCounts.possibleDuplicate;
-  const untranslatedCount = riskCounts.untranslated;
-  const tooShortCount = riskCounts.tooShort;
-  const tooLongCount = riskCounts.tooLong;
-  const formatRescueCount = riskCounts.formatRescue;
-  const totalCount = riskCounts.total;
+  const lowConfCount = proofreadingIndex.riskCounts.lowConf;
+  const residueCount = proofreadingIndex.riskCounts.residue;
+  const possibleDuplicateCount = proofreadingIndex.riskCounts.possibleDuplicate;
+  const untranslatedCount = proofreadingIndex.riskCounts.untranslated;
+  const formatRescueCount = proofreadingIndex.riskCounts.formatRescue;
+  const totalCount = proofreadingIndex.riskCounts.total;
   const riskCards: Array<{
     key: ProofreadingFilterKey;
     label: string;
@@ -1038,16 +1053,6 @@ export function ProofreadingPage() {
       key: "untranslated",
       label: m.filterOnlyUntranslated,
       count: untranslatedCount,
-    },
-    {
-      key: "too_short",
-      label: m.filterOnlyTooShort,
-      count: tooShortCount,
-    },
-    {
-      key: "too_long",
-      label: m.filterOnlyTooLong,
-      count: tooLongCount,
     },
     {
       key: "format_rescue",
@@ -1243,22 +1248,6 @@ export function ProofreadingPage() {
           </button>
           <button
             type="button"
-            className={`${styles.filterChip} ${filters.has("too_short") ? styles.filterChipActive : ""}`.trim()}
-            aria-pressed={filters.has("too_short")}
-            onClick={() => toggleFilter("too_short")}
-          >
-            {m.filterOnlyTooShort}
-          </button>
-          <button
-            type="button"
-            className={`${styles.filterChip} ${filters.has("too_long") ? styles.filterChipActive : ""}`.trim()}
-            aria-pressed={filters.has("too_long")}
-            onClick={() => toggleFilter("too_long")}
-          >
-            {m.filterOnlyTooLong}
-          </button>
-          <button
-            type="button"
             className={`${styles.filterChip} ${filters.has("format_rescue") ? styles.filterChipActive : ""}`.trim()}
             aria-pressed={filters.has("format_rescue")}
             onClick={() => toggleFilter("format_rescue")}
@@ -1269,7 +1258,7 @@ export function ProofreadingPage() {
             type="button"
             className={styles.filterChip}
             onClick={handleSelectNextRisk}
-            disabled={!filteredItems.some((item) => riskRank(item) < 4)}
+            disabled={!filteredHasRisk}
           >
             {m.nextRiskAction}
           </button>
