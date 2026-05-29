@@ -754,7 +754,8 @@ def _build_book_nav_entries(
     html_href_map: Mapping[str, str],
     wrap_source: bool,
 ) -> tuple[_NavEntry, ...]:
-    first_content = next((item for item in copied_html if not item.is_cover), copied_html[0])
+    first_spine_item = copied_html[0]
+    first_content = next((item for item in copied_html if not item.is_cover), first_spine_item)
     original_entries = _extract_original_nav_entries(
         archive=archive,
         manifest_items=manifest_items,
@@ -762,15 +763,15 @@ def _build_book_nav_entries(
         html_href_map=html_href_map,
     )
     children = _clean_nav_entries(original_entries)
-    if len(children) <= 1:
-        children = _fallback_nav_children(book_title, copied_html)
     if not wrap_source:
+        if len(children) <= 1:
+            children = _fallback_nav_children(book_title, copied_html)
         if children:
             return children
         return (_NavEntry(title=first_content.title or book_title, href=first_content.new_href),)
-    if len(children) <= 1:
+    if _count_nav_entries(original_entries) <= 1:
         children = ()
-    return (_NavEntry(title=book_title, href=first_content.new_href, children=children),)
+    return (_NavEntry(title=book_title, href=first_spine_item.new_href, children=children),)
 
 
 def _extract_original_nav_entries(
@@ -944,6 +945,10 @@ def _clean_nav_entries(entries: Iterable[_NavEntry]) -> tuple[_NavEntry, ...]:
         else:
             rows.append(_NavEntry(title=entry.title, href=entry.href, children=children))
     return tuple(rows)
+
+
+def _count_nav_entries(entries: Iterable[_NavEntry]) -> int:
+    return sum(1 + _count_nav_entries(entry.children) for entry in entries)
 
 
 def _same_nav_target(left: _NavEntry, right: _NavEntry) -> bool:
