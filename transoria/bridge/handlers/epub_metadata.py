@@ -5,7 +5,11 @@ from typing import Mapping
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
-from transoria.tools.epub_metadata import apply_epub_metadata, read_epub_metadata
+from transoria.tools.epub_metadata import (
+    apply_epub_metadata,
+    read_cover_preview,
+    read_epub_metadata,
+)
 
 
 def register(router: BridgeRouter) -> None:
@@ -29,8 +33,17 @@ def register(router: BridgeRouter) -> None:
         except (FileNotFoundError, ValueError) as exc:
             raise BridgeError.invalid_argument(str(exc)) from exc
 
+    def cover_preview(payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            return {
+                "data_url": read_cover_preview(expect_string(payload, "cover_path"))
+            }
+        except (FileNotFoundError, ValueError) as exc:
+            raise BridgeError.invalid_argument(str(exc)) from exc
+
     router.register("epub_metadata.read", read)
     router.register("epub_metadata.apply", apply)
+    router.register("epub_metadata.cover_preview", cover_preview)
 
 
 __all__ = ["register"]

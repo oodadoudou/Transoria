@@ -844,6 +844,9 @@ export const epubMetadataBridge = {
   read(inputPath: string): Promise<EpubMetadataInfo> {
     return call("epub_metadata.read", { input_path: inputPath });
   },
+  coverPreview(coverPath: string): Promise<{ data_url: string }> {
+    return call("epub_metadata.cover_preview", { cover_path: coverPath });
+  },
   apply(
     inputPath: string,
     outputPath: string,

@@ -766,6 +766,7 @@ export interface EpubMetadataInfo {
   cover_href: string;
   cover_archive_path: string;
   has_cover: boolean;
+  cover_preview_data_url: string;
 }
 
 export interface EpubMetadataApplyResult {

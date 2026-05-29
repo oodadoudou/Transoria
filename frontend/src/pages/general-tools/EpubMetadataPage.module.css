@@ -187,10 +187,11 @@
 }
 
 .coverBox {
-  min-height: 280px;
+  min-height: 360px;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   gap: 8px;
   border: 1px dashed var(--hairline-strong, #d8d0c5);
   border-radius: 8px;
@@ -198,6 +199,14 @@
   color: var(--muted, #7a7166);
   text-align: center;
   padding: 16px;
+}
+
+.coverBox img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 6px;
+  object-fit: contain;
+  box-shadow: 0 10px 24px rgb(42 38 32 / 0.14);
 }
 
 .coverBox span {
@@ -210,6 +219,31 @@
   color: var(--muted, #7a7166);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.generatedOutput {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.generatedOutput span {
+  color: var(--muted, #7a7166);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.generatedOutput code {
+  display: block;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--hairline, #e8dfd4);
+  border-radius: 8px;
+  background: var(--panel-soft, #f5f0e9);
+  color: var(--ink, #2a2620);
+  font-size: 12px;
+  padding: 8px 10px;
 }
 
 .checkboxRow {
@@ -242,6 +276,10 @@
   }
 
   .coverBox {
-    min-height: 160px;
+    min-height: 220px;
+  }
+
+  .coverBox img {
+    max-height: 190px;
   }
 }

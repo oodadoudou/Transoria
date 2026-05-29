@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import io
 import os
@@ -38,6 +39,7 @@ class EpubMetadataInfo:
     cover_href: str
     cover_archive_path: str
     has_cover: bool
+    cover_preview_data_url: str
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -48,6 +50,7 @@ class EpubMetadataInfo:
             "cover_href": self.cover_href,
             "cover_archive_path": self.cover_archive_path,
             "has_cover": self.has_cover,
+            "cover_preview_data_url": self.cover_preview_data_url,
         }
 
 
@@ -93,6 +96,7 @@ def read_epub_metadata(input_path: str | Path) -> EpubMetadataInfo:
             if (text := (creator.text or "").strip())
         )
         cover = _find_cover(root, package_path)
+        cover_preview_data_url = _cover_preview_from_archive(archive, cover)
     return EpubMetadataInfo(
         input_path=epub_path,
         package_path=package_path,
@@ -101,7 +105,18 @@ def read_epub_metadata(input_path: str | Path) -> EpubMetadataInfo:
         cover_href=cover.href if cover else "",
         cover_archive_path=cover.archive_path if cover else "",
         has_cover=cover is not None,
+        cover_preview_data_url=cover_preview_data_url,
     )
+
+
+def read_cover_preview(image_path: str | Path) -> str:
+    path = Path(image_path).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError(f"Cover image not found: {path}")
+    preview = _cover_preview_data_url(path.read_bytes())
+    if not preview:
+        raise ValueError(f"Unsupported cover image: {path}")
+    return preview
 
 
 def apply_epub_metadata(
@@ -224,6 +239,41 @@ def _temporary_epub_path(target: Path) -> Path:
     temp_path = Path(handle.name)
     temp_path.unlink()
     return temp_path
+
+
+def _cover_preview_from_archive(
+    archive: zipfile.ZipFile,
+    cover: _CoverTarget | None,
+) -> str:
+    if cover is None:
+        return ""
+    try:
+        raw = archive.read(cover.archive_path)
+    except KeyError:
+        return ""
+    return _cover_preview_data_url(raw)
+
+
+def _cover_preview_data_url(raw: bytes) -> str:
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            image.thumbnail((520, 760), Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            has_alpha = image.mode in {"RGBA", "LA"} or "transparency" in image.info
+            if has_alpha:
+                if image.mode != "RGBA":
+                    image = image.convert("RGBA")
+                image.save(output, format="PNG", optimize=True)
+                media_type = "image/png"
+            else:
+                if image.mode not in {"RGB", "L"}:
+                    image = image.convert("RGB")
+                image.save(output, format="JPEG", quality=86, optimize=True)
+                media_type = "image/jpeg"
+    except (OSError, ValueError):
+        return ""
+    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
 
 
 def _validate_epub_path(path: str | Path) -> Path:
@@ -485,5 +535,6 @@ __all__ = [
     "EpubMetadataApplyResult",
     "EpubMetadataInfo",
     "apply_epub_metadata",
+    "read_cover_preview",
     "read_epub_metadata",
 ]

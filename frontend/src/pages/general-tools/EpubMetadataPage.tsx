@@ -14,7 +14,7 @@ import { useLocalState } from "@/utils/localState";
 import styles from "./EpubMetadataPage.module.css";
 
 const INPUT_LOCAL_KEY = "transoria.generalTools.epubMetadata.inputPath";
-const OUTPUT_LOCAL_KEY = "transoria.generalTools.epubMetadata.outputPath";
+const OUTPUT_FOLDER_LOCAL_KEY = "transoria.generalTools.epubMetadata.outputFolder";
 const COVER_LOCAL_KEY = "transoria.generalTools.epubMetadata.coverPath";
 
 function splitPath(path: string): { dir: string; name: string } {
@@ -23,13 +23,17 @@ function splitPath(path: string): { dir: string; name: string } {
   return { dir: path.slice(0, index + 1), name: path.slice(index + 1) };
 }
 
-function defaultOutputPath(inputPath: string): string {
-  return inputPath.trim();
+function defaultOutputFolder(inputPath: string): string {
+  return outputFolder(inputPath.trim());
 }
 
-function defaultSaveName(inputPath: string): string {
-  const { name } = splitPath(inputPath.trim());
-  return name || "metadata.epub";
+function filenameFromTitle(title: string, inputPath: string): string {
+  const fallback = splitPath(inputPath.trim()).name.replace(/\.epub$/i, "");
+  const stem = (title.trim() || fallback || "metadata")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${stem || "metadata"}.epub`;
 }
 
 function outputFolder(path: string): string {
@@ -47,11 +51,22 @@ function isSamePath(left: string, right: string): boolean {
   return Boolean(normalizedLeft && normalizedLeft === normalizedRight);
 }
 
+function joinPath(dir: string, name: string): string {
+  const folder = dir.trim();
+  if (!folder) return name;
+  const separator = folder.includes("\\") && !folder.includes("/") ? "\\" : "/";
+  return `${folder.replace(/[\\/]+$/, "")}${separator}${name}`;
+}
+
 export function EpubMetadataPage() {
   const text = useMessages().epubMetadataTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
-  const [outputPath, setOutputPath] = useLocalState(OUTPUT_LOCAL_KEY, "");
+  const [outputFolderPath, setOutputFolderPath] = useLocalState(
+    OUTPUT_FOLDER_LOCAL_KEY,
+    "",
+  );
   const [coverPath, setCoverPath] = useLocalState(COVER_LOCAL_KEY, "");
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState("");
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [compressOutput, setCompressOutput] = useState(false);
@@ -63,7 +78,12 @@ export function EpubMetadataPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [confirmOverwriteOpen, setConfirmOverwriteOpen] = useState(false);
 
-  const resolvedOutputPath = outputPath.trim() || defaultOutputPath(inputPath);
+  const resolvedOutputFolder =
+    outputFolderPath.trim() || defaultOutputFolder(inputPath);
+  const resolvedOutputPath = joinPath(
+    resolvedOutputFolder,
+    filenameFromTitle(title, inputPath),
+  );
 
   const loadMetadata = async (path: string, resetOutputPath = false) => {
     setActionError(null);
@@ -77,8 +97,9 @@ export function EpubMetadataPage() {
       setTitle(next.title);
       setAuthor(next.authors.join(", "));
       setCoverPath("");
-      if (resetOutputPath || !outputPath.trim()) {
-        setOutputPath(defaultOutputPath(path));
+      setCoverPreviewUrl(next.cover_preview_data_url);
+      if (resetOutputPath || !outputFolderPath.trim()) {
+        setOutputFolderPath(defaultOutputFolder(path));
       }
       setEditorOpen(true);
     } catch (error) {
@@ -101,13 +122,12 @@ export function EpubMetadataPage() {
     }
   };
 
-  const handleChooseOutput = async () => {
+  const handleChooseOutputFolder = async () => {
     try {
-      const selected = await dialogsBridge.chooseSavePath(
-        defaultSaveName(inputPath),
-        ["epub"],
+      const selected = await dialogsBridge.chooseOutputDirectory(
+        resolvedOutputFolder || undefined,
       );
-      if (selected.path) setOutputPath(selected.path);
+      if (selected.path) setOutputFolderPath(selected.path);
     } catch (error) {
       if (BridgeError.isBridgeError(error)) setActionError(error);
     }
@@ -116,7 +136,11 @@ export function EpubMetadataPage() {
   const handleChooseCover = async () => {
     try {
       const selected = await dialogsBridge.chooseImageFile(coverPath || undefined);
-      if (selected.path) setCoverPath(selected.path);
+      if (selected.path) {
+        setCoverPath(selected.path);
+        const preview = await epubMetadataBridge.coverPreview(selected.path);
+        setCoverPreviewUrl(preview.data_url);
+      }
     } catch (error) {
       if (BridgeError.isBridgeError(error)) setActionError(error);
     }
@@ -173,7 +197,7 @@ export function EpubMetadataPage() {
       await dialogsBridge.revealFile(path);
       setFeedback(null);
     } catch {
-      const folder = outputFolder(path);
+      const folder = outputFolder(path) || resolvedOutputFolder;
       if (!folder) return;
       await dialogsBridge.openDirectory(folder);
     }
@@ -193,19 +217,6 @@ export function EpubMetadataPage() {
               />
               <Pill variant="ghost" onClick={handleChooseInput} disabled={loading}>
                 {text.chooseEpub}
-              </Pill>
-            </div>
-          </label>
-          <label className={styles.field}>
-            <span>{text.outputFile}</span>
-            <div className={styles.fileRow}>
-              <input
-                value={outputPath}
-                onChange={(event) => setOutputPath(event.target.value)}
-                placeholder={defaultOutputPath(inputPath)}
-              />
-              <Pill variant="ghost" onClick={handleChooseOutput} disabled={loading}>
-                {text.chooseOutput}
               </Pill>
             </div>
           </label>
@@ -279,7 +290,11 @@ export function EpubMetadataPage() {
             <div className={styles.dialogBody}>
               <div className={styles.coverPanel}>
                 <div className={styles.coverBox}>
-                  <span>{info?.has_cover ? text.coverPresent : text.coverMissing}</span>
+                  {coverPreviewUrl ? (
+                    <img src={coverPreviewUrl} alt={text.currentCover} />
+                  ) : (
+                    <span>{info?.has_cover ? text.coverPresent : text.coverMissing}</span>
+                  )}
                   {info?.cover_archive_path ? <code>{info.cover_archive_path}</code> : null}
                 </div>
                 <label className={styles.field}>
@@ -287,7 +302,12 @@ export function EpubMetadataPage() {
                   <div className={styles.fileRow}>
                     <input
                       value={coverPath}
-                      onChange={(event) => setCoverPath(event.target.value)}
+                      onChange={(event) => {
+                        setCoverPath(event.target.value);
+                        if (!event.target.value.trim()) {
+                          setCoverPreviewUrl(info?.cover_preview_data_url ?? "");
+                        }
+                      }}
                       placeholder={text.coverPlaceholder}
                     />
                     <Pill variant="ghost" onClick={handleChooseCover}>
@@ -313,18 +333,22 @@ export function EpubMetadataPage() {
                   />
                 </label>
                 <label className={styles.field}>
-                  <span>{text.outputFile}</span>
+                  <span>{text.outputFolder}</span>
                   <div className={styles.fileRow}>
                     <input
-                      value={outputPath}
-                      onChange={(event) => setOutputPath(event.target.value)}
-                      placeholder={defaultOutputPath(inputPath)}
+                      value={outputFolderPath}
+                      onChange={(event) => setOutputFolderPath(event.target.value)}
+                      placeholder={defaultOutputFolder(inputPath)}
                     />
-                    <Pill variant="ghost" onClick={handleChooseOutput}>
-                      {text.chooseOutput}
+                    <Pill variant="ghost" onClick={handleChooseOutputFolder}>
+                      {text.chooseOutputFolder}
                     </Pill>
                   </div>
                 </label>
+                <div className={styles.generatedOutput}>
+                  <span>{text.generatedOutput}</span>
+                  <code>{resolvedOutputPath}</code>
+                </div>
                 <label className={styles.checkboxRow}>
                   <input
                     type="checkbox"

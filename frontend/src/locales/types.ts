@@ -964,11 +964,13 @@ export interface Messages {
     inputFile: string;
     inputPlaceholder: string;
     outputFile: string;
+    outputFolder: string;
     titleLabel: string;
     authorLabel: string;
     coverFile: string;
     chooseEpub: string;
     chooseOutput: string;
+    chooseOutputFolder: string;
     chooseCover: string;
     openEditor: string;
     read: string;
@@ -980,6 +982,7 @@ export interface Messages {
     ok: string;
     coverPlaceholder: string;
     compressOutput: string;
+    generatedOutput: string;
     overwriteTitle: string;
     overwriteBody: string;
     overwriteYes: string;
