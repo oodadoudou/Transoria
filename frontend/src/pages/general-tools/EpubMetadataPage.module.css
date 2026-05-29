@@ -1,16 +1,10 @@
-.pathGrid,
-.editGrid {
+.pathGrid {
   display: grid;
   gap: 10px;
 }
 
 .pathGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.editGrid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 12px;
 }
 
 .field {
@@ -94,9 +88,160 @@
   padding: 6px 0;
 }
 
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(42 38 32 / 0.36);
+}
+
+.dialog,
+.confirmDialog {
+  width: min(980px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 8px;
+  background: var(--surface, #fffdf8);
+  box-shadow: 0 24px 70px rgb(42 38 32 / 0.22);
+}
+
+.confirmDialog {
+  width: min(520px, 100%);
+  padding: 18px;
+}
+
+.confirmDialog h2 {
+  margin: 0;
+  color: var(--ink, #2a2620);
+  font-size: 20px;
+}
+
+.confirmDialog p {
+  margin: 10px 0;
+  color: var(--muted, #7a7166);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.confirmDialog code {
+  display: block;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--hairline, #e8dfd4);
+  border-radius: 8px;
+  background: var(--panel-soft, #f5f0e9);
+  color: var(--ink, #2a2620);
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.dialogHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--hairline, #e8dfd4);
+}
+
+.dialogHeader h2 {
+  margin: 0;
+  color: var(--ink, #2a2620);
+  font-size: 22px;
+}
+
+.dialogHeader p {
+  margin: 6px 0 0;
+  color: var(--muted, #7a7166);
+  font-size: 13px;
+}
+
+.closeButton {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 50%;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.dialogBody {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  gap: 18px;
+  padding: 18px 20px;
+}
+
+.coverPanel,
+.dialogFields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.coverBox {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--hairline-strong, #d8d0c5);
+  border-radius: 8px;
+  background: var(--panel-soft, #f5f0e9);
+  color: var(--muted, #7a7166);
+  text-align: center;
+  padding: 16px;
+}
+
+.coverBox span {
+  color: var(--ink, #2a2620);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.coverBox code {
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink, #2a2620);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.checkboxRow input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #2f855a);
+}
+
+.dialogFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--hairline, #e8dfd4);
+}
+
 @media (max-width: 1050px) {
   .pathGrid,
-  .editGrid {
+  .dialogBody {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .coverBox {
+    min-height: 160px;
   }
 }

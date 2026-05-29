@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import copy
 import io
+import os
 import posixpath
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,12 @@ from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 from PIL import Image
+
+from transoria.tools.epub_compressor import (
+    EpubCompressAction,
+    EpubCompressOptions,
+    compress_epub_file,
+)
 
 
 CONTAINER_NS = "urn:oasis:names:tc:opendocument:xmlns:container"
@@ -51,6 +59,7 @@ class EpubMetadataApplyResult:
     authors: tuple[str, ...]
     cover_updated: bool
     metadata_updated: bool
+    compressed: bool
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -60,6 +69,7 @@ class EpubMetadataApplyResult:
             "authors": list(self.authors),
             "cover_updated": self.cover_updated,
             "metadata_updated": self.metadata_updated,
+            "compressed": self.compressed,
         }
 
 
@@ -101,13 +111,16 @@ def apply_epub_metadata(
     title: str = "",
     author: str = "",
     cover_path: str = "",
+    overwrite: bool = False,
+    compress: bool = False,
 ) -> EpubMetadataApplyResult:
     epub_path = _validate_epub_path(input_path)
     out_path = Path(output_path).expanduser()
     if out_path.suffix.lower() != ".epub":
         raise ValueError("Output path must end with .epub.")
-    if epub_path.resolve() == out_path.resolve():
-        raise ValueError("Output path must differ from input path.")
+    same_path = epub_path.resolve() == out_path.resolve()
+    if same_path and not overwrite:
+        raise ValueError("Output path matches input path; confirm overwrite first.")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     next_title = title.strip()
@@ -118,39 +131,75 @@ def apply_epub_metadata(
     if not next_title and not next_author and cover_source is None:
         raise ValueError("Provide at least a title, author, or cover image.")
 
-    with zipfile.ZipFile(epub_path) as source:
-        package_path = _read_package_path(source)
-        root = _read_opf(source, package_path)
-        metadata = _metadata_node(root)
-        manifest = _manifest_node(root)
-        cover = _find_cover(root, package_path)
-        cover_bytes: bytes | None = None
-        cover_archive_path = ""
+    temp_paths: list[Path] = []
+    metadata_output = (
+        _temporary_epub_path(out_path) if same_path or compress else out_path
+    )
+    if metadata_output != out_path:
+        temp_paths.append(metadata_output)
 
-        if next_title:
-            _set_single_text(metadata, f"{{{DC_NS}}}title", next_title)
-        if next_author:
-            _set_creators(metadata, next_author)
-        if cover_source is not None:
-            cover, cover_bytes = _prepare_cover_update(
-                root,
-                manifest,
-                metadata,
-                package_path,
-                cover,
-                cover_source,
+    try:
+        with zipfile.ZipFile(epub_path) as source:
+            package_path = _read_package_path(source)
+            root = _read_opf(source, package_path)
+            metadata = _metadata_node(root)
+            manifest = _manifest_node(root)
+            cover = _find_cover(root, package_path)
+            cover_bytes: bytes | None = None
+            cover_archive_path = ""
+
+            if next_title:
+                _set_single_text(metadata, f"{{{DC_NS}}}title", next_title)
+            if next_author:
+                _set_creators(metadata, next_author)
+            if cover_source is not None:
+                cover, cover_bytes = _prepare_cover_update(
+                    root,
+                    manifest,
+                    metadata,
+                    package_path,
+                    cover,
+                    cover_source,
+                )
+                cover_archive_path = cover.archive_path
+
+            opf_bytes = _serialize_opf(root)
+            _copy_epub_with_replacements(
+                source,
+                metadata_output,
+                replacements={
+                    package_path: opf_bytes,
+                    **({cover_archive_path: cover_bytes} if cover_bytes else {}),
+                },
             )
-            cover_archive_path = cover.archive_path
 
-        opf_bytes = _serialize_opf(root)
-        _copy_epub_with_replacements(
-            source,
-            out_path,
-            replacements={
-                package_path: opf_bytes,
-                **({cover_archive_path: cover_bytes} if cover_bytes else {}),
-            },
-        )
+        if compress:
+            compressed_output = _temporary_epub_path(out_path)
+            temp_paths.append(compressed_output)
+            compress_result = compress_epub_file(
+                EpubCompressAction(
+                    id="epub-metadata-output",
+                    source_path=str(metadata_output),
+                    output_path=str(compressed_output),
+                ),
+                EpubCompressOptions(
+                    suffix="",
+                    replace_original=False,
+                    preserve_first_cover=True,
+                ),
+            )
+            if compress_result.status != "compressed":
+                raise ValueError(f"EPUB compression failed: {compress_result.error}")
+            os.replace(compress_result.output_path, out_path)
+        elif metadata_output != out_path:
+            os.replace(metadata_output, out_path)
+    finally:
+        for temp_path in temp_paths:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
 
     updated = read_epub_metadata(out_path)
     return EpubMetadataApplyResult(
@@ -160,7 +209,21 @@ def apply_epub_metadata(
         authors=updated.authors,
         cover_updated=cover_source is not None,
         metadata_updated=bool(next_title or next_author),
+        compressed=compress,
     )
+
+
+def _temporary_epub_path(target: Path) -> Path:
+    handle = tempfile.NamedTemporaryFile(
+        prefix=f".{target.stem}.transoria-metadata.",
+        suffix=".epub",
+        dir=str(target.parent),
+        delete=False,
+    )
+    handle.close()
+    temp_path = Path(handle.name)
+    temp_path.unlink()
+    return temp_path
 
 
 def _validate_epub_path(path: str | Path) -> Path:

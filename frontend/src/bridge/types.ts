@@ -775,6 +775,7 @@ export interface EpubMetadataApplyResult {
   authors: string[];
   cover_updated: boolean;
   metadata_updated: boolean;
+  compressed: boolean;
 }
 
 export interface ReplacementReportOccurrence {

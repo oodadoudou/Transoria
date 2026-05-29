@@ -850,6 +850,8 @@ export const epubMetadataBridge = {
     title: string,
     author: string,
     coverPath: string,
+    overwrite = false,
+    compress = false,
   ): Promise<EpubMetadataApplyResult> {
     return call("epub_metadata.apply", {
       input_path: inputPath,
@@ -857,6 +859,8 @@ export const epubMetadataBridge = {
       title,
       author,
       cover_path: coverPath,
+      overwrite,
+      compress,
     });
   },
 };
