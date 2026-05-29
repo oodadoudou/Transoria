@@ -404,7 +404,11 @@ class _EpubMerger:
                         file_stats["warnings"].append(f"missing image: {href}")
                         continue
                     data = archive.read(entry_name)
-                    is_cover = href == cover_href or _is_cover_image(item)
+                    is_declared_cover = href == cover_href if cover_href else False
+                    is_cover = is_declared_cover or _is_cover_image(item)
+                    is_primary_cover = (
+                        is_declared_cover if cover_href else is_cover
+                    ) and not self.cover_image_id
                     new_href, wrote, compressed = self._store_image(
                         epub_index=epub_index,
                         href=href,
@@ -412,6 +416,7 @@ class _EpubMerger:
                         item=item,
                         data=data,
                         is_cover=is_cover,
+                        is_primary_cover=is_primary_cover,
                     )
                     resource_map[_normalize_path(href, opf_dir)] = new_href
                     if wrote:
@@ -564,9 +569,12 @@ class _EpubMerger:
         item: Mapping[str, str],
         data: bytes,
         is_cover: bool,
+        is_primary_cover: bool,
     ) -> tuple[str, bool, bool]:
         signature = f"{uuid.uuid5(uuid.NAMESPACE_OID, str(len(data))).hex}:{_md5(data)}"
         if signature in self.image_signatures:
+            if is_primary_cover:
+                self._mark_primary_cover(self.image_signatures[signature])
             self.stats["images_deduplicated"] += 1
             return self.image_signatures[signature], False, False
         stored = data
@@ -587,13 +595,24 @@ class _EpubMerger:
             "href": name,
             "media-type": item.get("media-type", "image/jpeg"),
         }
-        if is_cover:
+        if is_primary_cover:
             manifest_item["properties"] = "cover-image"
-            if not self.cover_image_id:
-                self.cover_image_id = manifest_item["id"]
+            self.cover_image_id = manifest_item["id"]
         self.manifest.append(manifest_item)
         self.stats["images_written"] += 1
         return name, True, compressed
+
+    def _mark_primary_cover(self, href: str) -> None:
+        if self.cover_image_id:
+            return
+        for item in self.manifest:
+            if item.get("href") != href or not item.get("media-type", "").startswith("image/"):
+                continue
+            properties = set(item.get("properties", "").split())
+            properties.add("cover-image")
+            item["properties"] = " ".join(sorted(properties))
+            self.cover_image_id = item.get("id", "")
+            return
 
     def _store_css(self, epub_index: int, href: str, css: str) -> tuple[str, bool]:
         data = css.encode("utf-8")
