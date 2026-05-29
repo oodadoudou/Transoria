@@ -512,6 +512,8 @@ def build_has_block_descendant_map(root: etree._Element) -> dict[etree._Element,
 
 def parse_xhtml_or_html(raw: bytes) -> etree._Element:
     raw = trim_to_html_document_start(raw)
+    if not raw.strip():
+        return _empty_xhtml_root()
     repaired = repair_redundant_void_end_tags(raw)
     candidates = (raw,) if repaired == raw else (raw, repaired)
     for candidate in candidates:
@@ -546,9 +548,16 @@ def parse_xhtml_or_html(raw: bytes) -> etree._Element:
             pass
 
     try:
-        return etree.fromstring(raw, parser=etree.HTMLParser(recover=True))
+        root = etree.fromstring(raw, parser=etree.HTMLParser(recover=True))
+        if root is not None:
+            return root
     except Exception as exc:
         raise ValueError("Failed to parse html/xhtml") from exc
+    raise ValueError("Failed to parse html/xhtml")
+
+
+def _empty_xhtml_root() -> etree._Element:
+    return etree.Element("html", nsmap={None: "http://www.w3.org/1999/xhtml"})
 
 
 def repair_redundant_void_end_tags(raw: bytes) -> bytes:
