@@ -12,6 +12,7 @@ from transoria.tools.txt_to_epub import (
     TxtToEpubOptions,
     list_epub_styles,
     list_toc_presets,
+    locate_txt_toc_entry,
     scan_txt_toc,
 )
 
@@ -45,6 +46,31 @@ def register(router: BridgeRouter, *, service: TaskService) -> None:
             raise BridgeError.invalid_argument(
                 str(exc),
                 field="source_path",
+            ) from exc
+
+    def locate_toc_entry(payload: Mapping[str, object]) -> dict[str, object]:
+        raw_used = payload.get("used_start_lines", [])
+        used_start_lines: list[int] = []
+        if isinstance(raw_used, list):
+            for index, value in enumerate(raw_used):
+                try:
+                    used_start_lines.append(int(value))  # type: ignore[arg-type]
+                except (TypeError, ValueError) as exc:
+                    raise BridgeError.invalid_argument(
+                        f"used_start_lines[{index}] must be an integer.",
+                        field="used_start_lines",
+                    ) from exc
+        try:
+            return locate_txt_toc_entry(
+                Path(expect_string(payload, "source_path")),
+                query=expect_string(payload, "query"),
+                level=int(payload.get("level", 1) or 1),
+                used_start_lines=used_start_lines,
+            )
+        except (OSError, ValueError) as exc:
+            raise BridgeError.invalid_argument(
+                str(exc),
+                field="query",
             ) from exc
 
     def preview(payload: Mapping[str, object]) -> dict[str, object]:
@@ -110,6 +136,7 @@ def register(router: BridgeRouter, *, service: TaskService) -> None:
     router.register("txt_to_epub.list_styles", list_styles)
     router.register("txt_to_epub.list_presets", list_presets)
     router.register("txt_to_epub.scan_toc", scan_toc)
+    router.register("txt_to_epub.locate_toc_entry", locate_toc_entry)
     router.register("txt_to_epub.preview", preview)
     router.register("txt_to_epub.start_task", start_task)
     router.register("txt_to_epub.stop_task", stop_task)

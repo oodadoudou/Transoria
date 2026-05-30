@@ -117,6 +117,54 @@
   font-size: 12.5px;
 }
 
+.tocEditorBar,
+.batchBar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tocEditorBar {
+  padding-top: 2px;
+}
+
+.addTocField {
+  display: grid;
+  gap: 5px;
+  flex: 1 1 320px;
+  max-width: 560px;
+}
+
+.addTocField span,
+.compactSelect span {
+  color: var(--muted, #7a7166);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.addTocField input,
+.compactSelect select {
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 8px;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  font: inherit;
+  padding: 7px 9px;
+}
+
+.compactSelect {
+  display: grid;
+  gap: 5px;
+}
+
+.compactSelect select {
+  min-width: 74px;
+}
+
 .hint,
 .actionError,
 .empty,
@@ -163,6 +211,29 @@
 
 .table tr:last-child td {
   border-bottom: 0;
+}
+
+.table select {
+  min-width: 64px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--panel-soft, #f5f0e9);
+  color: var(--ink, #2a2620);
+  font: inherit;
+  padding: 5px 7px;
+}
+
+.tableAction {
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 999px;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 9px;
+  white-space: nowrap;
 }
 
 .empty {

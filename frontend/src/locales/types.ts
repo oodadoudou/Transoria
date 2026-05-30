@@ -1061,6 +1061,18 @@ export interface Messages {
     scanToc: string;
     scanSummary: string;
     scanHint: string;
+    selectedRows: string;
+    selectAll: string;
+    addTocText: string;
+    addTocPlaceholder: string;
+    addTocNotFound: string;
+    addToc: string;
+    batchSetLevel: string;
+    applyLevel: string;
+    enableSelected: string;
+    disableSelected: string;
+    deleteSelected: string;
+    deleteRow: string;
     enabled: string;
     level: string;
     headingTitle: string;

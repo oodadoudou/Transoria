@@ -60,6 +60,7 @@ import type {
   TxtToEpubRule,
   TxtToEpubScanResult,
   TxtToEpubStyle,
+  TxtToEpubTocEntry,
   TranslationArtifacts,
   TranslationStartResult,
   UpdateCheckResult,
@@ -873,6 +874,19 @@ export const txtToEpubBridge = {
       preset_id: presetId,
       custom_rules: customRules,
       advanced_pattern: advancedPattern,
+    });
+  },
+  locateTocEntry(
+    sourcePath: string,
+    query: string,
+    level: number,
+    usedStartLines: number[],
+  ): Promise<TxtToEpubTocEntry> {
+    return call("txt_to_epub.locate_toc_entry", {
+      source_path: sourcePath,
+      query,
+      level,
+      used_start_lines: usedStartLines,
     });
   },
   preview(options: TxtToEpubOptions): Promise<TxtToEpubPlan> {

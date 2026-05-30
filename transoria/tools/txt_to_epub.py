@@ -434,6 +434,49 @@ def scan_txt_toc(
     }
 
 
+def locate_txt_toc_entry(
+    source_path: Path,
+    *,
+    query: str,
+    level: int = 1,
+    used_start_lines: Sequence[int] = (),
+) -> dict[str, object]:
+    source = source_path.expanduser().resolve()
+    if not source.exists() or not source.is_file():
+        raise ValueError(f"TXT file does not exist: {source_path}")
+    if source.suffix.lower() != _TXT_SUFFIX:
+        raise ValueError(f"input file must be .txt: {source_path}")
+    needle = _clean_title(query)
+    if not needle:
+        raise ValueError("TOC search text is required")
+    lines = _read_text(source).splitlines()
+    used = {line for line in used_start_lines if line >= 1}
+    exact_matches: list[tuple[int, str]] = []
+    contains_matches: list[tuple[int, str]] = []
+    folded_needle = _fold_for_match(needle)
+    for index, line in enumerate(lines, start=1):
+        clean_line = _clean_title(line)
+        if not clean_line:
+            continue
+        folded_line = _fold_for_match(clean_line)
+        if folded_line == folded_needle:
+            exact_matches.append((index, clean_line))
+        elif folded_needle in folded_line:
+            contains_matches.append((index, clean_line))
+    for index, title in (*exact_matches, *contains_matches):
+        if index not in used:
+            return TxtToEpubTocEntry(
+                id=f"toc-manual-{index}",
+                level=max(1, min(4, int(level or 1))),
+                title=title,
+                start_line=index,
+                end_line=index,
+                enabled=True,
+                source_preview=_line_preview(lines, index),
+            ).to_dict()
+    raise ValueError(f"cannot find TOC text in source TXT: {query}")
+
+
 def build_txt_to_epub_plan(options: TxtToEpubOptions) -> TxtToEpubPlan:
     source = Path(options.source_path).expanduser().resolve()
     if not source.exists() or not source.is_file():
@@ -632,6 +675,10 @@ def _clean_title(value: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _fold_for_match(value: str) -> str:
+    return unicodedata.normalize("NFKC", value).casefold()
+
+
 def _safe_filename(value: str) -> str:
     normalized = unicodedata.normalize("NFC", value).strip()
     safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", normalized)
@@ -719,10 +766,7 @@ def _build_chapters(
     default_title: str,
 ) -> tuple[_Chapter, ...]:
     lines = text.splitlines()
-    entries = sorted(
-        (entry for entry in toc_entries if entry.start_line >= 1),
-        key=lambda entry: entry.start_line,
-    )
+    entries = _validated_toc_entries(lines, toc_entries)
     chapters: list[_Chapter] = []
     if not entries:
         title, body_lines = _promote_first_text_line(tuple(lines), default_title)
@@ -764,6 +808,25 @@ def _build_chapters(
             )
         )
     return tuple(chapters)
+
+
+def _validated_toc_entries(
+    lines: Sequence[str],
+    toc_entries: Sequence[TxtToEpubTocEntry],
+) -> tuple[TxtToEpubTocEntry, ...]:
+    entries = tuple(entry for entry in toc_entries if entry.start_line >= 1)
+    previous_line = 0
+    for entry in entries:
+        if entry.start_line > len(lines):
+            raise ValueError(
+                f"TOC line {entry.start_line} is outside source line count {len(lines)}"
+            )
+        if entry.start_line <= previous_line:
+            raise ValueError("TOC entries must follow source line order")
+        if not lines[entry.start_line - 1].strip():
+            raise ValueError(f"TOC line {entry.start_line} is blank in source TXT")
+        previous_line = entry.start_line
+    return entries
 
 
 def _promote_first_text_line(
@@ -1078,5 +1141,6 @@ __all__ = [
     "convert_txt_to_epub",
     "list_epub_styles",
     "list_toc_presets",
+    "locate_txt_toc_entry",
     "scan_txt_toc",
 ]

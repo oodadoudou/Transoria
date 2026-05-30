@@ -177,6 +177,10 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
   const [styleTemplate, setStyleTemplate] = useState("");
   const [styleOptions, setStyleOptions] = useState<TxtToEpubStyle[]>([]);
   const [tocEntries, setTocEntries] = useState<TxtToEpubTocEntry[]>([]);
+  const [selectedTocIds, setSelectedTocIds] = useState<string[]>([]);
+  const [manualTocText, setManualTocText] = useState("");
+  const [manualTocLevel, setManualTocLevel] = useState(1);
+  const [batchLevel, setBatchLevel] = useState(1);
   const [scanInfo, setScanInfo] = useState<{
     lineCount: number;
     characterCount: number;
@@ -298,6 +302,10 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
     ? draft.customCss
     : selectedStyle?.css ?? styleTemplate;
   const selectedCount = tocEntries.filter((entry) => entry.enabled).length;
+  const selectedTocIdSet = useMemo(() => new Set(selectedTocIds), [selectedTocIds]);
+  const selectedTocCount = selectedTocIds.length;
+  const allTocSelected =
+    tocEntries.length > 0 && selectedTocCount === tocEntries.length;
   const isRunning =
     activeTaskId !== null &&
     (snapshot.status === "running" || snapshot.status === "pending");
@@ -342,6 +350,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
         draft.regexMode === "advanced" ? draft.advancedPattern : "",
       );
       setTocEntries(result.entries);
+      setSelectedTocIds([]);
       setScanInfo({
         lineCount: result.line_count,
         characterCount: result.character_count,
@@ -351,7 +360,17 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
       }
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {
-        setActionError(error);
+        if (error.message.includes("cannot find TOC text")) {
+          setActionError(
+            new BridgeError({
+              code: error.code,
+              message: text.addTocNotFound,
+              retryable: false,
+            }),
+          );
+        } else {
+          setActionError(error);
+        }
       } else {
         throw error;
       }
@@ -428,6 +447,58 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
     setTocEntries((prev) =>
       prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
     );
+  };
+
+  const toggleEntrySelection = (id: string, selected: boolean) => {
+    setSelectedTocIds((prev) => {
+      if (selected) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((selectedId) => selectedId !== id);
+    });
+  };
+
+  const toggleAllEntries = (selected: boolean) => {
+    setSelectedTocIds(selected ? tocEntries.map((entry) => entry.id) : []);
+  };
+
+  const patchSelectedEntries = (patch: Partial<TxtToEpubTocEntry>) => {
+    if (selectedTocIds.length === 0) return;
+    setTocEntries((prev) =>
+      prev.map((entry) =>
+        selectedTocIdSet.has(entry.id) ? { ...entry, ...patch } : entry,
+      ),
+    );
+  };
+
+  const deleteEntries = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    setTocEntries((prev) => prev.filter((entry) => !idSet.has(entry.id)));
+    setSelectedTocIds((prev) => prev.filter((id) => !idSet.has(id)));
+  };
+
+  const handleAddTocEntry = async () => {
+    const query = manualTocText.trim();
+    if (!query) return;
+    setActionError(null);
+    try {
+      const entry = await txtToEpubBridge.locateTocEntry(
+        inputPath,
+        query,
+        manualTocLevel,
+        tocEntries.map((item) => item.startLine),
+      );
+      setTocEntries((prev) =>
+        [...prev, { ...entry, id: `toc-manual-${Date.now().toString(36)}` }]
+          .sort((left, right) => left.startLine - right.startLine),
+      );
+      setManualTocText("");
+    } catch (error) {
+      if (BridgeError.isBridgeError(error)) {
+        setActionError(error);
+      } else {
+        throw error;
+      }
+    }
   };
 
   const patchRule = (level: number, pattern: string) => {
@@ -605,25 +676,120 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
               : text.scanHint}
           </span>
         </div>
+        <div className={styles.tocEditorBar}>
+          <label className={styles.addTocField}>
+            <span>{text.addTocText}</span>
+            <input
+              value={manualTocText}
+              onChange={(event) => setManualTocText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleAddTocEntry();
+                }
+              }}
+              placeholder={text.addTocPlaceholder}
+            />
+          </label>
+          <label className={styles.compactSelect}>
+            <span>{text.level}</span>
+            <select
+              value={manualTocLevel}
+              onChange={(event) => setManualTocLevel(Number(event.target.value))}
+            >
+              <option value={1}>1</option>
+              <option value={2}>2</option>
+              <option value={3}>3</option>
+              <option value={4}>4</option>
+            </select>
+          </label>
+          <Pill variant="ghost" onClick={() => void handleAddTocEntry()}>
+            {text.addToc}
+          </Pill>
+        </div>
+        <div className={styles.batchBar}>
+          <span className={styles.hint}>
+            {text.selectedRows.replace("{count}", NUM.format(selectedTocCount))}
+          </span>
+          <label className={styles.compactSelect}>
+            <span>{text.batchSetLevel}</span>
+            <select
+              value={batchLevel}
+              onChange={(event) => setBatchLevel(Number(event.target.value))}
+            >
+              <option value={1}>1</option>
+              <option value={2}>2</option>
+              <option value={3}>3</option>
+              <option value={4}>4</option>
+            </select>
+          </label>
+          <Pill
+            variant="ghost"
+            onClick={() => patchSelectedEntries({ level: batchLevel })}
+            disabled={selectedTocCount === 0}
+          >
+            {text.applyLevel}
+          </Pill>
+          <Pill
+            variant="ghost"
+            onClick={() => patchSelectedEntries({ enabled: true })}
+            disabled={selectedTocCount === 0}
+          >
+            {text.enableSelected}
+          </Pill>
+          <Pill
+            variant="ghost"
+            onClick={() => patchSelectedEntries({ enabled: false })}
+            disabled={selectedTocCount === 0}
+          >
+            {text.disableSelected}
+          </Pill>
+          <Pill
+            variant="ghost"
+            onClick={() => deleteEntries(selectedTocIds)}
+            disabled={selectedTocCount === 0}
+          >
+            {text.deleteSelected}
+          </Pill>
+        </div>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    checked={allTocSelected}
+                    onChange={(event) => toggleAllEntries(event.target.checked)}
+                    aria-label={text.selectAll}
+                  />
+                </th>
                 <th>{text.enabled}</th>
                 <th>{text.level}</th>
                 <th>{text.headingTitle}</th>
                 <th>{text.lineNumber}</th>
                 <th>{text.sourcePreview}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {tocEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className={styles.empty}>{text.noToc}</td>
+                  <td colSpan={7} className={styles.empty}>{text.noToc}</td>
                 </tr>
               ) : (
                 tocEntries.map((entry) => (
                   <tr key={entry.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedTocIdSet.has(entry.id)}
+                        onChange={(event) =>
+                          toggleEntrySelection(entry.id, event.target.checked)
+                        }
+                        aria-label={text.selectAll}
+                      />
+                    </td>
                     <td>
                       <input
                         type="checkbox"
@@ -657,6 +823,15 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                     </td>
                     <td>{entry.startLine}</td>
                     <td className={styles.previewText}>{entry.sourcePreview}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.tableAction}
+                        onClick={() => deleteEntries([entry.id])}
+                      >
+                        {text.deleteRow}
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
