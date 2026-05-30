@@ -76,6 +76,8 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
   usePollRunSnapshot("epub_merge");
   const setActiveTaskId = useRuntimeStore((state) => state.setActiveTaskId);
   const activeTaskId = useRuntimeStore((state) => state.epub_merge.activeTaskId);
+  const outputFormat: "epub" | "txt" =
+    options.output_format === "txt" ? "txt" : "epub";
 
   useEffect(() => {
     setOutputFilename((prev) => prev || text.defaultOutputFilename);
@@ -85,11 +87,11 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
     setOutputFilename((prev) =>
       withOutputExtension(
         prev || text.defaultOutputFilename,
-        options.output_format,
+        outputFormat,
         text.defaultOutputFilename,
       ),
     );
-  }, [options.output_format, setOutputFilename, text.defaultOutputFilename]);
+  }, [outputFormat, setOutputFilename, text.defaultOutputFilename]);
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -162,7 +164,11 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
         outputFilename,
         inputDir,
       );
-      const previewOptions = { ...options, output_path: requestedOutput };
+      const previewOptions = {
+        ...options,
+        output_format: outputFormat,
+        output_path: requestedOutput,
+      };
       const next = await epubMergeBridge.preview(inputDir, previewOptions);
       const outputParts = splitOutputPath(next.output_path);
       setPlan(next);
@@ -191,7 +197,11 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
         composeOutputPath(outputDir, outputFilename, inputDir) ||
         plan?.output_path ||
         "";
-      const executeOptions = { ...options, output_path: outputPath };
+      const executeOptions = {
+        ...options,
+        output_format: outputFormat,
+        output_path: outputPath,
+      };
       const { task_id } = await epubMergeBridge.startTask(
         requestId,
         inputDir,
@@ -294,7 +304,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
           <label className={`${styles.field} ${styles.compactField}`}>
             <span>{text.outputFormat}</span>
             <select
-              value={options.output_format}
+              value={outputFormat}
               onChange={(event) =>
                 setOptions((prev) => ({
                   ...prev,
@@ -331,7 +341,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             />
             {text.recursive}
           </label>
-          {options.output_format === "epub" ? (
+          {outputFormat === "epub" ? (
             <>
               <label className={styles.option}>
                 <input

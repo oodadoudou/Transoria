@@ -60,19 +60,23 @@ const VISIBLE_STYLE_IDS = new Set([
 const EN_PRESET_TEXT: Record<string, { label: string; description: string }> = {
   markdown: {
     label: "Markdown headings",
-    description: "#, ##, ###, and #### headings",
+    description: "#, ##, ###, ####, and numeric headings",
   },
   zh_novel: {
     label: "Chinese fiction headings",
-    description: "Web novel, published chapter, extra, and side story headings",
+    description: "Web novel, published chapter, extra, side story, and numeric headings",
   },
   ko_novel: {
     label: "Korean fiction",
-    description: "Korean prologue, episode, volume, side story, epilogue",
+    description: "Korean prologue, episode, volume, side story, epilogue, and numeric headings",
+  },
+  ja_novel: {
+    label: "Japanese fiction",
+    description: "Japanese prologue, episode, volume, side story, epilogue, and numeric headings",
   },
   en_chapter: {
     label: "English chapters",
-    description: "Chapter, Volume, Prologue, and Epilogue",
+    description: "Chapter, Volume, Prologue, Epilogue, and numeric headings",
   },
   numeric: {
     label: "Numeric headings",

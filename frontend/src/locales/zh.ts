@@ -387,7 +387,7 @@ export const zh: Messages = {
     outputFilename: "输出文件名",
     outputFilenameHint:
       "默认按输出格式生成「合并.epub」或「合并.txt」。EPUB 书内标题会使用输出文件名；尽量不要与输入目录里的源文件同名，避免路径冲突。",
-    outputFormat: "输出格式",
+    outputFormat: "合并文件格式",
     outputFormatEpub: "EPUB",
     outputFormatTxt: "TXT",
     recursive: "递归扫描子文件夹",

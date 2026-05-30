@@ -397,7 +397,7 @@ export const en: Messages = {
     outputFilename: "Output filename",
     outputFilenameHint:
       "Defaults to `merged.epub` or `merged.txt` based on the output format. EPUB title metadata uses the output filename. Avoid names that already exist in the input folder to prevent path conflicts.",
-    outputFormat: "Output format",
+    outputFormat: "Merge file format",
     outputFormatEpub: "EPUB",
     outputFormatTxt: "TXT",
     recursive: "Scan subfolders",

@@ -252,63 +252,85 @@ class TxtToEpubResult:
         }
 
 
+_CJK_NUMBER = r"(?:[\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+\s*)+"
+
+NUMERIC_TITLE_RULES: tuple[TxtToEpubRule, ...] = (
+    TxtToEpubRule(2, r"^\s*\d+\.\d+\s*(?P<title>.*?)\s*$"),
+    TxtToEpubRule(1, r"^\s*\d+\s*[\.)、．]\s*(?P<title>.*?)\s*$"),
+    TxtToEpubRule(2, r"^\s*\d{1,4}\s*(?P<title>.*?)\s*$"),
+)
+
+
 PRESET_RULES: tuple[dict[str, object], ...] = (
     {
         "id": "markdown",
         "label": "Markdown 标题",
-        "description": "#、##、###、#### 标题",
+        "description": "#、##、###、#### 标题；兼容数字标题",
         "rules": (
             TxtToEpubRule(4, r"^\s*####\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(3, r"^\s*###\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(2, r"^\s*##\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(1, r"^\s*#\s*(?P<title>.+?)\s*$"),
+            *NUMERIC_TITLE_RULES,
         ),
     },
     {
         "id": "zh_novel",
         "label": "中文章节综合",
-        "description": "网文、出版、番外/外传标题",
+        "description": "网文、出版、番外/外传标题；兼容数字标题",
         "rules": (
-            TxtToEpubRule(1, r"^\s*(第\s*[\d零〇一二两三四五六七八九十百千万]+\s*卷|卷\s*[\d零〇一二两三四五六七八九十百千万]+)\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*第\s*[\d零〇一二两三四五六七八九十百千万]+\s*章\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*正文\s+第\s*[\d零〇一二两三四五六七八九十百千万]+\s*章\s*(?P<title>.*)$"),
-            TxtToEpubRule(1, r"^\s*(序章|楔子|尾声|后记|前言|终章)\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*第\s*[\d零〇一二两三四五六七八九十百千万]+\s*[回节]\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*(番外|外传|特别篇)\s*[\d零〇一二两三四五六七八九十百千万]+\s*(?P<title>.*)$"),
-            TxtToEpubRule(1, r"^\s*(番外|外传|特别篇|IF\s*线|if\s*线)\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, rf"^\s*(正文卷\s*)?第\s*{_CJK_NUMBER}\s*[章节回話话幕篇]\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, rf"^\s*(正文\s+)?第\s*{_CJK_NUMBER}\s*[章节回話话幕篇]\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, rf"^\s*(第\s*{_CJK_NUMBER}\s*[卷部篇册冊]|[卷部篇册冊]\s*{_CJK_NUMBER}|上卷|中卷|下卷|正文卷)\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, r"^\s*(序章|楔子|引子|序幕|尾声|后记|後記|前言|终章|終章|跋)\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, rf"^\s*(第\s*)?{_CJK_NUMBER}\s*[回节節幕]\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, rf"^\s*(番外|外传|外傳|特别篇|特別篇)\s*{_CJK_NUMBER}\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, r"^\s*(番外|外传|外傳|特别篇|特別篇|IF\s*线|if\s*线|if\s*線|IF\s*線)\s*(?P<title>.*)$"),
+            *NUMERIC_TITLE_RULES,
         ),
     },
     {
         "id": "ko_novel",
         "label": "韩语小说",
-        "description": "프롤로그、제1화、외전、에필로그 等",
+        "description": "프롤로그、제1화、외전、에필로그；兼容数字标题",
         "rules": (
-            TxtToEpubRule(1, r"^\s*(프롤로그|에필로그|외전)\s*(?P<title>.*)$"),
-            TxtToEpubRule(1, r"^\s*\d+\s*권\s*(?P<title>.*)$"),
-            TxtToEpubRule(1, r"^\s*제\s*\d+\s*권\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*제\s*\d+\s*(화|장)\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*\d+\s*화\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, r"^\s*(프롤로그|에필로그|서장|종장|후기|외전|번외|특별편)\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, r"^\s*\d+\s*(권|부|편)\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, r"^\s*제\s*\d+\s*(권|부|편)\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, r"^\s*제\s*\d+\s*(화|장|회)\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, r"^\s*\d+\s*(화|장|회)\s*(?P<title>.*)$"),
+            *NUMERIC_TITLE_RULES,
+        ),
+    },
+    {
+        "id": "ja_novel",
+        "label": "日文小说",
+        "description": "プロローグ、第1話、外伝、エピローグ；兼容数字标题",
+        "rules": (
+            TxtToEpubRule(1, r"^\s*(プロローグ|エピローグ|序章|終章|前書き|まえがき|あとがき|外伝|番外|特別編|閑話|幕間)\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, rf"^\s*第\s*{_CJK_NUMBER}\s*(巻|卷|部|篇)\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, rf"^\s*{_CJK_NUMBER}\s*(巻|卷|部|篇)\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, rf"^\s*第\s*{_CJK_NUMBER}\s*(話|话|章|節|节|幕)\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, rf"^\s*{_CJK_NUMBER}\s*(話|话|章|節|节|幕)\s*(?P<title>.*)$"),
+            *NUMERIC_TITLE_RULES,
         ),
     },
     {
         "id": "en_chapter",
         "label": "英文 Chapter",
-        "description": "Chapter、Volume、Prologue、Epilogue",
+        "description": "Chapter、Volume、Prologue、Epilogue；兼容数字标题",
         "rules": (
             TxtToEpubRule(1, r"^\s*(Prologue|Epilogue)\s*(?P<title>.*)$"),
             TxtToEpubRule(1, r"^\s*Volume\s+\d+\s*(?P<title>.*)$"),
             TxtToEpubRule(2, r"^\s*Chapter\s+\d+\s*(?P<title>.*)$"),
+            *NUMERIC_TITLE_RULES,
         ),
     },
     {
         "id": "numeric",
         "label": "数字标题",
         "description": "1.、1.1、01、001",
-        "rules": (
-            TxtToEpubRule(2, r"^\s*\d+\.\d+\s*(?P<title>.+?)\s*$"),
-            TxtToEpubRule(1, r"^\s*\d+\.\s*(?P<title>.+?)\s*$"),
-            TxtToEpubRule(2, r"^\s*\d{1,4}\s*(?P<title>.*?)\s*$"),
-        ),
+        "rules": NUMERIC_TITLE_RULES,
     },
 )
 PRESET_ALIASES = {
