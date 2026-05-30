@@ -581,6 +581,7 @@ class _Chapter:
     level: int
     body_lines: tuple[str, ...]
     enabled: bool
+    show_heading: bool = True
 
     @property
     def filename(self) -> str:
@@ -782,14 +783,14 @@ def _build_chapters(
     first = entries[0]
     prefix = tuple(lines[: max(0, first.start_line - 1)])
     if any(line.strip() for line in prefix):
-        title, body_lines = _promote_first_text_line(prefix, default_title)
         chapters.append(
             _Chapter(
                 id=f"{len(chapters) + 1:04d}",
-                title=title,
+                title=_clean_title(default_title) or "前置内容",
                 level=1,
-                body_lines=body_lines,
-                enabled=True,
+                body_lines=prefix,
+                enabled=False,
+                show_heading=False,
             )
         )
     for index, entry in enumerate(entries):
@@ -929,6 +930,7 @@ def _chapter_xhtml(chapter: _Chapter) -> str:
     title = html.escape(chapter.title, quote=False)
     heading = f"h{max(1, min(4, chapter.level))}"
     paragraphs = "\n".join(_paragraphs(chapter.body_lines))
+    heading_markup = f"<{heading}>{title}</{heading}>" if chapter.show_heading else ""
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh">
   <head>
@@ -937,7 +939,7 @@ def _chapter_xhtml(chapter: _Chapter) -> str:
   </head>
   <body>
     <section class="chapter">
-      <{heading}>{title}</{heading}>
+      {heading_markup}
       {paragraphs}
     </section>
   </body>
