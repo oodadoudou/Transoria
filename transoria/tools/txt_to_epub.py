@@ -271,13 +271,12 @@ PRESET_RULES: tuple[dict[str, object], ...] = (
     {
         "id": "markdown",
         "label": "Markdown 标题",
-        "description": "#、##、###、#### 标题；兼容数字标题",
+        "description": "#、##、###、#### 标题",
         "rules": (
             TxtToEpubRule(4, r"^\s*####\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(3, r"^\s*###\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(2, r"^\s*##\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(1, r"^\s*#\s*(?P<title>.+?)\s*$"),
-            *NUMERIC_TITLE_RULES,
         ),
     },
     {

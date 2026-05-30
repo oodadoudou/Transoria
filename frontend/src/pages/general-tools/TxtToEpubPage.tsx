@@ -60,7 +60,7 @@ const VISIBLE_STYLE_IDS = new Set([
 const EN_PRESET_TEXT: Record<string, { label: string; description: string }> = {
   markdown: {
     label: "Markdown headings",
-    description: "#, ##, ###, ####, and numeric headings",
+    description: "#, ##, ###, #### headings",
   },
   zh_novel: {
     label: "Chinese fiction headings",
