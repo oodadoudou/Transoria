@@ -316,10 +316,24 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
       : 0;
   const englishUi = messages.generalTools.crumb === "General Tools";
 
+  const updateInputPath = (nextPath: string) => {
+    if (nextPath === inputPath) return;
+    setInputPath(nextPath);
+    setCoverPath("");
+    setDraft((prev) => ({ ...prev, title: "", author: "" }));
+    setTocEntries([]);
+    setSelectedTocIds([]);
+    setScanInfo(null);
+    setManualTocText("");
+    setActionError(null);
+    setArtifacts(null);
+    setReport(null);
+  };
+
   const handleChooseTxt = async () => {
     try {
       const result = await dialogsBridge.chooseTxtFile(inputPath || undefined);
-      if (result.path) setInputPath(result.path);
+      if (result.path) updateInputPath(result.path);
     } catch (error) {
       if (BridgeError.isBridgeError(error)) setActionError(error);
     }
@@ -540,7 +554,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             <input
               className={styles.input}
               value={inputPath}
-              onChange={(event) => setInputPath(event.target.value)}
+              onChange={(event) => updateInputPath(event.target.value)}
               placeholder={text.inputPlaceholder}
             />
             <Pill variant="ghost" onClick={handleChooseTxt}>
