@@ -52,6 +52,14 @@ import type {
   TaskFailure,
   TaskHeader,
   TaskSnapshot,
+  TxtToEpubArtifacts,
+  TxtToEpubOptions,
+  TxtToEpubPlan,
+  TxtToEpubPreset,
+  TxtToEpubReport,
+  TxtToEpubRule,
+  TxtToEpubScanResult,
+  TxtToEpubStyle,
   TranslationArtifacts,
   TranslationStartResult,
   UpdateCheckResult,
@@ -113,6 +121,12 @@ export const dialogsBridge = {
   },
   chooseEpubFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, ["epub"]);
+  },
+  chooseTxtFile(initialPath?: string): Promise<DialogPathResult> {
+    return nativeDialogs.chooseFile(initialPath, ["txt"]);
+  },
+  chooseCssFile(initialPath?: string): Promise<DialogPathResult> {
+    return nativeDialogs.chooseFile(initialPath, ["css"]);
   },
   chooseImageFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, ["jpg", "jpeg", "png", "webp"]);
@@ -838,6 +852,58 @@ export const epubConvertBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("epub_convert.list_failed_subtasks", { task_id: taskId });
+  },
+};
+
+export const txtToEpubBridge = {
+  listStyles(): Promise<{ styles: TxtToEpubStyle[]; template: string }> {
+    return call("txt_to_epub.list_styles");
+  },
+  listPresets(): Promise<{ presets: TxtToEpubPreset[] }> {
+    return call("txt_to_epub.list_presets");
+  },
+  scanToc(
+    sourcePath: string,
+    presetId: string,
+    customRules: TxtToEpubRule[],
+    advancedPattern: string,
+  ): Promise<TxtToEpubScanResult> {
+    return call("txt_to_epub.scan_toc", {
+      source_path: sourcePath,
+      preset_id: presetId,
+      custom_rules: customRules,
+      advanced_pattern: advancedPattern,
+    });
+  },
+  preview(options: TxtToEpubOptions): Promise<TxtToEpubPlan> {
+    return call("txt_to_epub.preview", { options });
+  },
+  startTask(
+    requestId: string,
+    options: TxtToEpubOptions,
+  ): Promise<{ task_id: string; started_at: string }> {
+    return call("txt_to_epub.start_task", { request_id: requestId, options });
+  },
+  stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("txt_to_epub.stop_task", { task_id: taskId });
+  },
+  probeContinuable(): Promise<ProbeContinuable> {
+    return call("txt_to_epub.probe_continuable", {});
+  },
+  readSnapshot(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
+    return call("txt_to_epub.read_snapshot", { task_id: taskId });
+  },
+  listRecentTasks(limit?: number): Promise<{ tasks: TaskHeader[] }> {
+    return call("txt_to_epub.list_recent_tasks", { limit });
+  },
+  readArtifacts(taskId: string): Promise<TxtToEpubArtifacts> {
+    return call("txt_to_epub.read_artifacts", { task_id: taskId });
+  },
+  readReport(taskId: string): Promise<TxtToEpubReport> {
+    return call("txt_to_epub.read_report", { task_id: taskId });
+  },
+  listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
+    return call("txt_to_epub.list_failed_subtasks", { task_id: taskId });
   },
 };
 

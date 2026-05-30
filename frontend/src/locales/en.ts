@@ -587,6 +587,7 @@ export const en: Messages = {
       epubConvert: "EPUB to TXT",
       epubMetadata: "EPUB Metadata",
       epubRepair: "EPUB Repair",
+      txtToEpub: "TXT to EPUB",
     },
     appSettings: { general: "General" },
   },
@@ -1133,6 +1134,10 @@ export const en: Messages = {
     epubConvert: {
       title: "EPUB to TXT",
       sub: "Export EPUB body text as same-name TXT while preserving paragraphs and line breaks where possible.",
+    },
+    txtToEpub: {
+      title: "TXT to EPUB",
+      sub: "Scan TXT chapters, edit the table of contents and style, then generate a clean EPUB.",
     },
     epubMetadata: {
       title: "EPUB Metadata Editor",

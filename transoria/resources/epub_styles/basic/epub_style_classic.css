@@ -1,0 +1,49 @@
+/* 经典简约样式 - 适合长篇小说 */
+body {
+line-height: 1.7;
+margin: 3% 5%;
+text-align: justify;
+padding: 0;
+widows: 2;
+orphans: 2;
+}
+h1 {
+font-size: 1.3em;
+font-weight: bold;
+margin: 3em 0 1.5em 0;
+text-align: center;
+color: #2c2c2c;
+border-bottom: 2px solid #666666;
+padding-bottom: 0.3em;
+page-break-before: always;
+line-height: 1.3;
+text-indent: 0;
+}
+h2 {
+font-size: 1.25em;
+font-weight: bold;
+margin: 2.5em 0 1.2em 0;
+color: #3a3a3a;
+border-bottom: 1px solid #999999;
+padding-bottom: 0.3em;
+line-height: 1.4;
+text-indent: 0;
+}
+p {
+font-size: 1em;
+margin-top: 0;
+margin-bottom: 1.2em;
+text-indent: 2em;     /* 首行缩进 */
+orphans: 2;
+widows: 2;
+}
+p.no-indent {
+text-indent: 0;
+}
+img {
+max-width: 100%;
+height: auto;
+display: block;
+margin: 15px auto;
+border: none;
+}

@@ -322,6 +322,7 @@ export interface Messages {
       epubConvert: string;
       epubMetadata: string;
       epubRepair: string;
+      txtToEpub: string;
     };
     appSettings: {
       general: string;
@@ -805,6 +806,7 @@ export interface Messages {
     epubCompress: { title: string; sub: string };
     epubMerge: { title: string; sub: string };
     epubConvert: { title: string; sub: string };
+    txtToEpub: { title: string; sub: string };
     epubMetadata: { title: string; sub: string };
     epubRepair: { title: string; sub: string };
   };

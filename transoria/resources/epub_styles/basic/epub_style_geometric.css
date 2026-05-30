@@ -1,0 +1,72 @@
+/* 几何极简样式 - 现代几何设计 */
+body {
+line-height: 1.7;
+margin: 3% 5%;
+color: #1a1a1a;
+text-align: justify;
+padding: 0;
+widows: 2;
+orphans: 2;
+}
+h1 {
+font-size: 1.4em;
+font-weight: 300;
+margin: 4em 0 2em 0;
+text-align: left;
+color: #1a1a1a;
+page-break-before: always;
+line-height: 1.2;
+text-indent: 0;
+position: relative;
+padding: 0 0 20px 0;
+border-bottom: 1px solid #e0e0e0;
+}
+h1::before {
+content: '';
+position: absolute;
+left: 0;
+bottom: -1px;
+width: 60px;
+height: 2px;
+background: #333333;
+}
+h2 {
+font-size: 1.2em;
+font-weight: 400;
+margin: 3em 0 1.5em 0;
+color: #333333;
+text-align: left;
+line-height: 1.3;
+text-indent: 0;
+position: relative;
+padding-left: 20px;
+}
+h2::before {
+content: '';
+position: absolute;
+left: 0;
+top: 50%;
+transform: translateY(-50%);
+width: 12px;
+height: 1px;
+background: #666666;
+}
+p {
+font-size: 1em;
+margin-top: 0;
+margin-bottom: 1.3em;
+text-indent: 2em;
+orphans: 2;
+widows: 2;
+}
+p.no-indent {
+text-indent: 0;
+}
+
+img {
+max-width: 100%;
+height: auto;
+display: block;
+margin: 15px auto;
+border: none;
+}

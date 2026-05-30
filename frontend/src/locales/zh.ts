@@ -576,6 +576,7 @@ export const zh: Messages = {
       epubConvert: "EPUB 转 TXT",
       epubMetadata: "EPUB 元数据",
       epubRepair: "EPUB 修复",
+      txtToEpub: "TXT 转 EPUB",
     },
     appSettings: { general: "常规" },
   },
@@ -1110,6 +1111,10 @@ export const zh: Messages = {
     epubConvert: {
       title: "EPUB 转 TXT",
       sub: "把 EPUB 正文导出为同名 TXT，尽量保留原书段落与换行。",
+    },
+    txtToEpub: {
+      title: "TXT 转 EPUB",
+      sub: "扫描 TXT 章节，编辑目录和样式后生成干净的 EPUB。",
     },
     epubMetadata: {
       title: "EPUB 元数据编辑",

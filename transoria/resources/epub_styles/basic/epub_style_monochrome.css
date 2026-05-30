@@ -1,0 +1,55 @@
+/* 单色极简样式 - 纯黑白设计 */
+body {
+line-height: 1.8;
+margin: 4% 6%;
+color: #333333;
+text-align: justify;
+padding: 0;
+widows: 2;
+orphans: 2;
+}
+h1 {
+font-size: 1.4em;
+font-weight: 300;
+margin: 3em 0 1.5em 0;
+text-align: left;
+color: #000000;
+border-bottom: 3px double #666666;
+padding-bottom: 15px;
+page-break-before: always;
+line-height: 1.2;
+text-indent: 0;
+letter-spacing: 2px;
+}
+h2 {
+font-size: 1.2em;
+font-weight: 400;
+margin: 2.5em 0 1.2em 0;
+color: #1a1a1a;
+text-align: center;
+border-top: 1px solid #888888;
+border-bottom: 1px solid #888888;
+padding: 12px 0;
+line-height: 1.4;
+text-indent: 0;
+letter-spacing: 1px;
+}
+p {
+font-size: 1em;
+margin-top: 0;
+margin-bottom: 1.3em;
+text-indent: 2em;
+orphans: 2;
+widows: 2;
+}
+p.no-indent {
+text-indent: 0;
+}
+
+img {
+max-width: 100%;
+height: auto;
+display: block;
+margin: 15px auto;
+border: none;
+}

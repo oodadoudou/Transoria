@@ -79,6 +79,13 @@ from transoria.tools.epub_converter import (
     build_epub_convert_report,
     convert_epub_to_txt,
 )
+from transoria.tools.txt_to_epub import (
+    TxtToEpubAction,
+    TxtToEpubOptions,
+    build_txt_to_epub_plan,
+    build_txt_to_epub_report,
+    convert_txt_to_epub,
+)
 from transoria.workflows.glossary.config import GlossaryConfig
 from transoria.workflows.glossary_review.config import GlossaryReviewConfig
 from transoria.workflows.glossary_review.exporters import REPORT_FILENAME
@@ -125,6 +132,7 @@ _REPLACEMENT_REPORT_FILENAME = "replacement-report.json"
 _EPUB_COMPRESS_REPORT_FILENAME = "epub-compress-report.json"
 _EPUB_MERGE_REPORT_FILENAME = "epub-merge-report.json"
 _EPUB_CONVERT_REPORT_FILENAME = "epub-convert-report.json"
+_TXT_TO_EPUB_REPORT_FILENAME = "txt-to-epub-report.json"
 # Hard cap on occurrences captured per rule across the whole task —
 # the per-file cap inside ``apply_rules`` already prevents pathological
 # files; this guards the aggregated report so a 100k-match rule cannot
@@ -138,6 +146,7 @@ _KIND_TO_TASKKIND: dict[str, TaskKind] = {
     "epub_compress": TaskKind.EPUB_COMPRESS,
     "epub_merge": TaskKind.EPUB_MERGE,
     "epub_convert": TaskKind.EPUB_CONVERT,
+    "txt_to_epub": TaskKind.TXT_TO_EPUB,
 }
 
 # Persisted statuses that imply a live executor must exist; if the
@@ -1057,6 +1066,32 @@ def _partial_epub_convert_payload(
     }
 
 
+def _partial_txt_to_epub_payload(
+    snapshot: TaskSnapshot, *, output_folder: Path, report_path: Path
+) -> dict[str, object]:
+    converted = 0
+    failed = 0
+    output_files: list[str] = []
+    for subtask in snapshot.subtasks:
+        if subtask.status is SubtaskStatus.COMPLETED:
+            converted += 1
+            payload = _loads_json_object(subtask.response_content)
+            output_path = payload.get("output_path")
+            if isinstance(output_path, str) and output_path:
+                output_files.append(output_path)
+        elif subtask.status is SubtaskStatus.FAILED:
+            failed += 1
+    return {
+        "kind": "txt_to_epub",
+        "partial": True,
+        "output_folder": str(output_folder),
+        "report_path": str(report_path) if report_path.exists() else None,
+        "output_files": output_files,
+        "converted_count": converted,
+        "failed_count": failed,
+    }
+
+
 def _read_json_file(path: Path) -> dict[str, object] | None:
     if not path.exists():
         return None
@@ -1151,6 +1186,7 @@ class TaskService:
             "epub_compress": threading.Lock(),
             "epub_merge": threading.Lock(),
             "epub_convert": threading.Lock(),
+            "txt_to_epub": threading.Lock(),
         }
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
@@ -2967,6 +3003,180 @@ class TaskService:
         self._mark_status(task_id, final)
         self._maybe_cleanup_cache("epub_convert", task_id)
 
+    def preview_txt_to_epub(
+        self,
+        *,
+        options: Mapping[str, object],
+    ) -> dict[str, object]:
+        try:
+            config = TxtToEpubOptions.from_mapping(options)
+            return build_txt_to_epub_plan(config).to_dict()
+        except ValueError as exc:
+            raise BridgeError.invalid_argument(
+                str(exc),
+                field="options",
+            ) from exc
+
+    def start_txt_to_epub(
+        self,
+        *,
+        request_id: str,
+        options: Mapping[str, object],
+    ) -> dict[str, object]:
+        with self._start_locks["txt_to_epub"]:
+            return self._start_txt_to_epub_locked(
+                request_id=request_id,
+                options=options,
+            )
+
+    def _start_txt_to_epub_locked(
+        self,
+        *,
+        request_id: str,
+        options: Mapping[str, object],
+    ) -> dict[str, object]:
+        config = TxtToEpubOptions.from_mapping(options)
+        try:
+            plan = build_txt_to_epub_plan(config)
+        except ValueError as exc:
+            raise BridgeError.invalid_argument(str(exc), field="options") from exc
+
+        self._purge_kind_for_start(
+            kind="txt_to_epub", task_kind=TaskKind.TXT_TO_EPUB
+        )
+
+        task_id = _new_task_id("txt-to-epub")
+        started_at = _utc_now_iso()
+        output_dir = plan.output_path.parent
+        cache = self._cache_for_kind("txt_to_epub")
+        running = RunningTask(
+            task_id=task_id,
+            kind="txt_to_epub",
+            cache=cache,
+            created_at=started_at,
+        )
+        self.registry.add(running)
+
+        record = TaskRecord(
+            id=task_id,
+            kind=TaskKind.TXT_TO_EPUB,
+            status=TaskStatus.PENDING,
+            created_at=started_at,
+            updated_at=started_at,
+            metadata={
+                "input_dir": str(plan.input_path),
+                "output_dir": str(output_dir),
+                "request_id": request_id,
+                "options": config.to_dict(),
+            },
+        )
+        cache.write_seed(
+            record,
+            [
+                Subtask(
+                    id=plan.action.id,
+                    task_id=task_id,
+                    request_payload=plan.action.to_dict(),
+                )
+            ],
+        )
+
+        def _runner_target() -> None:
+            self._run_txt_to_epub_loop(
+                task_id=task_id,
+                input_path=plan.input_path,
+                running=running,
+            )
+
+        self._spawn_thread(running, target=_runner_target, task_id=task_id)
+        return {"task_id": task_id, "started_at": started_at}
+
+    def _run_txt_to_epub_loop(
+        self,
+        *,
+        task_id: str,
+        input_path: Path,
+        running: RunningTask,
+    ) -> None:
+        running.touch()
+        self._mark_status(task_id, TaskStatus.RUNNING)
+
+        cache = self._cache_for_kind("txt_to_epub")
+        snapshot = cache.load(task_id)
+        results = []
+        was_stopped = False
+
+        for subtask in snapshot.subtasks:
+            running.touch()
+            if running.stop_requested:
+                was_stopped = True
+                break
+            running_state = replace(
+                subtask,
+                status=SubtaskStatus.RUNNING,
+                attempt_count=subtask.attempt_count + 1,
+                last_error="",
+                last_error_at="",
+            )
+            cache.save_subtask(running_state)
+            action = TxtToEpubAction.from_mapping(subtask.request_payload)
+            result = convert_txt_to_epub(action)
+            results.append(result)
+            if result.status == "converted":
+                completed = replace(
+                    running_state,
+                    status=SubtaskStatus.COMPLETED,
+                    response_content=json.dumps(
+                        result.to_dict(), ensure_ascii=False
+                    ),
+                )
+                cache.save_subtask(completed)
+            else:
+                failed = replace(
+                    running_state,
+                    status=SubtaskStatus.FAILED,
+                    response_content=json.dumps(
+                        result.to_dict(), ensure_ascii=False
+                    ),
+                    last_error=result.error,
+                    last_error_at=_utc_now_iso(),
+                )
+                cache.save_subtask(failed)
+
+        report = build_txt_to_epub_report(
+            task_id=task_id,
+            input_path=input_path,
+            generated_at=_utc_now_iso(),
+            results=results,
+        )
+        report_path = self._write_txt_to_epub_report(task_id, report)
+        output_files = [
+            row["output_path"]
+            for row in report["results"]
+            if row["status"] == "converted"
+        ]
+        output_folder = Path(str(cache.load_record(task_id).metadata.get("output_dir", "")))
+        statistics = {
+            "kind": "txt_to_epub",
+            "output_folder": str(output_folder),
+            "report_path": str(report_path) if report_path else None,
+            "output_files": output_files,
+            "converted_count": report["totals"]["converted"],
+            "failed_count": report["totals"]["failed"],
+        }
+        self._write_result(task_id, statistics)
+
+        latest = cache.load(task_id)
+        progress = latest.progress()
+        if was_stopped or progress.pending > 0 or progress.running > 0:
+            final = TaskStatus.STOPPED
+        elif progress.failed > 0:
+            final = TaskStatus.FAILED
+        else:
+            final = TaskStatus.COMPLETED
+        self._mark_status(task_id, final)
+        self._maybe_cleanup_cache("txt_to_epub", task_id)
+
     def stop_task(self, *, kind: str, task_id: str) -> dict[str, object]:
         running = self.registry.get(task_id)
         if running is None:
@@ -3001,7 +3211,13 @@ class TaskService:
         return self.read_snapshot(kind=kind, task_id=task_id)
 
     def pause_task(self, *, kind: str, task_id: str) -> dict[str, object]:
-        if kind in {"replacement", "epub_compress", "epub_merge", "epub_convert"}:
+        if kind in {
+            "replacement",
+            "epub_compress",
+            "epub_merge",
+            "epub_convert",
+            "txt_to_epub",
+        }:
             raise BridgeError(
                 "task.invalid_transition",
                 f"pause is not supported for {kind} (single-pass tool).",
@@ -3032,7 +3248,13 @@ class TaskService:
         return self.read_snapshot(kind=kind, task_id=task_id)
 
     def continue_task(self, *, kind: str, task_id: str) -> dict[str, object]:
-        if kind in {"replacement", "epub_compress", "epub_merge", "epub_convert"}:
+        if kind in {
+            "replacement",
+            "epub_compress",
+            "epub_merge",
+            "epub_convert",
+            "txt_to_epub",
+        }:
             raise BridgeError(
                 "task.invalid_transition",
                 f"continue is not supported for {kind} (single-pass tool).",
@@ -3163,7 +3385,13 @@ class TaskService:
         ``continuable=false`` regardless of cache state.
         """
 
-        if kind in {"replacement", "epub_compress", "epub_merge", "epub_convert"}:
+        if kind in {
+            "replacement",
+            "epub_compress",
+            "epub_merge",
+            "epub_convert",
+            "txt_to_epub",
+        }:
             return {
                 "continuable": False,
                 "task_id": None,
@@ -3671,6 +3899,12 @@ class TaskService:
             / _EPUB_CONVERT_REPORT_FILENAME
         )
 
+    def _txt_to_epub_report_path(self, task_id: str) -> Path:
+        return (
+            self._cache_for_task(task_id).task_dir(task_id)
+            / _TXT_TO_EPUB_REPORT_FILENAME
+        )
+
     def _write_replacement_report(
         self, task_id: str, payload: Mapping[str, object]
     ) -> Path | None:
@@ -3811,6 +4045,39 @@ class TaskService:
                 ) from exc
         raise BridgeError.not_found(
             f"EPUB convert report not found for {task_id!r}",
+            details={"task_id": task_id},
+        )
+
+    def _write_txt_to_epub_report(
+        self, task_id: str, payload: Mapping[str, object]
+    ) -> Path | None:
+        try:
+            path = self._txt_to_epub_report_path(task_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_text(
+                json.dumps(dict(payload), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(tmp, path)
+            return path
+        except OSError:
+            return None
+
+    def read_txt_to_epub_report(self, *, task_id: str) -> dict[str, object]:
+        path = self._txt_to_epub_report_path(task_id)
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise BridgeError(
+                    "bridge.io_error",
+                    f"cannot read TXT to EPUB report: {exc}",
+                    retryable=False,
+                    details={"task_id": task_id, "path": str(path)},
+                ) from exc
+        raise BridgeError.not_found(
+            f"TXT to EPUB report not found for {task_id!r}",
             details={"task_id": task_id},
         )
 
@@ -4080,6 +4347,12 @@ class TaskService:
                 snapshot,
                 output_folder=output_dir,
                 report_path=self._epub_convert_report_path(record.id),
+            )
+        if record.kind is TaskKind.TXT_TO_EPUB:
+            return _partial_txt_to_epub_payload(
+                snapshot,
+                output_folder=output_dir,
+                report_path=self._txt_to_epub_report_path(record.id),
             )
         raise BridgeError.invalid_argument(
             f"unsupported task kind: {record.kind.value!r}",

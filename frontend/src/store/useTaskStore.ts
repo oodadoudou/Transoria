@@ -28,7 +28,8 @@ export type GeneralToolsPage =
   | "epubMerge"
   | "epubConvert"
   | "epubMetadata"
-  | "epubRepair";
+  | "epubRepair"
+  | "txtToEpub";
 
 const GENERAL_TOOLS_PAGES = [
   "batchReplacement",
@@ -37,6 +38,7 @@ const GENERAL_TOOLS_PAGES = [
   "epubConvert",
   "epubMetadata",
   "epubRepair",
+  "txtToEpub",
 ] as const;
 
 export type AppSettingsPage = "general";

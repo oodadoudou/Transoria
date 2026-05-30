@@ -1,0 +1,71 @@
+/* 现代极简样式 - 简洁线条设计 */
+body {
+line-height: 1.8;
+margin: 4% 6%;
+color: #2c3e50;
+text-align: justify;
+padding: 0;
+widows: 2;
+orphans: 2;
+}
+h1 {
+font-size: 1.5em;
+font-weight: 300;
+margin: 4em 0 2em 0;
+text-align: center;
+color: #34495e;
+position: relative;
+page-break-before: always;
+line-height: 1.2;
+text-indent: 0;
+letter-spacing: 2px;
+text-transform: uppercase;
+}
+h1::after {
+content: '';
+display: block;
+width: 80px;
+height: 1px;
+background: #34495e;
+margin: 20px auto;
+}
+h2 {
+font-size: 1.2em;
+font-weight: 400;
+margin: 3em 0 1.5em 0;
+color: #2c3e50;
+text-align: left;
+line-height: 1.3;
+text-indent: 0;
+position: relative;
+padding-left: 20px;
+}
+h2::before {
+content: '';
+position: absolute;
+left: 0;
+top: 50%;
+transform: translateY(-50%);
+width: 3px;
+height: 20px;
+background: #34495e;
+}
+p {
+font-size: 1em;
+margin-top: 0;
+margin-bottom: 1.5em;
+text-indent: 2em;
+orphans: 2;
+widows: 2;
+}
+p.no-indent {
+text-indent: 0;
+}
+
+img {
+max-width: 100%;
+height: auto;
+display: block;
+margin: 15px auto;
+border: none;
+}

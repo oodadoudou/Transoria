@@ -758,6 +758,110 @@ export interface EpubConvertReport {
   results: EpubConvertReportResult[];
 }
 
+export interface TxtToEpubRule {
+  level: number;
+  pattern: string;
+}
+
+export interface TxtToEpubPreset {
+  id: string;
+  label: string;
+  description: string;
+  rules: TxtToEpubRule[];
+}
+
+export interface TxtToEpubStyle {
+  id: string;
+  group: "basic" | "enhanced" | string;
+  groupLabel: string;
+  label: string;
+  description: string;
+  css: string;
+  compatibility: "broad" | "enhanced" | string;
+}
+
+export interface TxtToEpubTocEntry {
+  id: string;
+  level: number;
+  title: string;
+  startLine: number;
+  endLine: number;
+  enabled: boolean;
+  sourcePreview: string;
+}
+
+export interface TxtToEpubScanResult {
+  input_path: string;
+  title: string;
+  line_count: number;
+  character_count: number;
+  entries: TxtToEpubTocEntry[];
+}
+
+export interface TxtToEpubOptions {
+  source_path: string;
+  output_dir: string;
+  title: string;
+  author: string;
+  language: string;
+  cover_path: string;
+  style_id: string;
+  custom_css: string;
+  overwrite: boolean;
+  toc_entries: TxtToEpubTocEntry[];
+}
+
+export interface TxtToEpubAction {
+  id: string;
+  source_path: string;
+  output_path: string;
+  options: TxtToEpubOptions;
+  selected: boolean;
+}
+
+export interface TxtToEpubPlan {
+  input_path: string;
+  output_path: string;
+  output_exists: boolean;
+  actions: TxtToEpubAction[];
+  totals: { txt_files: number };
+}
+
+export interface TxtToEpubArtifacts {
+  kind: "txt_to_epub";
+  output_folder: string;
+  report_path: string | null;
+  output_files: string[];
+  converted_count: number;
+  failed_count: number;
+}
+
+export interface TxtToEpubReportResult {
+  action_id: string;
+  source_path: string;
+  output_path: string;
+  status: "converted" | "failed" | string;
+  chapters_written: number;
+  toc_entries: number;
+  characters_written: number;
+  error: string;
+}
+
+export interface TxtToEpubReport {
+  task_id: string;
+  generated_at: string;
+  input_path: string;
+  totals: {
+    actions: number;
+    converted: number;
+    failed: number;
+    chapters_written: number;
+    toc_entries: number;
+    characters_written: number;
+  };
+  results: TxtToEpubReportResult[];
+}
+
 export interface EpubMetadataInfo {
   input_path: string;
   package_path: string;

@@ -7,6 +7,7 @@ import {
   epubCompressBridge,
   epubConvertBridge,
   epubMergeBridge,
+  txtToEpubBridge,
   glossaryBridge,
   glossaryReviewBridge,
   replacementBridge,
@@ -29,7 +30,8 @@ export type RunKind =
   | "replacement"
   | "epub_compress"
   | "epub_merge"
-  | "epub_convert";
+  | "epub_convert"
+  | "txt_to_epub";
 
 const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set([
   "completed",
@@ -115,6 +117,7 @@ interface RuntimeState {
   epub_compress: KindRuntime;
   epub_merge: KindRuntime;
   epub_convert: KindRuntime;
+  txt_to_epub: KindRuntime;
   refreshActiveTask: (kind: RunKind) => Promise<void>;
   pollSnapshot: (kind: RunKind) => Promise<void>;
   setActiveTaskId: (kind: RunKind, taskId: string | null) => void;
@@ -130,6 +133,7 @@ const bridges = {
   epub_compress: epubCompressBridge,
   epub_merge: epubMergeBridge,
   epub_convert: epubConvertBridge,
+  txt_to_epub: txtToEpubBridge,
 } as const;
 
 function pickActive(tasks: TaskHeader[]): TaskHeader | null {
@@ -171,6 +175,7 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   epub_compress: emptyRuntime,
   epub_merge: emptyRuntime,
   epub_convert: emptyRuntime,
+  txt_to_epub: emptyRuntime,
 
   setActiveTaskId: (kind, taskId) =>
     set((state) =>
@@ -374,7 +379,8 @@ async function maybeOpenOutputFolder(
     kind === "replacement" ||
     kind === "epub_compress" ||
     kind === "epub_merge" ||
-    kind === "epub_convert"
+    kind === "epub_convert" ||
+    kind === "txt_to_epub"
   ) {
     return;
   }

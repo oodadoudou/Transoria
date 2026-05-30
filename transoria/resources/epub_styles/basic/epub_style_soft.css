@@ -1,0 +1,55 @@
+/* 柔和圆润样式 - 温和舒适的阅读体验 */
+body {
+line-height: 1.8;
+margin: 4% 6%;
+color: #444444;
+text-align: justify;
+padding: 0;
+widows: 2;
+orphans: 2;
+}
+h1 {
+font-size: 1.3em;
+font-weight: 400;
+margin: 3em 0 1.5em 0;
+text-align: center;
+color: #2c2c2c;
+border-radius: 15px;
+padding: 25px;
+page-break-before: always;
+line-height: 1.4;
+text-indent: 0;
+background: linear-gradient(145deg, #f8f8f8, #eeeeee);
+box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+h2 {
+font-size: 1.25em;
+font-weight: 500;
+margin: 2.5em 0 1.2em 0;
+color: #3a3a3a;
+border-radius: 10px;
+padding: 15px 20px;
+line-height: 1.5;
+text-indent: 0;
+background-color: #f5f5f5;
+border-left: 4px solid #888888;
+}
+p {
+font-size: 1em;
+margin-top: 0;
+margin-bottom: 1.5em;
+text-indent: 2em;
+orphans: 2;
+widows: 2;
+}
+p.no-indent {
+text-indent: 0;
+}
+
+img {
+max-width: 100%;
+height: auto;
+display: block;
+margin: 15px auto;
+border: none;
+}

@@ -110,6 +110,7 @@ class TaskKind(str, Enum):
     EPUB_COMPRESS = "epub_compress"
     EPUB_MERGE = "epub_merge"
     EPUB_CONVERT = "epub_convert"
+    TXT_TO_EPUB = "txt_to_epub"
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,107 @@
+/* 温馨护眼样式 - 增强样式 */
+
+body {
+    font-size: 16px;
+    line-height: 1.7;
+    margin: 3% 5%;
+    color: #4a4a4a;
+    text-align: justify;
+    padding: 0;
+    widows: 2;
+    orphans: 2;
+}
+
+h1 {
+    font-size: 24px;
+    font-weight: 600;
+    margin: 3em 0 1.5em 0;
+    text-align: center;
+    color: #2a2a2a;
+    line-height: 1.3;
+    text-indent: 0;
+    border-bottom: 2px solid #666666;
+    padding-bottom: 10px;
+}
+
+h2 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 2.5em 0 1.2em 0;
+    color: #3a3a3a;
+    text-align: center;
+    line-height: 1.4;
+    text-indent: 0;
+    border-bottom: 1px solid #777777;
+    padding-bottom: 5px;
+}
+
+p {
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 1.2em;
+    text-indent: 2em;
+    orphans: 2;
+    widows: 2;
+}
+
+/* 图片样式 */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 15px auto;
+    border: none;
+}
+
+/* 书名和作者样式 */
+.book-title {
+    font-size: 1.3em;
+    font-weight: 600;
+    text-align: center;
+    margin: 2em 0;
+    color: #2a2a2a;
+    border-bottom: 3px solid #666666;
+    padding-bottom: 15px;
+}
+
+.book-author {
+    font-size: 1.1em;
+    text-align: center;
+    margin: 1em 0 3em 0;
+    color: #444444;
+    font-style: italic;
+    font-weight: 500;
+}
+
+/* 目录页样式修正 */
+.toc {
+    text-align: left;
+}
+
+.toc h1, .toc h2, .toc h3, .toc h4, .toc h5, .toc h6 {
+    border: none;
+    padding: 0;
+    margin-bottom: 0.5em;
+}
+
+.toc p {
+    text-indent: 0;
+    margin-bottom: 0.5em;
+}
+
+/* 无缩进段落 */
+p.no-indent {
+    text-indent: 0;
+}
+
+/* 居中段落 */
+p.center {
+    text-align: center;
+    text-indent: 0;
+}
+
+/* 右对齐段落 */
+p.right {
+    text-align: right;
+    text-indent: 0;
+}

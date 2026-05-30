@@ -1,0 +1,242 @@
+.grid2,
+.metaGrid,
+.ruleGrid,
+.cssGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.grid2 {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.metaGrid {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr);
+  margin-top: 10px;
+}
+
+.fileRow {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.label,
+.field span {
+  color: var(--muted, #7a7166);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.input,
+.field input,
+.field select,
+.tableInput,
+.cssEditor {
+  width: 100%;
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 8px;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+}
+
+.modeRow,
+.actionRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.modeRow {
+  margin-top: 0;
+}
+
+.modeButton,
+.modeActive {
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 999px;
+  background: var(--panel, #fffaf3);
+  color: var(--muted, #7a7166);
+  padding: 6px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modeActive {
+  background: var(--ink, #2f281f);
+  color: var(--panel, #fffaf3);
+}
+
+.presetGrid,
+.styleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preset,
+.presetActive,
+.styleCard,
+.styleActive {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  padding: 10px;
+  cursor: pointer;
+}
+
+.preset span,
+.presetActive span,
+.styleCard small,
+.styleActive small {
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+}
+
+.presetActive,
+.styleActive {
+  border-color: var(--ink, #2f281f);
+  box-shadow: inset 0 0 0 1px var(--ink, #2f281f);
+}
+
+.hint,
+.actionError,
+.empty,
+.previewText,
+.report {
+  color: var(--muted, #7a7166);
+  font-size: 12.5px;
+}
+
+.actionError {
+  color: var(--text-warn, #6b3a1f);
+}
+
+.tableWrap {
+  margin-top: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+}
+
+.table {
+  width: 100%;
+  min-width: 880px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--hairline, #ece8e2);
+}
+
+.table th {
+  color: var(--muted, #7a7166);
+  background: var(--panel-soft, #f5f0e9);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.empty {
+  font-style: italic;
+}
+
+.previewText {
+  white-space: pre-wrap;
+  max-width: 360px;
+}
+
+.cssGrid {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.7fr);
+  margin-top: 10px;
+}
+
+.cssEditor {
+  min-height: 280px;
+  margin-top: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.stylePreview {
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: var(--panel, #fffaf3);
+}
+
+.progressBlock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.progressTrack {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-soft, #f5f0e9);
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--ink, #2f281f);
+  transition: width 160ms ease;
+}
+
+.artifacts {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  white-space: pre-wrap;
+}
+
+.report {
+  margin-top: 8px;
+}
+
+@media (max-width: 980px) {
+  .grid2,
+  .metaGrid,
+  .cssGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fileRow {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+}
