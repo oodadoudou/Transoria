@@ -18,6 +18,7 @@ OCF_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:container"
 ROW_BASE_NAV = 8_000_000_000
 ROW_BASE_NCX = 9_000_000_000
 ROW_MULTIPLIER = 1_000_000
+HTML_DOCUMENT_SUFFIXES = (".xhtml", ".xhtm", ".html", ".htm")
 
 BLOCK_TAGS = {
     # Standard text blocks.
@@ -283,7 +284,7 @@ def extract_segments(archive: zipfile.ZipFile, package: EpubPackageInfo) -> list
 
     processed_paths: set[str] = set()
     for spine_index, doc_path in enumerate(package.spine_paths):
-        if not doc_path.lower().endswith((".xhtml", ".html", ".htm")):
+        if not is_html_document_path(doc_path):
             continue
         kind = EpubTextKind.NAV if doc_path == package.nav_path else EpubTextKind.BODY
         append_xhtml_segments(archive, doc_path, spine_index, kind, segments)
@@ -302,6 +303,10 @@ def extract_segments(archive: zipfile.ZipFile, package: EpubPackageInfo) -> list
         append_ncx_segments(archive, package.ncx_path, segments)
 
     return segments
+
+
+def is_html_document_path(path: str) -> bool:
+    return path.lower().endswith(HTML_DOCUMENT_SUFFIXES)
 
 
 def append_xhtml_segments(

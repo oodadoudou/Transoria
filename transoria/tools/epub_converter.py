@@ -8,6 +8,7 @@ import zipfile
 from lxml import etree
 
 from transoria.formats.epub_parser import (
+    is_html_document_path,
     iter_children_elements,
     local_name,
     parse_package,
@@ -230,7 +231,7 @@ def export_epub_text(path: Path) -> EpubTextExport:
     with zipfile.ZipFile(path, "r") as archive:
         package = parse_package(archive)
         for doc_path in package.spine_paths:
-            if not doc_path.lower().endswith((".xhtml", ".html", ".htm")):
+            if not is_html_document_path(doc_path):
                 continue
             text = _render_spine_document(archive, doc_path)
             spine_documents += 1

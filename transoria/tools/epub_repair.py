@@ -10,6 +10,7 @@ import zipfile
 from lxml import etree
 
 from transoria.formats.epub_parser import (
+    HTML_DOCUMENT_SUFFIXES,
     fix_ncx_bare_ampersands,
     local_name,
     normalize_epub_xml_entities,
@@ -24,7 +25,6 @@ from transoria.formats.epub_parser import (
 
 
 _EPUB_SUFFIX = ".epub"
-_HTML_SUFFIXES = (".xhtml", ".html", ".htm")
 _XML_SUFFIXES = (".opf", ".ncx", ".xml")
 _MIMETYPE = b"application/epub+zip"
 _XHTML_NAMESPACE = "http://www.w3.org/1999/xhtml"
@@ -107,7 +107,7 @@ def repair_epub_file(
                     raw = src.read(info.filename)
                     next_raw = raw
                     filename = info.filename.lower()
-                    if filename.endswith(_HTML_SUFFIXES):
+                    if filename.endswith(HTML_DOCUMENT_SUFFIXES):
                         html_files_scanned += 1
                         repaired = _repair_html_document(raw)
                         if repaired.changed:
