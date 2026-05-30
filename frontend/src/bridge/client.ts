@@ -22,6 +22,7 @@ import type {
   EpubMergeOptions,
   EpubMergePlan,
   EpubMergeReport,
+  EpubRepairResult,
   GlossaryArtifacts,
   GlossaryFileResult,
   GlossaryReviewArtifacts,
@@ -864,6 +865,20 @@ export const epubMetadataBridge = {
       cover_path: coverPath,
       overwrite,
       compress,
+    });
+  },
+};
+
+export const epubRepairBridge = {
+  apply(
+    inputPath: string,
+    outputPath: string,
+    overwrite = false,
+  ): Promise<EpubRepairResult> {
+    return call("epub_repair.apply", {
+      input_path: inputPath,
+      output_path: outputPath,
+      overwrite,
     });
   },
 };

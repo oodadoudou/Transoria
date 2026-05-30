@@ -779,6 +779,19 @@ export interface EpubMetadataApplyResult {
   compressed: boolean;
 }
 
+export interface EpubRepairResult {
+  input_path: string;
+  output_path: string;
+  documents_scanned: number;
+  documents_repaired: number;
+  html_files_scanned: number;
+  html_files_repaired: number;
+  xml_files_scanned: number;
+  xml_files_repaired: number;
+  void_containers_repaired: number;
+  document_wrappers_added: number;
+}
+
 export interface ReplacementReportOccurrence {
   file_path: string;
   char_offset: number;

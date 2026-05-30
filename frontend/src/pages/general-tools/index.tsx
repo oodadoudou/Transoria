@@ -4,6 +4,7 @@ import { EpubCompressPage } from './EpubCompressPage';
 import { EpubConvertPage } from './EpubConvertPage';
 import { EpubMetadataPage } from './EpubMetadataPage';
 import { EpubMergePage } from './EpubMergePage';
+import { EpubRepairPage } from './EpubRepairPage';
 
 interface GeneralToolsModuleProps {
   page: GeneralToolsPage;
@@ -21,5 +22,7 @@ export function GeneralToolsModule({ page }: GeneralToolsModuleProps) {
       return <EpubConvertPage />;
     case 'epubMetadata':
       return <EpubMetadataPage />;
+    case 'epubRepair':
+      return <EpubRepairPage />;
   }
 }

@@ -80,6 +80,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
           { page: "epubMerge", label: gt.epubMerge },
           { page: "epubConvert", label: gt.epubConvert },
           { page: "epubMetadata", label: gt.epubMetadata },
+          { page: "epubRepair", label: gt.epubRepair },
         ],
       },
     ],

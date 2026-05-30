@@ -321,6 +321,7 @@ export interface Messages {
       epubMerge: string;
       epubConvert: string;
       epubMetadata: string;
+      epubRepair: string;
     };
     appSettings: {
       general: string;
@@ -803,6 +804,7 @@ export interface Messages {
     epubMerge: { title: string; sub: string };
     epubConvert: { title: string; sub: string };
     epubMetadata: { title: string; sub: string };
+    epubRepair: { title: string; sub: string };
   };
   batchReplacement: {
     title: string;
@@ -997,6 +999,28 @@ export interface Messages {
     noMetadata: string;
     saved: string;
     savedCompressed: string;
+  };
+  epubRepairTool: {
+    title: string;
+    sub: string;
+    inputFile: string;
+    inputPlaceholder: string;
+    outputFolder: string;
+    chooseEpub: string;
+    chooseOutputFolder: string;
+    generatedOutput: string;
+    repair: string;
+    openOutput: string;
+    currentLabel: string;
+    currentOutput: string;
+    scanned: string;
+    repairedFiles: string;
+    htmlScanned: string;
+    xmlRepaired: string;
+    voidContainers: string;
+    wrappersAdded: string;
+    noResult: string;
+    repaired: string;
   };
   batchReplacementReport: {
     title: string;

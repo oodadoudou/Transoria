@@ -16,6 +16,7 @@ export {
   epubConvertBridge,
   epubMetadataBridge,
   epubMergeBridge,
+  epubRepairBridge,
   replacementBridge,
   rulesBridge,
   tasksBridge,
