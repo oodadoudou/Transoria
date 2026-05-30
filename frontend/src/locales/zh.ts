@@ -853,6 +853,10 @@ export const zh: Messages = {
       retranslateSelectedDone:
         "批量重翻完成：成功 {done} 条，丢弃 {stale} 条，失败 {failed} 条。",
       retranslateSelectedDoneWithReasons: "{summary} 失败原因：{reasons}。",
+      retranslateProgressLabel:
+        "批量重翻进度：{processed}/{total}（{percent}%）",
+      retranslateProgressDetail:
+        "当前第 {current} 条 · 成功 {completed} · 丢弃 {stale} · 失败 {failed}",
       retranslateUndoAction: "撤回上次重翻",
       retranslateUndoRunning: "撤回中…",
       retranslateUndoDone: "已撤回 {n} 条重翻结果。",

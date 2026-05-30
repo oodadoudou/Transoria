@@ -868,6 +868,10 @@ export const en: Messages = {
       retranslateSelectedDone:
         "Batch retranslate finished: {done} completed, {stale} discarded, {failed} failed.",
       retranslateSelectedDoneWithReasons: "{summary} Failure reasons: {reasons}.",
+      retranslateProgressLabel:
+        "Batch retranslate progress: {processed}/{total} ({percent}%)",
+      retranslateProgressDetail:
+        "Current {current} · completed {completed} · discarded {stale} · failed {failed}",
       retranslateUndoAction: "Undo last retranslate",
       retranslateUndoRunning: "Undoing…",
       retranslateUndoDone: "Undid {n} retranslated item(s).",

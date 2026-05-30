@@ -579,6 +579,8 @@ export interface Messages {
       retranslateSuccess: string;
       retranslateSelectedDone: string;
       retranslateSelectedDoneWithReasons: string;
+      retranslateProgressLabel: string;
+      retranslateProgressDetail: string;
       retranslateUndoAction: string;
       retranslateUndoRunning: string;
       retranslateUndoDone: string;

@@ -51,6 +51,15 @@ interface RetranslateUndo {
   entries: Array<{ segmentId: string; dst: string }>;
 }
 
+interface BatchRetranslateProgress {
+  total: number;
+  processed: number;
+  completed: number;
+  stale: number;
+  failed: number;
+  current: number;
+}
+
 interface ProofreadingItemMeta {
   rank: number;
   fileIndex: number;
@@ -221,6 +230,8 @@ export function ProofreadingPage() {
     Record<string, string>
   >({});
   const [batchRetranslating, setBatchRetranslating] = useState(false);
+  const [batchRetranslateProgress, setBatchRetranslateProgress] =
+    useState<BatchRetranslateProgress | null>(null);
   const [retranslateUndo, setRetranslateUndo] =
     useState<RetranslateUndo | null>(null);
   const [undoingRetranslate, setUndoingRetranslate] = useState(false);
@@ -866,6 +877,14 @@ export function ProofreadingPage() {
 
   const retranslateIds = async (ids: string[]) => {
     setBatchRetranslating(true);
+    setBatchRetranslateProgress({
+      total: ids.length,
+      processed: 0,
+      completed: 0,
+      stale: 0,
+      failed: 0,
+      current: ids.length > 0 ? 1 : 0,
+    });
     const previousById = new Map(
       (snapshot?.items ?? []).map((item) => [item.segment_id, item.dst]),
     );
@@ -875,7 +894,10 @@ export function ProofreadingPage() {
     let failedCount = 0;
     const failedReasons: string[] = [];
     try {
-      for (const segmentId of ids) {
+      for (const [index, segmentId] of ids.entries()) {
+        setBatchRetranslateProgress((prev) =>
+          prev ? { ...prev, current: index + 1 } : prev,
+        );
         const result = await runRetranslateSegment(segmentId, {
           showFeedback: false,
         });
@@ -890,6 +912,14 @@ export function ProofreadingPage() {
           failedCount += 1;
           failedReasons.push(result.reason ?? "unknown");
         }
+        setBatchRetranslateProgress({
+          total: ids.length,
+          processed: index + 1,
+          completed: completedCount,
+          stale: staleCount,
+          failed: failedCount,
+          current: Math.min(index + 2, ids.length),
+        });
       }
       const baseText = format(m.retranslateSelectedDone, {
         done: completedCount,
@@ -911,6 +941,7 @@ export function ProofreadingPage() {
       );
     } finally {
       setBatchRetranslating(false);
+      setBatchRetranslateProgress(null);
     }
   };
 
@@ -1029,6 +1060,14 @@ export function ProofreadingPage() {
   const untranslatedCount = proofreadingIndex.riskCounts.untranslated;
   const formatRescueCount = proofreadingIndex.riskCounts.formatRescue;
   const totalCount = proofreadingIndex.riskCounts.total;
+  const batchProgressPercent =
+    batchRetranslateProgress && batchRetranslateProgress.total > 0
+      ? Math.round(
+          (batchRetranslateProgress.processed /
+            batchRetranslateProgress.total) *
+            100,
+        )
+      : 0;
   const riskCards: Array<{
     key: ProofreadingFilterKey;
     label: string;
@@ -1276,6 +1315,38 @@ export function ProofreadingPage() {
           </button>
         </span>
       </div>
+
+      {batchRetranslateProgress ? (
+        <div
+          className={styles.retranslateProgress}
+          role="status"
+          aria-live="polite"
+        >
+          <div className={styles.retranslateProgressHeader}>
+            <span>
+              {format(m.retranslateProgressLabel, {
+                processed: batchRetranslateProgress.processed,
+                total: batchRetranslateProgress.total,
+                percent: batchProgressPercent,
+              })}
+            </span>
+            <span>
+              {format(m.retranslateProgressDetail, {
+                current: batchRetranslateProgress.current,
+                completed: batchRetranslateProgress.completed,
+                stale: batchRetranslateProgress.stale,
+                failed: batchRetranslateProgress.failed,
+              })}
+            </span>
+          </div>
+          <div className={styles.retranslateProgressTrack}>
+            <div
+              className={styles.retranslateProgressBar}
+              style={{ width: `${batchProgressPercent}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ marginBottom: 8 }}>
         <input
