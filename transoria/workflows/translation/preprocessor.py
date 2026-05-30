@@ -44,12 +44,13 @@ _SENTINEL_PATTERN = re.compile(
     re.escape(_SENTINEL_PREFIX) + r"(\d+)" + re.escape(_SENTINEL_SUFFIX)
 )
 
-# Strip invisible Cf-class chars often injected by EPUB DRM watermarks.
-# These survive normal whitespace stripping (they're not Zs-class) and
-# fool length-based confidence checks. U+2061 (FUNCTION APPLICATION) is
-# deliberately excluded \u2014 it's reused inside our protection sentinels.
+# Strip invisible/filler chars before deciding whether a segment should be
+# translated. Cf-class marks are common EPUB DRM noise; U+3164 can appear as
+# publisher blank-line filler between blocks. These survive normal whitespace
+# stripping and fool language/confidence checks. U+2061 (FUNCTION APPLICATION)
+# is deliberately excluded \u2014 it's reused inside our protection sentinels.
 _DRM_INVISIBLE_PATTERN = re.compile(
-    r"[\u200b-\u200f\u202a-\u202e\u2060\u2062-\u2064\u206a-\u206f\ufeff]+"
+    r"[\u200b-\u200f\u202a-\u202e\u2060\u2062-\u2064\u206a-\u206f\u3164\ufeff]+"
 )
 
 
