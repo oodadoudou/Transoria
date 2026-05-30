@@ -127,13 +127,36 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
     snapshot.progress.total > 0
       ? Math.floor((settled / snapshot.progress.total) * 100)
       : 0;
+  const canExecute =
+    Boolean(inputPath) && !isRunning && (mode === "file" || selectedCount > 0);
+
+  const clearPreviewState = () => {
+    setPlan(null);
+    setActions([]);
+    setActionError(null);
+    setArtifacts(null);
+    setReport(null);
+    setShowReport(false);
+    setArtifactFeedback(null);
+  };
+
+  const handleModeChange = (nextMode: "file" | "folder") => {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    clearPreviewState();
+  };
+
+  const handleInputPathChange = (nextPath: string) => {
+    setInputPath(nextPath);
+    clearPreviewState();
+  };
 
   const handleChooseFile = async () => {
     try {
       const result = await dialogsBridge.chooseEpubFile(inputPath || undefined);
       if (result.path) {
         setMode("file");
-        setInputPath(result.path);
+        handleInputPathChange(result.path);
       }
     } catch (error) {
       if (BridgeError.isBridgeError(error)) setActionError(error);
@@ -169,13 +192,23 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
     setShowReport(false);
     setArtifactFeedback(null);
     try {
+      let executionActions = actions;
+      if (mode === "file") {
+        const next = await epubConvertBridge.preview(inputPath, mode, {
+          ...options,
+          output_dir: "",
+        });
+        executionActions = next.actions;
+        setPlan(next);
+        setActions(next.actions);
+      }
       const requestId = `epub-convert-${Date.now().toString(36)}`;
       const { task_id } = await epubConvertBridge.startTask(
         requestId,
         inputPath,
         mode,
         { ...options, output_dir: "" },
-        actions,
+        executionActions,
       );
       setActiveTaskId("epub_convert", task_id);
     } catch (error) {
@@ -220,14 +253,14 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
             <button
               type="button"
               className={mode === "folder" ? styles.modeActive : styles.modeButton}
-              onClick={() => setMode("folder")}
+              onClick={() => handleModeChange("folder")}
             >
               {text.folderMode}
             </button>
             <button
               type="button"
               className={mode === "file" ? styles.modeActive : styles.modeButton}
-              onClick={() => setMode("file")}
+              onClick={() => handleModeChange("file")}
             >
               {text.fileMode}
             </button>
@@ -237,7 +270,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               label={text.inputFolder}
               value={inputPath}
               variant="input"
-              onChange={setInputPath}
+              onChange={handleInputPathChange}
               compact
             />
           ) : (
@@ -245,7 +278,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               <input
                 className={styles.pathInput}
                 value={inputPath}
-                onChange={(event) => setInputPath(event.target.value)}
+                onChange={(event) => handleInputPathChange(event.target.value)}
                 placeholder={text.filePlaceholder}
               />
               <Pill variant="ghost" onClick={handleChooseFile}>
@@ -254,30 +287,33 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
             </div>
           )}
         </div>
-        <div className={styles.optionsGrid}>
-          <label className={styles.option}>
-            <input
-              type="checkbox"
-              checked={options.recursive}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  recursive: event.target.checked,
-                }))
-              }
-              disabled={mode === "file"}
-            />
-            {text.recursive}
-          </label>
-          <span className={styles.hint}>{text.outputHint}</span>
-        </div>
+        {mode === "folder" ? (
+          <div className={styles.optionsGrid}>
+            <label className={styles.option}>
+              <input
+                type="checkbox"
+                checked={options.recursive}
+                onChange={(event) =>
+                  setOptions((prev) => ({
+                    ...prev,
+                    recursive: event.target.checked,
+                  }))
+                }
+              />
+              {text.recursive}
+            </label>
+            <span className={styles.hint}>{text.outputHint}</span>
+          </div>
+        ) : null}
         <div className={styles.actionRow}>
-          <Pill onClick={handlePreview} disabled={!inputPath || isRunning}>
-            {text.scan}
-          </Pill>
+          {mode === "folder" ? (
+            <Pill onClick={handlePreview} disabled={!inputPath || isRunning}>
+              {text.scan}
+            </Pill>
+          ) : null}
           <Pill
             onClick={handleExecute}
-            disabled={!inputPath || selectedCount === 0 || isRunning}
+            disabled={!canExecute}
           >
             {text.execute}
           </Pill>
@@ -292,55 +328,57 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
         </div>
       </Panel>
 
-      <Panel label={text.previewLabel}>
-        {plan ? (
-          <>
-            <div className={styles.summaryGrid}>
-              <Stat label={text.epubsFound} value={NUM.format(plan.totals.epub_files)} />
-              <Stat
-                label={text.selectedCount}
-                value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
-              />
-            </div>
-            {actions.length > 0 ? (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>{text.select}</th>
-                      <th>{text.source}</th>
-                      <th>{text.output}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {actions.map((action) => (
-                      <tr key={action.id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={action.selected}
-                            onChange={(event) =>
-                              patchAction(action.id, {
-                                selected: event.target.checked,
-                              })
-                            }
-                          />
-                        </td>
-                        <td>{action.source_path}</td>
-                        <td>{action.output_path}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      {mode === "folder" ? (
+        <Panel label={text.previewLabel}>
+          {plan ? (
+            <>
+              <div className={styles.summaryGrid}>
+                <Stat label={text.epubsFound} value={NUM.format(plan.totals.epub_files)} />
+                <Stat
+                  label={text.selectedCount}
+                  value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
+                />
               </div>
-            ) : (
-              <div className={styles.empty}>{text.noActions}</div>
-            )}
-          </>
-        ) : (
-          <div className={styles.empty}>{text.noPlan}</div>
-        )}
-      </Panel>
+              {actions.length > 0 ? (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>{text.select}</th>
+                        <th>{text.source}</th>
+                        <th>{text.output}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {actions.map((action) => (
+                        <tr key={action.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={action.selected}
+                              onChange={(event) =>
+                                patchAction(action.id, {
+                                  selected: event.target.checked,
+                                })
+                              }
+                            />
+                          </td>
+                          <td>{action.source_path}</td>
+                          <td>{action.output_path}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className={styles.empty}>{text.noActions}</div>
+              )}
+            </>
+          ) : (
+            <div className={styles.empty}>{text.noPlan}</div>
+          )}
+        </Panel>
+      ) : null}
 
       {activeTaskId ? (
         <Panel label={text.progressLabel}>

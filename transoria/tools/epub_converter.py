@@ -151,12 +151,12 @@ def build_epub_convert_plan(
             raise ValueError(f"EPUB file does not exist: {input_path}")
         if source.suffix.lower() != _EPUB_SUFFIX:
             raise ValueError(f"input file must be .epub: {input_path}")
-        actions = tuple(
+        actions = (
             EpubConvertAction(
                 id="epub-0000",
                 source_path=str(source),
                 output_path=str((output_dir / source.with_suffix(_TXT_SUFFIX).name).resolve()),
-            )
+            ),
         )
     elif mode == "folder":
         if not source.exists() or not source.is_dir():
