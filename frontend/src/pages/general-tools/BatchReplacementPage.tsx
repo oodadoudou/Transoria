@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { format, useMessages } from "@/locales";
 import {
   BridgeError,
@@ -32,6 +32,7 @@ import {
 import { useSearchShortcut } from "@/components/useSearchShortcut";
 import { tableRowKey, uniqueRows } from "@/utils/tableDedupe";
 import { useLocalState } from "@/utils/localState";
+import { useSessionState } from "@/utils/sessionState";
 import styles from "./BatchReplacementPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -59,8 +60,8 @@ export function BatchReplacementPage() {
   const messages = useMessages();
   const moduleSettings = useModuleSettings("replacement");
   const draft = moduleSettings.draft;
-  const [inputFolder, setInputFolder] = useLocalState(INPUT_LOCAL_KEY, "");
-  const [outputFolder, setOutputFolder] = useLocalState(OUTPUT_LOCAL_KEY, "");
+  const [inputFolder, setInputFolder] = useSessionState(INPUT_LOCAL_KEY, "");
+  const [outputFolder, setOutputFolder] = useSessionState(OUTPUT_LOCAL_KEY, "");
   const [rules, setRules] = useLocalState<ReplacementRule[]>(
     RULES_LOCAL_KEY,
     [],
@@ -98,7 +99,6 @@ export function BatchReplacementPage() {
   const [actionError, setActionError] = useState<BridgeError | null>(null);
   const [artifacts, setArtifacts] = useState<ReplacementArtifacts | null>(null);
   const [artifactFeedback, setArtifactFeedback] = useState<string | null>(null);
-  const migratedSettingsPathRef = useRef(false);
   // Loaded once after a task settles into a terminal state and held in
   // memory so the user can re-open the modal without another fetch.
   // Cleared on Execute (next run) and on app restart (component unmount).
@@ -116,12 +116,10 @@ export function BatchReplacementPage() {
   const failedModalMessages = messages.failedSubtasksModal;
 
   useEffect(() => {
-    if (migratedSettingsPathRef.current) return;
-    if (!draft) return;
-    migratedSettingsPathRef.current = true;
-    if (!inputFolder && draft.input_folder) setInputFolder(draft.input_folder);
-    if (!outputFolder && draft.output_folder) setOutputFolder(draft.output_folder);
-  }, [draft, inputFolder, outputFolder, setInputFolder, setOutputFolder]);
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(INPUT_LOCAL_KEY);
+    window.localStorage.removeItem(OUTPUT_LOCAL_KEY);
+  }, []);
 
   // Celebratory toast on truly clean completion. Replacement is
   // single-pass (no continue/rerun), so the failure dialog isn't

@@ -71,7 +71,7 @@ class TxtToEpubRule:
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "TxtToEpubRule":
         return cls(
-            level=max(1, min(3, int(data.get("level", 1) or 1))),
+            level=max(1, min(4, int(data.get("level", 1) or 1))),
             pattern=str(data.get("pattern", "")),
         )
 
@@ -101,7 +101,7 @@ class TxtToEpubTocEntry:
     def from_mapping(cls, data: Mapping[str, object]) -> "TxtToEpubTocEntry":
         return cls(
             id=str(data.get("id", "")),
-            level=max(1, min(3, int(data.get("level", 1) or 1))),
+            level=max(1, min(4, int(data.get("level", 1) or 1))),
             title=str(data.get("title", "")),
             start_line=max(1, int(data.get("startLine", data.get("start_line", 1)) or 1)),
             end_line=max(1, int(data.get("endLine", data.get("end_line", 1)) or 1)),
@@ -237,8 +237,9 @@ PRESET_RULES: tuple[dict[str, object], ...] = (
     {
         "id": "markdown",
         "label": "Markdown #/##",
-        "description": "#、##、### 标题",
+        "description": "#、##、###、#### 标题",
         "rules": (
+            TxtToEpubRule(4, r"^\s*####\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(3, r"^\s*###\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(2, r"^\s*##\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(1, r"^\s*#\s*(?P<title>.+?)\s*$"),
@@ -495,6 +496,12 @@ class _Chapter:
     @property
     def filename(self) -> str:
         return f"chapter_{self.id}.xhtml"
+
+
+@dataclass
+class _NavNode:
+    chapter: _Chapter
+    children: list["_NavNode"]
 
 
 def _resolve_rules(
@@ -772,7 +779,7 @@ def _cover_xhtml(cover_name: str, title: str) -> str:
 
 def _chapter_xhtml(chapter: _Chapter) -> str:
     title = html.escape(chapter.title, quote=False)
-    heading = f"h{max(1, min(3, chapter.level))}"
+    heading = f"h{max(1, min(4, chapter.level))}"
     paragraphs = "\n".join(_paragraphs(chapter.body_lines))
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh">
@@ -804,11 +811,8 @@ def _paragraphs(lines: Sequence[str]) -> Iterable[str]:
 
 
 def _nav_xhtml(*, title: str, chapters: Sequence[_Chapter]) -> str:
-    items = "\n".join(
-        f'      <li><a href="Text/{html.escape(chapter.filename, quote=True)}">{html.escape(chapter.title, quote=False)}</a></li>'
-        for chapter in chapters
-        if chapter.enabled
-    )
+    roots, _depth = _chapter_nav_tree(chapters)
+    items = "\n".join(_render_nav_nodes(roots, indent=8))
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh">
   <head>
@@ -827,23 +831,14 @@ def _nav_xhtml(*, title: str, chapters: Sequence[_Chapter]) -> str:
 
 
 def _toc_ncx(*, title: str, book_id: str, chapters: Sequence[_Chapter]) -> str:
-    nav_points = []
-    play_order = 1
-    for chapter in chapters:
-        if not chapter.enabled:
-            continue
-        nav_points.append(
-            f"""    <navPoint id="navPoint-{play_order}" playOrder="{play_order}">
-      <navLabel><text>{html.escape(chapter.title, quote=False)}</text></navLabel>
-      <content src="Text/{html.escape(chapter.filename, quote=True)}"/>
-    </navPoint>"""
-        )
-        play_order += 1
+    roots, depth = _chapter_nav_tree(chapters)
+    play_order = [1]
+    nav_points = list(_render_ncx_nodes(roots, play_order=play_order, indent=4))
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head>
     <meta name="dtb:uid" content="{html.escape(book_id, quote=True)}"/>
-    <meta name="dtb:depth" content="3"/>
+    <meta name="dtb:depth" content="{depth}"/>
     <meta name="dtb:totalPageCount" content="0"/>
     <meta name="dtb:maxPageNumber" content="0"/>
   </head>
@@ -853,6 +848,59 @@ def _toc_ncx(*, title: str, book_id: str, chapters: Sequence[_Chapter]) -> str:
   </navMap>
 </ncx>
 """
+
+
+def _chapter_nav_tree(chapters: Sequence[_Chapter]) -> tuple[list[_NavNode], int]:
+    roots: list[_NavNode] = []
+    stack: list[tuple[int, _NavNode]] = []
+    max_depth = 1
+    for chapter in chapters:
+        if not chapter.enabled:
+            continue
+        level = max(1, min(4, chapter.level))
+        max_depth = max(max_depth, level)
+        node = _NavNode(chapter=chapter, children=[])
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        if stack:
+            stack[-1][1].children.append(node)
+        else:
+            roots.append(node)
+        stack.append((level, node))
+    return roots, max_depth
+
+
+def _render_nav_nodes(nodes: Sequence[_NavNode], *, indent: int) -> Iterable[str]:
+    pad = " " * indent
+    for node in nodes:
+        chapter = node.chapter
+        title = html.escape(chapter.title, quote=False)
+        href = html.escape(f"Text/{chapter.filename}", quote=True)
+        yield f'{pad}<li><a href="{href}">{title}</a>'
+        if node.children:
+            yield f"{pad}  <ol>"
+            yield from _render_nav_nodes(node.children, indent=indent + 4)
+            yield f"{pad}  </ol>"
+        yield f"{pad}</li>"
+
+
+def _render_ncx_nodes(
+    nodes: Sequence[_NavNode], *, play_order: list[int], indent: int
+) -> Iterable[str]:
+    pad = " " * indent
+    child_pad = " " * (indent + 2)
+    for node in nodes:
+        chapter = node.chapter
+        current = play_order[0]
+        play_order[0] += 1
+        yield f'{pad}<navPoint id="navPoint-{current}" playOrder="{current}">'
+        yield f"{child_pad}<navLabel><text>{html.escape(chapter.title, quote=False)}</text></navLabel>"
+        yield f'{child_pad}<content src="Text/{html.escape(chapter.filename, quote=True)}"/>'
+        if node.children:
+            yield from _render_ncx_nodes(
+                node.children, play_order=play_order, indent=indent + 2
+            )
+        yield f"{pad}</navPoint>"
 
 
 def _opf(

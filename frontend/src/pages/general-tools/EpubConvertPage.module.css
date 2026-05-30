@@ -1,6 +1,6 @@
 .configLine {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(260px, 640px);
   gap: 10px;
   align-items: center;
 }
@@ -41,6 +41,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  max-width: 640px;
 }
 
 .pathInput {

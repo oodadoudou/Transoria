@@ -1,7 +1,8 @@
 .pickerStack {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 520px));
+  gap: 10px;
+  align-items: end;
 }
 
 .empty {
@@ -155,4 +156,10 @@
   padding: 1px 4px;
   border-radius: 3px;
   color: var(--ink, #2a2620);
+}
+
+@media (max-width: 860px) {
+  .pickerStack {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

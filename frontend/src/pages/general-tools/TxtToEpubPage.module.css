@@ -7,11 +7,11 @@
 }
 
 .grid2 {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(240px, 520px));
 }
 
 .metaGrid {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.55fr);
+  grid-template-columns: minmax(240px, 360px) minmax(180px, 240px) minmax(260px, 520px);
   margin-top: 10px;
 }
 

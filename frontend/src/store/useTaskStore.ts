@@ -24,6 +24,7 @@ export type GlossaryReviewPage = "run" | "review" | "settings" | "prompt";
 
 export type GeneralToolsPage =
   | "batchReplacement"
+  | "epubTools"
   | "epubCompress"
   | "epubMerge"
   | "epubConvert"
@@ -33,6 +34,7 @@ export type GeneralToolsPage =
 
 const GENERAL_TOOLS_PAGES = [
   "batchReplacement",
+  "epubTools",
   "epubCompress",
   "epubMerge",
   "epubConvert",

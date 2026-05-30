@@ -76,12 +76,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         label: messages.rail.generalTools,
         children: [
           { page: "batchReplacement", label: gt.batchReplacement },
-          { page: "epubCompress", label: gt.epubCompress },
-          { page: "epubMerge", label: gt.epubMerge },
-          { page: "epubConvert", label: gt.epubConvert },
-          { page: "txtToEpub", label: gt.txtToEpub },
-          { page: "epubMetadata", label: gt.epubMetadata },
-          { page: "epubRepair", label: gt.epubRepair },
+          { page: "epubTools", label: gt.epubTools },
         ],
       },
     ],

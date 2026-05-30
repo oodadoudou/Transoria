@@ -1,6 +1,6 @@
 .folderGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(240px, 520px));
   gap: 10px;
 }
 
@@ -20,7 +20,7 @@
 
 .fileRow {
   display: grid;
-  grid-template-columns: minmax(280px, 760px);
+  grid-template-columns: minmax(240px, 520px);
   gap: 8px;
   margin-top: 12px;
 }
@@ -64,7 +64,7 @@
 }
 
 .compactField {
-  max-width: 760px;
+  max-width: 520px;
 }
 
 .field span {

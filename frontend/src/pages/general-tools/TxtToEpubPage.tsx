@@ -38,6 +38,59 @@ const TERMINAL: ReadonlySet<string> = new Set([
   "failed",
   "stopped",
 ]);
+const SIMPLE_RULE_LEVELS = [1, 2, 3, 4] as const;
+const EN_PRESET_TEXT: Record<string, { label: string; description: string }> = {
+  markdown: {
+    label: "Markdown headings",
+    description: "#, ##, ###, and #### headings",
+  },
+  zh_webnovel: {
+    label: "Chinese web novel",
+    description: "Volume/chapter formats common in Chinese fiction",
+  },
+  zh_published: {
+    label: "Chinese published",
+    description: "Preface, prologue, sections, chapters, epilogue",
+  },
+  extra: {
+    label: "Extras and side stories",
+    description: "Bonus chapters, side stories, and special episodes",
+  },
+  ko_novel: {
+    label: "Korean fiction",
+    description: "Korean prologue, episode, volume, side story, epilogue",
+  },
+  en_chapter: {
+    label: "English chapters",
+    description: "Chapter, Volume, Prologue, and Epilogue",
+  },
+  numeric: {
+    label: "Numeric headings",
+    description: "1., 1.1, 01, 001",
+  },
+};
+const EN_STYLE_LABELS: Record<string, string> = {
+  classic: "Classic",
+  clean: "Clean",
+  contrast: "High contrast",
+  elegant: "Elegant",
+  eyecare: "Eye care",
+  fantasy: "Fantasy",
+  geometric: "Geometric",
+  geometric_frame: "Geometric frame",
+  grayscale: "Grayscale",
+  line_hierarchy: "Line hierarchy",
+  linear: "Linear",
+  minimal: "Minimal",
+  minimal_grid: "Minimal grid",
+  minimal_linear: "Minimal linear",
+  minimal_modern: "Modern minimal",
+  modern: "Modern",
+  monochrome: "Monochrome",
+  soft: "Soft",
+  structured_minimal: "Structured minimal",
+  warm: "Warm",
+};
 
 interface DraftState {
   title: string;
@@ -60,6 +113,7 @@ function defaultDraft(): DraftState {
       { level: 1, pattern: "" },
       { level: 2, pattern: "" },
       { level: 3, pattern: "" },
+      { level: 4, pattern: "" },
     ],
     advancedPattern: "",
     styleId: "basic:classic",
@@ -69,7 +123,8 @@ function defaultDraft(): DraftState {
 
 export function TxtToEpubPage() {
   const messages = useMessages();
-  const text = messages.generalTools.txtToEpub;
+  const pageText = messages.generalTools.txtToEpub;
+  const text = messages.txtToEpubTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
   const [outputDir, setOutputDir] = useLocalState(OUTPUT_LOCAL_KEY, "");
   const [coverPath, setCoverPath] = useLocalState(COVER_LOCAL_KEY, "");
@@ -187,6 +242,7 @@ export function TxtToEpubPage() {
     snapshot.progress.total > 0
       ? Math.floor((settled / snapshot.progress.total) * 100)
       : 0;
+  const englishUi = messages.generalTools.crumb === "General Tools";
 
   const handleChooseTxt = async () => {
     try {
@@ -252,7 +308,10 @@ export function TxtToEpubPage() {
     setArtifacts(null);
     setReport(null);
     setArtifactFeedback(null);
-    const cssError = validateCss(draft.styleId === "custom" ? draft.customCss : "");
+    const cssError = validateCss(
+      draft.styleId === "custom" ? draft.customCss : "",
+      text,
+    );
     if (cssError) {
       setActionError(
         new BridgeError({
@@ -267,7 +326,9 @@ export function TxtToEpubPage() {
       let overwrite = false;
       const plan = await txtToEpubBridge.preview(optionsForRun(false));
       if (plan.output_exists) {
-        overwrite = window.confirm(`输出文件已存在：\n${plan.output_path}\n\n是否覆盖？`);
+        overwrite = window.confirm(
+          text.overwriteConfirm.replace("{path}", plan.output_path),
+        );
         if (!overwrite) return;
       }
       const requestId = `txt-to-epub-${Date.now().toString(36)}`;
@@ -330,20 +391,22 @@ export function TxtToEpubPage() {
 
   return (
     <>
-      <Panel title={text.title} subtitle={text.sub}>
+      <Panel title={pageText.title} subtitle={pageText.sub}>
         <div className={styles.grid2}>
           <div className={styles.fileRow}>
-            <span className={styles.label}>输入 TXT</span>
+            <span className={styles.label}>{text.inputTxt}</span>
             <input
               className={styles.input}
               value={inputPath}
               onChange={(event) => setInputPath(event.target.value)}
-              placeholder="选择或粘贴 .txt 文件路径"
+              placeholder={text.inputPlaceholder}
             />
-            <Pill variant="ghost" onClick={handleChooseTxt}>选择 TXT</Pill>
+            <Pill variant="ghost" onClick={handleChooseTxt}>
+              {text.chooseTxt}
+            </Pill>
           </div>
           <FolderPickerRow
-            label="输出目录"
+            label={text.outputDir}
             value={outputDir}
             variant="output"
             onChange={setOutputDir}
@@ -353,39 +416,41 @@ export function TxtToEpubPage() {
         </div>
         <div className={styles.metaGrid}>
           <label className={styles.field}>
-            <span>书名</span>
+            <span>{text.titleLabel}</span>
             <input
               value={draft.title}
               onChange={(event) =>
                 setDraft((prev) => ({ ...prev, title: event.target.value }))
               }
-              placeholder="留空则使用 TXT 文件名"
+              placeholder={text.titlePlaceholder}
             />
           </label>
           <label className={styles.field}>
-            <span>作者</span>
+            <span>{text.authorLabel}</span>
             <input
               value={draft.author}
               onChange={(event) =>
                 setDraft((prev) => ({ ...prev, author: event.target.value }))
               }
-              placeholder="可选"
+              placeholder={text.optionalPlaceholder}
             />
           </label>
           <div className={styles.fileRow}>
-            <span className={styles.label}>封面</span>
+            <span className={styles.label}>{text.cover}</span>
             <input
               className={styles.input}
               value={coverPath}
               onChange={(event) => setCoverPath(event.target.value)}
-              placeholder="可选：jpg / png / webp"
+              placeholder={text.coverPlaceholder}
             />
-            <Pill variant="ghost" onClick={handleChooseCover}>选择封面</Pill>
+            <Pill variant="ghost" onClick={handleChooseCover}>
+              {text.chooseCover}
+            </Pill>
           </div>
         </div>
       </Panel>
 
-      <Panel label="章节识别">
+      <Panel label={text.chapterRecognition}>
         <div className={styles.modeRow}>
           {(["preset", "simple", "advanced"] as const).map((mode) => (
             <button
@@ -394,7 +459,11 @@ export function TxtToEpubPage() {
               className={draft.regexMode === mode ? styles.modeActive : styles.modeButton}
               onClick={() => setDraft((prev) => ({ ...prev, regexMode: mode }))}
             >
-              {mode === "preset" ? "预设" : mode === "simple" ? "简单正则" : "高级正则"}
+              {mode === "preset"
+                ? text.modePreset
+                : mode === "simple"
+                  ? text.modeSimple
+                  : text.modeAdvanced}
             </button>
           ))}
         </div>
@@ -407,59 +476,65 @@ export function TxtToEpubPage() {
                 className={draft.presetId === preset.id ? styles.presetActive : styles.preset}
                 onClick={() => setDraft((prev) => ({ ...prev, presetId: preset.id }))}
               >
-                <strong>{preset.label}</strong>
-                <span>{preset.description}</span>
+                <strong>{displayPreset(preset, englishUi).label}</strong>
+                <span>{displayPreset(preset, englishUi).description}</span>
               </button>
             ))}
           </div>
         ) : draft.regexMode === "simple" ? (
           <div className={styles.ruleGrid}>
-            {[1, 2, 3].map((level) => (
+            {SIMPLE_RULE_LEVELS.map((level) => (
               <label key={level} className={styles.field}>
-                <span>{level} 级标题正则</span>
+                <span>{text.levelRule.replace("{level}", String(level))}</span>
                 <input
                   value={draft.customRules.find((rule) => rule.level === level)?.pattern ?? ""}
                   onChange={(event) => patchRule(level, event.target.value)}
-                  placeholder={`例如 ^#{${level}}\\s*(?P<title>.+)$`}
+                  placeholder={text.levelRulePlaceholder.replace(
+                    "{level}",
+                    `{${level}}`,
+                  )}
                 />
               </label>
             ))}
           </div>
         ) : (
           <label className={styles.field}>
-            <span>高级正则</span>
+            <span>{text.advancedRegex}</span>
             <input
               value={draft.advancedPattern}
               onChange={(event) =>
                 setDraft((prev) => ({ ...prev, advancedPattern: event.target.value }))
               }
-              placeholder="例如 ^第\\d+章\\s*(?P<title>.*)$"
+              placeholder={text.advancedRegexPlaceholder}
             />
           </label>
         )}
         <div className={styles.actionRow}>
-          <Pill onClick={handleScan}>扫描目录</Pill>
+          <Pill onClick={handleScan}>{text.scanToc}</Pill>
           <span className={styles.hint}>
             {scanInfo
-              ? `${NUM.format(tocEntries.length)} 个候选 · ${NUM.format(selectedCount)} 个启用 · ${NUM.format(scanInfo.lineCount)} 行`
-              : "扫描后可编辑标题、层级和是否进入目录。"}
+              ? text.scanSummary
+                  .replace("{candidates}", NUM.format(tocEntries.length))
+                  .replace("{selected}", NUM.format(selectedCount))
+                  .replace("{lines}", NUM.format(scanInfo.lineCount))
+              : text.scanHint}
           </span>
         </div>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>启用</th>
-                <th>层级</th>
-                <th>标题</th>
-                <th>行号</th>
-                <th>原文预览</th>
+                <th>{text.enabled}</th>
+                <th>{text.level}</th>
+                <th>{text.headingTitle}</th>
+                <th>{text.lineNumber}</th>
+                <th>{text.sourcePreview}</th>
               </tr>
             </thead>
             <tbody>
               {tocEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className={styles.empty}>尚未扫描目录。</td>
+                  <td colSpan={5} className={styles.empty}>{text.noToc}</td>
                 </tr>
               ) : (
                 tocEntries.map((entry) => (
@@ -483,6 +558,7 @@ export function TxtToEpubPage() {
                         <option value={1}>1</option>
                         <option value={2}>2</option>
                         <option value={3}>3</option>
+                        <option value={4}>4</option>
                       </select>
                     </td>
                     <td>
@@ -504,7 +580,7 @@ export function TxtToEpubPage() {
         </div>
       </Panel>
 
-      <Panel label="EPUB 样式">
+      <Panel label={text.epubStyle}>
         <div className={styles.styleGrid}>
           {styleOptions.map((style) => (
             <button
@@ -513,8 +589,8 @@ export function TxtToEpubPage() {
               className={draft.styleId === style.id ? styles.styleActive : styles.styleCard}
               onClick={() => setDraft((prev) => ({ ...prev, styleId: style.id }))}
             >
-              <span>{style.label}</span>
-              <small>{style.groupLabel}</small>
+              <span>{displayStyle(style, englishUi).label}</span>
+              <small>{displayStyle(style, englishUi).groupLabel}</small>
             </button>
           ))}
           <button
@@ -522,8 +598,8 @@ export function TxtToEpubPage() {
             className={draft.styleId === "custom" ? styles.styleActive : styles.styleCard}
             onClick={() => setDraft((prev) => ({ ...prev, styleId: "custom" }))}
           >
-            <span>自定义 CSS</span>
-            <small>基于模板修改</small>
+            <span>{text.customCss}</span>
+            <small>{text.customCssHint}</small>
           </button>
         </div>
         <div className={styles.cssGrid}>
@@ -535,14 +611,16 @@ export function TxtToEpubPage() {
                   void navigator.clipboard.writeText(styleTemplate || draft.customCss);
                 }}
               >
-                复制模板
+                {text.copyTemplate}
               </Pill>
-              <Pill variant="ghost" onClick={handleDownloadTemplate}>下载模板</Pill>
+              <Pill variant="ghost" onClick={handleDownloadTemplate}>
+                {text.downloadTemplate}
+              </Pill>
               <Pill
                 variant="ghost"
                 onClick={() => cssFileInputRef.current?.click()}
               >
-                导入 CSS
+                {text.importCss}
               </Pill>
               <Pill
                 variant="ghost"
@@ -554,7 +632,7 @@ export function TxtToEpubPage() {
                   }))
                 }
               >
-                重置模板
+                {text.resetTemplate}
               </Pill>
             </div>
             <input
@@ -576,32 +654,33 @@ export function TxtToEpubPage() {
               }
               spellCheck={false}
             />
-            {validateCss(draft.styleId === "custom" ? draft.customCss : "") ? (
+            {validateCss(draft.styleId === "custom" ? draft.customCss : "", text) ? (
               <div className={styles.actionError}>
-                {validateCss(draft.styleId === "custom" ? draft.customCss : "")}
+                {validateCss(
+                  draft.styleId === "custom" ? draft.customCss : "",
+                  text,
+                )}
               </div>
             ) : null}
           </div>
           <iframe
             className={styles.stylePreview}
-            title="EPUB 样式预览"
-            srcDoc={previewDocument(activeCss)}
+            title={text.stylePreviewTitle}
+            srcDoc={previewDocument(activeCss, text)}
           />
         </div>
       </Panel>
 
-      <Panel label="生成">
+      <Panel label={text.generate}>
         {actionError ? <div className={styles.actionError}>{actionError.message}</div> : null}
         <div className={styles.actionRow}>
           <Pill onClick={handleExecute} disabled={isRunning}>
-            {isRunning ? "生成中" : "生成 EPUB"}
+            {isRunning ? text.generating : text.generate}
           </Pill>
           <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
-            停止
+            {text.stop}
           </Pill>
-          <span className={styles.hint}>
-            输出文件名默认使用书名；输出目录为空时使用输入 TXT 同目录。
-          </span>
+          <span className={styles.hint}>{text.outputHint}</span>
         </div>
         {activeTaskId ? (
           <div className={styles.progressBlock}>
@@ -615,8 +694,8 @@ export function TxtToEpubPage() {
         ) : null}
         {artifacts ? (
           <div className={styles.artifacts}>
-            <strong>输出</strong>
-            <span>{artifacts.output_files.join("\n") || "暂无输出文件"}</span>
+            <strong>{text.output}</strong>
+            <span>{artifacts.output_files.join("\n") || text.noOutput}</span>
             <div className={styles.actionRow}>
               <Pill
                 variant="ghost"
@@ -624,16 +703,16 @@ export function TxtToEpubPage() {
                   void dialogsBridge.openDirectory(artifacts.output_folder);
                 }}
               >
-                打开输出目录
+                {text.openOutputFolder}
               </Pill>
               <Pill
                 variant="ghost"
                 onClick={() => {
                   void navigator.clipboard.writeText(artifacts.output_files.join("\n"));
-                  setArtifactFeedback("已复制输出路径");
+                  setArtifactFeedback(text.copiedPath);
                 }}
               >
-                复制路径
+                {text.copyPath}
               </Pill>
               {artifactFeedback ? <span className={styles.hint}>{artifactFeedback}</span> : null}
             </div>
@@ -641,9 +720,10 @@ export function TxtToEpubPage() {
         ) : null}
         {report ? (
           <div className={styles.report}>
-            写入章节 {NUM.format(report.totals.chapters_written)} · 目录项{" "}
-            {NUM.format(report.totals.toc_entries)} · 字符{" "}
-            {NUM.format(report.totals.characters_written)}
+            {text.reportSummary
+              .replace("{chapters}", NUM.format(report.totals.chapters_written))
+              .replace("{toc}", NUM.format(report.totals.toc_entries))
+              .replace("{characters}", NUM.format(report.totals.characters_written))}
           </div>
         ) : null}
       </Panel>
@@ -651,17 +731,42 @@ export function TxtToEpubPage() {
   );
 }
 
-function validateCss(css: string): string {
+function validateCss(css: string, text: ReturnType<typeof useMessages>["txtToEpubTool"]): string {
   const lowered = css.toLowerCase();
   if (!css.trim()) return "";
-  if (lowered.includes("@import")) return "自定义 CSS 不能使用 @import。";
+  if (lowered.includes("@import")) return text.cssImportBlocked;
   if (/url\(\s*['"]?\s*(https?:|file:|\/)/.test(lowered)) {
-    return "自定义 CSS 不能引用远程 URL 或本地绝对路径。";
+    return text.cssUrlBlocked;
   }
   return "";
 }
 
-function previewDocument(css: string): string {
+function displayPreset(
+  preset: TxtToEpubPreset,
+  englishUi: boolean,
+): { label: string; description: string } {
+  if (!englishUi) return { label: preset.label, description: preset.description };
+  return EN_PRESET_TEXT[preset.id] ?? { label: preset.label, description: preset.description };
+}
+
+function displayStyle(
+  style: TxtToEpubStyle,
+  englishUi: boolean,
+): { label: string; groupLabel: string } {
+  if (!englishUi) return { label: style.label, groupLabel: style.groupLabel };
+  const [, key = style.id] = style.id.split(":");
+  return {
+    label: EN_STYLE_LABELS[key] ?? style.label,
+    groupLabel: style.id.startsWith("enhanced:")
+      ? "Enhanced style"
+      : "Compatible style",
+  };
+}
+
+function previewDocument(
+  css: string,
+  text: ReturnType<typeof useMessages>["txtToEpubTool"],
+): string {
   return `<!doctype html>
 <html>
 <head>
@@ -670,10 +775,20 @@ function previewDocument(css: string): string {
 <style>body{padding:24px;max-width:520px;margin:0 auto;background:#fffaf3;color:#2a2620}</style>
 </head>
 <body>
-  <h1>第一卷 春日</h1>
-  <h2>第一章 重逢</h2>
-  <p>这是 EPUB 样式预览。正文会保持段落缩进、行距和章节标题层级。</p>
-  <p>用户选择样式后，生成的章节 XHTML 会引用同一份 CSS。</p>
+  <h1>${escapeHtml(text.previewHeading1)}</h1>
+  <h2>${escapeHtml(text.previewHeading2)}</h2>
+  <h3>${escapeHtml(text.previewHeading3)}</h3>
+  <h4>${escapeHtml(text.previewHeading4)}</h4>
+  <p>${escapeHtml(text.previewParagraph1)}</p>
+  <p>${escapeHtml(text.previewParagraph2)}</p>
 </body>
 </html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
