@@ -17,6 +17,7 @@ from PIL import Image
 
 
 _EPUB_SUFFIX = ".epub"
+_TXT_SUFFIX = ".txt"
 _MIMETYPE = "application/epub+zip"
 _FONT_SUFFIXES = {".ttf", ".otf", ".woff", ".woff2", ".eot"}
 _FONT_MEDIA_TYPES = {
@@ -55,6 +56,7 @@ _DIGIT_PATTERN = re.compile(r"\d+")
 @dataclass(frozen=True)
 class EpubMergeOptions:
     output_path: str = ""
+    output_format: str = "epub"
     quality: int = 60
     max_size: int = 1600
     keep_original_images: bool = False
@@ -63,8 +65,12 @@ class EpubMergeOptions:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "EpubMergeOptions":
+        output_format = str(data.get("output_format", "epub") or "epub").strip().lower()
+        if output_format not in {"epub", "txt"}:
+            output_format = "epub"
         return cls(
             output_path=str(data.get("output_path", "")),
+            output_format=output_format,
             quality=_clamp_int(data.get("quality"), default=60, low=1, high=95),
             max_size=_clamp_int(data.get("max_size"), default=1600, low=200, high=4000),
             keep_original_images=bool(data.get("keep_original_images", False)),
@@ -75,6 +81,7 @@ class EpubMergeOptions:
     def to_dict(self) -> dict[str, object]:
         return {
             "output_path": self.output_path,
+            "output_format": self.output_format,
             "quality": self.quality,
             "max_size": self.max_size,
             "keep_original_images": self.keep_original_images,
@@ -122,12 +129,16 @@ class EpubMergePlan:
     actions: tuple[EpubMergeAction, ...]
 
     def to_dict(self) -> dict[str, object]:
+        suffix = self.output_path.suffix.lower()
         return {
             "input_dir": str(self.input_dir),
             "output_path": str(self.output_path),
             "title": self.title,
             "actions": [action.to_dict() for action in self.actions],
-            "totals": {"epub_files": len(self.actions)},
+            "totals": {
+                "epub_files": len(self.actions) if suffix == _EPUB_SUFFIX else 0,
+                "txt_files": len(self.actions) if suffix == _TXT_SUFFIX else 0,
+            },
         }
 
 
@@ -191,13 +202,14 @@ def build_epub_merge_plan(
     if not base.exists() or not base.is_dir():
         raise ValueError(f"input folder does not exist: {input_dir}")
     output_path = _resolve_output_path(base, options)
+    suffix = _TXT_SUFFIX if options.output_format == "txt" else _EPUB_SUFFIX
     iterator = base.rglob("*") if options.recursive else base.glob("*")
     files = sorted(
         (
             path
             for path in iterator
             if path.is_file()
-            and path.suffix.lower() == _EPUB_SUFFIX
+            and path.suffix.lower() == suffix
             and path.resolve() != output_path
         ),
         key=lambda path: _sort_key_epub(path.name),
@@ -205,7 +217,7 @@ def build_epub_merge_plan(
     title = _safe_filename(output_path.stem)
     actions = tuple(
         EpubMergeAction(
-            id=f"epub-{index:04d}",
+            id=f"{options.output_format}-{index:04d}",
             source_path=str(path),
             order=index,
             title_hint=path.stem,
@@ -240,18 +252,22 @@ def merge_epub_files(
     tmp_output: Path | None = None
     try:
         if not selected:
-            raise ValueError("at least one EPUB file is required")
+            raise ValueError(f"at least one {options.output_format.upper()} file is required")
         for action in selected:
             source = Path(action.source_path).expanduser().resolve()
             if not source.exists() or not source.is_file():
-                raise FileNotFoundError(f"source EPUB not found: {source}")
-            if source.suffix.lower() != _EPUB_SUFFIX:
-                raise ValueError(f"source is not an EPUB file: {source}")
+                raise FileNotFoundError(f"source {options.output_format.upper()} not found: {source}")
+            expected_suffix = _TXT_SUFFIX if options.output_format == "txt" else _EPUB_SUFFIX
+            if source.suffix.lower() != expected_suffix:
+                raise ValueError(f"source is not a {options.output_format.upper()} file: {source}")
             if output == source:
-                raise ValueError("output path cannot overwrite a selected input EPUB")
+                raise ValueError(f"output path cannot overwrite a selected input {options.output_format.upper()}")
 
-        merger = _EpubMerger(options)
-        stats = merger.merge([Path(action.source_path) for action in selected], output)
+        if options.output_format == "txt":
+            stats = _merge_text_files([Path(action.source_path) for action in selected], output)
+        else:
+            merger = _EpubMerger(options)
+            stats = merger.merge([Path(action.source_path) for action in selected], output)
         tmp_output = stats.pop("_tmp_output", None)
         return EpubMergeResult(
             action_id=action_id,
@@ -274,6 +290,48 @@ def merge_epub_files(
             status="failed",
             error=f"{type(exc).__name__}: {exc}",
         )
+
+
+def _merge_text_files(sources: list[Path], output: Path) -> dict[str, object]:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    pieces: list[str] = []
+    processed: list[dict[str, object]] = []
+    for source in sources:
+        text = _read_plain_text(source)
+        pieces.append(text.rstrip())
+        processed.append(
+            {
+                "source_path": str(source.expanduser().resolve()),
+                "title": source.stem,
+                "status": "merged",
+                "chapters": 0,
+                "resources": 0,
+                "fonts_removed": 0,
+                "warnings": [],
+            }
+        )
+    output.write_text("\n\n".join(piece for piece in pieces if piece) + "\n", encoding="utf-8")
+    return {
+        "merged_files": len(sources),
+        "skipped_files": 0,
+        "chapters_written": 0,
+        "resources_written": 0,
+        "fonts_removed": 0,
+        "images_written": 0,
+        "images_deduplicated": 0,
+        "images_compressed": 0,
+        "processed_files": tuple(processed),
+    }
+
+
+def _read_plain_text(path: Path) -> str:
+    data = path.read_bytes()
+    for encoding in ("utf-8-sig", "utf-16", "gb18030"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("utf-8", errors="replace")
 
 
 def build_epub_merge_report(
@@ -1022,12 +1080,13 @@ def _nav_entry_ncx(entry: _NavEntry, play: int) -> tuple[str, int]:
 
 
 def _resolve_output_path(base: Path, options: EpubMergeOptions) -> Path:
+    suffix = _TXT_SUFFIX if options.output_format == "txt" else _EPUB_SUFFIX
     if options.output_path.strip():
         output = Path(options.output_path).expanduser().resolve()
-        if output.suffix.lower() != _EPUB_SUFFIX:
-            output = output.with_suffix(_EPUB_SUFFIX)
+        if output.suffix.lower() != suffix:
+            output = output.with_suffix(suffix)
         return output
-    return (base / "merged.epub").resolve()
+    return (base / f"merged{suffix}").resolve()
 
 
 def _sort_key_epub(

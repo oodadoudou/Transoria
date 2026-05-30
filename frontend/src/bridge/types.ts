@@ -622,6 +622,7 @@ export interface EpubCompressReport {
 
 export interface EpubMergeOptions {
   output_path: string;
+  output_format: "epub" | "txt";
   quality: number;
   max_size: number;
   keep_original_images: boolean;
@@ -643,7 +644,7 @@ export interface EpubMergePlan {
   output_path: string;
   title: string;
   actions: EpubMergeAction[];
-  totals: { epub_files: number };
+  totals: { epub_files: number; txt_files?: number };
 }
 
 export interface EpubMergeArtifacts {

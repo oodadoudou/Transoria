@@ -4,7 +4,7 @@
 }
 
 .pathGrid {
-  grid-template-columns: repeat(2, minmax(240px, 520px));
+  grid-template-columns: repeat(2, minmax(220px, 420px));
 }
 
 .field {

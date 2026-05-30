@@ -11,6 +11,7 @@ import {
   type EpubMergeReport,
 } from "@/bridge";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
+import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { useMessages } from "@/locales";
@@ -41,6 +42,7 @@ const TERMINAL: ReadonlySet<string> = new Set([
 function defaultOptions(): EpubMergeOptions {
   return {
     output_path: "",
+    output_format: "epub",
     quality: 60,
     max_size: 1600,
     keep_original_images: false,
@@ -49,7 +51,7 @@ function defaultOptions(): EpubMergeOptions {
   };
 }
 
-export function EpubMergePage() {
+export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {}) {
   const messages = useMessages();
   const text = messages.epubMergeTool;
   const [inputDir, setInputDir] = useLocalState(INPUT_DIR_LOCAL_KEY, "");
@@ -78,6 +80,16 @@ export function EpubMergePage() {
   useEffect(() => {
     setOutputFilename((prev) => prev || text.defaultOutputFilename);
   }, [text.defaultOutputFilename]);
+
+  useEffect(() => {
+    setOutputFilename((prev) =>
+      withOutputExtension(
+        prev || text.defaultOutputFilename,
+        options.output_format,
+        text.defaultOutputFilename,
+      ),
+    );
+  }, [options.output_format, setOutputFilename, text.defaultOutputFilename]);
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -255,7 +267,10 @@ export function EpubMergePage() {
 
   return (
     <>
-      <Panel title={text.title} subtitle={text.sub}>
+      <Panel
+        title={embedded ? undefined : text.title}
+        subtitle={embedded ? undefined : text.sub}
+      >
         <div className={styles.folderGrid}>
           <FolderPickerRow
             label={text.inputFolder}
@@ -272,15 +287,34 @@ export function EpubMergePage() {
             compact
           />
         </div>
-        <p className={styles.folderHint}>{text.outputFolderHint}</p>
+        <div className={styles.folderHelp}>
+          <HelpTip>{text.outputFolderHint}</HelpTip>
+        </div>
         <div className={styles.fileRow}>
           <label className={`${styles.field} ${styles.compactField}`}>
-            <span>{text.outputFilename}</span>
+            <span>{text.outputFormat}</span>
+            <select
+              value={options.output_format}
+              onChange={(event) =>
+                setOptions((prev) => ({
+                  ...prev,
+                  output_format: event.target.value === "txt" ? "txt" : "epub",
+                }))
+              }
+            >
+              <option value="epub">{text.outputFormatEpub}</option>
+              <option value="txt">{text.outputFormatTxt}</option>
+            </select>
+          </label>
+          <label className={`${styles.field} ${styles.compactField}`}>
+            <span className={styles.labelWithHelp}>
+              {text.outputFilename}
+              <HelpTip>{text.outputFilenameHint}</HelpTip>
+            </span>
             <input
               value={outputFilename}
               onChange={(event) => setOutputFilename(event.target.value)}
             />
-            <small>{text.outputFilenameHint}</small>
           </label>
         </div>
         <div className={styles.optionsGrid}>
@@ -297,32 +331,36 @@ export function EpubMergePage() {
             />
             {text.recursive}
           </label>
-          <label className={styles.option}>
-            <input
-              type="checkbox"
-              checked={options.smart_cover}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  smart_cover: event.target.checked,
-                }))
-              }
-            />
-            {text.smartCover}
-          </label>
-          <label className={styles.option}>
-            <input
-              type="checkbox"
-              checked={options.keep_original_images}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  keep_original_images: event.target.checked,
-                }))
-              }
-            />
-            {text.keepOriginalImages}
-          </label>
+          {options.output_format === "epub" ? (
+            <>
+              <label className={styles.option}>
+                <input
+                  type="checkbox"
+                  checked={options.smart_cover}
+                  onChange={(event) =>
+                    setOptions((prev) => ({
+                      ...prev,
+                      smart_cover: event.target.checked,
+                    }))
+                  }
+                />
+                {text.smartCover}
+              </label>
+              <label className={styles.option}>
+                <input
+                  type="checkbox"
+                  checked={options.keep_original_images}
+                  onChange={(event) =>
+                    setOptions((prev) => ({
+                      ...prev,
+                      keep_original_images: event.target.checked,
+                    }))
+                  }
+                />
+                {text.keepOriginalImages}
+              </label>
+            </>
+          ) : null}
         </div>
         <div className={styles.actionRow}>
           <Pill onClick={handlePreview} disabled={!inputDir || isRunning}>
@@ -350,6 +388,7 @@ export function EpubMergePage() {
           <>
             <div className={styles.summaryGrid}>
               <Stat label={text.epubsFound} value={NUM.format(plan.totals.epub_files)} />
+              <Stat label={text.txtFound} value={NUM.format(plan.totals.txt_files ?? 0)} />
               <Stat
                 label={text.selectedCount}
                 value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
@@ -364,7 +403,9 @@ export function EpubMergePage() {
             </div>
             {actions.length > 0 ? (
               <div className={styles.tableWrap}>
-                <p className={styles.tableHint}>{text.orderHint}</p>
+                <div className={styles.tableHelp}>
+                  <HelpTip>{text.orderHint}</HelpTip>
+                </div>
                 <table className={styles.table}>
                   <thead>
                     <tr>
@@ -616,4 +657,15 @@ function splitOutputPath(path: string) {
     dir: path.slice(0, slash),
     name: path.slice(slash + 1),
   };
+}
+
+function withOutputExtension(
+  filename: string,
+  format: "epub" | "txt",
+  defaultFilename = "merged.epub",
+) {
+  const clean = filename.trim();
+  const suffix = `.${format}`;
+  if (!clean) return defaultFilename.replace(/\.(epub|txt)$/i, suffix);
+  return clean.replace(/\.(epub|txt)$/i, suffix) || clean;
 }

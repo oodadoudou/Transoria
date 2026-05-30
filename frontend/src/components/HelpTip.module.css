@@ -1,0 +1,63 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.trigger {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border-radius: 999px;
+  background: var(--panel, #fffaf3);
+  color: var(--muted, #7a7166);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.trigger:hover,
+.trigger:focus-visible {
+  background: var(--panel-soft, #f5f0e9);
+  color: var(--ink, #2a2620);
+  outline: none;
+}
+
+.popover {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  z-index: 30;
+  min-width: 240px;
+  max-width: 360px;
+  transform: translateX(-50%);
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  box-shadow: 0 10px 28px rgba(42, 38, 32, 0.14);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  opacity: 0;
+  padding: 9px 11px;
+  pointer-events: none;
+  visibility: hidden;
+  white-space: normal;
+  text-transform: none;
+}
+
+.wrap:hover .popover,
+.wrap:focus-within .popover {
+  opacity: 1;
+  visibility: visible;
+}

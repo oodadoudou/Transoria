@@ -39,22 +39,32 @@ const TERMINAL: ReadonlySet<string> = new Set([
   "stopped",
 ]);
 const SIMPLE_RULE_LEVELS = [1, 2, 3, 4] as const;
+const CHINESE_PRESET_IDS = new Set(["zh_novel", "zh_webnovel", "zh_published", "extra"]);
+const VISIBLE_STYLE_IDS = new Set([
+  "basic:classic",
+  "basic:clean",
+  "basic:eyecare",
+  "basic:modern",
+  "basic:minimal",
+  "basic:literary",
+  "basic:compact",
+  "basic:spacious",
+  "basic:double_line",
+  "basic:sans_clean",
+  "basic:framed",
+  "basic:sidebar",
+  "basic:structure_lines",
+  "basic:reader_modern",
+  "enhanced:soft_structure",
+]);
 const EN_PRESET_TEXT: Record<string, { label: string; description: string }> = {
   markdown: {
     label: "Markdown headings",
     description: "#, ##, ###, and #### headings",
   },
-  zh_webnovel: {
-    label: "Chinese web novel",
-    description: "Volume/chapter formats common in Chinese fiction",
-  },
-  zh_published: {
-    label: "Chinese published",
-    description: "Preface, prologue, sections, chapters, epilogue",
-  },
-  extra: {
-    label: "Extras and side stories",
-    description: "Bonus chapters, side stories, and special episodes",
+  zh_novel: {
+    label: "Chinese fiction headings",
+    description: "Web novel, published chapter, extra, and side story headings",
   },
   ko_novel: {
     label: "Korean fiction",
@@ -87,9 +97,36 @@ const EN_STYLE_LABELS: Record<string, string> = {
   minimal_modern: "Modern minimal",
   modern: "Modern",
   monochrome: "Monochrome",
+  literary: "Literary",
+  compact: "Compact",
+  spacious: "Spacious",
+  double_line: "Double line title",
+  sans_clean: "Clean sans",
+  framed: "Framed title",
+  sidebar: "Sidebar emphasis",
+  structure_lines: "Structure lines",
+  reader_modern: "Reader modern",
+  soft_structure: "Soft structure",
   soft: "Soft",
   structured_minimal: "Structured minimal",
   warm: "Warm",
+};
+const ZH_STYLE_LABELS: Record<string, string> = {
+  classic: "经典",
+  clean: "清爽",
+  eyecare: "护眼",
+  modern: "现代",
+  minimal: "极简",
+  literary: "文学排版",
+  compact: "紧凑阅读",
+  spacious: "宽松阅读",
+  double_line: "双线标题",
+  sans_clean: "无衬线清爽",
+  framed: "框线章名",
+  sidebar: "侧栏强调",
+  structure_lines: "结构简约",
+  reader_modern: "阅读器现代",
+  soft_structure: "浅底结构",
 };
 
 interface DraftState {
@@ -121,7 +158,7 @@ function defaultDraft(): DraftState {
   };
 }
 
-export function TxtToEpubPage() {
+export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {}) {
   const messages = useMessages();
   const pageText = messages.generalTools.txtToEpub;
   const text = messages.txtToEpubTool;
@@ -151,6 +188,7 @@ export function TxtToEpubPage() {
   const activeTaskId = useRuntimeStore(
     (state) => state.txt_to_epub.activeTaskId,
   );
+  const tocPresets = useMemo(() => mergeChinesePresets(presets), [presets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,12 +199,19 @@ export function TxtToEpubPage() {
           txtToEpubBridge.listPresets(),
         ]);
         if (cancelled) return;
-        setStyleOptions(styleResult.styles);
+        const visibleStyles = styleResult.styles.filter((style) =>
+          VISIBLE_STYLE_IDS.has(style.id),
+        );
+        setStyleOptions(visibleStyles);
         setStyleTemplate(styleResult.template);
         setPresets(presetResult.presets);
         setDraft((prev) => ({
           ...prev,
           customCss: prev.customCss || styleResult.template,
+          styleId:
+            prev.styleId === "custom" || VISIBLE_STYLE_IDS.has(prev.styleId)
+              ? prev.styleId
+              : "basic:classic",
         }));
       } catch (error) {
         if (BridgeError.isBridgeError(error) && !cancelled) {
@@ -178,6 +223,17 @@ export function TxtToEpubPage() {
       cancelled = true;
     };
   }, [setDraft]);
+
+  useEffect(() => {
+    if (tocPresets.length === 0) return;
+    if (["zh_webnovel", "zh_published", "extra"].includes(draft.presetId)) {
+      setDraft((prev) => ({ ...prev, presetId: "zh_novel" }));
+      return;
+    }
+    if (!tocPresets.some((preset) => preset.id === draft.presetId)) {
+      setDraft((prev) => ({ ...prev, presetId: tocPresets[0].id }));
+    }
+  }, [draft.presetId, tocPresets, setDraft]);
 
   useEffect(() => {
     if (!activeTaskId) return;
@@ -230,6 +286,10 @@ export function TxtToEpubPage() {
     () => styleOptions.find((style) => style.id === draft.styleId) ?? null,
     [draft.styleId, styleOptions],
   );
+  const selectedPreset = useMemo(
+    () => tocPresets.find((preset) => preset.id === draft.presetId) ?? null,
+    [draft.presetId, tocPresets],
+  );
   const activeCss = draft.styleId === "custom"
     ? draft.customCss
     : selectedStyle?.css ?? styleTemplate;
@@ -267,10 +327,14 @@ export function TxtToEpubPage() {
     setArtifacts(null);
     setReport(null);
     try {
+      const presetRules =
+        draft.regexMode === "preset" && draft.presetId === "zh_novel"
+          ? selectedPreset?.rules ?? []
+          : [];
       const result = await txtToEpubBridge.scanToc(
         inputPath,
-        draft.regexMode === "preset" ? draft.presetId : "",
-        draft.regexMode === "simple" ? draft.customRules : [],
+        draft.regexMode === "preset" && presetRules.length === 0 ? draft.presetId : "",
+        draft.regexMode === "simple" ? draft.customRules : presetRules,
         draft.regexMode === "advanced" ? draft.advancedPattern : "",
       );
       setTocEntries(result.entries);
@@ -391,7 +455,10 @@ export function TxtToEpubPage() {
 
   return (
     <>
-      <Panel title={pageText.title} subtitle={pageText.sub}>
+      <Panel
+        title={embedded ? undefined : pageText.title}
+        subtitle={embedded ? undefined : pageText.sub}
+      >
         <div className={styles.grid2}>
           <div className={styles.fileRow}>
             <span className={styles.label}>{text.inputTxt}</span>
@@ -435,18 +502,19 @@ export function TxtToEpubPage() {
               placeholder={text.optionalPlaceholder}
             />
           </label>
-          <div className={styles.fileRow}>
-            <span className={styles.label}>{text.cover}</span>
-            <input
-              className={styles.input}
-              value={coverPath}
-              onChange={(event) => setCoverPath(event.target.value)}
-              placeholder={text.coverPlaceholder}
-            />
-            <Pill variant="ghost" onClick={handleChooseCover}>
-              {text.chooseCover}
-            </Pill>
-          </div>
+          <label className={styles.field}>
+            <span>{text.cover}</span>
+            <div className={styles.inlinePicker}>
+              <input
+                value={coverPath}
+                onChange={(event) => setCoverPath(event.target.value)}
+                placeholder={text.coverPlaceholder}
+              />
+              <Pill variant="ghost" onClick={handleChooseCover}>
+                {text.chooseCover}
+              </Pill>
+            </div>
+          </label>
         </div>
       </Panel>
 
@@ -468,19 +536,32 @@ export function TxtToEpubPage() {
           ))}
         </div>
         {draft.regexMode === "preset" ? (
-          <div className={styles.presetGrid}>
-            {presets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={draft.presetId === preset.id ? styles.presetActive : styles.preset}
-                onClick={() => setDraft((prev) => ({ ...prev, presetId: preset.id }))}
-              >
-                <strong>{displayPreset(preset, englishUi).label}</strong>
-                <span>{displayPreset(preset, englishUi).description}</span>
-              </button>
-            ))}
-          </div>
+          <label className={styles.selectBlock}>
+            <span>{text.modePreset}</span>
+            <select
+              value={draft.presetId}
+              onChange={(event) =>
+                setDraft((prev) => ({ ...prev, presetId: event.target.value }))
+              }
+            >
+              {tocPresets.map((preset) => {
+                const display = displayPreset(preset, englishUi);
+                return (
+                  <option key={preset.id} value={preset.id}>
+                    {display.label} - {display.description}
+                  </option>
+                );
+              })}
+            </select>
+            {tocPresets.length > 0 ? (
+              <small className={styles.selectedSummary}>
+                {displayPreset(
+                  selectedPreset ?? tocPresets[0],
+                  englishUi,
+                ).description}
+              </small>
+            ) : null}
+          </label>
         ) : draft.regexMode === "simple" ? (
           <div className={styles.ruleGrid}>
             {SIMPLE_RULE_LEVELS.map((level) => (
@@ -581,27 +662,34 @@ export function TxtToEpubPage() {
       </Panel>
 
       <Panel label={text.epubStyle}>
-        <div className={styles.styleGrid}>
-          {styleOptions.map((style) => (
-            <button
-              key={style.id}
-              type="button"
-              className={draft.styleId === style.id ? styles.styleActive : styles.styleCard}
-              onClick={() => setDraft((prev) => ({ ...prev, styleId: style.id }))}
-            >
-              <span>{displayStyle(style, englishUi).label}</span>
-              <small>{displayStyle(style, englishUi).groupLabel}</small>
-            </button>
-          ))}
-          <button
-            type="button"
-            className={draft.styleId === "custom" ? styles.styleActive : styles.styleCard}
-            onClick={() => setDraft((prev) => ({ ...prev, styleId: "custom" }))}
+        <label className={styles.selectBlock}>
+          <span>{text.epubStyle}</span>
+          <select
+            value={draft.styleId}
+            onChange={(event) =>
+              setDraft((prev) => ({ ...prev, styleId: event.target.value }))
+            }
           >
-            <span>{text.customCss}</span>
-            <small>{text.customCssHint}</small>
-          </button>
-        </div>
+            {styleOptions.map((style) => {
+              const display = displayStyle(style, englishUi);
+              return (
+                <option key={style.id} value={style.id}>
+                  {display.label} - {display.groupLabel}
+                </option>
+              );
+            })}
+            <option value="custom">
+              {text.customCss} - {text.customCssHint}
+            </option>
+          </select>
+          <small className={styles.selectedSummary}>
+            {draft.styleId === "custom"
+              ? text.customCssHint
+              : selectedStyle
+                ? displayStyle(selectedStyle, englishUi).groupLabel
+                : ""}
+          </small>
+        </label>
         <div className={styles.cssGrid}>
           <div>
             <div className={styles.actionRow}>
@@ -749,12 +837,56 @@ function displayPreset(
   return EN_PRESET_TEXT[preset.id] ?? { label: preset.label, description: preset.description };
 }
 
+function mergeChinesePresets(presets: TxtToEpubPreset[]): TxtToEpubPreset[] {
+  const chinesePresets = presets.filter((preset) => CHINESE_PRESET_IDS.has(preset.id));
+  if (chinesePresets.length === 0) return presets;
+  if (chinesePresets.length === 1 && chinesePresets[0].id === "zh_novel") return presets;
+
+  const seenRules = new Set<string>();
+  const mergedRules: TxtToEpubRule[] = [];
+  for (const preset of chinesePresets) {
+    for (const rule of preset.rules) {
+      const key = `${rule.level}\n${rule.pattern}`;
+      if (seenRules.has(key)) continue;
+      seenRules.add(key);
+      mergedRules.push(rule);
+    }
+  }
+
+  const merged: TxtToEpubPreset = {
+    id: "zh_novel",
+    label: "中文章节综合",
+    description: "网文、出版、番外/外传标题",
+    rules: mergedRules,
+  };
+  const next: TxtToEpubPreset[] = [];
+  let inserted = false;
+  for (const preset of presets) {
+    if (CHINESE_PRESET_IDS.has(preset.id)) {
+      if (!inserted) {
+        next.push(merged);
+        inserted = true;
+      }
+      continue;
+    }
+    next.push(preset);
+  }
+  return next;
+}
+
 function displayStyle(
   style: TxtToEpubStyle,
   englishUi: boolean,
 ): { label: string; groupLabel: string } {
-  if (!englishUi) return { label: style.label, groupLabel: style.groupLabel };
   const [, key = style.id] = style.id.split(":");
+  if (!englishUi) {
+    return {
+      label: ZH_STYLE_LABELS[key] ?? style.label,
+      groupLabel: style.id.startsWith("enhanced:")
+        ? "增强样式"
+        : "通用兼容样式",
+    };
+  }
   return {
     label: EN_STYLE_LABELS[key] ?? style.label,
     groupLabel: style.id.startsWith("enhanced:")

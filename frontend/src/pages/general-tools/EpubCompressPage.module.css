@@ -1,8 +1,9 @@
 .configLine {
-  display: grid;
-  grid-template-columns: auto minmax(260px, 640px);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  align-items: center;
+  align-items: flex-start;
+  max-width: 620px;
 }
 
 .modeRow,
@@ -41,7 +42,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  max-width: 640px;
+  width: min(100%, 520px);
 }
 
 .pathInput,
@@ -185,8 +186,9 @@
   font-size: 12px;
 }
 
-@media (max-width: 900px) {
-  .configLine {
+@media (max-width: 640px) {
+  .fileRow {
+    width: 100%;
     grid-template-columns: minmax(0, 1fr);
   }
 }

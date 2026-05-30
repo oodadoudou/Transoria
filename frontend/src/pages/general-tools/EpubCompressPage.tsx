@@ -48,7 +48,7 @@ function defaultOptions(suffix: string): EpubCompressOptions {
   };
 }
 
-export function EpubCompressPage() {
+export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = {}) {
   const messages = useMessages();
   const text = messages.epubCompressTool;
   const [mode, setMode] = useSessionState<"file" | "folder">(
@@ -223,7 +223,10 @@ export function EpubCompressPage() {
 
   return (
     <>
-      <Panel title={text.title} subtitle={text.sub}>
+      <Panel
+        title={embedded ? undefined : text.title}
+        subtitle={embedded ? undefined : text.sub}
+      >
         <div className={styles.configLine}>
           <div className={styles.modeRow}>
             <button

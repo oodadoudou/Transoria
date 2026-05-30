@@ -2647,13 +2647,14 @@ class TaskService:
         )
         if not selected_actions:
             raise BridgeError.invalid_argument(
-                "at least one EPUB file must be selected.",
+                f"at least one {config.output_format.upper()} file must be selected.",
                 field="actions",
             )
         if output_path.strip() or config.output_path.strip():
             output = Path(output_path or config.output_path).expanduser().resolve()
-            if output.suffix.lower() != ".epub":
-                output = output.with_suffix(".epub")
+            output_suffix = ".txt" if config.output_format == "txt" else ".epub"
+            if output.suffix.lower() != output_suffix:
+                output = output.with_suffix(output_suffix)
         else:
             output = build_epub_merge_plan(source_dir, options=config).output_path
 

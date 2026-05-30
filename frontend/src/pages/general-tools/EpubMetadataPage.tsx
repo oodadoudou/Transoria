@@ -58,7 +58,7 @@ function joinPath(dir: string, name: string): string {
   return `${folder.replace(/[\\/]+$/, "")}${separator}${name}`;
 }
 
-export function EpubMetadataPage() {
+export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = {}) {
   const text = useMessages().epubMetadataTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
   const [outputFolderPath, setOutputFolderPath] = useLocalState(
@@ -205,7 +205,10 @@ export function EpubMetadataPage() {
 
   return (
     <>
-      <Panel title={text.title} subtitle={text.sub}>
+      <Panel
+        title={embedded ? undefined : text.title}
+        subtitle={embedded ? undefined : text.sub}
+      >
         <div className={styles.pathGrid}>
           <label className={styles.field}>
             <span>{text.inputFile}</span>

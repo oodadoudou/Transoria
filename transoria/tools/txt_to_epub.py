@@ -18,6 +18,25 @@ _TXT_SUFFIX = ".txt"
 _EPUB_SUFFIX = ".epub"
 _RESOURCE_ROOT = Path(__file__).resolve().parents[1] / "resources" / "epub_styles"
 _STYLE_GROUPS = {"basic": "通用兼容样式", "enhanced": "增强样式"}
+_VISIBLE_STYLE_KEYS = {
+    "basic": (
+        "classic",
+        "clean",
+        "eyecare",
+        "modern",
+        "minimal",
+        "literary",
+        "compact",
+        "spacious",
+        "double_line",
+        "sans_clean",
+        "framed",
+        "sidebar",
+        "structure_lines",
+        "reader_modern",
+    ),
+    "enhanced": ("soft_structure",),
+}
 _STYLE_TEMPLATE = """/* transoria-epub-style: v1 */
 body {
   margin: 0 5%;
@@ -236,7 +255,7 @@ class TxtToEpubResult:
 PRESET_RULES: tuple[dict[str, object], ...] = (
     {
         "id": "markdown",
-        "label": "Markdown #/##",
+        "label": "Markdown 标题",
         "description": "#、##、###、#### 标题",
         "rules": (
             TxtToEpubRule(4, r"^\s*####\s*(?P<title>.+?)\s*$"),
@@ -246,31 +265,17 @@ PRESET_RULES: tuple[dict[str, object], ...] = (
         ),
     },
     {
-        "id": "zh_webnovel",
-        "label": "中文网文",
-        "description": "第1卷、第001章、第一章等",
+        "id": "zh_novel",
+        "label": "中文章节综合",
+        "description": "网文、出版、番外/外传标题",
         "rules": (
-            TxtToEpubRule(1, r"^\s*(第[\d零〇一二两三四五六七八九十百千万]+卷|卷[\d零〇一二两三四五六七八九十百千万]+)\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*第[\d零〇一二两三四五六七八九十百千万]+章\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*正文\s+第[\d零〇一二两三四五六七八九十百千万]+章\s*(?P<title>.*)$"),
-        ),
-    },
-    {
-        "id": "zh_published",
-        "label": "中文出版",
-        "description": "第一回、第一节、序章、尾声等",
-        "rules": (
+            TxtToEpubRule(1, r"^\s*(第\s*[\d零〇一二两三四五六七八九十百千万]+\s*卷|卷\s*[\d零〇一二两三四五六七八九十百千万]+)\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, r"^\s*第\s*[\d零〇一二两三四五六七八九十百千万]+\s*章\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, r"^\s*正文\s+第\s*[\d零〇一二两三四五六七八九十百千万]+\s*章\s*(?P<title>.*)$"),
             TxtToEpubRule(1, r"^\s*(序章|楔子|尾声|后记|前言|终章)\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*第[\d零〇一二两三四五六七八九十百千万]+[回节]\s*(?P<title>.*)$"),
-        ),
-    },
-    {
-        "id": "extra",
-        "label": "番外/外传",
-        "description": "番外、外传、特别篇、IF 线",
-        "rules": (
-            TxtToEpubRule(1, r"^\s*(番外|外传|特别篇|IF线|if线)\s*(?P<title>.*)$"),
-            TxtToEpubRule(2, r"^\s*(番外|外传|特别篇)\s*[\d零〇一二两三四五六七八九十百千万]*\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, r"^\s*第\s*[\d零〇一二两三四五六七八九十百千万]+\s*[回节]\s*(?P<title>.*)$"),
+            TxtToEpubRule(2, r"^\s*(番外|外传|特别篇)\s*[\d零〇一二两三四五六七八九十百千万]+\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, r"^\s*(番外|外传|特别篇|IF\s*线|if\s*线)\s*(?P<title>.*)$"),
         ),
     },
     {
@@ -280,6 +285,7 @@ PRESET_RULES: tuple[dict[str, object], ...] = (
         "rules": (
             TxtToEpubRule(1, r"^\s*(프롤로그|에필로그|외전)\s*(?P<title>.*)$"),
             TxtToEpubRule(1, r"^\s*\d+\s*권\s*(?P<title>.*)$"),
+            TxtToEpubRule(1, r"^\s*제\s*\d+\s*권\s*(?P<title>.*)$"),
             TxtToEpubRule(2, r"^\s*제\s*\d+\s*(화|장)\s*(?P<title>.*)$"),
             TxtToEpubRule(2, r"^\s*\d+\s*화\s*(?P<title>.*)$"),
         ),
@@ -299,12 +305,17 @@ PRESET_RULES: tuple[dict[str, object], ...] = (
         "label": "数字标题",
         "description": "1.、1.1、01、001",
         "rules": (
-            TxtToEpubRule(1, r"^\s*\d+\.\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(2, r"^\s*\d+\.\d+\s*(?P<title>.+?)\s*$"),
+            TxtToEpubRule(1, r"^\s*\d+\.\s*(?P<title>.+?)\s*$"),
             TxtToEpubRule(2, r"^\s*\d{1,4}\s*(?P<title>.*?)\s*$"),
         ),
     },
 )
+PRESET_ALIASES = {
+    "zh_webnovel": "zh_novel",
+    "zh_published": "zh_novel",
+    "extra": "zh_novel",
+}
 
 
 def list_toc_presets() -> dict[str, object]:
@@ -327,7 +338,10 @@ def list_epub_styles() -> dict[str, object]:
         folder = _RESOURCE_ROOT / group
         if not folder.exists():
             continue
-        for path in sorted(folder.glob("*.css")):
+        for key in _VISIBLE_STYLE_KEYS[group]:
+            path = folder / f"epub_style_{key}.css"
+            if not path.exists():
+                continue
             style_id = f"{group}:{_style_key(path)}"
             styles.append(
                 {
@@ -515,8 +529,9 @@ def _resolve_rules(
     rules = tuple(TxtToEpubRule.from_mapping(raw) for raw in custom_rules if raw)
     if rules:
         return rules
+    resolved_preset_id = PRESET_ALIASES.get(preset_id, preset_id)
     for preset in PRESET_RULES:
-        if preset["id"] == preset_id:
+        if preset["id"] == resolved_preset_id:
             return tuple(preset["rules"])  # type: ignore[arg-type]
     return tuple(PRESET_RULES[0]["rules"])  # type: ignore[arg-type]
 
@@ -610,6 +625,16 @@ def _style_label(path: Path) -> str:
         "line_hierarchy": "线性层级",
         "linear": "线性",
         "structured_minimal": "结构极简",
+        "literary": "文学排版",
+        "compact": "紧凑阅读",
+        "spacious": "宽松阅读",
+        "double_line": "双线标题",
+        "sans_clean": "无衬线清爽",
+        "framed": "框线章名",
+        "sidebar": "侧栏强调",
+        "structure_lines": "结构简约",
+        "reader_modern": "阅读器现代",
+        "soft_structure": "浅底结构",
     }
     key = _style_key(path)
     return labels.get(key, key.replace("_", " ").title())

@@ -27,12 +27,19 @@
   font-size: 12px;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
 .title {
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.015em;
   color: var(--ink);
-  margin: 0 0 4px;
+  margin: 0;
 }
 
 .subtitle {

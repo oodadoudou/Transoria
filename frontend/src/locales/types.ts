@@ -897,6 +897,9 @@ export interface Messages {
     outputFolderHint: string;
     outputFilename: string;
     outputFilenameHint: string;
+    outputFormat: string;
+    outputFormatEpub: string;
+    outputFormatTxt: string;
     recursive: string;
     smartCover: string;
     keepOriginalImages: string;
@@ -907,6 +910,7 @@ export interface Messages {
     noPlan: string;
     noActions: string;
     epubsFound: string;
+    txtFound: string;
     selectedCount: string;
     select: string;
     order: string;

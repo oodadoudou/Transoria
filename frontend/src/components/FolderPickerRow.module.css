@@ -66,6 +66,7 @@
 
 .compact {
   gap: 8px;
+  max-width: 420px;
 }
 
 .compact .field {

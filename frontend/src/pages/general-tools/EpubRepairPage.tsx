@@ -37,7 +37,7 @@ function repairedFilename(inputPath: string): string {
   return `${fallback || "repaired"}-repaired.epub`;
 }
 
-export function EpubRepairPage() {
+export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}) {
   const text = useMessages().epubRepairTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
   const [outputFolderPath, setOutputFolderPath] = useLocalState(
@@ -119,7 +119,10 @@ export function EpubRepairPage() {
 
   return (
     <>
-      <Panel title={text.title} subtitle={text.sub}>
+      <Panel
+        title={embedded ? undefined : text.title}
+        subtitle={embedded ? undefined : text.sub}
+      >
         <div className={styles.pathGrid}>
           <label className={styles.field}>
             <span>{text.inputFile}</span>

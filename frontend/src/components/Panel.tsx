@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react';
+import { HelpTip } from './HelpTip';
 import styles from './Panel.module.css';
 
 interface PanelProps extends HTMLAttributes<HTMLElement> {
@@ -35,8 +36,13 @@ export function Panel({
           {labelExtra ? <div className={styles.labelExtra}>{labelExtra}</div> : null}
         </div>
       ) : null}
-      {title ? <div className={styles.title}>{title}</div> : null}
-      {subtitle ? <div className={styles.subtitle}>{subtitle}</div> : null}
+      {title ? (
+        <div className={styles.titleRow}>
+          <div className={styles.title}>{title}</div>
+          {subtitle ? <HelpTip>{subtitle}</HelpTip> : null}
+        </div>
+      ) : null}
+      {!title && subtitle ? <div className={styles.subtitle}>{subtitle}</div> : null}
       {children}
     </section>
   );

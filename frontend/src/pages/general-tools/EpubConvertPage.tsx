@@ -43,7 +43,7 @@ function defaultOptions(): EpubConvertOptions {
   };
 }
 
-export function EpubConvertPage() {
+export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {}) {
   const messages = useMessages();
   const text = messages.epubConvertTool;
   const [mode, setMode] = useSessionState<"file" | "folder">(
@@ -211,7 +211,10 @@ export function EpubConvertPage() {
 
   return (
     <>
-      <Panel title={text.title} subtitle={text.sub}>
+      <Panel
+        title={embedded ? undefined : text.title}
+        subtitle={embedded ? undefined : text.sub}
+      >
         <div className={styles.configLine}>
           <div className={styles.modeRow}>
             <button

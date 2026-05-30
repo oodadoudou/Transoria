@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
 import { useMessages } from "@/locales";
 import type { GeneralToolsPage } from "@/store/useTaskStore";
@@ -66,7 +67,6 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   return (
     <>
       <Panel title={text.title} subtitle={text.sub}>
-        <p className={styles.intro}>{text.intro}</p>
         <div className={styles.toolGrid}>
           {tools.map((tool) => (
             <button
@@ -93,8 +93,10 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
           >
             <div className={styles.dialogHeader}>
               <div>
-                <h2 id="epub-tool-dialog-title">{activeSpec.title}</h2>
-                <p>{activeSpec.sub}</p>
+                <div className={styles.dialogTitleRow}>
+                  <h2 id="epub-tool-dialog-title">{activeSpec.title}</h2>
+                  <HelpTip>{activeSpec.sub}</HelpTip>
+                </div>
               </div>
               <button
                 type="button"
@@ -116,16 +118,16 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
 function renderTool(tool: EpubToolPage) {
   switch (tool) {
     case "epubCompress":
-      return <EpubCompressPage />;
+      return <EpubCompressPage embedded />;
     case "epubMerge":
-      return <EpubMergePage />;
+      return <EpubMergePage embedded />;
     case "epubConvert":
-      return <EpubConvertPage />;
+      return <EpubConvertPage embedded />;
     case "txtToEpub":
-      return <TxtToEpubPage />;
+      return <TxtToEpubPage embedded />;
     case "epubMetadata":
-      return <EpubMetadataPage />;
+      return <EpubMetadataPage embedded />;
     case "epubRepair":
-      return <EpubRepairPage />;
+      return <EpubRepairPage embedded />;
   }
 }
