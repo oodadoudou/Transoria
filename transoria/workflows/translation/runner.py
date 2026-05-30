@@ -948,6 +948,7 @@ class TranslationSubtaskRunner:
             max_length_ratio=self.max_length_ratio,
             max_punctuation_delta=self.max_punctuation_delta,
             source_language=self.source_language,
+            target_language=self.target_language,
         )
 
 

@@ -302,6 +302,10 @@ def _confidence_entry_for_segment(
         source_language = Language(snapshot.record.metadata.get("source_language", ""))
     except ValueError:
         source_language = None
+    try:
+        target_language = Language(snapshot.record.metadata.get("target_language", ""))
+    except ValueError:
+        target_language = None
     verdict = evaluate_segment_confidence(
         source,
         dst,
@@ -309,6 +313,7 @@ def _confidence_entry_for_segment(
         max_length_ratio=4.0,
         max_punctuation_delta=12,
         source_language=source_language,
+        target_language=target_language,
     )
     if not verdict.is_low_confidence:
         return None

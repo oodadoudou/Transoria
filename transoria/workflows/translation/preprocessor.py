@@ -138,8 +138,26 @@ def _mask_protected_spans(
         try:
             pattern = re.compile(rule.pattern)
         except re.error:
+            pattern = None
+        if pattern is not None:
+            masked, count = pattern.subn(
+                lambda match: _push_sentinel(match.group(0), spans),
+                masked,
+            )
+            if count:
+                continue
+        # Preserve entries are user-authored and often typed as plain
+        # literals. If the regex form did not match (or was invalid), fall
+        # back to a case-insensitive literal match so "chapter" can protect
+        # "Chapter" headings without requiring regex syntax.
+        try:
+            literal_pattern = re.compile(re.escape(rule.pattern), re.IGNORECASE)
+        except re.error:
             continue
-        masked = pattern.sub(lambda match: _push_sentinel(match.group(0), spans), masked)
+        masked = literal_pattern.sub(
+            lambda match: _push_sentinel(match.group(0), spans),
+            masked,
+        )
     return masked, ProtectionMap(spans=tuple(spans))
 
 
@@ -230,10 +248,15 @@ def strip_drm_invisibles(text: str) -> str:
     return _DRM_INVISIBLE_PATTERN.sub("", text)
 
 
+def strip_protection_sentinels(text: str) -> str:
+    return _SENTINEL_PATTERN.sub("", text)
+
+
 __all__ = [
     "PreprocessedSegment",
     "ProtectionMap",
     "preprocess_segment",
     "postprocess_segment",
     "strip_drm_invisibles",
+    "strip_protection_sentinels",
 ]

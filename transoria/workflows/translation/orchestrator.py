@@ -75,6 +75,7 @@ from transoria.workflows.prefilter import should_translate_for_language
 from transoria.workflows.translation.preprocessor import (
     preprocess_segment,
     strip_drm_invisibles,
+    strip_protection_sentinels,
 )
 from transoria.workflows.translation.runner import (
     TranslationSubtaskRunner,
@@ -593,8 +594,11 @@ def _prepare_segments(
                 text_preserve_rules=config.text_preserve_rules,
                 pre_replacements=config.pre_replacements,
             )
+            unprotected_prompt_text = strip_protection_sentinels(
+                preprocessed.prompt_text
+            )
             if not should_translate_for_language(
-                preprocessed.prompt_text,
+                unprotected_prompt_text,
                 source_language=config.source_language,
                 target_language=config.target_language,
             ):

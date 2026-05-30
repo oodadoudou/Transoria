@@ -52,6 +52,7 @@ def evaluate_segment_confidence(
     max_length_ratio: float,
     max_punctuation_delta: int,
     source_language: Language | None = None,
+    target_language: Language | None = None,
 ) -> ConfidenceVerdict:
     reasons: list[str] = []
 
@@ -84,6 +85,13 @@ def evaluate_segment_confidence(
     residue_reason = _source_language_residue(translated_text, source_language)
     if residue_reason:
         reasons.append(residue_reason)
+    english_leak_reason = _english_function_word_leak(
+        translated_text,
+        source_language=source_language,
+        target_language=target_language,
+    )
+    if english_leak_reason:
+        reasons.append(english_leak_reason)
 
     if _too_similar(source_text, translated_text):
         reasons.append("source and translation are too similar")
@@ -152,6 +160,22 @@ _JAPANESE_KANA_PATTERN = re.compile(
 # (\u314b\u314b\u314b\u314b\u314b\u314b\u314b) sits at \u226540% jamo, while a single-letter cultural
 # reference is \u22645% of any reasonably-long sentence.
 _JAMO_RATIO_THRESHOLD = 0.10
+_CHINESE_TARGET_LANGUAGES = {
+    Language.CHINESE_SIMPLIFIED,
+    Language.CHINESE_TRADITIONAL,
+}
+_ASCII_WORD_PATTERN = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
+_ENGLISH_FUNCTION_WORDS = frozenset(
+    """
+    a about after all am an and are as at be been but by can could did do does
+    for from had has have he her hers him his i if in into is it its me my not
+    of on or our ours she should that the their theirs them they this those to
+    under up us was we were with would you your yours
+    """.split()
+)
+_ENGLISH_LEAK_MIN_FUNCTION_WORDS = 2
+_ENGLISH_LEAK_MIN_LATIN_TOKENS = 3
+_ENGLISH_LEAK_MIN_FUNCTION_RATIO = 0.40
 
 
 def _source_language_residue(
@@ -177,6 +201,31 @@ def _source_language_residue(
         if _JAPANESE_KANA_PATTERN.search(translated_text):
             return "Japanese kana residue remains in translation"
     return None
+
+
+def _english_function_word_leak(
+    translated_text: str,
+    *,
+    source_language: Language | None,
+    target_language: Language | None,
+) -> str | None:
+    if source_language is Language.ENGLISH:
+        return None
+    if target_language not in _CHINESE_TARGET_LANGUAGES:
+        return None
+    words = [
+        match.group(0).casefold()
+        for match in _ASCII_WORD_PATTERN.finditer(translated_text)
+    ]
+    if len(words) < _ENGLISH_LEAK_MIN_LATIN_TOKENS:
+        return None
+    function_count = sum(1 for word in words if word in _ENGLISH_FUNCTION_WORDS)
+    if function_count < _ENGLISH_LEAK_MIN_FUNCTION_WORDS:
+        return None
+    function_ratio = function_count / len(words)
+    if function_ratio < _ENGLISH_LEAK_MIN_FUNCTION_RATIO:
+        return None
+    return "English function-word residue remains in Chinese translation"
 
 
 def _ratio(pattern: re.Pattern[str], text: str) -> float:
