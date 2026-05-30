@@ -6,7 +6,7 @@ import re
 import unicodedata
 import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -83,15 +83,21 @@ img.cover {
 class TxtToEpubRule:
     level: int
     pattern: str
+    use_full_line: bool = False
 
     def to_dict(self) -> dict[str, object]:
-        return {"level": self.level, "pattern": self.pattern}
+        return {
+            "level": self.level,
+            "pattern": self.pattern,
+            "useFullLine": self.use_full_line,
+        }
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "TxtToEpubRule":
         return cls(
             level=max(1, min(4, int(data.get("level", 1) or 1))),
             pattern=str(data.get("pattern", "")),
+            use_full_line=bool(data.get("useFullLine") or data.get("use_full_line")),
         )
 
 
@@ -255,9 +261,9 @@ class TxtToEpubResult:
 _CJK_NUMBER = r"(?:[\d零〇一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+\s*)+"
 
 NUMERIC_TITLE_RULES: tuple[TxtToEpubRule, ...] = (
-    TxtToEpubRule(2, r"^\s*\d+\.\d+\s*(?P<title>.*?)\s*$"),
+    TxtToEpubRule(2, r"^\s*\d+(?:\.\d+)+(?:\s+(?P<title>.+?)|\s*)$"),
     TxtToEpubRule(1, r"^\s*\d+\s*[\.)、．]\s*(?P<title>.*?)\s*$"),
-    TxtToEpubRule(2, r"^\s*\d{1,4}\s*(?P<title>.*?)\s*$"),
+    TxtToEpubRule(2, r"^\s*(?P<title>\d{1,4})\s*$"),
 )
 
 
@@ -347,7 +353,7 @@ def list_toc_presets() -> dict[str, object]:
                 "id": str(preset["id"]),
                 "label": str(preset["label"]),
                 "description": str(preset["description"]),
-                "rules": [rule.to_dict() for rule in preset["rules"]],  # type: ignore[index]
+                "rules": [rule.to_dict() for rule in _preset_rules(preset)],
             }
             for preset in PRESET_RULES
         ]
@@ -464,7 +470,11 @@ def convert_txt_to_epub(action: TxtToEpubAction) -> TxtToEpubResult:
         text = _read_text(source)
         css = _resolve_css(action.options.style_id, action.options.custom_css)
         _validate_css(css)
-        chapters = _build_chapters(text, action.options.toc_entries)
+        chapters = _build_chapters(
+            text,
+            action.options.toc_entries,
+            default_title=action.options.title.strip() or source.stem,
+        )
         _write_epub(
             output,
             title=action.options.title.strip() or source.stem,
@@ -554,30 +564,42 @@ def _resolve_rules(
     resolved_preset_id = PRESET_ALIASES.get(preset_id, preset_id)
     for preset in PRESET_RULES:
         if preset["id"] == resolved_preset_id:
-            return tuple(preset["rules"])  # type: ignore[arg-type]
-    return tuple(PRESET_RULES[0]["rules"])  # type: ignore[arg-type]
+            return _preset_rules(preset)
+    return _preset_rules(PRESET_RULES[0])
+
+
+def _preset_rules(preset: Mapping[str, object]) -> tuple[TxtToEpubRule, ...]:
+    use_full_line = preset["id"] != "markdown"
+    return tuple(
+        replace(rule, use_full_line=use_full_line)
+        for rule in preset["rules"]  # type: ignore[index]
+    )
 
 
 def _compile_rules(
     rules: Sequence[TxtToEpubRule],
-) -> tuple[tuple[int, re.Pattern[str]], ...]:
-    compiled: list[tuple[int, re.Pattern[str]]] = []
+) -> tuple[tuple[int, re.Pattern[str], bool], ...]:
+    compiled: list[tuple[int, re.Pattern[str], bool]] = []
     for rule in rules:
         if not rule.pattern.strip():
             continue
-        compiled.append((rule.level, re.compile(rule.pattern, re.IGNORECASE)))
+        compiled.append(
+            (rule.level, re.compile(rule.pattern, re.IGNORECASE), rule.use_full_line)
+        )
     if not compiled:
         raise ValueError("at least one chapter rule is required")
     return tuple(compiled)
 
 
 def _match_line(
-    line: str, compiled: Sequence[tuple[int, re.Pattern[str]]]
+    line: str, compiled: Sequence[tuple[int, re.Pattern[str], bool]]
 ) -> tuple[int, str] | None:
-    for level, pattern in compiled:
+    for level, pattern, use_full_line in compiled:
         match = pattern.match(line)
         if match is None:
             continue
+        if use_full_line:
+            return level, line.strip()
         title = ""
         if "title" in pattern.groupindex:
             title = match.group("title")
@@ -691,7 +713,10 @@ def _validate_css(css: str) -> None:
 
 
 def _build_chapters(
-    text: str, toc_entries: Sequence[TxtToEpubTocEntry]
+    text: str,
+    toc_entries: Sequence[TxtToEpubTocEntry],
+    *,
+    default_title: str,
 ) -> tuple[_Chapter, ...]:
     lines = text.splitlines()
     entries = sorted(
@@ -700,24 +725,26 @@ def _build_chapters(
     )
     chapters: list[_Chapter] = []
     if not entries:
+        title, body_lines = _promote_first_text_line(tuple(lines), default_title)
         return (
             _Chapter(
                 id="0001",
-                title="正文",
+                title=title,
                 level=1,
-                body_lines=tuple(lines),
+                body_lines=body_lines,
                 enabled=True,
             ),
         )
     first = entries[0]
     prefix = tuple(lines[: max(0, first.start_line - 1)])
     if any(line.strip() for line in prefix):
+        title, body_lines = _promote_first_text_line(prefix, default_title)
         chapters.append(
             _Chapter(
                 id=f"{len(chapters) + 1:04d}",
-                title="正文",
+                title=title,
                 level=1,
-                body_lines=prefix,
+                body_lines=body_lines,
                 enabled=True,
             )
         )
@@ -737,6 +764,17 @@ def _build_chapters(
             )
         )
     return tuple(chapters)
+
+
+def _promote_first_text_line(
+    lines: tuple[str, ...],
+    default_title: str,
+) -> tuple[str, tuple[str, ...]]:
+    for index, line in enumerate(lines):
+        title = _clean_title(line)
+        if title:
+            return title, lines[:index] + lines[index + 1 :]
+    return _clean_title(default_title), lines
 
 
 def _write_epub(

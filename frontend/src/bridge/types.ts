@@ -762,6 +762,7 @@ export interface EpubConvertReport {
 export interface TxtToEpubRule {
   level: number;
   pattern: string;
+  useFullLine?: boolean;
 }
 
 export interface TxtToEpubPreset {
