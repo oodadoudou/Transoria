@@ -363,6 +363,67 @@ def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
                 _mark_possible_duplicate(items[right_index])
 
 
+def _coerce_cached_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "y"}:
+            return True
+        if lowered in {"false", "0", "no", "n", ""}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _text_preserve_rules_from_metadata(value: object):
+    from transoria.workflows.translation.rules import TextPreserveRule  # noqa: PLC0415
+
+    if not isinstance(value, list):
+        return ()
+    rules: list[TextPreserveRule] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        pattern = str(item.get("pattern", "")).strip()
+        if not pattern:
+            continue
+        rules.append(
+            TextPreserveRule(
+                pattern=pattern,
+                note=str(item.get("note", "")),
+                enabled=_coerce_cached_bool(item.get("enabled", True), default=True),
+            )
+        )
+    return tuple(rules)
+
+
+def _replacement_rules_from_metadata(value: object):
+    from transoria.workflows.translation.rules import ReplacementRule  # noqa: PLC0415
+
+    if not isinstance(value, list):
+        return ()
+    rules: list[ReplacementRule] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        src = str(item.get("src", "")).strip()
+        if not src:
+            continue
+        rules.append(
+            ReplacementRule(
+                src=src,
+                dst=str(item.get("dst", "")),
+                regex=_coerce_cached_bool(item.get("regex", False)),
+                case_sensitive=_coerce_cached_bool(item.get("case_sensitive", False)),
+                note=str(item.get("note", "")),
+                enabled=_coerce_cached_bool(item.get("enabled", True), default=True),
+            )
+        )
+    return tuple(rules)
+
+
 def _build_handlers(service: TaskService) -> dict[str, object]:
     def require_proofreadable_translation_task(task_id: str):
         try:
@@ -606,9 +667,11 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             )
 
         # Build a minimal TranslationConfig sufficient for the writer.
-        # No model / prompt / rules are needed because regen does not
-        # call the LLM and the cached translations are already past the
-        # postprocess (post_replacement) stage.
+        # Regen does not call the LLM, but `_prepare_segments` must replay
+        # cached preserve/pre-replacement rules because rewritten prompt text
+        # can change the second language-filter pass and therefore the
+        # segment_id list. Post-replacements are not replayed: cached
+        # translations are already past that stage.
         try:
             source_language = Language(
                 str(record_metadata.get("source_language", Language.KOREAN.value))
@@ -640,6 +703,12 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             model=None,  # type: ignore[arg-type]
             prompt_preset=None,  # type: ignore[arg-type]
             glossary=Glossary.empty(),
+            text_preserve_rules=_text_preserve_rules_from_metadata(
+                record_metadata.get("text_preserve_rules", [])
+            ),
+            pre_replacements=_replacement_rules_from_metadata(
+                record_metadata.get("pre_replacements", [])
+            ),
             bilingual_enabled=export_bilingual,
         )
 
