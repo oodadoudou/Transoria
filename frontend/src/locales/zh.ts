@@ -859,6 +859,8 @@ export const zh: Messages = {
       regenerateFailureReasons: {
         noMatchingTranslations:
           "源文件和任务缓存对不上：这个文件没有匹配到任何已翻译段落。可能是原输入文件被移动、替换或用旧版本缓存直接重新生成。",
+        cacheSegmentMismatch:
+          "源文件和任务缓存对不上：当前解析到 {expected} 段，其中 {matched} 段能匹配缓存，仍缺 {missing} 段。通常是原输入文件内容/同目录文件列表变化，或新版本解析器识别出了旧任务没有翻译过的段落。为避免把原文混入译文，已停止生成。",
         missingTranslations:
           "这个文件有 {missing} 段没有译文，已生成的文件可能包含原文兜底。建议继续任务补齐后再重新生成。",
         writerError:

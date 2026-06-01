@@ -517,6 +517,7 @@ export interface Messages {
       regenerateFailed: string;
       regenerateFailureReasons: {
         noMatchingTranslations: string;
+        cacheSegmentMismatch: string;
         missingTranslations: string;
         writerError: string;
         unknown: string;

@@ -166,6 +166,12 @@ function formatRegenerateFailure(
   let reason: string;
   if (file.code === "no_matching_translations") {
     reason = messages.regenerateFailureReasons.noMatchingTranslations;
+  } else if (file.code === "cache_segment_mismatch") {
+    reason = format(messages.regenerateFailureReasons.cacheSegmentMismatch, {
+      missing: numberDetail(file.details, "missing_segments"),
+      expected: numberDetail(file.details, "expected_segments"),
+      matched: numberDetail(file.details, "matched_segments"),
+    });
   } else if (file.code === "missing_translations") {
     reason = format(messages.regenerateFailureReasons.missingTranslations, {
       missing: numberDetail(file.details, "missing_segments"),
