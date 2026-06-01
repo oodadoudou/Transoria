@@ -829,7 +829,7 @@ def _build_book_nav_entries(
         return (_NavEntry(title=first_content.title or book_title, href=first_content.new_href),)
     if _count_nav_entries(original_entries) <= 1:
         children = ()
-    return (_NavEntry(title=book_title, href=first_spine_item.new_href, children=children),)
+    return (_NavEntry(title=book_title, href=first_content.new_href, children=children),)
 
 
 def _extract_original_nav_entries(
@@ -1331,7 +1331,17 @@ def _is_cover_page_href(href: str) -> bool:
 
 def _is_cover_page_title(title: str) -> bool:
     normalized = _clean_text(title).lower()
-    return normalized in {"cover", "cover page", "title page", "표지", "커버"}
+    return normalized in {
+        "cover",
+        "cover page",
+        "title page",
+        "copyright",
+        "판권",
+        "版权",
+        "版權",
+        "표지",
+        "커버",
+    }
 
 
 def _is_generic_nav_title(title: str) -> bool:
