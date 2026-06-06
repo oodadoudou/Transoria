@@ -3,6 +3,7 @@ import { format, useI18n, useMessages } from "@/locales";
 import {
   BridgeError,
   proofreadingBridge,
+  type ModelProfile,
   type ProofreadingItem,
   type ProofreadingSnapshot,
   type TaskHeader,
@@ -93,6 +94,11 @@ const EMPTY_RISK_COUNTS: RiskCounts = {
 };
 
 const REVIEW_RISK_MAX_RANK = 4;
+const RETRANSLATE_CONCURRENCY_FALLBACK = 4;
+const RETRANSLATE_CONCURRENCY_AUTO_MAX = 48;
+const RETRANSLATE_FRONTEND_JOB_CAP = 50;
+const RETRANSLATE_RATE_WINDOW_MS = 60_000;
+const RETRANSLATE_RATE_WINDOW_BUFFER_MS = 25;
 
 const MODEL_ANOMALY_TAGS = new Set([
   "function_word_residue",
@@ -168,6 +174,75 @@ function summarizeReasons(reasons: string[]): string {
   return Array.from(counts.entries())
     .map(([reason, count]) => `${reason} ×${count}`)
     .join("；");
+}
+
+function getRetranslateConcurrency(
+  model: ModelProfile | undefined,
+  total: number,
+): number {
+  if (total <= 0) return 0;
+  const configuredConcurrency = Math.floor(model?.concurrency_limit ?? 0);
+  const rpmLimit = Math.floor(model?.rpm_limit ?? 0);
+  let limit =
+    configuredConcurrency > 0
+      ? configuredConcurrency
+      : rpmLimit > 0
+        ? Math.min(RETRANSLATE_CONCURRENCY_AUTO_MAX, rpmLimit)
+        : RETRANSLATE_CONCURRENCY_FALLBACK;
+  if (rpmLimit > 0) {
+    limit = Math.min(limit, rpmLimit);
+  }
+  return Math.max(1, Math.min(total, RETRANSLATE_FRONTEND_JOB_CAP, limit));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function createRetranslateRateGate(
+  model: ModelProfile | undefined,
+): () => Promise<void> {
+  const rpmLimit = Math.floor(model?.rpm_limit ?? 0);
+  if (rpmLimit <= 0) return async () => undefined;
+  const starts: number[] = [];
+  let queue = Promise.resolve();
+
+  return async () => {
+    let releaseQueue: () => void = () => undefined;
+    const turn = queue.then(async () => {
+      while (true) {
+        const now = Date.now();
+        while (starts.length > 0) {
+          const oldest = starts[0];
+          if (
+            oldest === undefined ||
+            now - oldest < RETRANSLATE_RATE_WINDOW_MS
+          ) {
+            break;
+          }
+          starts.shift();
+        }
+        if (starts.length < rpmLimit) {
+          starts.push(now);
+          return;
+        }
+        const oldest = starts[0] ?? now;
+        await sleep(
+          RETRANSLATE_RATE_WINDOW_MS -
+            (now - oldest) +
+            RETRANSLATE_RATE_WINDOW_BUFFER_MS,
+        );
+      }
+    });
+    queue = new Promise((resolve) => {
+      releaseQueue = resolve;
+    });
+    try {
+      await turn;
+    } finally {
+      releaseQueue();
+    }
+  };
 }
 
 function formatRegenerateFailure(
@@ -906,6 +981,11 @@ export function ProofreadingPage() {
   };
 
   const retranslateIds = async (ids: string[]) => {
+    const concurrency = getRetranslateConcurrency(
+      selectedProofreadingModel,
+      ids.length,
+    );
+    const waitForRateSlot = createRetranslateRateGate(selectedProofreadingModel);
     setBatchRetranslating(true);
     setBatchRetranslateProgress({
       total: ids.length,
@@ -913,44 +993,57 @@ export function ProofreadingPage() {
       completed: 0,
       stale: 0,
       failed: 0,
-      current: ids.length > 0 ? 1 : 0,
+      current: concurrency,
     });
     const previousById = new Map(
       (snapshot?.items ?? []).map((item) => [item.segment_id, item.dst]),
     );
     const undoEntries: RetranslateUndo["entries"] = [];
+    let nextIndex = 0;
+    let processedCount = 0;
     let completedCount = 0;
     let staleCount = 0;
     let failedCount = 0;
     const failedReasons: string[] = [];
+    const updateProgress = () => {
+      setBatchRetranslateProgress({
+        total: ids.length,
+        processed: processedCount,
+        completed: completedCount,
+        stale: staleCount,
+        failed: failedCount,
+        current: Math.min(nextIndex, ids.length),
+      });
+    };
     try {
-      for (const [index, segmentId] of ids.entries()) {
-        setBatchRetranslateProgress((prev) =>
-          prev ? { ...prev, current: index + 1 } : prev,
-        );
-        const result = await runRetranslateSegment(segmentId, {
-          showFeedback: false,
-        });
-        if (result.status === "completed") {
-          completedCount += 1;
-          const previous = previousById.get(segmentId);
-          if (previous !== undefined) {
-            undoEntries.push({ segmentId, dst: previous });
+      const workerCount = Math.max(1, concurrency);
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (nextIndex < ids.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            updateProgress();
+            const segmentId = ids[index];
+            await waitForRateSlot();
+            const result = await runRetranslateSegment(segmentId, {
+              showFeedback: false,
+            });
+            if (result.status === "completed") {
+              completedCount += 1;
+              const previous = previousById.get(segmentId);
+              if (previous !== undefined) {
+                undoEntries.push({ segmentId, dst: previous });
+              }
+            } else if (result.status === "stale") staleCount += 1;
+            else {
+              failedCount += 1;
+              failedReasons.push(result.reason ?? "unknown");
+            }
+            processedCount += 1;
+            updateProgress();
           }
-        } else if (result.status === "stale") staleCount += 1;
-        else {
-          failedCount += 1;
-          failedReasons.push(result.reason ?? "unknown");
-        }
-        setBatchRetranslateProgress({
-          total: ids.length,
-          processed: index + 1,
-          completed: completedCount,
-          stale: staleCount,
-          failed: failedCount,
-          current: Math.min(index + 2, ids.length),
-        });
-      }
+        }),
+      );
       const baseText = format(m.retranslateSelectedDone, {
         done: completedCount,
         stale: staleCount,
