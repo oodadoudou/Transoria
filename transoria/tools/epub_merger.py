@@ -34,7 +34,8 @@ _IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".t
 _HTML_MEDIA_TYPES = {"application/xhtml+xml", "text/html"}
 _NCX_MEDIA_TYPE = "application/x-dtbncx+xml"
 _NAV_PROPERTY = "nav"
-_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*]')
+_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*#%]')
+_EPUB_CONTENT_DIR = "OEBPS"
 _EXTRA_MARKER_PATTERN = re.compile(
     r"외전|번외|특별|番外|外传|外傳|特别|特別|后日谈|後日談|spinoff|side\s*story|extra|special",
     re.IGNORECASE,
@@ -530,7 +531,7 @@ class _EpubMerger:
                         index=sum(1 for item in copied_html if not item.is_cover) + 1,
                         is_cover=is_cover_page,
                     )
-                    new_href = _unique_href(f"epub_{epub_index:03d}/{safe_name}", self.files.keys())
+                    new_href = _unique_href(f"Text/epub_{epub_index:03d}/{safe_name}", self.files.keys())
                     html_text = _process_html(
                         html_text,
                         epub_index=epub_index,
@@ -592,7 +593,7 @@ class _EpubMerger:
                     if entry_name not in names:
                         file_stats["warnings"].append(f"missing resource: {href}")
                         continue
-                    new_href = f"resources/{epub_index:03d}_{_safe_resource_name(Path(href).name)}"
+                    new_href = f"Resources/{epub_index:03d}_{_safe_resource_name(Path(href).name)}"
                     self.files[new_href] = archive.read(entry_name)
                     resource_map[_normalize_path(href, opf_dir)] = new_href
                     self.manifest.append(
@@ -643,7 +644,7 @@ class _EpubMerger:
                 stored = next_data
                 compressed = True
         name = _unique_href(
-            f"images/{_safe_resource_name(Path(href).name)}",
+            f"Images/{_safe_resource_name(Path(href).name)}",
             self.files.keys(),
         )
         self.files[name] = stored
@@ -677,7 +678,7 @@ class _EpubMerger:
         signature = _md5(data)
         if signature in self.css_signatures:
             return self.css_signatures[signature], False
-        new_href = f"styles/{epub_index:03d}_{_safe_resource_name(Path(href).name)}"
+        new_href = f"Styles/{epub_index:03d}_{_safe_resource_name(Path(href).name)}"
         self.files[new_href] = data
         self.css_signatures[signature] = new_href
         self.manifest.append(
@@ -720,7 +721,7 @@ class _EpubMerger:
         self.files["META-INF/container.xml"] = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">'
-            '<rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>'
+            f'<rootfiles><rootfile full-path="{_EPUB_CONTENT_DIR}/content.opf" media-type="application/oebps-package+xml"/>'
             '</rootfiles></container>'
         ).encode("utf-8")
 
@@ -791,7 +792,8 @@ class _EpubMerger:
                 compress_type=zipfile.ZIP_STORED,
             )
             for href in sorted(self.files):
-                archive.writestr(href, self.files[href])
+                entry_name = href if href.startswith("META-INF/") else _join_href(_EPUB_CONTENT_DIR, href)
+                archive.writestr(entry_name, self.files[href])
 
 
 def _clamp_int(value: object, *, default: int, low: int, high: int) -> int:
@@ -1290,12 +1292,14 @@ def _trim_to_html_document_start_text(text: str) -> str:
 
 
 def _replace_named_entities(text: str) -> str:
-    predefined = {"amp", "lt", "gt", "quot", "apos", "nbsp"}
+    predefined = {"amp", "lt", "gt", "quot", "apos"}
 
     def replace(match: re.Match[str]) -> str:
         name = match.group(1)
         if name in predefined:
             return match.group(0)
+        if name == "nbsp":
+            return "&#160;"
         codepoint = html.entities.html5.get(f"{name};")
         return codepoint if isinstance(codepoint, str) else match.group(0)
 
@@ -1483,8 +1487,58 @@ def _validate_epub(path: Path) -> None:
             raise ValueError("EPUB mimetype must be the first entry")
         if archive.read("mimetype").decode("ascii", errors="ignore") != _MIMETYPE:
             raise ValueError("invalid EPUB mimetype")
-        if "content.opf" not in names or "nav.xhtml" not in names:
-            raise ValueError("merged EPUB is missing package files")
+        if "META-INF/container.xml" not in names:
+            raise ValueError("merged EPUB is missing META-INF/container.xml")
+        try:
+            container = ET.fromstring(_read_text(archive, "META-INF/container.xml"))
+        except ET.ParseError as exc:
+            raise ValueError(f"invalid EPUB container.xml: {exc}") from exc
+        rootfile = container.find(".//{*}rootfile")
+        opf_path = rootfile.get("full-path", "") if rootfile is not None else ""
+        if not opf_path or opf_path not in names:
+            raise ValueError("merged EPUB is missing content.opf")
+        try:
+            opf_root = ET.fromstring(_read_text(archive, opf_path))
+        except ET.ParseError as exc:
+            raise ValueError(f"invalid EPUB content.opf: {exc}") from exc
+        opf_dir = str(Path(opf_path).parent).replace("\\", "/")
+        opf_dir = "" if opf_dir == "." else opf_dir
+        manifest_by_id: dict[str, ET.Element] = {}
+        for item in opf_root.findall(".//{*}manifest/{*}item"):
+            item_id = item.get("id", "")
+            href = item.get("href", "")
+            if not item_id or not href:
+                raise ValueError("merged EPUB has invalid manifest item")
+            if "#" in href or "%" in href:
+                raise ValueError(f"merged EPUB manifest href is not URL-safe: {href}")
+            entry_name = _join_href(opf_dir, href)
+            if entry_name not in names:
+                raise ValueError(f"merged EPUB manifest references missing file: {href}")
+            manifest_by_id[item_id] = item
+            if item.get("media-type") in _HTML_MEDIA_TYPES or _NAV_PROPERTY in item.get("properties", "").split():
+                try:
+                    ET.fromstring(_read_text(archive, entry_name))
+                except ET.ParseError as exc:
+                    raise ValueError(f"invalid XHTML in merged EPUB: {href}: {exc}") from exc
+        if not any(_NAV_PROPERTY in item.get("properties", "").split() for item in manifest_by_id.values()):
+            raise ValueError("merged EPUB is missing nav document")
+        spine_ids = {
+            itemref.get("idref", "")
+            for itemref in opf_root.findall(".//{*}spine/{*}itemref")
+            if itemref.get("idref")
+        }
+        for item_id, item in manifest_by_id.items():
+            properties = item.get("properties", "").split()
+            if _NAV_PROPERTY in properties:
+                continue
+            if item.get("media-type") in _HTML_MEDIA_TYPES and item_id not in spine_ids:
+                raise ValueError(f"merged EPUB XHTML is not in spine: {item.get('href', item_id)}")
+        for itemref in opf_root.findall(".//{*}spine/{*}itemref"):
+            idref = itemref.get("idref", "")
+            if not idref or idref not in manifest_by_id:
+                raise ValueError(f"merged EPUB spine references missing item: {idref}")
+            if manifest_by_id[idref].get("media-type") not in _HTML_MEDIA_TYPES:
+                raise ValueError(f"merged EPUB spine item is not XHTML: {idref}")
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
