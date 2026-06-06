@@ -143,7 +143,13 @@ input[type='checkbox']:disabled {
 }
 
 ::selection {
-  background: rgba(61, 53, 48, 0.18);
+  background: var(--text-selection-bg);
+  color: var(--text-selection-fg);
+}
+
+::-moz-selection {
+  background: var(--text-selection-bg);
+  color: var(--text-selection-fg);
 }
 
 .tnum {

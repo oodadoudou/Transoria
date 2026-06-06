@@ -54,6 +54,8 @@
   --shadow-soft: none;
 
   --focus-ring: 0 0 0 2px rgba(61, 53, 48, 0.32);
+  --text-selection-bg: rgba(236, 90, 166, 0.28);
+  --text-selection-fg: #0f0f12;
   --checkbox-bg: #ffffff;
   --checkbox-border: rgba(61, 53, 48, 0.42);
   --checkbox-border-hover: rgba(61, 53, 48, 0.68);
@@ -122,6 +124,8 @@
   --success: #62b784;
   --warn: #e0a05f;
   --focus-ring: 0 0 0 2px rgba(216, 200, 168, 0.38);
+  --text-selection-bg: rgba(243, 111, 177, 0.72);
+  --text-selection-fg: #151411;
   --checkbox-bg: #171511;
   --checkbox-border: rgba(245, 241, 232, 0.52);
   --checkbox-border-hover: rgba(245, 241, 232, 0.78);
