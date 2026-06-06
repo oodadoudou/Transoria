@@ -30,6 +30,7 @@ from transoria.bridge.task_service import (
 )
 from transoria.domain import Language, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
+from transoria.workflows.translation import evaluate_segment_confidence
 
 _PROOFREADABLE_TRANSLATION_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED}
@@ -502,6 +503,16 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                                     if isinstance(t, str) and t not in merged:
                                         merged.append(t)
 
+        metadata = snapshot.record.metadata
+        try:
+            source_language = Language(str(metadata.get("source_language", "")))
+        except ValueError:
+            source_language = None
+        try:
+            target_language = Language(str(metadata.get("target_language", "")))
+        except ValueError:
+            target_language = None
+
         # Build (segment_id, src) map. Each segment appears exactly once
         # in the parent subtask's request_payload, but split children
         # repeat it. Use the first occurrence for source text — they all
@@ -526,6 +537,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     continue
                 src = str(segment.get("original_text", ""))
                 dst = translations.get(seg_id)
+                has_cached_translation = dst is not None
                 if dst is None:
                     dst = src
                     low_conf_ids.add(seg_id)
@@ -535,6 +547,26 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     tags = seg_tags.setdefault(seg_id, [])
                     if "source_residue" not in tags:
                         tags.append("source_residue")
+                if has_cached_translation:
+                    verdict = evaluate_segment_confidence(
+                        src,
+                        dst,
+                        min_length_ratio=0.25,
+                        max_length_ratio=4.0,
+                        max_punctuation_delta=12,
+                        source_language=source_language,
+                        target_language=target_language,
+                    )
+                    if verdict.is_low_confidence:
+                        low_conf_ids.add(seg_id)
+                        reasons = seg_reasons.setdefault(seg_id, [])
+                        for reason in verdict.reasons:
+                            if reason not in reasons:
+                                reasons.append(reason)
+                        tags = seg_tags.setdefault(seg_id, [])
+                        for tag in verdict.tags:
+                            if tag not in tags:
+                                tags.append(tag)
                 item: dict[str, object] = {
                     "segment_id": seg_id,
                     "src": src,

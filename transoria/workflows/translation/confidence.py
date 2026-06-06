@@ -222,6 +222,14 @@ _ENGLISH_FUNCTION_WORDS = frozenset(
     under up us was we were with would you your yours
     """.split()
 )
+_ENGLISH_SINGLE_LEAK_WORDS = frozenset(
+    """
+    about after all am an and are as at be been but by can could did do does
+    for from had has have he her hers him his if in into is it its me my not of
+    on or our ours she should that the their theirs them they this those to
+    under up us was we were with would you your yours
+    """.split()
+)
 _ENGLISH_LEAK_MIN_FUNCTION_WORDS = 2
 _ENGLISH_LEAK_MIN_LATIN_TOKENS = 3
 _ENGLISH_LEAK_MIN_FUNCTION_RATIO = 0.40
@@ -277,6 +285,10 @@ def _english_function_word_leak(
         match.group(0).casefold()
         for match in _ASCII_WORD_PATTERN.finditer(translated_text)
     ]
+    if _CJK_IDEOGRAPH_PATTERN.search(translated_text) and any(
+        word in _ENGLISH_SINGLE_LEAK_WORDS for word in words
+    ):
+        return "English function-word residue remains in Chinese translation"
     if len(words) < _ENGLISH_LEAK_MIN_LATIN_TOKENS:
         return None
     function_count = sum(1 for word in words if word in _ENGLISH_FUNCTION_WORDS)
