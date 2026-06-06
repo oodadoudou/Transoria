@@ -501,11 +501,8 @@ class TranslationSubtaskRunner:
                         "segment_id": meta.segment_id,
                         "reasons": extra_reasons + list(verdict.reasons),
                     }
-                    tags: list[str] = []
-                    if fallback_reason or any(
-                        "residue" in str(r).lower()
-                        for r in verdict.reasons
-                    ):
+                    tags = list(verdict.tags)
+                    if fallback_reason and "source_residue" not in tags:
                         tags.append("source_residue")
                     if tags:
                         entry["tags"] = tags
@@ -656,6 +653,9 @@ class TranslationSubtaskRunner:
             pending = still_pending
 
             for meta, last_text, last_reasons in pending:
+                final_verdict = self._evaluate_confidence(
+                    meta.original_text, last_text
+                )
                 has_residue = any(
                     "residue" in str(r).lower() for r in last_reasons
                 )
@@ -673,9 +673,10 @@ class TranslationSubtaskRunner:
                 # - Model produced a Chinese guess that's flawed but not
                 #   residue: keep it. A questionable Chinese line is
                 #   easier to fix than re-translating from scratch.
-                tags: list[str] = []
+                tags = list(final_verdict.tags)
                 if has_residue or echoes_source:
-                    tags.append("source_residue")
+                    if "source_residue" not in tags:
+                        tags.append("source_residue")
                 if (
                     echoes_source
                     or (has_residue and residue_ratio >= _SOURCE_FALLBACK_RESIDUE_RATIO)
@@ -719,11 +720,9 @@ class TranslationSubtaskRunner:
                         verdict = self._evaluate_confidence(
                             meta.original_text, current_text
                         )
-                        if any(
-                            "residue" in str(reason).lower()
-                            for reason in verdict.reasons
-                        ):
-                            tags.append("source_residue")
+                        for tag in verdict.tags:
+                            if tag not in tags:
+                                tags.append(tag)
                     low_confidence.append(
                         {
                             "segment_id": meta.segment_id,

@@ -67,6 +67,7 @@ interface ProofreadingItemMeta {
   segmentIndex: number;
   sourceResidue: boolean;
   possibleDuplicate: boolean;
+  modelAnomaly: boolean;
   untranslated: boolean;
   formatRescue: boolean;
 }
@@ -75,6 +76,7 @@ interface RiskCounts {
   lowConf: number;
   residue: number;
   possibleDuplicate: number;
+  modelAnomaly: number;
   untranslated: number;
   formatRescue: number;
   total: number;
@@ -84,10 +86,22 @@ const EMPTY_RISK_COUNTS: RiskCounts = {
   lowConf: 0,
   residue: 0,
   possibleDuplicate: 0,
+  modelAnomaly: 0,
   untranslated: 0,
   formatRescue: 0,
   total: 0,
 };
+
+const REVIEW_RISK_MAX_RANK = 4;
+
+const MODEL_ANOMALY_TAGS = new Set([
+  "function_word_residue",
+  "target_language_weak",
+  "model_chatter",
+  "verbatim_echo",
+  "length_ratio_anomaly",
+  "punctuation_anomaly",
+]);
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -394,27 +408,32 @@ export function ProofreadingPage() {
       const sourceResidue = item.tags?.includes("source_residue") ?? false;
       const possibleDuplicate =
         item.tags?.includes("possible_duplicate") ?? false;
+      const modelAnomaly =
+        item.tags?.some((tag) => MODEL_ANOMALY_TAGS.has(tag)) ?? false;
       const untranslated = isUntranslated(item);
       const formatRescue =
         hasReasonText(item.reasons, "format", "rescue") ||
         hasReasonText(item.reasons, "format", "fallback");
-      let rank = 4;
+      let rank = 5;
       if (sourceResidue) rank = 0;
       else if (possibleDuplicate) rank = 1;
-      else if (untranslated) rank = 2;
-      else if (item.low_confidence) rank = 3;
+      else if (modelAnomaly) rank = 2;
+      else if (untranslated) rank = 3;
+      else if (item.low_confidence) rank = 4;
       metaBySegmentId.set(item.segment_id, {
         rank,
         fileIndex,
         segmentIndex,
         sourceResidue,
         possibleDuplicate,
+        modelAnomaly,
         untranslated,
         formatRescue,
       });
       if (item.low_confidence) riskCounts.lowConf += 1;
       if (sourceResidue) riskCounts.residue += 1;
       if (possibleDuplicate) riskCounts.possibleDuplicate += 1;
+      if (modelAnomaly) riskCounts.modelAnomaly += 1;
       if (untranslated) riskCounts.untranslated += 1;
       if (formatRescue) riskCounts.formatRescue += 1;
     }
@@ -452,6 +471,7 @@ export function ProofreadingPage() {
           (filters.has("low_conf") && item.low_confidence) ||
           (filters.has("source_residue") && meta?.sourceResidue) ||
           (filters.has("possible_duplicate") && meta?.possibleDuplicate) ||
+          (filters.has("model_anomaly") && meta?.modelAnomaly) ||
           (filters.has("untranslated") && meta?.untranslated) ||
           (filters.has("format_rescue") && meta?.formatRescue)
         )
@@ -481,7 +501,8 @@ export function ProofreadingPage() {
     () =>
       filteredItems.some(
         (item) =>
-          (proofreadingIndex.metaBySegmentId.get(item.segment_id)?.rank ?? 4) < 4,
+          (proofreadingIndex.metaBySegmentId.get(item.segment_id)?.rank ?? 5) <=
+          REVIEW_RISK_MAX_RANK,
       ),
     [filteredItems, proofreadingIndex],
   );
@@ -1045,7 +1066,8 @@ export function ProofreadingPage() {
     ];
     const next = ordered.find(
       (item) =>
-        (proofreadingIndex.metaBySegmentId.get(item.segment_id)?.rank ?? 4) < 4,
+        (proofreadingIndex.metaBySegmentId.get(item.segment_id)?.rank ?? 5) <=
+        REVIEW_RISK_MAX_RANK,
     );
     if (!next) return;
     const nextIndex = filteredItems.findIndex(
@@ -1066,6 +1088,7 @@ export function ProofreadingPage() {
   const lowConfCount = proofreadingIndex.riskCounts.lowConf;
   const residueCount = proofreadingIndex.riskCounts.residue;
   const possibleDuplicateCount = proofreadingIndex.riskCounts.possibleDuplicate;
+  const modelAnomalyCount = proofreadingIndex.riskCounts.modelAnomaly;
   const untranslatedCount = proofreadingIndex.riskCounts.untranslated;
   const formatRescueCount = proofreadingIndex.riskCounts.formatRescue;
   const totalCount = proofreadingIndex.riskCounts.total;
@@ -1096,6 +1119,11 @@ export function ProofreadingPage() {
       key: "possible_duplicate",
       label: m.filterOnlyPossibleDuplicate,
       count: possibleDuplicateCount,
+    },
+    {
+      key: "model_anomaly",
+      label: m.filterOnlyModelAnomaly,
+      count: modelAnomalyCount,
     },
     {
       key: "untranslated",
@@ -1259,6 +1287,7 @@ export function ProofreadingPage() {
           {format(m.stats.lowConfidence, { n: lowConfCount })} ·{" "}
           {format(m.stats.sourceResidue, { n: residueCount })} ·{" "}
           {format(m.stats.possibleDuplicate, { n: possibleDuplicateCount })} ·{" "}
+          {format(m.stats.modelAnomaly, { n: modelAnomalyCount })} ·{" "}
           {format(m.stats.untranslated, { n: untranslatedCount })}
         </span>
         <span className={styles.filterChips}>
@@ -1285,6 +1314,14 @@ export function ProofreadingPage() {
             onClick={() => toggleFilter("possible_duplicate")}
           >
             {m.filterOnlyPossibleDuplicate}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("model_anomaly") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("model_anomaly")}
+            onClick={() => toggleFilter("model_anomaly")}
+          >
+            {m.filterOnlyModelAnomaly}
           </button>
           <button
             type="button"
@@ -1513,6 +1550,16 @@ export function ProofreadingPage() {
                             title={m.statusPossibleDuplicateHint}
                           >
                             {m.statusPossibleDuplicate}
+                          </span>
+                        ) : null}
+                        {item.tags?.some((tag) =>
+                          MODEL_ANOMALY_TAGS.has(tag),
+                        ) ? (
+                          <span
+                            className={`${styles.statusChip} ${styles.statusLow}`}
+                            title={m.statusModelAnomalyHint}
+                          >
+                            {m.statusModelAnomaly}
                           </span>
                         ) : null}
                       </span>

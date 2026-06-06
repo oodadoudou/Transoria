@@ -42,6 +42,27 @@ _PUNCTUATION_CHARS = (
 class ConfidenceVerdict:
     is_low_confidence: bool
     reasons: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+
+
+TAG_SOURCE_RESIDUE = "source_residue"
+TAG_FUNCTION_WORD_RESIDUE = "function_word_residue"
+TAG_TARGET_LANGUAGE_WEAK = "target_language_weak"
+TAG_MODEL_CHATTER = "model_chatter"
+TAG_VERBATIM_ECHO = "verbatim_echo"
+TAG_LENGTH_RATIO_ANOMALY = "length_ratio_anomaly"
+TAG_PUNCTUATION_ANOMALY = "punctuation_anomaly"
+
+MODEL_ANOMALY_TAGS = frozenset(
+    {
+        TAG_FUNCTION_WORD_RESIDUE,
+        TAG_TARGET_LANGUAGE_WEAK,
+        TAG_MODEL_CHATTER,
+        TAG_VERBATIM_ECHO,
+        TAG_LENGTH_RATIO_ANOMALY,
+        TAG_PUNCTUATION_ANOMALY,
+    }
+)
 
 
 def evaluate_segment_confidence(
@@ -55,6 +76,7 @@ def evaluate_segment_confidence(
     target_language: Language | None = None,
 ) -> ConfidenceVerdict:
     reasons: list[str] = []
+    tags: list[str] = []
 
     if not source_text.strip():
         return ConfidenceVerdict(is_low_confidence=False)
@@ -62,6 +84,7 @@ def evaluate_segment_confidence(
         return ConfidenceVerdict(
             is_low_confidence=True,
             reasons=("empty translation for non-empty source",),
+            tags=(TAG_TARGET_LANGUAGE_WEAK,),
         )
     if is_fixed_identifier_line(source_text) and _same_fixed_identifier(
         source_text, translated_text
@@ -71,8 +94,10 @@ def evaluate_segment_confidence(
     ratio = len(translated_text) / max(len(source_text), 1)
     if ratio < min_length_ratio:
         reasons.append(f"length ratio {ratio:.2f} < min {min_length_ratio:.2f}")
+        tags.append(TAG_LENGTH_RATIO_ANOMALY)
     elif ratio > max_length_ratio:
         reasons.append(f"length ratio {ratio:.2f} > max {max_length_ratio:.2f}")
+        tags.append(TAG_LENGTH_RATIO_ANOMALY)
 
     source_punct = _count_punctuation(source_text)
     translated_punct = _count_punctuation(translated_text)
@@ -81,10 +106,12 @@ def evaluate_segment_confidence(
         reasons.append(
             f"punctuation delta {delta} > max {max_punctuation_delta}"
         )
+        tags.append(TAG_PUNCTUATION_ANOMALY)
 
     residue_reason = _source_language_residue(translated_text, source_language)
     if residue_reason:
         reasons.append(residue_reason)
+        tags.append(TAG_SOURCE_RESIDUE)
     english_leak_reason = _english_function_word_leak(
         translated_text,
         source_language=source_language,
@@ -92,13 +119,30 @@ def evaluate_segment_confidence(
     )
     if english_leak_reason:
         reasons.append(english_leak_reason)
+        tags.append(TAG_FUNCTION_WORD_RESIDUE)
+
+    target_language_reason = _target_language_weak(
+        source_text,
+        translated_text,
+        target_language=target_language,
+    )
+    if target_language_reason:
+        reasons.append(target_language_reason)
+        tags.append(TAG_TARGET_LANGUAGE_WEAK)
+
+    chatter_reason = _model_chatter(translated_text)
+    if chatter_reason:
+        reasons.append(chatter_reason)
+        tags.append(TAG_MODEL_CHATTER)
 
     if _too_similar(source_text, translated_text):
         reasons.append("source and translation are too similar")
+        tags.append(TAG_VERBATIM_ECHO)
 
     return ConfidenceVerdict(
         is_low_confidence=bool(reasons),
         reasons=tuple(reasons),
+        tags=tuple(dict.fromkeys(tags)),
     )
 
 
@@ -135,6 +179,10 @@ _KOREAN_HARD_RESIDUE_PATTERN = re.compile(r"[\uac00-\ud7af\uffa0-\uffdc]")
 _KOREAN_SOFT_RESIDUE_PATTERN = re.compile(
     r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]"
 )
+_KOREAN_TARGET_SCRIPT_PATTERN = re.compile(
+    r"[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f"
+    r"\ua960-\ua97f\ud7b0-\ud7ff\uffa0-\uffdc]"
+)
 
 # Japanese kana \u2014 translation output should never contain these.
 # Excludes punctuation-class chars that legitimately appear in Chinese
@@ -164,6 +212,7 @@ _CHINESE_TARGET_LANGUAGES = {
     Language.CHINESE_SIMPLIFIED,
     Language.CHINESE_TRADITIONAL,
 }
+_LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
 _ASCII_WORD_PATTERN = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 _ENGLISH_FUNCTION_WORDS = frozenset(
     """
@@ -176,6 +225,17 @@ _ENGLISH_FUNCTION_WORDS = frozenset(
 _ENGLISH_LEAK_MIN_FUNCTION_WORDS = 2
 _ENGLISH_LEAK_MIN_LATIN_TOKENS = 3
 _ENGLISH_LEAK_MIN_FUNCTION_RATIO = 0.40
+_TARGET_SCRIPT_MIN_LENGTH = 20
+_TARGET_SCRIPT_MIN_EXPECTED_RATIO = 0.10
+_TARGET_SCRIPT_MIN_LATIN_RATIO = 0.40
+_MODEL_CHATTER_PATTERNS = (
+    re.compile(r"^\s*(?:translation|translated text|target text)\s*[:：]", re.I),
+    re.compile(r"^\s*(?:译文|翻译|翻译结果|目标文本)\s*[:：]"),
+    re.compile(r"^\s*(?:here is|here's)\b.{0,40}\btranslation\b", re.I),
+    re.compile(r"^\s*(?:以下是|下面是).{0,16}(?:译文|翻译)"),
+    re.compile(r"^\s*(?:as an ai|i(?:'|’)m sorry|sorry,?\s+i)\b", re.I),
+    re.compile(r"```"),
+)
 
 
 def _source_language_residue(
@@ -226,6 +286,45 @@ def _english_function_word_leak(
     if function_ratio < _ENGLISH_LEAK_MIN_FUNCTION_RATIO:
         return None
     return "English function-word residue remains in Chinese translation"
+
+
+def _target_language_weak(
+    source_text: str,
+    translated_text: str,
+    *,
+    target_language: Language | None,
+) -> str | None:
+    text = translated_text.strip()
+    if len(text) < _TARGET_SCRIPT_MIN_LENGTH:
+        return None
+    if is_fixed_identifier_line(source_text) and _same_fixed_identifier(
+        source_text, translated_text
+    ):
+        return None
+    latin_ratio = _ratio(_LATIN_LETTER_PATTERN, text)
+    if latin_ratio < _TARGET_SCRIPT_MIN_LATIN_RATIO:
+        return None
+    if target_language in _CHINESE_TARGET_LANGUAGES:
+        expected_ratio = _ratio(_CJK_IDEOGRAPH_PATTERN, text)
+        if expected_ratio < _TARGET_SCRIPT_MIN_EXPECTED_RATIO:
+            return "target-language script is weak for Chinese translation"
+    elif target_language is Language.KOREAN:
+        expected_ratio = _ratio(_KOREAN_TARGET_SCRIPT_PATTERN, text)
+        if expected_ratio < _TARGET_SCRIPT_MIN_EXPECTED_RATIO:
+            return "target-language script is weak for Korean translation"
+    elif target_language is Language.JAPANESE:
+        expected_ratio = _ratio(_JAPANESE_KANA_PATTERN, text) + _ratio(
+            _CJK_IDEOGRAPH_PATTERN, text
+        )
+        if expected_ratio < _TARGET_SCRIPT_MIN_EXPECTED_RATIO:
+            return "target-language script is weak for Japanese translation"
+    return None
+
+
+def _model_chatter(translated_text: str) -> str | None:
+    if any(pattern.search(translated_text) for pattern in _MODEL_CHATTER_PATTERNS):
+        return "model chatter or wrapper text remains in translation"
+    return None
 
 
 def _ratio(pattern: re.Pattern[str], text: str) -> float:

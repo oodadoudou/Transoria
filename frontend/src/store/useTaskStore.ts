@@ -176,6 +176,7 @@ export type ProofreadingFilterKey =
   | "low_conf"
   | "source_residue"
   | "possible_duplicate"
+  | "model_anomaly"
   | "untranslated"
   | "format_rescue";
 

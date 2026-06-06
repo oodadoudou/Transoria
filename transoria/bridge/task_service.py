@@ -330,8 +330,8 @@ def _confidence_entry_for_segment(
         "segment_id": segment_id,
         "reasons": list(verdict.reasons),
     }
-    if any("residue" in reason.lower() for reason in verdict.reasons):
-        entry["tags"] = ["source_residue"]
+    if verdict.tags:
+        entry["tags"] = list(verdict.tags)
     return entry
 
 

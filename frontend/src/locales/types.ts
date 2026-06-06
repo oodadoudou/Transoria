@@ -535,6 +535,8 @@ export interface Messages {
       statusSourceResidueHint: string;
       statusPossibleDuplicate: string;
       statusPossibleDuplicateHint: string;
+      statusModelAnomaly: string;
+      statusModelAnomalyHint: string;
       editorEmpty: string;
       editorSrcLabel: string;
       editorDstLabel: string;
@@ -547,12 +549,14 @@ export interface Messages {
         lowConfidence: string;
         sourceResidue: string;
         possibleDuplicate: string;
+        modelAnomaly: string;
         untranslated: string;
       };
       filterPlaceholder: string;
       filterOnlyLowConfidence: string;
       filterOnlySourceResidue: string;
       filterOnlyPossibleDuplicate: string;
+      filterOnlyModelAnomaly: string;
       filterOnlyUntranslated: string;
       filterOnlyFormatRescue: string;
       filterAll: string;
