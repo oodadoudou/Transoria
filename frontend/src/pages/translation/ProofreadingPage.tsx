@@ -8,6 +8,7 @@ import {
   type TaskHeader,
 } from "@/bridge";
 import {
+  DEFAULT_PROOFREADING_FILTERS,
   useTaskStore,
   type ProofreadingFilterKey,
 } from "@/store/useTaskStore";
@@ -119,10 +120,6 @@ function isUntranslated(item: ProofreadingItem): boolean {
   return dst === item.src.trim();
 }
 
-function hasReason(item: ProofreadingItem, ...needles: string[]): boolean {
-  return hasReasonText(item.reasons, ...needles);
-}
-
 function hasReasonText(
   reasons: string[] | undefined,
   ...needles: string[]
@@ -216,7 +213,7 @@ export function ProofreadingPage() {
     (state) => state.consumeProofreadingLaunch,
   );
   const [filters, setFilters] = useState<ReadonlySet<ProofreadingFilterKey>>(
-    () => new Set(),
+    () => new Set(DEFAULT_PROOFREADING_FILTERS),
   );
   const toggleFilter = (key: ProofreadingFilterKey) =>
     setFilters((prev) => {
@@ -323,9 +320,13 @@ export function ProofreadingPage() {
             ? res.tasks.find((task) => task.id === launch.taskId)
             : null;
           setActiveTaskId(requested?.id ?? res.tasks[0].id);
-          if (launch.filters.length > 0) {
-            setFilters(new Set(launch.filters));
-          }
+          setFilters(
+            new Set(
+              launch.filters.length > 0
+                ? launch.filters
+                : DEFAULT_PROOFREADING_FILTERS,
+            ),
+          );
         }
       })
       .catch((err) => {
@@ -445,13 +446,15 @@ export function ProofreadingPage() {
     if (!q && filters.size === 0) return proofreadingIndex.sortedItems;
     return proofreadingIndex.sortedItems.filter((item) => {
       const meta = proofreadingIndex.metaBySegmentId.get(item.segment_id);
-      if (filters.has("low_conf") && !item.low_confidence) return false;
-      if (filters.has("source_residue") && !meta?.sourceResidue) return false;
-      if (filters.has("possible_duplicate") && !meta?.possibleDuplicate) return false;
-      if (filters.has("untranslated") && !meta?.untranslated) return false;
       if (
-        filters.has("format_rescue") &&
-        !hasReason(item, "positional_rescue_after_format_failure")
+        filters.size > 0 &&
+        !(
+          (filters.has("low_conf") && item.low_confidence) ||
+          (filters.has("source_residue") && meta?.sourceResidue) ||
+          (filters.has("possible_duplicate") && meta?.possibleDuplicate) ||
+          (filters.has("untranslated") && meta?.untranslated) ||
+          (filters.has("format_rescue") && meta?.formatRescue)
+        )
       ) {
         return false;
       }

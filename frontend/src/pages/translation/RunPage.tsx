@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMessages, useI18n } from "@/locales";
-import { useTaskStore } from "@/store/useTaskStore";
+import {
+  DEFAULT_PROOFREADING_FILTERS,
+  useTaskStore,
+} from "@/store/useTaskStore";
 import {
   hasDismissedCompletionWithFailures,
   hasShownCleanCompletionToast,
@@ -356,7 +359,9 @@ export function RunPage() {
           <div className={styles.reviewActionRow}>
             <Pill
               variant="ghost"
-              onClick={() => openProofreadingTask(activeTaskId, ["low_conf"])}
+              onClick={() =>
+                openProofreadingTask(activeTaskId, DEFAULT_PROOFREADING_FILTERS)
+              }
             >
               {run.proofreadLowConfidence.replace(
                 "{n}",

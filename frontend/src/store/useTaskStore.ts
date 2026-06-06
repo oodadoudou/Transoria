@@ -179,6 +179,12 @@ export type ProofreadingFilterKey =
   | "untranslated"
   | "format_rescue";
 
+export const DEFAULT_PROOFREADING_FILTERS: ProofreadingFilterKey[] = [
+  "low_conf",
+  "source_residue",
+  "possible_duplicate",
+];
+
 export interface ProofreadingLaunchState {
   taskId: string | null;
   filters: ProofreadingFilterKey[];
