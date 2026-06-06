@@ -54,6 +54,12 @@
   --shadow-soft: none;
 
   --focus-ring: 0 0 0 2px rgba(61, 53, 48, 0.32);
+  --checkbox-bg: #ffffff;
+  --checkbox-border: rgba(61, 53, 48, 0.42);
+  --checkbox-border-hover: rgba(61, 53, 48, 0.68);
+  --checkbox-checked-bg: #ec5aa6;
+  --checkbox-checked-border: #ec5aa6;
+  --checkbox-mark: #ffffff;
 
   --topbar-height: 52px;
 
@@ -116,6 +122,12 @@
   --success: #62b784;
   --warn: #e0a05f;
   --focus-ring: 0 0 0 2px rgba(216, 200, 168, 0.38);
+  --checkbox-bg: #171511;
+  --checkbox-border: rgba(245, 241, 232, 0.52);
+  --checkbox-border-hover: rgba(245, 241, 232, 0.78);
+  --checkbox-checked-bg: #f36fb1;
+  --checkbox-checked-border: #f36fb1;
+  --checkbox-mark: #151411;
 
   --primary-on-dark: #f1dfb8;
   --primary-soft: rgba(216, 200, 168, 0.14);
