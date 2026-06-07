@@ -33,6 +33,12 @@ build = [
 [tool.setuptools.packages.find]
 include = ["transoria*"]
 
+[tool.setuptools.package-data]
+transoria = [
+  "resources/epub_styles/basic/*.css",
+  "resources/epub_styles/enhanced/*.css",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

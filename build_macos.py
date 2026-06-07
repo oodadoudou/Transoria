@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 FRONTEND_DIR = ROOT / "frontend"
 FRONTEND_DIST = FRONTEND_DIR / "dist"
+RESOURCE_DIR = ROOT / "transoria" / "resources"
 DIST_DIR = ROOT / "dist" / "pyinstaller" / "macos"
 WORK_DIR = ROOT / "build" / "pyinstaller" / "macos"
 SPEC_DIR = ROOT / "build" / "pyinstaller" / "specs"
@@ -124,6 +125,8 @@ def main() -> None:
         str(SPEC_DIR),
         "--add-data",
         f"{FRONTEND_DIST}:frontend/dist",
+        "--add-data",
+        f"{RESOURCE_DIR}:transoria/resources",
         "--add-data",
         f"{ROOT / 'pyproject.toml'}:.",
         "--collect-data",
