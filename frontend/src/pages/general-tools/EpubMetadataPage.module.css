@@ -96,7 +96,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgb(42 38 32 / 0.36);
+  background: rgb(0 0 0 / 0.46);
 }
 
 .dialog,
@@ -106,8 +106,9 @@
   overflow: auto;
   border: 1px solid var(--hairline-strong, #d8d0c5);
   border-radius: 8px;
-  background: var(--surface, #fffdf8);
-  box-shadow: 0 24px 70px rgb(42 38 32 / 0.22);
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.32);
 }
 
 .confirmDialog {
@@ -206,7 +207,7 @@
   max-height: 320px;
   border-radius: 6px;
   object-fit: contain;
-  box-shadow: 0 10px 24px rgb(42 38 32 / 0.14);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 0.24);
 }
 
 .coverBox span {

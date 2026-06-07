@@ -24,7 +24,7 @@
 
 .toolButton:hover {
   border-color: var(--hairline-strong, #d8d0c5);
-  background: var(--surface, #fffdf8);
+  background: var(--panel-soft, #f5f0e9);
   transform: translateY(-1px);
 }
 
@@ -59,7 +59,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgb(42 38 32 / 0.36);
+  background: rgb(0 0 0 / 0.46);
 }
 
 .dialog {
@@ -68,8 +68,9 @@
   overflow: hidden;
   border: 1px solid var(--hairline-strong, #d8d0c5);
   border-radius: 8px;
-  background: var(--surface, #fffdf8);
-  box-shadow: 0 24px 70px rgb(42 38 32 / 0.22);
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.32);
 }
 
 .dialogHeader {
