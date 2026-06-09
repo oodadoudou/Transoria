@@ -69,6 +69,9 @@ def _parse_rule_line(
 
 
 _RED_HEADER = b"RED\x01"
+_RED_V2_HEADER = b"RED\x10"
+_RED_V2_HEADER_SIZE = 8
+_RED_V2_PLAIN_ALGORITHMS = {"", "none", "plain", "identity", "plain-json"}
 _RED_RULE_FIELDS = ("rule", "替换原文", "原文", "src", "source", "from", "pattern")
 _RED_TARGET_FIELDS = ("target", "替换后", "替换为", "dst", "to", "replacement")
 
@@ -81,14 +84,77 @@ def _first_string(payload: Mapping[str, object], keys: Sequence[str]) -> str | N
     return None
 
 
-def _load_red_json(path: Path) -> object:
-    raw = path.read_bytes()
-    if raw.startswith(_RED_HEADER):
-        raw = raw[len(_RED_HEADER) :]
+def _decode_red_json(raw: bytes) -> object:
     if raw.startswith(b"\x1f\x8b"):
         raw = gzip.decompress(raw)
     text, _encoding = decode_text_bytes(raw)
     return json.loads(text)
+
+
+def _load_red_v2_payload(raw: bytes, path: Path) -> bytes:
+    if len(raw) < _RED_V2_HEADER_SIZE:
+        raise BridgeError.invalid_argument(
+            "invalid RED v2 rule file: missing manifest length.",
+            details={"path": str(path)},
+        )
+
+    manifest_length = int.from_bytes(raw[4:8], "big")
+    manifest_start = _RED_V2_HEADER_SIZE
+    manifest_end = manifest_start + manifest_length
+    if manifest_length <= 0 or manifest_end > len(raw):
+        raise BridgeError.invalid_argument(
+            "invalid RED v2 rule file: manifest length is out of range.",
+            details={"path": str(path), "manifest_length": manifest_length},
+        )
+
+    try:
+        manifest_text, _encoding = decode_text_bytes(raw[manifest_start:manifest_end])
+        manifest = json.loads(manifest_text)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BridgeError.invalid_argument(
+            f"invalid RED v2 manifest: {exc}",
+            details={"path": str(path)},
+        ) from exc
+    if not isinstance(manifest, Mapping):
+        raise BridgeError.invalid_argument(
+            "invalid RED v2 manifest: expected an object.",
+            details={"path": str(path)},
+        )
+
+    resource_type = manifest.get("resourceType")
+    if resource_type not in (None, "purifyRule"):
+        raise BridgeError.invalid_argument(
+            "unsupported RED v2 resource type.",
+            details={"path": str(path), "resource_type": str(resource_type)},
+        )
+
+    container_mode = str(manifest.get("containerMode") or "")
+    algorithm = str(manifest.get("algorithm") or "")
+    normalized_mode = container_mode.casefold()
+    normalized_algorithm = algorithm.casefold()
+    if "private" in normalized_mode or (
+        normalized_algorithm
+        and normalized_algorithm not in _RED_V2_PLAIN_ALGORITHMS
+    ):
+        raise BridgeError.invalid_argument(
+            "cannot import encrypted Reeden private RED rule file; export a shareable/plain RED rule file or TXT arrow rules.",
+            details={
+                "path": str(path),
+                "container_mode": container_mode,
+                "algorithm": algorithm,
+            },
+        )
+
+    return raw[manifest_end:]
+
+
+def _load_red_json(path: Path) -> object:
+    raw = path.read_bytes()
+    if raw.startswith(_RED_HEADER):
+        raw = raw[len(_RED_HEADER) :]
+    elif raw.startswith(_RED_V2_HEADER):
+        raw = _load_red_v2_payload(raw, path)
+    return _decode_red_json(raw)
 
 
 def _iter_red_items(payload: object) -> Sequence[object]:
@@ -105,6 +171,8 @@ def _iter_red_items(payload: object) -> Sequence[object]:
 def _parse_red_rules(path: Path) -> dict[str, object]:
     try:
         payload = _load_red_json(path)
+    except BridgeError:
+        raise
     except (
         OSError,
         UnicodeDecodeError,
