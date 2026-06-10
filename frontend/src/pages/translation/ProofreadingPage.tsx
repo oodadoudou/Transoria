@@ -1229,6 +1229,78 @@ export function ProofreadingPage() {
       count: formatRescueCount,
     },
   ];
+  const riskIssueCards = riskCards.filter((card) => card.count > 0);
+  const riskIssueTotal = riskIssueCards.reduce(
+    (sum, card) => sum + card.count,
+    0,
+  );
+  const qualitySummary =
+    riskIssueTotal === 0
+      ? m.qualitySummaryClean
+      : format(m.qualitySummaryNeedsReview, {
+          n: riskIssueTotal,
+          focus: riskIssueCards
+            .slice(0, 3)
+            .map((card) =>
+              format(m.qualitySummaryFocus, {
+                label: card.label,
+                n: card.count,
+              }),
+            )
+            .join(" · "),
+        });
+  const filterPresets: Array<{
+    label: string;
+    keys: ProofreadingFilterKey[];
+  }> = [
+    {
+      label: m.filterPresetDefault,
+      keys: ["low_conf", "source_residue", "possible_duplicate"],
+    },
+    {
+      label: m.filterPresetHighRisk,
+      keys: ["source_residue", "possible_duplicate", "model_anomaly"],
+    },
+    {
+      label: m.filterPresetCompletion,
+      keys: ["untranslated", "format_rescue"],
+    },
+    {
+      label: m.filterPresetAll,
+      keys: [
+        "low_conf",
+        "source_residue",
+        "possible_duplicate",
+        "model_anomaly",
+        "untranslated",
+        "format_rescue",
+      ],
+    },
+  ];
+  const setFilterPreset = (keys: ProofreadingFilterKey[]) =>
+    setFilters(new Set(keys));
+  const isPresetActive = (keys: ProofreadingFilterKey[]) =>
+    keys.length === filters.size && keys.every((key) => filters.has(key));
+  const buildRiskTitle = (item: ProofreadingItem) => {
+    const record = item as ProofreadingItem & {
+      reasons?: string[];
+      tags?: string[];
+    };
+    const reasons = Array.isArray(record.reasons)
+      ? record.reasons.filter(Boolean)
+      : [];
+    const tags = Array.isArray(record.tags)
+      ? record.tags.filter(Boolean)
+      : [];
+    const parts: string[] = [];
+    if (reasons.length > 0) {
+      parts.push(`${m.riskReasonPrefix}${reasons.join("；")}`);
+    }
+    if (tags.length > 0) {
+      parts.push(`${m.riskTagsPrefix}${tags.join(", ")}`);
+    }
+    return parts.join("\n") || undefined;
+  };
 
   return (
     <Panel title={m.title} subtitle={m.sub}>
@@ -1374,6 +1446,16 @@ export function ProofreadingPage() {
         </div>
       ) : null}
 
+      {snapshot ? (
+        <div
+          className={`${styles.summaryStrip} ${
+            riskIssueTotal === 0 ? styles.summaryGood : ""
+          }`.trim()}
+        >
+          {qualitySummary}
+        </div>
+      ) : null}
+
       <div className={styles.toggleRow}>
         <span>
           {format(m.stats.total, { n: totalCount })} ·{" "}
@@ -1382,6 +1464,24 @@ export function ProofreadingPage() {
           {format(m.stats.possibleDuplicate, { n: possibleDuplicateCount })} ·{" "}
           {format(m.stats.modelAnomaly, { n: modelAnomalyCount })} ·{" "}
           {format(m.stats.untranslated, { n: untranslatedCount })}
+        </span>
+        <span className={styles.filterPresetRow}>
+          {filterPresets.map((preset) => {
+            const active = isPresetActive(preset.keys);
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                className={`${styles.filterChip} ${
+                  active ? styles.filterChipActive : ""
+                }`.trim()}
+                aria-pressed={active}
+                onClick={() => setFilterPreset(preset.keys)}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
         </span>
         <span className={styles.filterChips}>
           <button
@@ -1581,10 +1681,12 @@ export function ProofreadingPage() {
                       ? "low"
                       : "ok"
                     : "empty";
+                  const riskTitle = buildRiskTitle(item);
                   return (
                     <div
                       key={item.segment_id}
                       className={`${styles.row} ${selected ? styles.rowSelected : ""} ${active ? styles.rowActive : ""}`.trim()}
+                      title={riskTitle}
                       style={{
                         position: "absolute",
                         top: virtual.topForIndex(startIndex + i),

@@ -552,6 +552,15 @@ export interface Messages {
         modelAnomaly: string;
         untranslated: string;
       };
+      qualitySummaryClean: string;
+      qualitySummaryNeedsReview: string;
+      qualitySummaryFocus: string;
+      filterPresetDefault: string;
+      filterPresetHighRisk: string;
+      filterPresetCompletion: string;
+      filterPresetAll: string;
+      riskReasonPrefix: string;
+      riskTagsPrefix: string;
       filterPlaceholder: string;
       filterOnlyLowConfidence: string;
       filterOnlySourceResidue: string;
@@ -1083,6 +1092,10 @@ export interface Messages {
     headingTitle: string;
     lineNumber: string;
     sourcePreview: string;
+    confidence: string;
+    confidenceHigh: string;
+    confidenceMedium: string;
+    confidenceLow: string;
     noToc: string;
     epubStyle: string;
     customCss: string;

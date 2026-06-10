@@ -132,3 +132,28 @@
     padding: 14px;
   }
 }
+
+:global(:root[data-theme='dark']) .toolButton,
+:global(:root[data-theme='dark']) .dialog,
+:global(:root[data-theme='dark']) .closeButton {
+  border-color: var(--hairline-strong);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+:global(:root[data-theme='dark']) .toolButton:hover {
+  background: var(--panel-soft);
+}
+
+:global(:root[data-theme='dark']) .dialogHeader {
+  border-bottom-color: var(--hairline);
+}
+
+:global(:root[data-theme='dark']) .toolButton small {
+  color: var(--muted);
+}
+
+:global(:root[data-theme='dark']) .toolButton strong,
+:global(:root[data-theme='dark']) .dialogHeader h2 {
+  color: var(--ink);
+}

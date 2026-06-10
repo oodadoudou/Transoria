@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import tempfile
+from typing import Mapping
 import zipfile
 
 from lxml import etree
@@ -22,6 +23,7 @@ from transoria.formats.epub_parser import (
     repair_redundant_void_end_tags,
     trim_to_html_document_start,
 )
+from transoria.tools.epub_structure import inspect_epub_structure
 
 
 _EPUB_SUFFIX = ".epub"
@@ -58,9 +60,10 @@ class EpubRepairResult:
     xml_files_repaired: int
     void_containers_repaired: int
     document_wrappers_added: int
+    structure_check: Mapping[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "input_path": str(self.input_path),
             "output_path": str(self.output_path),
             "documents_scanned": self.documents_scanned,
@@ -72,6 +75,9 @@ class EpubRepairResult:
             "void_containers_repaired": self.void_containers_repaired,
             "document_wrappers_added": self.document_wrappers_added,
         }
+        if self.structure_check is not None:
+            payload["structure_check"] = dict(self.structure_check)
+        return payload
 
 
 def repair_epub_file(
@@ -125,6 +131,7 @@ def repair_epub_file(
         _validate_epub_archive(temp_output)
         if temp_output != target_output:
             os.replace(temp_output, target_output)
+        structure_check = inspect_epub_structure(target_output)
     except Exception:
         if temp_output != target_output:
             try:
@@ -144,6 +151,7 @@ def repair_epub_file(
         xml_files_repaired=xml_files_repaired,
         void_containers_repaired=void_containers_repaired,
         document_wrappers_added=document_wrappers_added,
+        structure_check=structure_check,
     )
 
 

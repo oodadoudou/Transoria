@@ -542,6 +542,20 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
     URL.revokeObjectURL(url);
   };
 
+  const confidenceLabel = (confidence?: number) => {
+    const value = typeof confidence === "number" ? confidence : 1;
+    if (value >= 0.85) return text.confidenceHigh;
+    if (value >= 0.65) return text.confidenceMedium;
+    return text.confidenceLow;
+  };
+
+  const confidenceClass = (confidence?: number) => {
+    const value = typeof confidence === "number" ? confidence : 1;
+    if (value >= 0.85) return styles.confidenceHigh;
+    if (value >= 0.65) return styles.confidenceMedium;
+    return styles.confidenceLow;
+  };
+
   return (
     <>
       <Panel
@@ -782,6 +796,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                 <th>{text.level}</th>
                 <th>{text.headingTitle}</th>
                 <th>{text.lineNumber}</th>
+                <th>{text.confidence}</th>
                 <th>{text.sourcePreview}</th>
                 <th></th>
               </tr>
@@ -789,7 +804,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             <tbody>
               {tocEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className={styles.empty}>{text.noToc}</td>
+                  <td colSpan={8} className={styles.empty}>{text.noToc}</td>
                 </tr>
               ) : (
                 tocEntries.map((entry) => (
@@ -836,6 +851,13 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                       />
                     </td>
                     <td>{entry.startLine}</td>
+                    <td>
+                      <span
+                        className={`${styles.confidenceBadge} ${confidenceClass(entry.confidence)}`}
+                      >
+                        {confidenceLabel(entry.confidence)}
+                      </span>
+                    </td>
                     <td className={styles.previewText}>{entry.sourcePreview}</td>
                     <td>
                       <button

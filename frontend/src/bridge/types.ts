@@ -680,6 +680,7 @@ export interface EpubMergeReportResult {
     warnings: string[];
   }>;
   error: string;
+  structure_check?: EpubStructureCheck | null;
 }
 
 export interface EpubMergeReport {
@@ -782,6 +783,15 @@ export interface TxtToEpubStyle {
   compatibility: "broad" | "enhanced" | string;
 }
 
+export interface EpubStructureCheck {
+  status: "ok" | "warning" | "failed" | string;
+  warnings: string[];
+  missing_entries: string[];
+  counts: Record<string, number>;
+  opf_path?: string;
+  error?: string;
+}
+
 export interface TxtToEpubTocEntry {
   id: string;
   level: number;
@@ -790,6 +800,7 @@ export interface TxtToEpubTocEntry {
   endLine: number;
   enabled: boolean;
   sourcePreview: string;
+  confidence?: number;
 }
 
 export interface TxtToEpubScanResult {
@@ -896,6 +907,7 @@ export interface EpubRepairResult {
   xml_files_repaired: number;
   void_containers_repaired: number;
   document_wrappers_added: number;
+  structure_check?: EpubStructureCheck | null;
 }
 
 export interface ReplacementReportOccurrence {

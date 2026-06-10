@@ -15,6 +15,8 @@ from typing import Iterable, Mapping
 
 from PIL import Image
 
+from transoria.tools.epub_structure import inspect_epub_structure
+
 
 _EPUB_SUFFIX = ".epub"
 _TXT_SUFFIX = ".txt"
@@ -159,10 +161,11 @@ class EpubMergeResult:
     images_compressed: int = 0
     output_size_bytes: int = 0
     processed_files: tuple[dict[str, object], ...] = ()
+    structure_check: Mapping[str, object] | None = None
     error: str = ""
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "action_id": self.action_id,
             "input_dir": self.input_dir,
             "output_path": self.output_path,
@@ -179,6 +182,9 @@ class EpubMergeResult:
             "processed_files": list(self.processed_files),
             "error": self.error,
         }
+        if self.structure_check is not None:
+            payload["structure_check"] = dict(self.structure_check)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -276,6 +282,11 @@ def merge_epub_files(
             output_path=str(output),
             status="merged",
             output_size_bytes=output.stat().st_size,
+            structure_check=(
+                inspect_epub_structure(output)
+                if options.output_format == "epub"
+                else None
+            ),
             **stats,
         )
     except Exception as exc:  # noqa: BLE001

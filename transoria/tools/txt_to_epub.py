@@ -110,6 +110,7 @@ class TxtToEpubTocEntry:
     end_line: int
     enabled: bool = True
     source_preview: str = ""
+    confidence: float = 1.0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -120,6 +121,7 @@ class TxtToEpubTocEntry:
             "endLine": self.end_line,
             "enabled": self.enabled,
             "sourcePreview": self.source_preview,
+            "confidence": self.confidence,
         }
 
     @classmethod
@@ -132,7 +134,21 @@ class TxtToEpubTocEntry:
             end_line=max(1, int(data.get("endLine", data.get("end_line", 1)) or 1)),
             enabled=bool(data.get("enabled", True)),
             source_preview=str(data.get("sourcePreview", data.get("source_preview", ""))),
+            confidence=_clamp_float(
+                data.get("confidence"),
+                default=1.0,
+                low=0.0,
+                high=1.0,
+            ),
         )
+
+
+def _clamp_float(value: object, *, default: float, low: float, high: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, number))
 
 
 @dataclass(frozen=True)
@@ -422,6 +438,11 @@ def scan_txt_toc(
                 end_line=index,
                 enabled=True,
                 source_preview=_line_preview(lines, index),
+                confidence=_estimate_toc_confidence(
+                    line=line,
+                    title=clean_title,
+                    level=level,
+                ),
             )
         )
     return {
@@ -472,6 +493,7 @@ def locate_txt_toc_entry(
                 end_line=index,
                 enabled=True,
                 source_preview=_line_preview(lines, index),
+                confidence=0.9,
             ).to_dict()
     raise ValueError(f"cannot find TOC text in source TXT: {query}")
 
@@ -673,6 +695,32 @@ def _line_preview(lines: Sequence[str], line_number: int) -> str:
 def _clean_title(value: str) -> str:
     cleaned = value.strip(" \t　-—:：")
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _estimate_toc_confidence(*, line: str, title: str, level: int) -> float:
+    raw = line.strip()
+    folded = _fold_for_match(raw)
+    score = 0.86
+    strong_heading = re.search(
+        r"(?:^#+\s|第\s*[一二三四五六七八九十百千万〇零\d]+|章|卷|回|节|節|序章|楔子|尾声|尾聲|後記|后记|프롤로그|에필로그|외전|제\s*\d+|[0-9]+\s*(?:화|권|장)|chapter|volume|prologue|epilogue)",
+        folded,
+        re.IGNORECASE,
+    )
+    if strong_heading:
+        score = 0.95
+    elif re.fullmatch(r"\d+(?:\.\d+)*[.)、．]?", folded):
+        score = 0.5
+    elif re.match(r"^\d+(?:\.\d+)*[\s.)、．]+\S+", folded):
+        score = 0.72
+    if len(raw) > 80:
+        score -= 0.25
+    elif len(raw) > 48:
+        score -= 0.12
+    if level > 2:
+        score -= 0.03 * (level - 2)
+    if title and len(title) <= 3 and len(raw) > 24:
+        score -= 0.1
+    return round(max(0.2, min(1.0, score)), 2)
 
 
 def _fold_for_match(value: str) -> str:
