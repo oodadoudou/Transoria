@@ -23,6 +23,13 @@ Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权�
 
 如果你觉得 Transoria 好用，欢迎推荐给身边有类似需求的朋友。若公开发布了由本项目辅助翻译、校对或整理的作品，也欢迎在作品信息、发布页或说明中标注使用了 **Transoria**。
 
+### 下载安装包
+
+最新版下载：**[GitHub Releases](https://github.com/oodadoudou/Transoria/releases)**
+
+- **macOS** — `Transoria.dmg`，挂载后把 `Transoria.app` 拖到 `/Applications/`。首次启动若被 Gatekeeper 拦截，参考对应 Release 描述里的「macOS 用户须知」。
+- **Windows** — `Transoria-windows.zip`。解压前请右键 ZIP → 属性 → 解除锁定 → 应用，再解压到一个普通可写目录（如「文档」或「桌面」），双击 `Transoria.exe`。若安装目录不可写，用户数据会自动改存到 `%LOCALAPPDATA%\Transoria`。包内 `README_CN.txt` 有完整说明。
+
 ### 最近更新
 
 - **通用工具** 已整理为更集中的 EPUB 工具页：EPUB 压缩、文本文档合并、EPUB 转 TXT、TXT 转 EPUB、元数据编辑和 EPUB 修复都可以从同一入口打开。
@@ -48,13 +55,6 @@ Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权�
 6. 翻译完成后进入「**校对**」，优先检查低置信度、原文残留和格式救援条目，修改后重新生成输出。
 
 如果只需要整理电子书或文本，可直接使用「**通用工具 → EPUB 工具**」。这里包含压缩、文本文档合并、EPUB 转 TXT、TXT 转 EPUB、元数据编辑和 EPUB 修复：合并适合多卷整理和目录重建，压缩适合减小体积，TXT 转 EPUB 适合把纯文本小说整理成可阅读的标准 EPUB。
-
-### 下载安装包
-
-最新版下载：**[GitHub Releases](https://github.com/oodadoudou/Transoria/releases)**
-
-- **macOS** — `Transoria.dmg`，挂载后把 `Transoria.app` 拖到 `/Applications/`。首次启动若被 Gatekeeper 拦截，参考对应 Release 描述里的「macOS 用户须知」。
-- **Windows** — `Transoria-windows.zip`。解压前请右键 ZIP → 属性 → 解除锁定 → 应用，再解压到一个普通可写目录（如「文档」或「桌面」），双击 `Transoria.exe`。若安装目录不可写，用户数据会自动改存到 `%LOCALAPPDATA%\Transoria`。包内 `README_CN.txt` 有完整说明。
 
 ### 跑源码（不用安装包）
 
@@ -130,6 +130,13 @@ Transoria is a local translation-assistance tool. It does not own, distribute, o
 
 If Transoria is useful to you, feel free to recommend it to friends who may need it. If you publicly release work translated, proofread, or organized with help from this project, a mention of **Transoria** in the work information, release page, or notes is appreciated.
 
+### Download
+
+Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/releases)**
+
+- **macOS** — `Transoria.dmg`. Mount the DMG and drag `Transoria.app` into `/Applications/`. If Gatekeeper blocks the first launch, see the "Notes for macOS users" section of the release description.
+- **Windows** — `Transoria-windows.zip`. Before extracting, right-click the ZIP → Properties → Unblock → Apply. Extract to a regular writable folder (Documents, Desktop, or a folder you create, not Program Files), then double-click `Transoria.exe`. If the install folder is not writable, user data automatically falls back to `%LOCALAPPDATA%\Transoria`. Full instructions in the bundled `README_EN.txt`.
+
 ### What's new
 
 - **General Tools** now has a consolidated EPUB Tools workspace for EPUB compression, document merging, EPUB to TXT, TXT to EPUB, metadata editing, and EPUB repair.
@@ -155,13 +162,6 @@ Full list on [Releases](https://github.com/oodadoudou/Transoria/releases).
 6. After completion, open **Proofreading** and prioritize low-confidence, source-residue, and format-rescue entries before regenerating outputs.
 
 For ebook or text maintenance, use **General Tools → EPUB Tools**. It includes compression, document merging, EPUB to TXT, TXT to EPUB, metadata editing, and EPUB repair. Merge is useful for volume organization and navigation rebuilding, compression reduces file size, and TXT to EPUB turns plain-text novels into readable standard EPUB files.
-
-### Download
-
-Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/releases)**
-
-- **macOS** — `Transoria.dmg`. Mount the DMG and drag `Transoria.app` into `/Applications/`. If Gatekeeper blocks the first launch, see the "Notes for macOS users" section of the release description.
-- **Windows** — `Transoria-windows.zip`. Before extracting, right-click the ZIP → Properties → Unblock → Apply. Extract to a regular writable folder (Documents, Desktop, or a folder you create, not Program Files), then double-click `Transoria.exe`. If the install folder is not writable, user data automatically falls back to `%LOCALAPPDATA%\Transoria`. Full instructions in the bundled `README_EN.txt`.
 
 ### Run from source (no installer)
 
