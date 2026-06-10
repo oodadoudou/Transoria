@@ -25,16 +25,16 @@ Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权�
 
 ### 最近更新
 
-- 新增独立的 **术语审查** 模块：读取 XLSX 术语表，结合参考 TXT 做多轮 AI 审查，输出最终 XLSX。
-- 术语审查支持候选文件选择、参考 TXT 多选、断点续跑、轮次进度、改动报告、最终表格编辑、多选删除和撤回删除。
-- 审查完成后可一键把最终 XLSX 导入翻译术语表；如果已有术语表内容，会询问清空导入还是追加导入。
-- 新增 **EPUB 合并** 和 **EPUB 压缩**：可按顺序合并多本 EPUB、重建目录、去重资源、压缩图片；也可用单本合并来重命名书内标题。
-- EPUB 解析更稳：兼容部分第三方工具或手动加封面造成的异常 XHTML 结构，减少整章漏翻风险。
-- 翻译运行页显示当前 task ID，避免和校对页里旧任务混淆；失败后可继续重跑失败分块。
-- 校对页支持风险优先排序、低置信度分组、原文残留标签、疑似相邻重复标签、批量/正则替换、原文复制、多选和批量重翻。
-- 翻译质量链路增强：缺行只重试缺失行，低置信度段落单条重试，自动剥离 EPUB 隐形水印，尽量避免原文残留、重复段落和原译文错位。
-- 底栏 token 标签可点击查看实时 input / output / total 明细。
-- 运行中禁止清理任务缓存，避免缓存写入冲突。
+- **通用工具** 已整理为更集中的 EPUB 工具页：EPUB 压缩、文本文档合并、EPUB 转 TXT、TXT 转 EPUB、元数据编辑和 EPUB 修复都可以从同一入口打开。
+- 新增 **TXT 转 EPUB**：支持章节预设 / 自定义正则扫描、目录编辑、封面、内置阅读样式、自定义 CSS 和标准 EPUB 输出。
+- **文本文档合并** 同时支持 EPUB 和 TXT：EPUB 合并会重建目录和资源引用，TXT 合并会按选择顺序直接拼接输出。
+- EPUB 合并和修复增加结构诊断：会检查 manifest、spine、nav、toc 和实际文件引用，减少不存在子目录、正文误入杂项、无效链接等问题。
+- EPUB 元数据编辑支持读取封面预览，修改书名、作者和封面后输出新 EPUB；输出同名时会提示是否覆盖。
+- 批量替换兼容 Reeden / Reading 新旧 `.red` 规则容器，同时继续支持旧版 TXT 箭头规则。
+- 校对页增强风险定位：默认关注低置信度、原文残留和疑似重复，也会提示模型异常、混入异常英文片段、未译和格式兜底等风险。
+- 单条 / 批量重翻会显示进度，并按模型配置的并发和 RPM 节流，降低高并发下的失败重试浪费。
+- 深色模式适配了文本选择、复选框、校对表格和通用工具弹窗，提升暗色主题下的可读性。
+- 打包版本补齐 TXT 转 EPUB 样式资源，预设样式、模板复制 / 下载 / 导入在安装包内可用。
 
 完整列表见 [Releases](https://github.com/oodadoudou/Transoria/releases)。
 
@@ -47,7 +47,7 @@ Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权�
 5. 在「**翻译**」里运行小说翻译。
 6. 翻译完成后进入「**校对**」，优先检查低置信度、原文残留和格式救援条目，修改后重新生成输出。
 
-如果只需要整理 EPUB，可直接使用「**通用工具 → EPUB 合并 / EPUB 压缩**」。合并工具适合多卷合并、目录重建和书内标题重命名；压缩工具适合减小 EPUB 体积并去重封面、字体、图片等资源。
+如果只需要整理电子书或文本，可直接使用「**通用工具 → EPUB 工具**」。这里包含压缩、文本文档合并、EPUB 转 TXT、TXT 转 EPUB、元数据编辑和 EPUB 修复：合并适合多卷整理和目录重建，压缩适合减小体积，TXT 转 EPUB 适合把纯文本小说整理成可阅读的标准 EPUB。
 
 ### 下载安装包
 
@@ -132,16 +132,16 @@ If Transoria is useful to you, feel free to recommend it to friends who may need
 
 ### What's new
 
-- Added a standalone **Glossary Review** module: review XLSX glossaries against reference TXT files with multi-round AI review, then export a final XLSX.
-- Glossary Review supports candidate file selection, multi-select reference TXT files, resume from cache, round-aware progress, change reports, final table editing, multi-select deletion, and restoring deleted rows.
-- After review, one click imports the final XLSX into the translation glossary. If existing entries are present, the app asks whether to replace or append.
-- Added **EPUB Merge** and **EPUB Compression**: merge EPUBs in order, rebuild navigation, deduplicate resources, compress images, and use single-file merge to rename the book title when needed.
-- EPUB parsing is more tolerant of malformed XHTML produced by third-party tools or manual cover insertion, reducing the risk of untranslated chapters.
-- Translation Run now shows the active task ID so users can distinguish the running task from older proofreading tasks; failed chunks can be continued.
-- Proofreading supports risk-first sorting, low-confidence grouping, source-residue tags, possible adjacent-duplicate tags, batch / regex replacement, copyable source text, multi-select, and batch retranslation.
-- Translation quality recovery is stronger: missing lines retry alone, low-confidence segments retry one by one, invisible EPUB watermarks are stripped, and the runner works harder to avoid source residue, duplicate paragraphs, and alignment drift.
-- Clickable token chip with live input / output / total breakdown.
-- Cache cleanup is disabled while tasks are running to avoid write conflicts.
+- **General Tools** now has a consolidated EPUB Tools workspace for EPUB compression, document merging, EPUB to TXT, TXT to EPUB, metadata editing, and EPUB repair.
+- Added **TXT to EPUB** with heading presets, custom regex scanning, editable TOC entries, covers, built-in reading styles, custom CSS, and clean standard EPUB output.
+- **Document Merger** supports both EPUB and TXT. EPUB merge rebuilds navigation and resource references; TXT merge concatenates files in the selected order.
+- EPUB merge and repair now include structure diagnostics for manifest, spine, nav, toc, and file references, reducing missing folders, misplaced content files, and broken links.
+- EPUB metadata editing can preview covers and write updated title, author, and cover information to a new EPUB, with overwrite confirmation for same-name outputs.
+- Batch replacement supports newer and older Reeden / Reading `.red` rule containers while keeping legacy TXT arrow-rule imports.
+- Proofreading risk discovery is stronger: low confidence, source residue, and possible duplicates are prioritized by default, with additional model-anomaly, mixed English residue, untranslated, and format fallback signals.
+- Single-item and batch retranslation show progress and throttle by model concurrency and RPM settings to avoid excessive retry churn under high concurrency.
+- Dark mode readability improved for text selection, checkboxes, proofreading tables, and General Tools dialogs.
+- Packaged builds now include TXT to EPUB style resources, so preset styles and CSS template copy / download / import work in installers.
 
 Full list on [Releases](https://github.com/oodadoudou/Transoria/releases).
 
@@ -154,7 +154,7 @@ Full list on [Releases](https://github.com/oodadoudou/Transoria/releases).
 5. Run the novel translation in **Translation**.
 6. After completion, open **Proofreading** and prioritize low-confidence, source-residue, and format-rescue entries before regenerating outputs.
 
-For EPUB-only maintenance, use **General Tools → EPUB Merge / EPUB Compression**. Merge is useful for volume merging, navigation rebuilding, and book-title renaming; compression is useful for reducing file size and deduplicating covers, fonts, images, and related resources.
+For ebook or text maintenance, use **General Tools → EPUB Tools**. It includes compression, document merging, EPUB to TXT, TXT to EPUB, metadata editing, and EPUB repair. Merge is useful for volume organization and navigation rebuilding, compression reduces file size, and TXT to EPUB turns plain-text novels into readable standard EPUB files.
 
 ### Download
 
