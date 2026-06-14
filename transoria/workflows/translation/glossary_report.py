@@ -1,4 +1,4 @@
-"""Report glossary term application after translation completes."""
+"""Report glossary term coverage after translation completes."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class GlossaryApplicationRecord:
     src: str
     dst: str
     info: str
-    applied: bool
+    target_term_present: bool
     source_text: str
     translated_text: str
 
@@ -30,10 +30,10 @@ class GlossaryApplicationRecord:
 @dataclass(frozen=True)
 class GlossaryApplicationReport:
     total_matches: int
-    applied_matches: int
-    missing_matches: int
+    target_term_present_matches: int
+    review_suggested_matches: int
     segments_with_matches: int
-    segments_with_missing_terms: int
+    segments_with_review_suggestions: int
     records: tuple[GlossaryApplicationRecord, ...]
 
 
@@ -52,7 +52,9 @@ def build_glossary_application_report(
     Chunk payloads contain the terms offered to the model for that chunk.
     This report narrows them back down per segment by re-running local
     glossary matching against each segment's prompt/original text, then checks
-    whether the configured target term appears in the final translated text.
+    whether the configured target term appears verbatim in the final
+    translated text. A missing verbatim target is only a review suggestion:
+    models may correctly adapt glossary terms to fit the target language.
     """
 
     records_by_key: dict[
@@ -95,7 +97,7 @@ def build_glossary_application_report(
                     src=entry.src,
                     dst=entry.dst,
                     info=entry.info,
-                    applied=_target_term_present(entry, translated_text),
+                    target_term_present=_target_term_present(entry, translated_text),
                     source_text=source_text,
                     translated_text=translated_text,
                 )
@@ -103,15 +105,15 @@ def build_glossary_application_report(
     records = tuple(
         records_by_key[key] for key in sorted(records_by_key, key=lambda item: item[0])
     )
-    applied = sum(1 for record in records if record.applied)
-    missing = len(records) - applied
+    target_term_present = sum(1 for record in records if record.target_term_present)
+    review_suggested = len(records) - target_term_present
     return GlossaryApplicationReport(
         total_matches=len(records),
-        applied_matches=applied,
-        missing_matches=missing,
+        target_term_present_matches=target_term_present,
+        review_suggested_matches=review_suggested,
         segments_with_matches=len({record.segment_id for record in records}),
-        segments_with_missing_terms=len(
-            {record.segment_id for record in records if not record.applied}
+        segments_with_review_suggestions=len(
+            {record.segment_id for record in records if not record.target_term_present}
         ),
         records=records,
     )
@@ -169,28 +171,33 @@ def _target_term_present(entry: GlossaryEntry, translated_text: str) -> bool:
 
 def _render_markdown(report: GlossaryApplicationReport) -> str:
     lines = [
-        "# 术语应用报告",
+        "# 术语参考报告",
         "",
         "本报告只基于已完成任务缓存、本地术语匹配和最终译文生成；不会额外调用模型，也不会修改译文。",
+        "目标译名未逐字出现只表示需要人工复核，不代表翻译错误；模型可能已根据目标语言自然调整了表达。",
         "",
         f"- 术语匹配总数：{report.total_matches}",
-        f"- 译文包含目标译名：{report.applied_matches}",
-        f"- 疑似未应用：{report.missing_matches}",
+        f"- 译文逐字包含目标译名：{report.target_term_present_matches}",
+        f"- 建议复核：{report.review_suggested_matches}",
         f"- 涉及段落：{report.segments_with_matches}",
-        f"- 含疑似未应用术语的段落：{report.segments_with_missing_terms}",
+        f"- 含复核建议的段落：{report.segments_with_review_suggestions}",
         "",
     ]
-    missing = [record for record in report.records if not record.applied]
-    if missing:
-        lines.extend(["## 疑似未应用", ""])
-        for record in missing:
+    review_suggested = [
+        record for record in report.records if not record.target_term_present
+    ]
+    if review_suggested:
+        lines.extend(["## 建议复核", ""])
+        for record in review_suggested:
             lines.extend(_record_lines(record))
     else:
-        lines.extend(["## 疑似未应用", "", "无。", ""])
-    applied = [record for record in report.records if record.applied]
-    if applied:
-        lines.extend(["## 已应用", ""])
-        for record in applied:
+        lines.extend(["## 建议复核", "", "无。", ""])
+    target_term_present = [
+        record for record in report.records if record.target_term_present
+    ]
+    if target_term_present:
+        lines.extend(["## 译文逐字包含目标译名", ""])
+        for record in target_term_present:
             lines.extend(_record_lines(record))
     return "\n".join(lines).rstrip() + "\n"
 
