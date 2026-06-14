@@ -45,6 +45,15 @@ from transoria.workflows.translation.confidence import (
     ConfidenceVerdict,
     evaluate_segment_confidence,
 )
+from transoria.workflows.translation.glossary_report import (
+    GLOSSARY_REPORT_FILENAME_JSON,
+    GLOSSARY_REPORT_FILENAME_MD,
+    GlossaryApplicationRecord,
+    GlossaryApplicationReport,
+    GlossaryApplicationReportPaths,
+    build_glossary_application_report,
+    write_glossary_application_report,
+)
 from transoria.workflows.translation.statistics import (
     STATISTICS_FILENAME_JSON,
     FailedFile,
@@ -59,7 +68,12 @@ __all__ = [
     "ChunkSegment",
     "ConfidenceVerdict",
     "FailedFile",
+    "GLOSSARY_REPORT_FILENAME_JSON",
+    "GLOSSARY_REPORT_FILENAME_MD",
     "Glossary",
+    "GlossaryApplicationRecord",
+    "GlossaryApplicationReport",
+    "GlossaryApplicationReportPaths",
     "GlossaryEntry",
     "LowConfidenceSegment",
     "PreparedSegment",
@@ -76,6 +90,7 @@ __all__ = [
     "TranslationStatistics",
     "TranslationSubtaskRunner",
     "assemble_user_prompt",
+    "build_glossary_application_report",
     "build_chunks",
     "encode_subtask_payload",
     "evaluate_segment_confidence",
@@ -84,4 +99,5 @@ __all__ = [
     "postprocess_segment",
     "preprocess_segment",
     "write_translation_statistics",
+    "write_glossary_application_report",
 ]

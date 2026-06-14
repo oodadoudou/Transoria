@@ -118,6 +118,10 @@ from transoria.workflows.glossary.orchestrator import (
 )
 from transoria.workflows.glossary.statistics import GLOSSARY_STATISTICS_FILENAME_JSON
 from transoria.workflows.translation.config import TranslationConfig
+from transoria.workflows.translation.glossary_report import (
+    GLOSSARY_REPORT_FILENAME_JSON,
+    GLOSSARY_REPORT_FILENAME_MD,
+)
 from transoria.workflows.translation.orchestrator import (
     TranslationOrchestrator,
     TranslationRunResult,
@@ -916,6 +920,12 @@ def _translation_result_payload(
         "statistics_json_path": str(result.statistics_path)
         if result.statistics_path
         else None,
+        "glossary_report_path": str(result.glossary_report_path)
+        if result.glossary_report_path
+        else None,
+        "glossary_report_json_path": str(result.glossary_report_json_path)
+        if result.glossary_report_json_path
+        else None,
         "processed_files": list(statistics.processed_files),
         "completed_segments": statistics.completed_segments,
         "total_segments": statistics.total_segments,
@@ -979,6 +989,8 @@ def _partial_translation_payload(
     snapshot: TaskSnapshot, *, output_dir: Path, statistics_dir: Path
 ) -> dict[str, object]:
     stats_path = statistics_dir / STATISTICS_FILENAME_JSON
+    glossary_report_path = statistics_dir / GLOSSARY_REPORT_FILENAME_MD
+    glossary_report_json_path = statistics_dir / GLOSSARY_REPORT_FILENAME_JSON
     stats = _read_json_file(stats_path)
     translated = _string_list(stats.get("translated_outputs")) if stats else []
     bilingual = _string_list(stats.get("bilingual_outputs")) if stats else []
@@ -996,6 +1008,14 @@ def _partial_translation_payload(
         "translated_files": translated,
         "bilingual_files": bilingual,
         "statistics_json_path": str(stats_path) if stats_path.exists() else None,
+        "glossary_report_path": (
+            str(glossary_report_path) if glossary_report_path.exists() else None
+        ),
+        "glossary_report_json_path": (
+            str(glossary_report_json_path)
+            if glossary_report_json_path.exists()
+            else None
+        ),
         "processed_files": _string_list(stats.get("processed_files"))
         if stats
         else [],

@@ -463,6 +463,8 @@ export interface TranslationArtifacts {
   bilingual_files: string[];
   statistics_json_path: string | null;
   statistics_text_path: string | null;
+  glossary_report_path?: string | null;
+  glossary_report_json_path?: string | null;
   processed_files?: string[];
   completed_segments?: number;
   total_segments?: number;

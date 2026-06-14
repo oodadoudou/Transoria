@@ -72,6 +72,10 @@ from transoria.workflows.translation.chunker import (
 )
 from transoria.workflows.translation.config import TranslationConfig
 from transoria.workflows.prefilter import should_translate_for_language
+from transoria.workflows.translation.glossary_report import (
+    build_glossary_application_report,
+    write_glossary_application_report,
+)
 from transoria.workflows.translation.preprocessor import (
     preprocess_segment,
     strip_drm_invisibles,
@@ -113,6 +117,8 @@ class TranslationRunResult:
     task_id: str
     statistics: TranslationStatistics
     statistics_path: Path
+    glossary_report_path: Path | None
+    glossary_report_json_path: Path | None
     translated_outputs: tuple[Path, ...]
     bilingual_outputs: tuple[Path, ...]
     final_status: TaskStatus
@@ -409,11 +415,26 @@ class TranslationOrchestrator:
             self.cache.task_dir(task_id),
             failed_subtask_details=failed_subtask_details,
         )
+        glossary_report = build_glossary_application_report(
+            snapshot.subtasks,
+            translations_by_segment,
+        )
+        glossary_report_path: Path | None = None
+        glossary_report_json_path: Path | None = None
+        if glossary_report.total_matches:
+            report_paths = write_glossary_application_report(
+                glossary_report,
+                self.cache.task_dir(task_id),
+            )
+            glossary_report_path = report_paths.markdown_path
+            glossary_report_json_path = report_paths.json_path
 
         result = TranslationRunResult(
             task_id=task_id,
             statistics=statistics,
             statistics_path=statistics_path,
+            glossary_report_path=glossary_report_path,
+            glossary_report_json_path=glossary_report_json_path,
             translated_outputs=tuple(translated_outputs),
             bilingual_outputs=tuple(bilingual_outputs),
             final_status=snapshot.record.status,
@@ -445,6 +466,8 @@ class TranslationOrchestrator:
             task_id="",
             statistics=statistics,
             statistics_path=statistics_path,
+            glossary_report_path=None,
+            glossary_report_json_path=None,
             translated_outputs=(),
             bilingual_outputs=(),
             final_status=TaskStatus.COMPLETED,
