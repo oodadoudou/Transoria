@@ -73,6 +73,18 @@ function call<TResponse>(
   return getTransport().call<TResponse>(method, payload);
 }
 
+type RetranslateStatusResponse = {
+  request_id: string;
+  task_id: string;
+  segment_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "stale" | "skipped";
+  result_dst: string;
+  error: string;
+  attempts: number;
+  last_error: string;
+  last_translation: string;
+};
+
 export const appBridge = {
   getMetadata(): Promise<AppMetadata> {
     return call("app.get_metadata");
@@ -371,15 +383,11 @@ export const proofreadingBridge = {
       prompt_preset_id: options?.promptPresetId ?? null,
     });
   },
-  retranslateStatus(requestId: string): Promise<{
-    request_id: string;
-    task_id: string;
-    segment_id: string;
-    status: "pending" | "running" | "completed" | "failed" | "stale";
-    result_dst: string;
-    error: string;
-  }> {
+  retranslateStatus(requestId: string): Promise<RetranslateStatusResponse> {
     return call("proofreading.retranslate_status", { request_id: requestId });
+  },
+  resumeRetranslate(requestId: string): Promise<RetranslateStatusResponse> {
+    return call("proofreading.resume_retranslate", { request_id: requestId });
   },
 };
 

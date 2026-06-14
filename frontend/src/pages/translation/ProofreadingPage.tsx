@@ -42,7 +42,12 @@ interface RegenerateFailedFile {
   details?: Record<string, unknown>;
 }
 
-type RetranslateStatus = "completed" | "stale" | "failed" | "timeout";
+type RetranslateStatus =
+  | "completed"
+  | "stale"
+  | "skipped"
+  | "failed"
+  | "timeout";
 
 interface RetranslateOutcome {
   status: RetranslateStatus;
@@ -99,6 +104,8 @@ const RETRANSLATE_CONCURRENCY_AUTO_MAX = 48;
 const RETRANSLATE_FRONTEND_JOB_CAP = 50;
 const RETRANSLATE_RATE_WINDOW_MS = 60_000;
 const RETRANSLATE_RATE_WINDOW_BUFFER_MS = 25;
+const RETRANSLATE_QUEUE_STORAGE_KEY =
+  "transoria:proofreading:retranslate-queue:v1";
 
 const MODEL_ANOMALY_TAGS = new Set([
   "function_word_residue",
@@ -108,6 +115,72 @@ const MODEL_ANOMALY_TAGS = new Set([
   "length_ratio_anomaly",
   "punctuation_anomaly",
 ]);
+
+interface StoredRetranslateQueueEntry {
+  taskId: string;
+  segmentId: string;
+  requestId: string;
+}
+
+function readStoredRetranslateQueue(): StoredRetranslateQueueEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(RETRANSLATE_QUEUE_STORAGE_KEY) ?? "[]",
+    );
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is StoredRetranslateQueueEntry =>
+        typeof item?.taskId === "string" &&
+        typeof item.segmentId === "string" &&
+        typeof item.requestId === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredRetranslateQueue(
+  entries: StoredRetranslateQueueEntry[],
+): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    RETRANSLATE_QUEUE_STORAGE_KEY,
+    JSON.stringify(entries.slice(-500)),
+  );
+}
+
+function rememberRetranslateRequest(
+  taskId: string,
+  segmentId: string,
+  requestId: string,
+): void {
+  const entries = readStoredRetranslateQueue().filter(
+    (entry) =>
+      !(
+        entry.requestId === requestId ||
+        (entry.taskId === taskId && entry.segmentId === segmentId)
+      ),
+  );
+  entries.push({ taskId, segmentId, requestId });
+  writeStoredRetranslateQueue(entries);
+}
+
+function forgetRetranslateRequest(requestId: string): void {
+  writeStoredRetranslateQueue(
+    readStoredRetranslateQueue().filter(
+      (entry) => entry.requestId !== requestId,
+    ),
+  );
+}
+
+function storedRetranslateRequestsForTask(
+  taskId: string,
+): StoredRetranslateQueueEntry[] {
+  return readStoredRetranslateQueue().filter(
+    (entry) => entry.taskId === taskId,
+  );
+}
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -321,6 +394,9 @@ export function ProofreadingPage() {
   const [inflightRetranslates, setInflightRetranslates] = useState<
     Record<string, string>
   >({});
+  const [resumeStartedForTask, setResumeStartedForTask] = useState<
+    string | null
+  >(null);
   const [batchRetranslating, setBatchRetranslating] = useState(false);
   const [batchRetranslateProgress, setBatchRetranslateProgress] =
     useState<BatchRetranslateProgress | null>(null);
@@ -855,24 +931,33 @@ export function ProofreadingPage() {
                 : prev,
             );
             if (selectedSegmentId === segmentId) setDraftDst(status.result_dst);
-            finish();
+            finish(true);
             resolve({ status: "completed" });
             return;
           }
           if (status.status === "stale") {
-            finish();
+            finish(true);
             resolve({ status: "stale" });
             return;
           }
+          if (status.status === "skipped") {
+            finish(true);
+            resolve({
+              status: "skipped",
+              reason: status.error || status.last_error,
+            });
+            return;
+          }
           if (status.status === "failed") {
+            const reason = status.error || status.last_error;
             if (showFeedback) {
               setFeedback({
                 kind: "error",
-                text: format(m.retranslateFailed, { reason: status.error }),
+                text: format(m.retranslateFailed, { reason }),
               });
             }
-            finish();
-            resolve({ status: "failed", reason: status.error });
+            finish(true);
+            resolve({ status: "failed", reason });
             return;
           }
         } catch (err) {
@@ -885,18 +970,19 @@ export function ProofreadingPage() {
               text: format(m.retranslateFailed, { reason }),
             });
           }
-          finish();
+          finish(true);
           resolve({ status: "failed", reason });
           return;
         }
         if (Date.now() - startedAt > 60_000) {
-          finish();
+          finish(false);
           resolve({ status: "timeout", reason: m.retranslateTimeout });
           return;
         }
         setTimeout(tick, 500);
       };
-      const finish = () => {
+      const finish = (forgetRequest: boolean) => {
+        if (forgetRequest) forgetRetranslateRequest(requestId);
         setInflightRetranslates((prev) => {
           const next = { ...prev };
           delete next[segmentId];
@@ -905,6 +991,38 @@ export function ProofreadingPage() {
       };
       void tick();
     });
+
+  useEffect(() => {
+    if (!activeTaskId || !snapshot || resumeStartedForTask === activeTaskId) {
+      return;
+    }
+    setResumeStartedForTask(activeTaskId);
+    const segmentIds = new Set(snapshot.items.map((item) => item.segment_id));
+    for (const entry of storedRetranslateRequestsForTask(activeTaskId)) {
+      if (!segmentIds.has(entry.segmentId)) {
+        forgetRetranslateRequest(entry.requestId);
+        continue;
+      }
+      setInflightRetranslates((prev) =>
+        prev[entry.segmentId]
+          ? prev
+          : { ...prev, [entry.segmentId]: entry.requestId },
+      );
+      void proofreadingBridge
+        .resumeRetranslate(entry.requestId)
+        .then(() =>
+          pollRetranslate(entry.segmentId, entry.requestId, false),
+        )
+        .catch(() => {
+          forgetRetranslateRequest(entry.requestId);
+          setInflightRetranslates((prev) => {
+            const next = { ...prev };
+            delete next[entry.segmentId];
+            return next;
+          });
+        });
+    }
+  }, [activeTaskId, pollRetranslate, resumeStartedForTask, snapshot]);
 
   const runRetranslateSegment = async (
     segmentId: string,
@@ -928,6 +1046,7 @@ export function ProofreadingPage() {
         ...prev,
         [segmentId]: request_id,
       }));
+      rememberRetranslateRequest(activeTaskId, segmentId, request_id);
       return await pollRetranslate(segmentId, request_id, showFeedback);
     } catch (err) {
       const text = BridgeError.isBridgeError(err)
@@ -949,7 +1068,7 @@ export function ProofreadingPage() {
         entries: [{ segmentId: selectedItem.segment_id, dst: previous }],
       });
       setFeedback({ kind: "success", text: m.retranslateSuccess });
-    } else if (result.status === "stale") {
+    } else if (result.status === "stale" || result.status === "skipped") {
       setFeedback({ kind: "info", text: m.retranslateStale });
     } else if (result.status === "timeout") {
       setFeedback({ kind: "error", text: m.retranslateTimeout });
@@ -1034,7 +1153,11 @@ export function ProofreadingPage() {
               if (previous !== undefined) {
                 undoEntries.push({ segmentId, dst: previous });
               }
-            } else if (result.status === "stale") staleCount += 1;
+            } else if (
+              result.status === "stale" ||
+              result.status === "skipped"
+            )
+              staleCount += 1;
             else {
               failedCount += 1;
               failedReasons.push(result.reason ?? "unknown");

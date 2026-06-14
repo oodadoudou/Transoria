@@ -839,6 +839,11 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             request_id=expect_string(payload, "request_id"),
         )
 
+    def resume_retranslate(payload: Mapping[str, object]) -> dict[str, object]:
+        return service.resume_retranslate(
+            request_id=expect_string(payload, "request_id"),
+        )
+
     return {
         "proofreading.list_tasks": list_tasks,
         "proofreading.load_snapshot": load_snapshot,
@@ -846,6 +851,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         "proofreading.regenerate_outputs": regenerate_outputs,
         "proofreading.retranslate_segment": retranslate_segment,
         "proofreading.retranslate_status": retranslate_status,
+        "proofreading.resume_retranslate": resume_retranslate,
     }
 
 

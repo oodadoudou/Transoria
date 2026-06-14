@@ -15,6 +15,7 @@ contract surface stays declarative and the runtime wiring lives in one place.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import threading
@@ -174,6 +175,9 @@ _LIVE_TASK_STALL_SECONDS = 600.0
 _STOP_REQUEST_STALL_SECONDS = 90.0
 _MAX_RETRANSLATE_JOBS = 50
 _RETRANSLATE_TERMINAL_TTL_SECONDS = 300.0
+_RETRANSLATE_TERMINAL_STATUSES = frozenset(
+    {"completed", "failed", "stale", "skipped"}
+)
 
 
 @dataclass
@@ -188,6 +192,94 @@ class RetranslateJob:
     result_dst: str = ""
     error: str = ""
     created_at: float = 0.0
+    source_hash: str = ""
+    original_dst_hash: str = ""
+    attempts: int = 0
+    last_error: str = ""
+    last_translation: str = ""
+    seg_data: dict[str, object] | None = None
+    metadata: dict[str, object] | None = None
+    model_snapshot: dict[str, object] | None = None
+    prompt_snapshot: dict[str, object] | None = None
+    created_at_wall: str = ""
+    updated_at_wall: str = ""
+    schema_version: int = 1
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "request_id": self.request_id,
+            "task_id": self.task_id,
+            "segment_id": self.segment_id,
+            "original_dst": self.original_dst,
+            "model_id": self.model_id,
+            "prompt_preset_id": self.prompt_preset_id,
+            "status": self.status,
+            "result_dst": self.result_dst,
+            "error": self.error,
+            "created_at": self.created_at,
+            "source_hash": self.source_hash,
+            "original_dst_hash": self.original_dst_hash,
+            "attempts": self.attempts,
+            "last_error": self.last_error,
+            "last_translation": self.last_translation,
+            "seg_data": self.seg_data or {},
+            "metadata": self.metadata or {},
+            "model_snapshot": self.model_snapshot or {},
+            "prompt_snapshot": self.prompt_snapshot or {},
+            "created_at_wall": self.created_at_wall,
+            "updated_at_wall": self.updated_at_wall,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> "RetranslateJob":
+        def optional_str(key: str) -> str | None:
+            value = data.get(key)
+            return None if value is None else str(value)
+
+        def mapping_or_none(key: str) -> dict[str, object] | None:
+            value = data.get(key)
+            return dict(value) if isinstance(value, Mapping) else None
+
+        created_at = data.get("created_at")
+        try:
+            created_at_float = float(created_at)
+        except (TypeError, ValueError):
+            created_at_float = time.monotonic()
+        attempts = data.get("attempts")
+        try:
+            attempts_int = int(attempts)
+        except (TypeError, ValueError):
+            attempts_int = 0
+        schema_version = data.get("schema_version", 1)
+        try:
+            schema_version_int = int(schema_version)
+        except (TypeError, ValueError):
+            schema_version_int = 1
+        return cls(
+            request_id=str(data["request_id"]),
+            task_id=str(data["task_id"]),
+            segment_id=str(data["segment_id"]),
+            original_dst=str(data.get("original_dst", "")),
+            model_id=optional_str("model_id"),
+            prompt_preset_id=optional_str("prompt_preset_id"),
+            status=str(data.get("status", "pending")),
+            result_dst=str(data.get("result_dst", "")),
+            error=str(data.get("error", "")),
+            created_at=created_at_float,
+            source_hash=str(data.get("source_hash", "")),
+            original_dst_hash=str(data.get("original_dst_hash", "")),
+            attempts=attempts_int,
+            last_error=str(data.get("last_error", "")),
+            last_translation=str(data.get("last_translation", "")),
+            seg_data=mapping_or_none("seg_data"),
+            metadata=mapping_or_none("metadata"),
+            model_snapshot=mapping_or_none("model_snapshot"),
+            prompt_snapshot=mapping_or_none("prompt_snapshot"),
+            created_at_wall=str(data.get("created_at_wall", "")),
+            updated_at_wall=str(data.get("updated_at_wall", "")),
+            schema_version=schema_version_int,
+        )
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -218,6 +310,17 @@ def _effective_glossary_chunk_token_limit(value: int) -> int:
 
 def _new_task_id(kind: str) -> str:
     return f"{kind}-{uuid4().hex[:12]}"
+
+
+def _hash_text(text: str) -> str:
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _retranslate_source_text(seg_data: Mapping[str, object]) -> str:
+    value = seg_data.get("original_text")
+    if value is None:
+        value = seg_data.get("prompt_text", "")
+    return str(value)
 
 
 def _find_segment_payload(
@@ -1426,6 +1529,11 @@ class TaskService:
                 details={"task_id": task_id, "segment_id": segment_id},
             )
         original_dst = _read_segment_dst(snapshot, segment_id)
+        source_text = _retranslate_source_text(seg_data)
+        settings = self.settings_store.load_all()
+        effective_model_id = model_id or settings.app.active_translation_model_id
+        effective_prompt_id = prompt_preset_id or settings.app.active_translation_prompt_id
+        metadata = dict(snapshot.record.metadata)
 
         with self._retranslate_lock:
             for job in self._retranslate_jobs.values():
@@ -1444,21 +1552,29 @@ class TaskService:
                 task_id=task_id,
                 segment_id=segment_id,
                 original_dst=original_dst,
-                model_id=model_id,
-                prompt_preset_id=prompt_preset_id,
+                model_id=effective_model_id,
+                prompt_preset_id=effective_prompt_id,
                 status="pending",
                 created_at=time.monotonic(),
+                source_hash=_hash_text(source_text),
+                original_dst_hash=_hash_text(original_dst),
+                seg_data=dict(seg_data),
+                metadata=metadata,
+                model_snapshot=self._model_snapshot_for_retranslate(
+                    effective_model_id
+                ),
+                prompt_snapshot=self._prompt_snapshot_for_retranslate(
+                    effective_prompt_id, metadata
+                ),
+                created_at_wall=_utc_now_iso(),
+                updated_at_wall=_utc_now_iso(),
             )
             self._retranslate_jobs[request_id] = job
+            self._save_retranslate_job(job)
             self._gc_retranslate_jobs()
 
-        thread = threading.Thread(
-            target=self._run_retranslate,
-            args=(request_id, seg_data, dict(snapshot.record.metadata)),
-            daemon=True,
-        )
-        thread.start()
-        return {"request_id": request_id, "status": "pending"}
+        self._start_retranslate_thread(request_id)
+        return self._retranslate_status_payload(job)
 
     def read_retranslate_status(
         self, *, request_id: str
@@ -1467,10 +1583,88 @@ class TaskService:
             self._gc_retranslate_jobs()
             job = self._retranslate_jobs.get(request_id)
         if job is None:
+            job = self._load_retranslate_job(request_id)
+        if job is None:
             raise BridgeError.not_found(
                 f"retranslate request {request_id!r} not found or expired.",
                 details={"request_id": request_id},
             )
+        return self._retranslate_status_payload(job)
+
+    def resume_retranslate(self, *, request_id: str) -> dict[str, object]:
+        with self._retranslate_lock:
+            self._gc_retranslate_jobs()
+            job = self._retranslate_jobs.get(request_id)
+            live_job = job is not None
+        if job is None:
+            job = self._load_retranslate_job(request_id)
+        if job is None:
+            raise BridgeError.not_found(
+                f"retranslate request {request_id!r} not found or expired.",
+                details={"request_id": request_id},
+            )
+        if live_job and job.status in {"pending", "running"}:
+            with self._retranslate_lock:
+                self._retranslate_jobs[job.request_id] = job
+            return self._retranslate_status_payload(job)
+        if job.status in _RETRANSLATE_TERMINAL_STATUSES and job.status != "failed":
+            return self._retranslate_status_payload(job)
+        job.status = "pending"
+        job.error = ""
+        job.updated_at_wall = _utc_now_iso()
+        with self._retranslate_lock:
+            self._retranslate_jobs[job.request_id] = job
+            self._save_retranslate_job(job)
+            self._gc_retranslate_jobs()
+        self._start_retranslate_thread(job.request_id)
+        return self._retranslate_status_payload(job)
+
+    def _validate_retranslate_request_id(self, request_id: str) -> str:
+        if (
+            not request_id.startswith("retranslate-")
+            or "/" in request_id
+            or "\\" in request_id
+            or request_id in {".", ".."}
+        ):
+            raise BridgeError.invalid_argument(
+                "invalid retranslate request id.",
+                details={"request_id": request_id},
+            )
+        return request_id
+
+    def _retranslate_job_path(self, task_id: str, request_id: str) -> Path:
+        safe_request_id = self._validate_retranslate_request_id(request_id)
+        return self.cache.task_dir(task_id) / "retranslate" / f"{safe_request_id}.json"
+
+    def _find_retranslate_job_path(self, request_id: str) -> Path | None:
+        safe_request_id = self._validate_retranslate_request_id(request_id)
+        for path in self.cache.root.glob(f"*/retranslate/{safe_request_id}.json"):
+            return path
+        return None
+
+    def _save_retranslate_job(self, job: RetranslateJob) -> None:
+        path = self._retranslate_job_path(job.task_id, job.request_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(job.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(tmp, path)
+
+    def _load_retranslate_job(self, request_id: str) -> RetranslateJob | None:
+        path = self._find_retranslate_job_path(request_id)
+        if path is None:
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            return None
+        if not isinstance(data, Mapping):
+            return None
+        return RetranslateJob.from_dict(data)
+
+    def _retranslate_status_payload(self, job: RetranslateJob) -> dict[str, object]:
         return {
             "request_id": job.request_id,
             "task_id": job.task_id,
@@ -1478,14 +1672,53 @@ class TaskService:
             "status": job.status,
             "result_dst": job.result_dst,
             "error": job.error,
+            "attempts": job.attempts,
+            "last_error": job.last_error,
+            "last_translation": job.last_translation,
         }
+
+    def _model_snapshot_for_retranslate(
+        self, model_id: str | None
+    ) -> dict[str, object] | None:
+        if not model_id:
+            return None
+        profile = self.profile_store.get(model_id)
+        if profile is None:
+            return None
+        data = profile.to_dict()
+        data["api_keys"] = []
+        return data
+
+    def _prompt_snapshot_for_retranslate(
+        self,
+        prompt_preset_id: str | None,
+        metadata: Mapping[str, object],
+    ) -> dict[str, object] | None:
+        if prompt_preset_id:
+            try:
+                return self._resolve_prompt_preset(
+                    prompt_preset_id,
+                    kind=PromptKind.TRANSLATION,
+                ).to_dict()
+            except BridgeError:
+                return None
+        preset_data = metadata.get("prompt_preset")
+        return dict(preset_data) if isinstance(preset_data, Mapping) else None
+
+    def _start_retranslate_thread(self, request_id: str) -> None:
+        thread = threading.Thread(
+            target=self._run_retranslate,
+            args=(request_id,),
+            daemon=True,
+        )
+        thread.start()
 
     def _gc_retranslate_jobs(self) -> None:
         now = time.monotonic()
         expired = [
             rid
             for rid, job in self._retranslate_jobs.items()
-            if job.status in {"completed", "failed", "stale"}
+            if job.status in _RETRANSLATE_TERMINAL_STATUSES
             and now - job.created_at > _RETRANSLATE_TERMINAL_TTL_SECONDS
         ]
         for rid in expired:
@@ -1498,32 +1731,52 @@ class TaskService:
             for rid, _ in ordered[:overflow]:
                 self._retranslate_jobs.pop(rid, None)
 
-    def _run_retranslate(
-        self,
-        request_id: str,
-        seg_data: Mapping[str, object],
-        metadata: Mapping[str, object],
-    ) -> None:
-        job = self._retranslate_jobs.get(request_id)
+    def _run_retranslate(self, request_id: str) -> None:
+        with self._retranslate_lock:
+            job = self._retranslate_jobs.get(request_id)
+        if job is None:
+            job = self._load_retranslate_job(request_id)
         if job is None:
             return
-        job.status = "running"
+        if job.seg_data is None or job.metadata is None:
+            job.error = "retranslate request is missing persisted source data."
+            job.last_error = job.error
+            job.status = "failed"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+        with self._retranslate_lock:
+            job.status = "running"
+            job.error = ""
+            job.attempts += 1
+            job.updated_at_wall = _utc_now_iso()
+            self._retranslate_jobs[request_id] = job
+            self._save_retranslate_job(job)
+        if self._finish_retranslate_if_cache_changed(job):
+            return
         try:
             new_dst = asyncio.run(
                 self._call_runner_for_retranslate(
-                    seg_data,
-                    metadata,
+                    job.seg_data,
+                    job.metadata,
                     model_id=job.model_id,
                     prompt_preset_id=job.prompt_preset_id,
+                    prompt_snapshot=job.prompt_snapshot,
                 )
             )
         except BridgeError as exc:
             job.error = f"{exc.code}: {exc.payload.message}"
+            job.last_error = job.error
             job.status = "failed"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
             return
         except Exception as exc:  # noqa: BLE001
             job.error = f"{type(exc).__name__}: {exc}"
+            job.last_error = job.error
             job.status = "failed"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
             return
 
         with self._retranslate_lock:
@@ -1531,20 +1784,86 @@ class TaskService:
                 snapshot = self.cache.load(job.task_id)
             except (TaskNotFoundError, OSError, ValueError):
                 job.error = "task cache disappeared during retranslate."
+                job.last_error = job.error
                 job.status = "failed"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return
+            current_seg = _find_segment_payload(snapshot, job.segment_id)
+            if current_seg is None:
+                job.error = "segment disappeared during retranslate."
+                job.last_error = job.error
+                job.status = "skipped"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return
+            if (
+                job.source_hash
+                and _hash_text(_retranslate_source_text(current_seg)) != job.source_hash
+            ):
+                job.error = "source segment changed during retranslate."
+                job.last_error = job.error
+                job.status = "skipped"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
                 return
             current_dst = _read_segment_dst(snapshot, job.segment_id)
             if current_dst != job.original_dst:
+                job.last_translation = new_dst
                 job.status = "stale"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
                 return
             try:
                 _patch_segment_dst(self.cache, snapshot, job.segment_id, new_dst)
             except (TaskNotFoundError, OSError) as exc:
                 job.error = f"failed to write cache: {exc}"
+                job.last_error = job.error
                 job.status = "failed"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
                 return
             job.result_dst = new_dst
+            job.last_translation = new_dst
             job.status = "completed"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+
+    def _finish_retranslate_if_cache_changed(self, job: RetranslateJob) -> bool:
+        with self._retranslate_lock:
+            try:
+                snapshot = self.cache.load(job.task_id)
+            except (TaskNotFoundError, OSError, ValueError):
+                job.error = "task cache disappeared during retranslate."
+                job.last_error = job.error
+                job.status = "failed"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return True
+            current_seg = _find_segment_payload(snapshot, job.segment_id)
+            if current_seg is None:
+                job.error = "segment disappeared during retranslate."
+                job.last_error = job.error
+                job.status = "skipped"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return True
+            if (
+                job.source_hash
+                and _hash_text(_retranslate_source_text(current_seg)) != job.source_hash
+            ):
+                job.error = "source segment changed during retranslate."
+                job.last_error = job.error
+                job.status = "skipped"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return True
+            if _read_segment_dst(snapshot, job.segment_id) != job.original_dst:
+                job.status = "stale"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return True
+            return False
 
     async def _call_runner_for_retranslate(
         self,
@@ -1553,6 +1872,7 @@ class TaskService:
         *,
         model_id: str | None = None,
         prompt_preset_id: str | None = None,
+        prompt_snapshot: Mapping[str, object] | None = None,
     ) -> str:
         from transoria.workflows.translation.chunker import (  # noqa: PLC0415
             ChunkSegment,
@@ -1575,7 +1895,14 @@ class TaskService:
             else "active_translation_model_id",
         )
 
-        if prompt_preset_id:
+        if prompt_snapshot is not None:
+            try:
+                preset = PromptPreset.from_dict(prompt_snapshot)
+            except ValueError as exc:
+                raise BridgeError.invalid_argument(
+                    f"persisted prompt snapshot is invalid: {exc}",
+                ) from exc
+        elif prompt_preset_id:
             preset = self._resolve_prompt_preset(
                 prompt_preset_id, kind=PromptKind.TRANSLATION
             )
