@@ -6,7 +6,15 @@ import styles from "./FailedSubtasksModal.module.css";
 
 interface FailedSubtasksModalProps {
   failures: TaskFailure[];
+  runtimeConfig?: FailureRuntimeConfig;
   onClose: () => void;
+}
+
+interface FailureRuntimeConfig {
+  concurrencyLimit: number;
+  rpmLimit: number;
+  timeoutSeconds: number;
+  retryAttempts: number;
 }
 
 interface FailureGroup {
@@ -27,12 +35,36 @@ type FailureType =
   | "emptyInput"
   | "unknown";
 
+type FailureRecommendation =
+  | "rateLimitHighConcurrency"
+  | "rateLimit"
+  | "timeoutHighConcurrency"
+  | "timeout"
+  | "connection"
+  | "format"
+  | "lineCount"
+  | "languageMismatch"
+  | "emptyInput"
+  | "unknown";
+
+interface FailureDiagnosis {
+  dominantType: FailureType;
+  dominantCount: number;
+  recommendation: FailureRecommendation;
+  stats: Array<{ type: FailureType; count: number }>;
+}
+
 export function FailedSubtasksModal({
   failures,
+  runtimeConfig,
   onClose,
 }: FailedSubtasksModalProps) {
   const messages = useMessages().failedSubtasksModal;
   const groups = useMemo(() => buildGroups(failures), [failures]);
+  const diagnosis = useMemo(
+    () => buildDiagnosis(groups, runtimeConfig),
+    [groups, runtimeConfig],
+  );
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const toggle = (key: string): void => {
@@ -63,62 +95,106 @@ export function FailedSubtasksModal({
           {groups.length === 0 ? (
             <p className={styles.empty}>{messages.empty}</p>
           ) : (
-            <ul className={styles.groupList}>
-              {groups.map((group) => {
-                const key = `${group.code}::${group.message}`;
-                const isOpen = expanded.has(key);
-                return (
-                  <li key={key} className={styles.group}>
-                    <button
-                      type="button"
-                      className={styles.groupHead}
-                      onClick={() => toggle(key)}
-                      aria-expanded={isOpen}
-                    >
-                      <code className={styles.groupCode}>{group.code}</code>
-                      <span className={styles.groupType}>
-                        {messages.failureTypes[group.type]}
+            <>
+              {diagnosis ? (
+                <div className={styles.diagnosisCard}>
+                  <div>
+                    <div className={styles.diagnosisTitle}>
+                      {messages.diagnosis.title}
+                    </div>
+                    <div className={styles.diagnosisSubtitle}>
+                      {messages.diagnosis.subtitle}
+                    </div>
+                  </div>
+                  {runtimeConfig ? (
+                    <div className={styles.configLine}>
+                      <span>{messages.diagnosis.configLabel}</span>
+                      <strong>
+                        {formatMessage(messages.diagnosis.configValue, {
+                          concurrency: runtimeConfig.concurrencyLimit,
+                          rpm: runtimeConfig.rpmLimit,
+                          timeout: runtimeConfig.timeoutSeconds,
+                          retries: runtimeConfig.retryAttempts,
+                        })}
+                      </strong>
+                    </div>
+                  ) : null}
+                  <div className={styles.dominantLine}>
+                    {formatMessage(messages.diagnosis.dominant, {
+                      type: messages.failureTypes[diagnosis.dominantType],
+                      count: diagnosis.dominantCount,
+                      total: failures.length,
+                    })}
+                  </div>
+                  <div className={styles.recommendation}>
+                    {messages.diagnosis.recommendations[diagnosis.recommendation]}
+                  </div>
+                  <div className={styles.statChips}>
+                    {diagnosis.stats.map((stat) => (
+                      <span key={stat.type} className={styles.statChip}>
+                        {messages.failureTypes[stat.type]} · {stat.count}
                       </span>
-                      <span className={styles.groupMessage}>
-                        {group.message || messages.noMessage}
-                      </span>
-                      <span className={styles.groupCount}>
-                        ×{group.failures.length}
-                      </span>
-                      <span className={styles.chevron} aria-hidden="true">
-                        {isOpen ? "▾" : "▸"}
-                      </span>
-                    </button>
-                    {isOpen ? (
-                      <div className={styles.groupBody}>
-                        {group.sourceFiles.length > 0 ? (
-                          <div className={styles.fileList}>
-                            <span className={styles.fileLabel}>
-                              {messages.fileLabel}
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <ul className={styles.groupList}>
+                {groups.map((group) => {
+                  const key = `${group.code}::${group.message}`;
+                  const isOpen = expanded.has(key);
+                  return (
+                    <li key={key} className={styles.group}>
+                      <button
+                        type="button"
+                        className={styles.groupHead}
+                        onClick={() => toggle(key)}
+                        aria-expanded={isOpen}
+                      >
+                        <code className={styles.groupCode}>{group.code}</code>
+                        <span className={styles.groupType}>
+                          {messages.failureTypes[group.type]}
+                        </span>
+                        <span className={styles.groupMessage}>
+                          {group.message || messages.noMessage}
+                        </span>
+                        <span className={styles.groupCount}>
+                          ×{group.failures.length}
+                        </span>
+                        <span className={styles.chevron} aria-hidden="true">
+                          {isOpen ? "▾" : "▸"}
+                        </span>
+                      </button>
+                      {isOpen ? (
+                        <div className={styles.groupBody}>
+                          {group.sourceFiles.length > 0 ? (
+                            <div className={styles.fileList}>
+                              <span className={styles.fileLabel}>
+                                {messages.fileLabel}
+                              </span>
+                              {group.sourceFiles.map((path) => (
+                                <code key={path} className={styles.filePath}>
+                                  {path}
+                                </code>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className={styles.affectedRow}>
+                            <span className={styles.affectedLabel}>
+                              {messages.affectedLabel}
                             </span>
-                            {group.sourceFiles.map((path) => (
-                              <code key={path} className={styles.filePath}>
-                                {path}
-                              </code>
-                            ))}
+                            <span className={styles.chunkIds}>
+                              {group.failures
+                                .map((failure) => failure.subtask_id)
+                                .join(", ")}
+                            </span>
                           </div>
-                        ) : null}
-                        <div className={styles.affectedRow}>
-                          <span className={styles.affectedLabel}>
-                            {messages.affectedLabel}
-                          </span>
-                          <span className={styles.chunkIds}>
-                            {group.failures
-                              .map((failure) => failure.subtask_id)
-                              .join(", ")}
-                          </span>
                         </div>
-                      </div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </div>
         <div className={styles.footer}>
@@ -129,6 +205,46 @@ export function FailedSubtasksModal({
       </div>
     </div>
   );
+}
+
+function buildDiagnosis(
+  groups: FailureGroup[],
+  runtimeConfig?: FailureRuntimeConfig,
+): FailureDiagnosis | null {
+  if (groups.length === 0) return null;
+
+  const counts = new Map<FailureType, number>();
+  for (const group of groups) {
+    counts.set(group.type, (counts.get(group.type) ?? 0) + group.failures.length);
+  }
+
+  const stats = Array.from(counts.entries())
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count);
+  const dominant = stats[0];
+  return {
+    dominantType: dominant.type,
+    dominantCount: dominant.count,
+    recommendation: recommendationFor(dominant.type, runtimeConfig),
+    stats,
+  };
+}
+
+function recommendationFor(
+  type: FailureType,
+  runtimeConfig?: FailureRuntimeConfig,
+): FailureRecommendation {
+  const highConcurrencySignal =
+    (runtimeConfig?.concurrencyLimit ?? 0) >= 20 ||
+    (runtimeConfig?.rpmLimit ?? 0) >= 120;
+
+  if (type === "rateLimit") {
+    return highConcurrencySignal ? "rateLimitHighConcurrency" : "rateLimit";
+  }
+  if (type === "timeout") {
+    return highConcurrencySignal ? "timeoutHighConcurrency" : "timeout";
+  }
+  return type;
 }
 
 function buildGroups(failures: TaskFailure[]): FailureGroup[] {
@@ -214,4 +330,13 @@ function classifyFailure(code: string, message: string): FailureType {
     return "emptyInput";
   }
   return "unknown";
+}
+
+function formatMessage(
+  template: string,
+  values: Record<string, string | number>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match,
+  );
 }

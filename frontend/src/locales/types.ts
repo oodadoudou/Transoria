@@ -1337,6 +1337,25 @@ export interface Messages {
       emptyInput: string;
       unknown: string;
     };
+    diagnosis: {
+      title: string;
+      subtitle: string;
+      configLabel: string;
+      configValue: string;
+      dominant: string;
+      recommendations: {
+        rateLimitHighConcurrency: string;
+        rateLimit: string;
+        timeoutHighConcurrency: string;
+        timeout: string;
+        connection: string;
+        format: string;
+        lineCount: string;
+        languageMismatch: string;
+        emptyInput: string;
+        unknown: string;
+      };
+    };
     noMessage: string;
     empty: string;
     close: string;

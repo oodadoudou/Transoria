@@ -1451,6 +1451,35 @@ export const zh: Messages = {
       emptyInput: "内容为空",
       unknown: "未知原因",
     },
+    diagnosis: {
+      title: "失败归因",
+      subtitle: "根据失败记录和当前模型速率配置生成；不会自动修改配置。",
+      configLabel: "当前配置",
+      configValue: "并发 {concurrency} · RPM {rpm} · 超时 {timeout}s · 重试 {retries}",
+      dominant: "主要原因：{type}（{count}/{total}）",
+      recommendations: {
+        rateLimitHighConcurrency:
+          "当前失败集中在限流，且失败量较大。建议先降低并发或 RPM，或确认多 key 轮换是否可用，再继续失败分块。",
+        rateLimit:
+          "当前失败像是 API 限流。建议等待限流窗口恢复，或降低 RPM 后继续失败分块。",
+        timeoutHighConcurrency:
+          "当前失败集中在超时，且失败量较大。高并发下慢模型更容易堆积超时，建议先降低并发后继续。",
+        timeout:
+          "当前失败像是模型响应超时。慢推理模型可保留较长超时，恢复后直接继续失败分块即可。",
+        connection:
+          "当前失败像是网络、代理或 API endpoint 连接问题。确认连接恢复后继续失败分块，不需要重跑成功项。",
+        format:
+          "当前失败像是模型输出格式异常。可先继续失败分块；如果反复出现，建议换更稳定模型或检查对应 prompt。",
+        lineCount:
+          "当前失败像是输出行数不匹配。继续失败分块会只重跑失败项；反复出现时通常是模型没有遵守格式。",
+        languageMismatch:
+          "当前失败像是源语言或输入内容不符合配置。建议先确认源/目标语言和输入文件是否正确。",
+        emptyInput:
+          "当前失败像是输入解析后没有可用文本。建议检查文件内容、解析方式或章节切分结果。",
+        unknown:
+          "当前失败原因不明确。展开错误记录查看原始信息，修复外部问题后继续失败分块。",
+      },
+    },
     noMessage: "（未提供错误描述）",
     empty: "暂无失败分块。",
     close: "关闭",

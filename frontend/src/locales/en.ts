@@ -1484,6 +1484,37 @@ export const en: Messages = {
       emptyInput: "Empty content",
       unknown: "Unknown",
     },
+    diagnosis: {
+      title: "Failure attribution",
+      subtitle:
+        "Generated from failure records and the current model rate settings; no settings are changed automatically.",
+      configLabel: "Current config",
+      configValue:
+        "concurrency {concurrency} · RPM {rpm} · timeout {timeout}s · retries {retries}",
+      dominant: "Main cause: {type} ({count}/{total})",
+      recommendations: {
+        rateLimitHighConcurrency:
+          "Failures are concentrated around rate limits and the failed batch is large. Lower concurrency or RPM, or confirm key rotation, then continue failed chunks.",
+        rateLimit:
+          "This looks like API rate limiting. Wait for the limit window to recover, or lower RPM before continuing failed chunks.",
+        timeoutHighConcurrency:
+          "Failures are concentrated around timeouts and the failed batch is large. Slow reasoning models can pile up under high concurrency; lower concurrency before continuing.",
+        timeout:
+          "This looks like model response timeout. Keep a longer timeout for slow reasoning models, then continue failed chunks after the model recovers.",
+        connection:
+          "This looks like a network, proxy, or API endpoint issue. Restore connectivity, then continue failed chunks without rerunning successful ones.",
+        format:
+          "This looks like invalid model output format. Continue failed chunks first; if it repeats, switch to a more stable model or inspect the prompt.",
+        lineCount:
+          "This looks like output line-count mismatch. Continue will only rerun failed chunks; repeated failures usually mean the model did not follow the required format.",
+        languageMismatch:
+          "This looks like a source-language or input mismatch. Check the source/target language settings and the selected input files.",
+        emptyInput:
+          "This looks like parsing produced no usable text. Check the file content, parser path, or chapter splitting result.",
+        unknown:
+          "The cause is unclear. Expand the raw failure records, fix any external issue, then continue failed chunks.",
+      },
+    },
     noMessage: "(no error description)",
     empty: "No failed subtasks.",
     close: "Close",

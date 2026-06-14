@@ -1780,6 +1780,7 @@ class TaskService:
                     job.seg_data,
                     job.metadata,
                     model_id=job.model_id,
+                    model_snapshot=job.model_snapshot,
                     prompt_preset_id=job.prompt_preset_id,
                     prompt_snapshot=job.prompt_snapshot,
                 )
@@ -1800,6 +1801,7 @@ class TaskService:
             return
 
         with self._retranslate_lock:
+            job.last_translation = new_dst
             try:
                 snapshot = self.cache.load(job.task_id)
             except (TaskNotFoundError, OSError, ValueError):
@@ -1829,7 +1831,6 @@ class TaskService:
                 return
             current_dst = _read_segment_dst(snapshot, job.segment_id)
             if current_dst != job.original_dst:
-                job.last_translation = new_dst
                 job.status = "stale"
                 job.updated_at_wall = _utc_now_iso()
                 self._save_retranslate_job(job)
@@ -1844,7 +1845,6 @@ class TaskService:
                 self._save_retranslate_job(job)
                 return
             job.result_dst = new_dst
-            job.last_translation = new_dst
             job.status = "completed"
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
@@ -1891,6 +1891,7 @@ class TaskService:
         metadata: Mapping[str, object],
         *,
         model_id: str | None = None,
+        model_snapshot: Mapping[str, object] | None = None,
         prompt_preset_id: str | None = None,
         prompt_snapshot: Mapping[str, object] | None = None,
     ) -> str:
@@ -1908,11 +1909,14 @@ class TaskService:
         )
 
         settings = self.settings_store.load_all()
-        model = self._resolve_model_profile(
+        model = self._model_for_retranslate(
             model_id or settings.app.active_translation_model_id,
-            field="proofreading_model_id"
-            if model_id
-            else "active_translation_model_id",
+            model_snapshot=model_snapshot,
+            field=(
+                "proofreading_model_id"
+                if model_id
+                else "active_translation_model_id"
+            ),
         )
 
         if prompt_snapshot is not None:
@@ -2028,6 +2032,39 @@ class TaskService:
                 retryable=True,
             )
         return str(translations[segment_id])
+
+    def _model_for_retranslate(
+        self,
+        profile_id: str | None,
+        *,
+        model_snapshot: Mapping[str, object] | None,
+        field: str,
+    ) -> ModelConfig:
+        if model_snapshot:
+            try:
+                snapshot_model = ModelConfig.from_dict(model_snapshot)
+            except ValueError as exc:
+                raise BridgeError.invalid_argument(
+                    f"persisted model snapshot is invalid: {exc}",
+                    field=field,
+                ) from exc
+
+            key_profile = self.profile_store.get(snapshot_model.id)
+            if key_profile is None:
+                raise BridgeError.invalid_argument(
+                    f"model profile {snapshot_model.id!r} from the persisted "
+                    "retranslate snapshot no longer exists.",
+                    field=field,
+                )
+            if not key_profile.api_keys:
+                raise BridgeError.invalid_argument(
+                    f"model profile {snapshot_model.id!r} from the persisted "
+                    "retranslate snapshot has no API key configured.",
+                    field=field,
+                )
+            return snapshot_model.with_api_keys(tuple(key_profile.api_keys))
+
+        return self._resolve_model_profile(profile_id, field=field)
 
     def _build_translation_config(
         self,

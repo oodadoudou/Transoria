@@ -14,7 +14,7 @@
   border-radius: 14px;
   border: 1px solid var(--hairline, #ece8e2);
   width: 100%;
-  max-width: 640px;
+  max-width: 720px;
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
@@ -69,6 +69,72 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.diagnosisCard {
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 10px;
+  background: var(--panel-soft, #fbf8f3);
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diagnosisTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink, #2c2620);
+}
+
+.diagnosisSubtitle {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted, #7a7166);
+}
+
+.configLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted, #7a7166);
+}
+
+.configLine strong {
+  color: var(--ink, #2c2620);
+  font-weight: 600;
+}
+
+.dominantLine {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink, #2c2620);
+}
+
+.recommendation {
+  font-size: 12.5px;
+  color: var(--text-warn, #6b3a1f);
+  background: var(--surface-warn, #fdf2ec);
+  border: 1px solid var(--surface-warn-border, #e0b0a0);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.statChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.statChip {
+  font-size: 11px;
+  color: var(--muted, #7a7166);
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: var(--panel, #fff);
 }
 
 .group {

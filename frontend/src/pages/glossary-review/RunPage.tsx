@@ -368,6 +368,16 @@ export function RunPage() {
       {failedModalOpen ? (
         <FailedSubtasksModal
           failures={snapshot.failures}
+          runtimeConfig={
+            activeModel
+              ? {
+                  concurrencyLimit: activeModel.concurrency_limit,
+                  rpmLimit: activeModel.rpm_limit,
+                  timeoutSeconds: activeModel.timeout_seconds,
+                  retryAttempts: activeModel.retry_attempts,
+                }
+              : undefined
+          }
           onClose={() => setFailedModalOpen(false)}
         />
       ) : null}
