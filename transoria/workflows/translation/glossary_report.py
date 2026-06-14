@@ -174,24 +174,24 @@ def _render_markdown(report: GlossaryApplicationReport) -> str:
         "# 术语参考报告",
         "",
         "本报告只基于已完成任务缓存、本地术语匹配和最终译文生成；不会额外调用模型，也不会修改译文。",
-        "目标译名未逐字出现只表示需要人工复核，不代表翻译错误；模型可能已根据目标语言自然调整了表达。",
+        "目标译名未逐字出现只作为人工查看参考，不代表翻译错误；模型可能已根据目标语言自然调整了表达。",
         "",
         f"- 术语匹配总数：{report.total_matches}",
         f"- 译文逐字包含目标译名：{report.target_term_present_matches}",
-        f"- 建议复核：{report.review_suggested_matches}",
+        f"- 译文未逐字包含目标译名（参考）：{report.review_suggested_matches}",
         f"- 涉及段落：{report.segments_with_matches}",
-        f"- 含复核建议的段落：{report.segments_with_review_suggestions}",
+        f"- 含未逐字出现记录的段落：{report.segments_with_review_suggestions}",
         "",
     ]
     review_suggested = [
         record for record in report.records if not record.target_term_present
     ]
     if review_suggested:
-        lines.extend(["## 建议复核", ""])
+        lines.extend(["## 未逐字出现（参考）", ""])
         for record in review_suggested:
             lines.extend(_record_lines(record))
     else:
-        lines.extend(["## 建议复核", "", "无。", ""])
+        lines.extend(["## 未逐字出现（参考）", "", "无。", ""])
     target_term_present = [
         record for record in report.records if record.target_term_present
     ]

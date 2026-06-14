@@ -879,7 +879,7 @@ export const en: Messages = {
         noMatchingTranslations:
           "The source file does not match this task cache: no translated segments matched this file. The original input may have been moved/replaced, or an old-version cache was regenerated directly.",
         cacheSegmentMismatch:
-          "The source file does not match this task cache: the current parse found {expected} segments, {matched} matched the cache, and {missing} are missing. This usually means the input file/folder list changed, or a newer parser detected segments that the old task never translated. Output generation stopped to avoid mixing source text into the translation.",
+          "The source file does not match this task cache: the current parse found {expected} segments, {matched} matched the cache, and {missing} are missing. First missing segment: {firstMissing}. Current source fingerprint: {parsedFingerprint}; cache source fingerprint: {cacheFingerprint}. This usually means the input file/folder list changed, or a newer parser detected segments that the old task never translated. Output generation stopped to avoid mixing source text into the translation.",
         missingTranslations:
           "This file is missing {missing} translated segments. Generated output may contain source-text fallbacks; continue the task to fill the gaps, then regenerate.",
         writerError:

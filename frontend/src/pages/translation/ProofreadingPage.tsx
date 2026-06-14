@@ -330,6 +330,9 @@ function formatRegenerateFailure(
       missing: numberDetail(file.details, "missing_segments"),
       expected: numberDetail(file.details, "expected_segments"),
       matched: numberDetail(file.details, "matched_segments"),
+      parsedFingerprint: stringDetail(file.details, "parsed_source_fingerprint", "-"),
+      cacheFingerprint: stringDetail(file.details, "cache_source_fingerprint", "-"),
+      firstMissing: stringDetail(file.details, "first_missing_segment_id", "-"),
     });
   } else if (file.code === "missing_translations") {
     reason = format(messages.regenerateFailureReasons.missingTranslations, {

@@ -13,6 +13,7 @@ later iteration) will, but a regular edit is a deterministic JSON patch.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import replace
@@ -114,6 +115,39 @@ def _collect_translations_from_cache(snapshot) -> dict[str, str]:
     translations and the children carry the authoritative output."""
 
     return _collect_translations_from_responses(_decoded_subtask_responses(snapshot))
+
+
+def _collect_source_texts_from_cache(snapshot) -> dict[str, str]:
+    source_texts: dict[str, str] = {}
+    for subtask in snapshot.subtasks:
+        req = subtask.request_payload or {}
+        segments = req.get("segments", [])
+        if not isinstance(segments, list):
+            continue
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            segment_id = segment.get("segment_id")
+            if not isinstance(segment_id, str) or segment_id in source_texts:
+                continue
+            source_texts[segment_id] = str(
+                segment.get("original_text") or segment.get("prompt_text") or ""
+            )
+    return source_texts
+
+
+def _source_segments_fingerprint(segments: list[tuple[str, str]]) -> str:
+    if not segments:
+        return ""
+    digest = hashlib.sha256()
+    for segment_id, source_text in sorted(
+        segments, key=lambda item: _segment_sort_key(item[0])
+    ):
+        digest.update(segment_id.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(source_text.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
 
 
 def _normalized_similarity_text(text: str) -> str:
@@ -762,6 +796,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         _flat, prepared_per_file = _prepare_segments(parsed_files, config)
 
         translations_by_segment = _collect_translations_from_cache(snapshot)
+        cached_source_texts = _collect_source_texts_from_cache(snapshot)
         if snapshot.record.status is TaskStatus.COMPLETED:
             mismatched_files = []
             for parsed in parsed_files:
@@ -773,6 +808,23 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     if segment.segment_id in translations_by_segment
                 )
                 if 0 < matched_segments < expected_segments:
+                    current_source_segments = [
+                        (segment.segment_id, segment.original_text)
+                        for segment in prepared_segments
+                    ]
+                    cached_source_segments = [
+                        (segment_id, source_text)
+                        for segment_id, source_text in cached_source_texts.items()
+                        if segment_id.split(":", 1)[0] == str(parsed.file_index)
+                    ]
+                    first_missing_segment_id = next(
+                        (
+                            segment.segment_id
+                            for segment in prepared_segments
+                            if segment.segment_id not in translations_by_segment
+                        ),
+                        "",
+                    )
                     mismatched_files.append(
                         {
                             "path": str(parsed.document.path),
@@ -786,6 +838,13 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                                 "matched_segments": matched_segments,
                                 "missing_segments": expected_segments
                                 - matched_segments,
+                                "parsed_source_fingerprint": _source_segments_fingerprint(
+                                    current_source_segments
+                                ),
+                                "cache_source_fingerprint": _source_segments_fingerprint(
+                                    cached_source_segments
+                                ),
+                                "first_missing_segment_id": first_missing_segment_id,
                             },
                         }
                     )
