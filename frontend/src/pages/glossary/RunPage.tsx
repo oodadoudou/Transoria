@@ -56,6 +56,7 @@ export function RunPage() {
   const reviewSnapshot = useRunSnapshot("glossary_review");
   const activeTaskId = useRuntimeStore((state) => state.glossary.activeTaskId);
   usePollRunSnapshot("glossary");
+  usePollRunSnapshot("glossary_review");
 
   // Refresh active-task state on mount so re-entering the page after
   // navigating away picks up the live backend status (poll only ticks
