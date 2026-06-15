@@ -20,6 +20,8 @@ class GlossaryReviewConfig:
     novel_background: str
     review_rounds: int
     batch_size: int
+    # Same transport retry budget as request_retry_attempts in other modules;
+    # the legacy field name is kept for persisted settings compatibility.
     retry_attempts: int
     model: ModelConfig
     prompt_preset: PromptPreset

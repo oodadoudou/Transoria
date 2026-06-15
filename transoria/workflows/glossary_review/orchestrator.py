@@ -52,6 +52,7 @@ CHARACTER_CATEGORY_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
+
 @dataclass(frozen=True)
 class ReviewHistoryItem:
     dst: str
