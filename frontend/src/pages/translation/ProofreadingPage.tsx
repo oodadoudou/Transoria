@@ -1811,7 +1811,7 @@ export function ProofreadingPage() {
                       </span>
                       <span className={styles.cell}>{item.src}</span>
                       <span className={styles.cell}>{item.dst || "—"}</span>
-                      <span>
+                      <span className={styles.statusStack}>
                         <span
                           className={`${styles.statusChip} ${
                             status === "low"

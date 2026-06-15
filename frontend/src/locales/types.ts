@@ -1248,6 +1248,7 @@ export interface Messages {
     tokensSubtitle: string;
     tokensInput: string;
     tokensOutput: string;
+    tokensCached: string;
     tokensTotal: string;
     activePrompt: string;
     activePromptSubtitle: string;

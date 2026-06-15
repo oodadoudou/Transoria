@@ -1252,6 +1252,7 @@ export const zh: Messages = {
     tokensSubtitle: "本次运行",
     tokensInput: "输入",
     tokensOutput: "输出",
+    tokensCached: "缓存命中",
     tokensTotal: "总计",
     activePrompt: "当前提示词",
     activePromptSubtitle: "预设",

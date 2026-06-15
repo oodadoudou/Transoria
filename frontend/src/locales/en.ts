@@ -1293,6 +1293,7 @@ export const en: Messages = {
     tokensSubtitle: "this run",
     tokensInput: "Input",
     tokensOutput: "Output",
+    tokensCached: "Cached",
     tokensTotal: "Total",
     activePrompt: "Active prompt",
     activePromptSubtitle: "preset",

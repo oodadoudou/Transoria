@@ -96,6 +96,10 @@ export function Inspector() {
             value={snapshot.usage.output_tokens}
           />
           <TokenCell
+            label={messages.inspector.tokensCached}
+            value={snapshot.usage.cached_input_tokens}
+          />
+          <TokenCell
             label={messages.inspector.tokensTotal}
             value={snapshot.usage.total_tokens}
             full

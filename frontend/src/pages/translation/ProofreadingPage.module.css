@@ -290,7 +290,8 @@
 
 .tableHead {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) minmax(0, 1fr) 90px;
+  grid-template-columns: 88px minmax(0, 1fr) minmax(0, 1fr) minmax(132px, 0.36fr);
+  column-gap: 10px;
   padding: 10px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -306,7 +307,8 @@
 
 .row {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) minmax(0, 1fr) 90px;
+  grid-template-columns: 88px minmax(0, 1fr) minmax(0, 1fr) minmax(132px, 0.36fr);
+  column-gap: 10px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--hairline-soft);
   font-size: 12.5px;
@@ -350,12 +352,26 @@
   flex: 0 0 auto;
 }
 
+.statusStack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 5px;
+  min-width: 0;
+  line-height: 1;
+}
+
 .statusChip {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 1px 6px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .statusOk {
@@ -369,14 +385,12 @@
 }
 
 .statusResidue {
-  margin-left: 4px;
   background: color-mix(in srgb, var(--warning, #8a4b0c) 14%, var(--panel));
   color: var(--warning, #8a4b0c);
   border: 1px solid color-mix(in srgb, var(--warning, #8a4b0c) 45%, var(--hairline));
 }
 
 .statusDuplicate {
-  margin-left: 4px;
   background: color-mix(in srgb, var(--accent, #6b3fa0) 14%, var(--panel));
   color: var(--accent, #6b3fa0);
   border: 1px solid color-mix(in srgb, var(--accent, #6b3fa0) 45%, var(--hairline));
