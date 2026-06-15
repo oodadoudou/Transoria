@@ -1310,7 +1310,6 @@ export function ProofreadingPage() {
   const modelAnomalyCount = proofreadingIndex.riskCounts.modelAnomaly;
   const untranslatedCount = proofreadingIndex.riskCounts.untranslated;
   const formatRescueCount = proofreadingIndex.riskCounts.formatRescue;
-  const totalCount = proofreadingIndex.riskCounts.total;
   const batchProgressPercent =
     batchRetranslateProgress && batchRetranslateProgress.total > 0
       ? Math.round(
@@ -1319,7 +1318,7 @@ export function ProofreadingPage() {
             100,
         )
       : 0;
-  const riskCards: Array<{
+  const riskSummaries: Array<{
     key: ProofreadingFilterKey;
     label: string;
     count: number;
@@ -1355,8 +1354,8 @@ export function ProofreadingPage() {
       count: formatRescueCount,
     },
   ];
-  const riskIssueCards = riskCards.filter((card) => card.count > 0);
-  const riskIssueTotal = riskIssueCards.reduce(
+  const riskIssueSummaries = riskSummaries.filter((item) => item.count > 0);
+  const riskIssueTotal = riskIssueSummaries.reduce(
     (sum, card) => sum + card.count,
     0,
   );
@@ -1365,7 +1364,7 @@ export function ProofreadingPage() {
       ? m.qualitySummaryClean
       : format(m.qualitySummaryNeedsReview, {
           n: riskIssueTotal,
-          focus: riskIssueCards
+          focus: riskIssueSummaries
             .slice(0, 3)
             .map((card) =>
               format(m.qualitySummaryFocus, {
@@ -1552,27 +1551,6 @@ export function ProofreadingPage() {
       ) : null}
 
       {snapshot ? (
-        <div className={styles.riskDashboard}>
-          {riskCards.map((card) => {
-            const active = filters.has(card.key);
-            return (
-              <button
-                key={card.key}
-                type="button"
-                className={`${styles.riskCard} ${active ? styles.riskCardActive : ""} ${card.count === 0 ? styles.riskCardDisabled : ""}`.trim()}
-                disabled={card.count === 0 && !active}
-                aria-pressed={active}
-                onClick={() => toggleFilter(card.key)}
-              >
-                <span className={styles.riskCardLabel}>{card.label}</span>
-                <span className={styles.riskCardValue}>{card.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-
-      {snapshot ? (
         <div
           className={`${styles.summaryStrip} ${
             riskIssueTotal === 0 ? styles.summaryGood : ""
@@ -1583,14 +1561,6 @@ export function ProofreadingPage() {
       ) : null}
 
       <div className={styles.toggleRow}>
-        <span>
-          {format(m.stats.total, { n: totalCount })} ·{" "}
-          {format(m.stats.lowConfidence, { n: lowConfCount })} ·{" "}
-          {format(m.stats.sourceResidue, { n: residueCount })} ·{" "}
-          {format(m.stats.possibleDuplicate, { n: possibleDuplicateCount })} ·{" "}
-          {format(m.stats.modelAnomaly, { n: modelAnomalyCount })} ·{" "}
-          {format(m.stats.untranslated, { n: untranslatedCount })}
-        </span>
         <span className={styles.filterPresetRow}>
           {filterPresets.map((preset) => {
             const active = isPresetActive(preset.keys);
