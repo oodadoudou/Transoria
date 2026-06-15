@@ -734,10 +734,33 @@ def _path_position(part: str) -> int:
 
 
 def read_archive_entry(archive: zipfile.ZipFile, path: str) -> bytes:
+    candidates = []
+    for candidate in (path, normalize_epub_path(path)):
+        if candidate not in candidates:
+            candidates.append(candidate)
     try:
-        return archive.read(path)
-    except KeyError as exc:
-        raise KeyError(path) from exc
+        return archive.read(candidates[0])
+    except KeyError:
+        pass
+    for candidate in candidates[1:]:
+        try:
+            return archive.read(candidate)
+        except KeyError:
+            pass
+    fallback = find_archive_entry_by_normalized_path(archive, path)
+    if fallback:
+        return archive.read(fallback)
+    raise KeyError(normalize_epub_path(path))
+
+
+def find_archive_entry_by_normalized_path(archive: zipfile.ZipFile, path: str) -> str:
+    normalized = normalize_epub_path(path)
+    matches = [
+        name
+        for name in archive.namelist()
+        if normalize_epub_path(name) == normalized
+    ]
+    return matches[0] if len(matches) == 1 else ""
 
 
 def iter_elements(root: etree._Element) -> Iterator[etree._Element]:

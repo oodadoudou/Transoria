@@ -5,6 +5,7 @@ import io
 import os
 import re
 import tempfile
+import unicodedata
 import uuid
 import zipfile
 import xml.etree.ElementTree as ET
@@ -448,7 +449,6 @@ class _EpubMerger:
         }
         try:
             with zipfile.ZipFile(source) as archive:
-                names = set(archive.namelist())
                 opf_path = _find_opf_path(archive)
                 opf_dir = str(Path(opf_path).parent).replace(".", "")
                 if opf_dir:
@@ -470,10 +470,10 @@ class _EpubMerger:
                     if not href or not media_type.startswith("image/"):
                         continue
                     entry_name = _join_href(opf_dir, href)
-                    if entry_name not in names:
+                    if not _archive_has_entry(archive, entry_name):
                         file_stats["warnings"].append(f"missing image: {href}")
                         continue
-                    data = archive.read(entry_name)
+                    data = _read_archive_bytes(archive, entry_name)
                     is_declared_cover = href == cover_href if cover_href else False
                     is_cover = is_declared_cover or _is_cover_image(item)
                     is_primary_cover = (
@@ -500,7 +500,7 @@ class _EpubMerger:
                     if not href or media_type != "text/css":
                         continue
                     entry_name = _join_href(opf_dir, href)
-                    if entry_name not in names:
+                    if not _archive_has_entry(archive, entry_name):
                         file_stats["warnings"].append(f"missing css: {href}")
                         continue
                     css = _read_text(archive, entry_name)
@@ -525,7 +525,7 @@ class _EpubMerger:
                     if media_type not in _HTML_MEDIA_TYPES:
                         continue
                     entry_name = _join_href(opf_dir, href)
-                    if entry_name not in names:
+                    if not _archive_has_entry(archive, entry_name):
                         file_stats["warnings"].append(f"missing html: {href}")
                         continue
                     html_text = _read_text(archive, entry_name)
@@ -601,11 +601,11 @@ class _EpubMerger:
                         file_stats["fonts_removed"] += 1
                         continue
                     entry_name = _join_href(opf_dir, href)
-                    if entry_name not in names:
+                    if not _archive_has_entry(archive, entry_name):
                         file_stats["warnings"].append(f"missing resource: {href}")
                         continue
                     new_href = f"Resources/{epub_index:03d}_{_safe_resource_name(Path(href).name)}"
-                    self.files[new_href] = archive.read(entry_name)
+                    self.files[new_href] = _read_archive_bytes(archive, entry_name)
                     resource_map[_normalize_path(href, opf_dir)] = new_href
                     self.manifest.append(
                         {"id": f"res_{epub_index:03d}_{len(self.manifest)}", "href": new_href, "media-type": media_type}
@@ -804,6 +804,7 @@ class _EpubMerger:
             )
             for href in sorted(self.files):
                 entry_name = href if href.startswith("META-INF/") else _join_href(_EPUB_CONTENT_DIR, href)
+                entry_name = _normalize_epub_path(entry_name)
                 archive.writestr(entry_name, self.files[href])
 
 
@@ -870,7 +871,7 @@ def _extract_ncx_entries(
     html_href_map: Mapping[str, str],
 ) -> tuple[_NavEntry, ...]:
     ncx_path = _join_href(opf_dir, ncx_href)
-    if ncx_path not in archive.namelist():
+    if not _archive_has_entry(archive, ncx_path):
         return ()
     try:
         root = ET.fromstring(_read_text(archive, ncx_path))
@@ -921,7 +922,7 @@ def _extract_epub3_nav_entries(
     html_href_map: Mapping[str, str],
 ) -> tuple[_NavEntry, ...]:
     nav_path = _join_href(opf_dir, nav_href)
-    if nav_path not in archive.namelist():
+    if not _archive_has_entry(archive, nav_path):
         return ()
     try:
         root = ET.fromstring(_replace_named_entities(_read_text(archive, nav_path)))
@@ -1154,21 +1155,24 @@ def _find_opf_path(archive: zipfile.ZipFile) -> str:
         rootfile = container.find(".//{*}rootfile")
         if rootfile is not None:
             full_path = rootfile.get("full-path", "")
-            if full_path and full_path in archive.namelist():
-                return full_path
+            if full_path:
+                matched = _find_archive_entry_by_normalized_path(archive, full_path)
+                if matched:
+                    return _normalize_epub_path(matched)
     except Exception:  # noqa: BLE001
         pass
     for candidate in ("OEBPS/content.opf", "EPUB/content.opf", "content.opf"):
-        if candidate in archive.namelist():
-            return candidate
+        matched = _find_archive_entry_by_normalized_path(archive, candidate)
+        if matched:
+            return _normalize_epub_path(matched)
     for name in archive.namelist():
         if name.lower().endswith(".opf"):
-            return name
+            return _normalize_epub_path(name)
     raise ValueError("OPF file not found")
 
 
 def _read_text(archive: zipfile.ZipFile, name: str) -> str:
-    raw = archive.read(name)
+    raw = _read_archive_bytes(archive, name)
     head = raw[:300].decode("ascii", errors="ignore")
     match = re.search(r'encoding\s*=\s*["\']([^"\']+)["\']', head, re.IGNORECASE)
     encodings = [match.group(1)] if match else []
@@ -1429,8 +1433,8 @@ def _manifest_xml(item: Mapping[str, str]) -> str:
 
 def _join_href(base: str, href: str) -> str:
     if not base:
-        return href.replace("\\", "/").strip("/")
-    return f"{base.strip('/')}/{href.replace('\\', '/').strip('/')}".strip("/")
+        return _normalize_epub_path(href.replace("\\", "/").strip("/"))
+    return _normalize_epub_path(f"{base.strip('/')}/{href.replace('\\', '/').strip('/')}".strip("/"))
 
 
 def _normalize_path(href: str, base_dir: str) -> str:
@@ -1452,11 +1456,12 @@ def _normalize_path(href: str, base_dir: str) -> str:
                 parts.pop()
             continue
         parts.append(part)
-    return "/".join(parts)
+    return _normalize_epub_path("/".join(parts))
 
 
 def _unique_href(href: str, existing: Iterable[str]) -> str:
-    used = set(existing)
+    href = _normalize_epub_path(href)
+    used = {_normalize_epub_path(item) for item in existing}
     if href not in used:
         return href
     path = Path(href)
@@ -1472,13 +1477,42 @@ def _unique_href(href: str, existing: Iterable[str]) -> str:
 
 
 def _safe_resource_name(name: str) -> str:
-    clean = _INVALID_FILENAME_CHARS.sub("_", name).strip(" .")
+    clean = _INVALID_FILENAME_CHARS.sub("_", _normalize_unicode(name)).strip(" .")
     return clean or f"resource-{uuid.uuid4().hex[:8]}"
 
 
 def _safe_filename(name: str) -> str:
-    clean = _INVALID_FILENAME_CHARS.sub("", name).strip(" .-_")
+    clean = _INVALID_FILENAME_CHARS.sub("", _normalize_unicode(name)).strip(" .-_")
     return clean or "Merged EPUB"
+
+
+def _normalize_unicode(text: str) -> str:
+    return unicodedata.normalize("NFC", text)
+
+
+def _normalize_epub_path(path: str) -> str:
+    return _normalize_unicode(path).replace("\\", "/")
+
+
+def _find_archive_entry_by_normalized_path(archive: zipfile.ZipFile, path: str) -> str:
+    normalized = _normalize_epub_path(path)
+    matches = [
+        name
+        for name in archive.namelist()
+        if _normalize_epub_path(name) == normalized
+    ]
+    return matches[0] if len(matches) == 1 else ""
+
+
+def _archive_has_entry(archive: zipfile.ZipFile, path: str) -> bool:
+    return bool(_find_archive_entry_by_normalized_path(archive, path))
+
+
+def _read_archive_bytes(archive: zipfile.ZipFile, path: str) -> bytes:
+    matched = _find_archive_entry_by_normalized_path(archive, path)
+    if not matched:
+        raise KeyError(_normalize_epub_path(path))
+    return archive.read(matched)
 
 
 def _xml_escape(text: object) -> str:
@@ -1496,9 +1530,9 @@ def _validate_epub(path: Path) -> None:
         names = archive.namelist()
         if not names or names[0] != "mimetype":
             raise ValueError("EPUB mimetype must be the first entry")
-        if archive.read("mimetype").decode("ascii", errors="ignore") != _MIMETYPE:
+        if _read_archive_bytes(archive, "mimetype").decode("ascii", errors="ignore") != _MIMETYPE:
             raise ValueError("invalid EPUB mimetype")
-        if "META-INF/container.xml" not in names:
+        if not _archive_has_entry(archive, "META-INF/container.xml"):
             raise ValueError("merged EPUB is missing META-INF/container.xml")
         try:
             container = ET.fromstring(_read_text(archive, "META-INF/container.xml"))
@@ -1506,7 +1540,7 @@ def _validate_epub(path: Path) -> None:
             raise ValueError(f"invalid EPUB container.xml: {exc}") from exc
         rootfile = container.find(".//{*}rootfile")
         opf_path = rootfile.get("full-path", "") if rootfile is not None else ""
-        if not opf_path or opf_path not in names:
+        if not opf_path or not _archive_has_entry(archive, opf_path):
             raise ValueError("merged EPUB is missing content.opf")
         try:
             opf_root = ET.fromstring(_read_text(archive, opf_path))
@@ -1523,7 +1557,7 @@ def _validate_epub(path: Path) -> None:
             if "#" in href or "%" in href:
                 raise ValueError(f"merged EPUB manifest href is not URL-safe: {href}")
             entry_name = _join_href(opf_dir, href)
-            if entry_name not in names:
+            if not _archive_has_entry(archive, entry_name):
                 raise ValueError(f"merged EPUB manifest references missing file: {href}")
             manifest_by_id[item_id] = item
             if item.get("media-type") in _HTML_MEDIA_TYPES or _NAV_PROPERTY in item.get("properties", "").split():
