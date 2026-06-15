@@ -1097,8 +1097,12 @@ def _resolve_output_path(base: Path, options: EpubMergeOptions) -> Path:
     suffix = _TXT_SUFFIX if options.output_format == "txt" else _EPUB_SUFFIX
     if options.output_path.strip():
         output = Path(options.output_path).expanduser().resolve()
-        if output.suffix.lower() != suffix:
-            output = output.with_suffix(suffix)
+        current_suffix = output.suffix.lower()
+        if current_suffix != suffix:
+            if current_suffix in {_EPUB_SUFFIX, _TXT_SUFFIX}:
+                output = output.with_suffix(suffix)
+            else:
+                output = output.with_name(f"{output.name}{suffix}")
         return output
     return (base / f"merged{suffix}").resolve()
 
