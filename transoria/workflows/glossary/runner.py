@@ -126,6 +126,7 @@ class GlossarySubtaskRunner:
     fake_name_session: FakeNameSession | None = None
     name_injections: Mapping[str, str] | None = None
     novel_background: str = ""
+    transport_retry_attempts: int = 3
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk_id, source_file, text = _decode_chunk(subtask.request_payload)
@@ -202,7 +203,7 @@ class GlossarySubtaskRunner:
         try:
             return await retry_async(
                 operation,
-                model=self.model,
+                transport_retry_attempts=self.transport_retry_attempts,
                 max_retry_attempts=_GLOSSARY_RETRY_BUDGET,
                 max_transport_retry_attempts=_transport_retry_budget(self.model),
                 should_retry=lambda exc: _should_retry_glossary_request(

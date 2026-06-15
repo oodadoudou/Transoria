@@ -61,6 +61,7 @@ export function RunPage() {
   const prompts = usePromptPresets("glossary_review");
   const promptSlice = prompts.glossary_review;
   const appSettings = useModuleSettings("app");
+  const glossaryReviewSettings = useModuleSettings("glossary_review");
   const snapshot = useRunSnapshot("glossary_review");
   const activeTaskId = useRuntimeStore(
     (state) => state.glossary_review.activeTaskId,
@@ -369,12 +370,12 @@ export function RunPage() {
         <FailedSubtasksModal
           failures={snapshot.failures}
           runtimeConfig={
-            activeModel
+            activeModel && glossaryReviewSettings.draft
               ? {
                   concurrencyLimit: activeModel.concurrency_limit,
                   rpmLimit: activeModel.rpm_limit,
                   timeoutSeconds: activeModel.timeout_seconds,
-                  retryAttempts: activeModel.retry_attempts,
+                  retryAttempts: glossaryReviewSettings.draft.retry_attempts,
                 }
               : undefined
           }

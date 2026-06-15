@@ -59,9 +59,6 @@ class ModelConfig:
     rpm_limit: int = 60
     tpm_limit: int = 0
     rotate_keys: bool = True
-    retry_attempts: int = 2
-    retry_initial_backoff_seconds: float = 1.0
-    retry_max_backoff_seconds: float = 30.0
     max_output_tokens: int = 4096
     # Upper bound on the provider-native reasoning token budget. Acts
     # as a ceiling when ``thinking_level`` maps to a smaller value (LOW
@@ -140,9 +137,6 @@ class ModelConfig:
             "rpm_limit": self.rpm_limit,
             "tpm_limit": self.tpm_limit,
             "rotate_keys": self.rotate_keys,
-            "retry_attempts": self.retry_attempts,
-            "retry_initial_backoff_seconds": self.retry_initial_backoff_seconds,
-            "retry_max_backoff_seconds": self.retry_max_backoff_seconds,
             "max_output_tokens": self.max_output_tokens,
             "thinking_budget_tokens": self.thinking_budget_tokens,
             "input_token_limit": self.input_token_limit,
@@ -190,13 +184,6 @@ class ModelConfig:
             rpm_limit=int(data.get("rpm_limit", 60)),
             tpm_limit=int(data.get("tpm_limit", 0)),
             rotate_keys=bool(data.get("rotate_keys", True)),
-            retry_attempts=int(data.get("retry_attempts", 2)),
-            retry_initial_backoff_seconds=float(
-                data.get("retry_initial_backoff_seconds", 1.0)
-            ),
-            retry_max_backoff_seconds=float(
-                data.get("retry_max_backoff_seconds", 30.0)
-            ),
             max_output_tokens=int(data.get("max_output_tokens", 4096)),
             thinking_budget_tokens=int(data.get("thinking_budget_tokens", 4096)),
             input_token_limit=int(data.get("input_token_limit", 0)),

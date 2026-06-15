@@ -2010,6 +2010,9 @@ class TaskService:
             source_language=source_language,
             target_language=target_language,
             post_replacements=post_replacements,
+            transport_retry_attempts=max(
+                0, int(settings.translation.request_retry_attempts)
+            ),
         )
         result = await runner.run(subtask)
         try:
@@ -2129,6 +2132,7 @@ class TaskService:
             low_confidence_max_retries=max(
                 0, int(translation.low_confidence_max_retries)
             ),
+            request_retry_attempts=max(0, int(translation.request_retry_attempts)),
         )
         return config, model, preset
 
@@ -2260,6 +2264,7 @@ class TaskService:
             combine_folder_glossary=bool(glossary.merge_folder_glossary),
             normalize_widths=bool(glossary.normalize_widths),
             novel_background=str(glossary.novel_background or ""),
+            request_retry_attempts=max(0, int(glossary.request_retry_attempts)),
         )
         return config, model, preset
 

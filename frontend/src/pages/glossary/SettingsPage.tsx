@@ -181,6 +181,16 @@ export function SettingsPage() {
             min={5}
           />
         </ToggleRow>
+        <ToggleRow label="" hint="">
+          <NumberField
+            label={settings.requestRetryAttempts}
+            value={draft.request_retry_attempts}
+            onChange={(v) => moduleSettings.update("request_retry_attempts", v)}
+            help={settings.requestRetryAttemptsHelp}
+            min={0}
+            max={20}
+          />
+        </ToggleRow>
       </Panel>
 
       <SettingsToolbar

@@ -834,6 +834,7 @@ def _default_runner_factory(
         max_length_ratio=config.max_length_ratio,
         max_punctuation_delta=config.max_punctuation_delta,
         low_confidence_max_retries=config.low_confidence_max_retries,
+        transport_retry_attempts=config.request_retry_attempts,
         tpm_limiter=tpm_limiter,
         key_pool=key_pool,
         stream=config.stream,

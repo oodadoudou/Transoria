@@ -14,7 +14,6 @@ import json
 from typing import Awaitable, Callable, TypeVar
 
 from transoria.llm.client import LlmRequestError, NoApiKeyError
-from transoria.llm.config import ModelConfig
 
 
 T = TypeVar("T")
@@ -22,9 +21,16 @@ T = TypeVar("T")
 # Format-drift errors (line count mismatch / duplicates / malformed JSON) almost
 # never self-heal across retries — the model produced semantically wrong output,
 # not a transport blip. Cap retries at 2 to stop burning tokens on a class of
-# failure that ``model.retry_attempts`` (sized for transient 5xx/429/timeout)
+# failure that the transport-retry budget (sized for transient 5xx/429/timeout)
 # was never meant to cover.
 _FORMAT_DRIFT_RETRY_BUDGET = 2
+
+# Exponential-backoff bounds for transient transport retries. Internal, not
+# user-tunable: the per-module setting only controls how many times a failed
+# request is re-sent; the wait curve between attempts is a fixed sensible
+# default (1s → 2s → 4s … capped at 30s).
+_DEFAULT_INITIAL_BACKOFF_SECONDS = 1.0
+_DEFAULT_MAX_BACKOFF_SECONDS = 30.0
 
 
 def _is_format_drift_error(exc: BaseException) -> bool:
@@ -83,28 +89,31 @@ def is_transient_llm_error(exc: BaseException) -> bool:
 async def retry_async(
     operation: Callable[[], Awaitable[T]],
     *,
-    model: ModelConfig,
+    transport_retry_attempts: int,
     max_retry_attempts: int | None = None,
     max_transport_retry_attempts: int | None = None,
     should_retry: Callable[[BaseException], bool] = is_transient_llm_error,
     is_format_retry_error: Callable[[BaseException], bool] = _is_format_drift_error,
+    initial_backoff_seconds: float | None = None,
+    max_backoff_seconds: float | None = None,
     sleep: Callable[[float], "asyncio.Future[None]"] = asyncio.sleep,
 ) -> T:
     """Run ``operation`` with exponential-backoff retries.
 
-    Transport drift (5xx/429/timeout/transport_error) gets ``model.retry_attempts``
-    retries; format drift (line count mismatch / duplicates / JSONDecodeError)
-    is capped at ``min(2, model.retry_attempts)`` because more retries rarely
-    self-heal a model that already produced semantically wrong output. Backoff
-    doubles from ``retry_initial_backoff_seconds`` up to
-    ``retry_max_backoff_seconds``. ``max_retry_attempts`` caps every retry class;
-    ``max_transport_retry_attempts`` caps only transport-style retries so callers
-    can keep format self-repair without letting a wedged provider burn the full
-    profile-level budget. ``is_format_retry_error`` lets workflow-local format
-    errors share that budget. ``asyncio.CancelledError`` is re-raised verbatim.
+    Transport drift (5xx/429/timeout/transport_error) gets
+    ``transport_retry_attempts`` retries (the per-module setting); format drift
+    (line count mismatch / duplicates / JSONDecodeError) is capped at
+    ``min(2, transport_retry_attempts)`` because more retries rarely self-heal a
+    model that already produced semantically wrong output. Backoff doubles from
+    ``initial_backoff_seconds`` up to ``max_backoff_seconds``.
+    ``max_retry_attempts`` caps every retry class; ``max_transport_retry_attempts``
+    caps only transport-style retries so callers can keep format self-repair
+    without letting a wedged provider burn the full budget.
+    ``is_format_retry_error`` lets workflow-local format errors share that
+    budget. ``asyncio.CancelledError`` is re-raised verbatim.
     """
 
-    retry_budget = model.retry_attempts
+    retry_budget = max(0, transport_retry_attempts)
     if max_retry_attempts is not None:
         retry_budget = min(retry_budget, max(0, max_retry_attempts))
     transport_remaining = max(0, retry_budget)
@@ -113,8 +122,18 @@ async def retry_async(
         transport_remaining = min(
             transport_remaining, max(0, max_transport_retry_attempts)
         )
-    backoff = max(0.0, model.retry_initial_backoff_seconds)
-    max_backoff = max(backoff, model.retry_max_backoff_seconds)
+    initial = (
+        _DEFAULT_INITIAL_BACKOFF_SECONDS
+        if initial_backoff_seconds is None
+        else initial_backoff_seconds
+    )
+    ceiling = (
+        _DEFAULT_MAX_BACKOFF_SECONDS
+        if max_backoff_seconds is None
+        else max_backoff_seconds
+    )
+    backoff = max(0.0, initial)
+    max_backoff = max(backoff, ceiling)
 
     while True:
         try:

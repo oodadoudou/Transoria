@@ -49,6 +49,7 @@ export function RunPage() {
   const prompts = usePromptPresets("glossary");
   const promptSlice = prompts.glossary;
   const appSettings = useModuleSettings("app");
+  const glossarySettings = useModuleSettings("glossary");
   const snapshot = useRunSnapshot("glossary");
   const activeTaskId = useRuntimeStore((state) => state.glossary.activeTaskId);
   usePollRunSnapshot("glossary");
@@ -246,12 +247,12 @@ export function RunPage() {
         <FailedSubtasksModal
           failures={snapshot.failures}
           runtimeConfig={
-            activeModel
+            activeModel && glossarySettings.draft
               ? {
                   concurrencyLimit: activeModel.concurrency_limit,
                   rpmLimit: activeModel.rpm_limit,
                   timeoutSeconds: activeModel.timeout_seconds,
-                  retryAttempts: activeModel.retry_attempts,
+                  retryAttempts: glossarySettings.draft.request_retry_attempts,
                 }
               : undefined
           }

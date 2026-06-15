@@ -46,6 +46,10 @@ class GlossaryConfig:
     normalize_widths: bool = True
     novel_background: str = ""
 
+    # Per-module transport-retry budget: re-sends of a failed network
+    # request (timeout / 429 / 5xx / transport error) with backoff.
+    request_retry_attempts: int = 3
+
     stream: bool = False
     debug_log_dir: Path | None = None
     buffer_epub_archives: bool = False

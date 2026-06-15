@@ -139,14 +139,12 @@ export function SettingsPage() {
         </Row>
         <Row label="" hint="">
           <NumberField
-            label={settings.lowConfidenceMaxRetries}
-            value={draft.low_confidence_max_retries}
-            onChange={(v) =>
-              moduleSettings.update("low_confidence_max_retries", v)
-            }
-            help={settings.lowConfidenceMaxRetriesHelp}
+            label={settings.requestRetryAttempts}
+            value={draft.request_retry_attempts}
+            onChange={(v) => moduleSettings.update("request_retry_attempts", v)}
+            help={settings.requestRetryAttemptsHelp}
             min={0}
-            max={10}
+            max={20}
           />
         </Row>
         <Row label="" hint="">
@@ -156,6 +154,21 @@ export function SettingsPage() {
             onChange={(v) => moduleSettings.update("timeout_seconds", v)}
             help={settings.timeoutSecondsHelp}
             min={5}
+          />
+        </Row>
+      </Panel>
+
+      <Panel title={settings.advancedTitle} subtitle={settings.advancedSub}>
+        <Row label="" hint="">
+          <NumberField
+            label={settings.lowConfidenceMaxRetries}
+            value={draft.low_confidence_max_retries}
+            onChange={(v) =>
+              moduleSettings.update("low_confidence_max_retries", v)
+            }
+            help={settings.lowConfidenceMaxRetriesHelp}
+            min={0}
+            max={10}
           />
         </Row>
       </Panel>

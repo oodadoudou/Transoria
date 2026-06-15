@@ -113,7 +113,6 @@ export const zh: Messages = {
       "本配置同时发起的请求数。0 表示自动；显式值越高越快，但可能触发单密钥限速。",
     rpm: "每分钟请求数软上限。后端在每次请求前预先节流。",
     tpm: "每分钟 token 数软上限。0 表示不限（仅当 provider 提供 TPM 配额时启用）。",
-    retry: "瞬时失败（5xx / 超时 / 限速）的最大重试次数。退避按指数递增。",
     maxOutputTokens:
       "单次请求输出的 token 上限。值低更省，值高给推理留余地。0 表示交给 provider 默认；Anthropic 必须有上限，0 时会自动用 8192 兜底。",
     temperature: "采样温度 0–2。低值（0–0.5）更确定；高值更发散。",
@@ -681,9 +680,14 @@ export const zh: Messages = {
       precedingLines: "前置上下文行数",
       precedingLinesHelp:
         "每次翻译任务可附加的前置原文行数上限。上下文越多,前后一致性越好,token开销略增。",
+      requestRetryAttempts: "网络请求重试次数",
+      requestRetryAttemptsHelp:
+        "超时、429、5xx 或网络错误等瞬时请求失败时额外重试几次。退避间隔由内部固定策略控制。设为 0 表示首次请求失败后直接失败。",
       lowConfidenceMaxRetries: "低置信度重试次数",
       lowConfidenceMaxRetriesHelp:
         "当某段译文异常时(长度差异过大、原文语言字符残留等),最多重译该段几次。设为 0 关闭重试。",
+      advancedTitle: "高级",
+      advancedSub: "可疑译文的质量重试控制。网络请求重试在上方配置。",
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。慢模型/长输出可调高，默认 600。",
@@ -1004,6 +1008,9 @@ export const zh: Messages = {
       maxTermDisplayLength: "术语最大显示长度",
       maxTermDisplayLengthHelp:
         "字符宽度超过此值的候选术语丢弃，防止 LLM 把整句话当作术语返回。默认 32。",
+      requestRetryAttempts: "网络请求重试次数",
+      requestRetryAttemptsHelp:
+        "每个术语提取批次遇到超时、429、5xx 或网络错误等瞬时请求失败时额外重试几次。退避间隔由内部固定策略控制。设为 0 表示首次请求失败后直接失败。",
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。慢模型/长输出可调高，默认 600。",
@@ -1075,9 +1082,9 @@ export const zh: Messages = {
       reviewRoundsHelp: "多轮会基于上一轮修改后的术语表继续审查。默认 1。",
       batchSize: "每批术语数",
       batchSizeHelp: "每个模型请求包含多少条术语。较小更稳，较大更省请求数。",
-      retryAttempts: "重试次数",
+      retryAttempts: "网络请求重试次数",
       retryAttemptsHelp:
-        "瞬时网络错误、限速或超时时，每批最多额外重试几次。等待时间会递增；设为 0 则只使用模型配置里的重试次数。",
+        "每个术语审查批次遇到超时、429、5xx 或网络错误等瞬时请求失败时额外重试几次。退避间隔由内部固定策略控制。设为 0 表示首次请求失败后直接失败。",
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。",
@@ -1335,9 +1342,6 @@ export const zh: Messages = {
     tpm: "每分钟token数 (TPM)",
     tpmHelp:
       "每分钟输入+输出token总数软上限。服务商按token桶节流时尤其有用。0 = 不限。",
-    retryAttempts: "重试次数",
-    retryAttemptsHelp:
-      "瞬时错误(5xx、429、网络)的重试次数。每次重试间隔指数退避增长。",
     reasoning: "推理",
     reasoningHint: "控制模型原生思考强度；非思考模型开启无效。",
     thinkingLevel: "推理强度",

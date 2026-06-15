@@ -68,6 +68,12 @@ class TranslationConfig:
     max_punctuation_delta: int = 12
     low_confidence_max_retries: int = 3
 
+    # How many times a failed *network request* (timeout / 429 / 5xx /
+    # transport error) is re-sent with backoff. This is the per-module
+    # transport-retry budget; content-quality retries (partial-accept,
+    # solo) are fixed internal policy, not driven by this number.
+    request_retry_attempts: int = 3
+
     stream: bool = False
     debug_log_dir: Path | None = None
 

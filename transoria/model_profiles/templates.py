@@ -62,7 +62,6 @@ class RecommendedDefaults:
     concurrency_limit: int = 0
     rpm_limit: int = 60
     tpm_limit: int = 0
-    retry_attempts: int = 10
     max_output_tokens: int = 4096
     temperature: float = 0.3
     top_p: float = 1.0
@@ -74,7 +73,6 @@ class RecommendedDefaults:
             "concurrency_limit": self.concurrency_limit,
             "rpm_limit": self.rpm_limit,
             "tpm_limit": self.tpm_limit,
-            "retry_attempts": self.retry_attempts,
             "max_output_tokens": self.max_output_tokens,
             "temperature": self.temperature,
             "top_p": self.top_p,
@@ -135,10 +133,6 @@ _OPENAI_HINTS: Mapping[str, FieldHint] = {
         recommended_value="0 (disabled)",
         source_url="https://platform.openai.com/docs/guides/rate-limits",
     ),
-    "retry_attempts": FieldHint(
-        description_key="modelHints.retry",
-        recommended_value="10",
-    ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
         recommended_value="4096",
@@ -170,10 +164,6 @@ _ANTHROPIC_HINTS: Mapping[str, FieldHint] = {
         recommended_value="0 (disabled)",
         source_url="https://docs.anthropic.com/en/api/rate-limits",
     ),
-    "retry_attempts": FieldHint(
-        description_key="modelHints.retry",
-        recommended_value="10",
-    ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
         recommended_value="8192",
@@ -204,10 +194,6 @@ _GOOGLE_HINTS: Mapping[str, FieldHint] = {
         description_key="modelHints.tpm",
         recommended_value="0 (disabled)",
     ),
-    "retry_attempts": FieldHint(
-        description_key="modelHints.retry",
-        recommended_value="10",
-    ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
         recommended_value="8192",
@@ -236,10 +222,6 @@ _DEEPSEEK_HINTS: Mapping[str, FieldHint] = {
     "tpm_limit": FieldHint(
         description_key="modelHints.tpm",
         recommended_value="0 (disabled)",
-    ),
-    "retry_attempts": FieldHint(
-        description_key="modelHints.retry",
-        recommended_value="10",
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
@@ -270,10 +252,6 @@ _VOLCENGINE_HINTS: Mapping[str, FieldHint] = {
         description_key="modelHints.tpm",
         recommended_value="0 (disabled)",
     ),
-    "retry_attempts": FieldHint(
-        description_key="modelHints.retry",
-        recommended_value="10",
-    ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
         recommended_value="4096",
@@ -301,10 +279,6 @@ _SAKURA_HINTS: Mapping[str, FieldHint] = {
         description_key="modelHints.tpm",
         recommended_value="0 (disabled)",
     ),
-    "retry_attempts": FieldHint(
-        description_key="modelHints.retry",
-        recommended_value="10",
-    ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
         recommended_value="2048",
@@ -323,7 +297,6 @@ _CUSTOM_HINTS: Mapping[str, FieldHint] = {
     "concurrency_limit": FieldHint(description_key="modelHints.concurrency"),
     "rpm_limit": FieldHint(description_key="modelHints.rpm"),
     "tpm_limit": FieldHint(description_key="modelHints.tpm"),
-    "retry_attempts": FieldHint(description_key="modelHints.retry"),
     "max_output_tokens": FieldHint(description_key="modelHints.maxOutputTokens"),
     "temperature": FieldHint(description_key="modelHints.temperature"),
 }

@@ -55,6 +55,7 @@ export function RunPage() {
   const prompts = usePromptPresets("translation");
   const promptSlice = prompts.translation;
   const appSettings = useModuleSettings("app");
+  const translationSettings = useModuleSettings("translation");
   const snapshot = useRunSnapshot("translation");
   const activeTaskId = useRuntimeStore(
     (state) => state.translation.activeTaskId,
@@ -304,12 +305,13 @@ export function RunPage() {
         <FailedSubtasksModal
           failures={snapshot.failures}
           runtimeConfig={
-            activeModel
+            activeModel && translationSettings.draft
               ? {
                   concurrencyLimit: activeModel.concurrency_limit,
                   rpmLimit: activeModel.rpm_limit,
                   timeoutSeconds: activeModel.timeout_seconds,
-                  retryAttempts: activeModel.retry_attempts,
+                  retryAttempts:
+                    translationSettings.draft.request_retry_attempts,
                 }
               : undefined
           }

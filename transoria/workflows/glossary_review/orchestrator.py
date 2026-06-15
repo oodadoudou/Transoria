@@ -52,10 +52,6 @@ CHARACTER_CATEGORY_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-_DEFAULT_RETRY_INITIAL_BACKOFF_SECONDS = 1.0
-_DEFAULT_RETRY_MAX_BACKOFF_SECONDS = 8.0
-
-
 @dataclass(frozen=True)
 class ReviewHistoryItem:
     dst: str
@@ -100,23 +96,13 @@ def _default_runner_factory(
     )
     return GlossaryReviewSubtaskRunner(
         client=client,
-        model=replace(
-            config.model,
-            retry_attempts=max(config.model.retry_attempts, config.retry_attempts),
-            retry_initial_backoff_seconds=max(
-                config.model.retry_initial_backoff_seconds,
-                _DEFAULT_RETRY_INITIAL_BACKOFF_SECONDS,
-            ),
-            retry_max_backoff_seconds=max(
-                config.model.retry_max_backoff_seconds,
-                _DEFAULT_RETRY_MAX_BACKOFF_SECONDS,
-            ),
-        ),
+        model=config.model,
         prompt_preset=config.prompt_preset,
         tpm_limiter=tpm_limiter,
         key_pool=key_pool,
         stream=config.stream,
         debug_log_dir=config.debug_log_dir,
+        transport_retry_attempts=config.retry_attempts,
     )
 
 

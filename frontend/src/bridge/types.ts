@@ -125,6 +125,7 @@ export interface TranslationSettings {
   bilingual_subfolder_name: string;
   context_lines: number;
   low_confidence_max_retries: number;
+  request_retry_attempts: number;
   auto_open_output_folder: boolean;
   timeout_seconds: number;
   translation_glossary: PersistedGlossaryEntry[];
@@ -149,6 +150,7 @@ export interface GlossarySettings {
   auto_open_output_folder: boolean;
   novel_background: string;
   timeout_seconds: number;
+  request_retry_attempts: number;
 }
 
 export interface GlossaryReviewSettings {
@@ -218,9 +220,6 @@ export interface ModelProfile {
   rpm_limit: number;
   tpm_limit: number;
   rotate_keys: boolean;
-  retry_attempts: number;
-  retry_initial_backoff_seconds: number;
-  retry_max_backoff_seconds: number;
   max_output_tokens: number;
   thinking_budget_tokens: number;
   input_token_limit: number;
@@ -336,7 +335,6 @@ export interface ProviderTemplateRecommendedDefaults {
   concurrency_limit: number;
   rpm_limit: number;
   tpm_limit: number;
-  retry_attempts: number;
   max_output_tokens: number;
   temperature: number;
   top_p: number;

@@ -105,7 +105,6 @@ export interface Messages {
     concurrency: string;
     rpm: string;
     tpm: string;
-    retry: string;
     maxOutputTokens: string;
     temperature: string;
   };
@@ -344,8 +343,12 @@ export interface Messages {
       requestTimeoutHelp: string;
       precedingLines: string;
       precedingLinesHelp: string;
+      requestRetryAttempts: string;
+      requestRetryAttemptsHelp: string;
       lowConfidenceMaxRetries: string;
       lowConfidenceMaxRetriesHelp: string;
+      advancedTitle: string;
+      advancedSub: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
       on: string;
@@ -636,6 +639,8 @@ export interface Messages {
       minimumFrequencyHelp: string;
       maxTermDisplayLength: string;
       maxTermDisplayLengthHelp: string;
+      requestRetryAttempts: string;
+      requestRetryAttemptsHelp: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
       on: string;
@@ -1205,8 +1210,6 @@ export interface Messages {
     rpmHelp: string;
     tpm: string;
     tpmHelp: string;
-    retryAttempts: string;
-    retryAttemptsHelp: string;
     reasoning: string;
     reasoningHint: string;
     thinkingLevel: string;

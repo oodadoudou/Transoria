@@ -46,7 +46,6 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             concurrency_limit=0,
             rpm_limit=60,
             tpm_limit=0,
-            retry_attempts=10,
             max_output_tokens=4096,
             input_token_limit=1024,  # → 64-line chunks
             temperature=0.3,
@@ -61,7 +60,6 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             concurrency_limit=0,
             rpm_limit=50,
             tpm_limit=0,
-            retry_attempts=10,
             max_output_tokens=8192,
             input_token_limit=2048,  # → 128-line chunks
             temperature=1.0,
@@ -76,7 +74,6 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             concurrency_limit=0,
             rpm_limit=60,
             tpm_limit=0,
-            retry_attempts=10,
             max_output_tokens=8192,
             input_token_limit=2048,  # → 128-line chunks
             temperature=0.7,
@@ -92,7 +89,6 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             concurrency_limit=0,
             rpm_limit=60,
             tpm_limit=0,
-            retry_attempts=10,
             max_output_tokens=4096,
             input_token_limit=1024,  # → 64-line chunks
             temperature=0.3,

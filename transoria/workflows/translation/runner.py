@@ -308,6 +308,7 @@ class TranslationSubtaskRunner:
     debug_log_dir: Path | None = None
     fake_name_roster: FakeNameRoster | FakeNameSession | None = None
     solo_retry_limiter: asyncio.Semaphore | None = None
+    transport_retry_attempts: int = 3
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
@@ -381,7 +382,7 @@ class TranslationSubtaskRunner:
                     response = await asyncio.wait_for(
                         retry_async(
                             _llm_call,
-                            model=request_model,
+                            transport_retry_attempts=self.transport_retry_attempts,
                             max_retry_attempts=(
                                 None
                                 if phase == "batch"
@@ -567,7 +568,7 @@ class TranslationSubtaskRunner:
                             solo_response = await asyncio.wait_for(
                                 retry_async(
                                     _solo_llm_call,
-                                    model=solo_request_model,
+                                    transport_retry_attempts=self.transport_retry_attempts,
                                     max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
                                     max_transport_retry_attempts=_transport_retry_budget(
                                         self.model
@@ -583,7 +584,7 @@ class TranslationSubtaskRunner:
                                 solo_response = await asyncio.wait_for(
                                     retry_async(
                                         _solo_llm_call,
-                                        model=solo_request_model,
+                                        transport_retry_attempts=self.transport_retry_attempts,
                                         max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
                                         max_transport_retry_attempts=_transport_retry_budget(
                                             self.model

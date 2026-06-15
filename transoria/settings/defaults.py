@@ -61,6 +61,7 @@ class TranslationSettings:
     # heuristic keeps token cost bounded.
     context_lines: int = 25
     low_confidence_max_retries: int = 3
+    request_retry_attempts: int = 3
     auto_open_output_folder: bool = False
     timeout_seconds: int = 600
     # Glossary entries threaded into TranslationConfig.glossary at run
@@ -99,6 +100,7 @@ class GlossarySettings:
     auto_open_output_folder: bool = False
     novel_background: str = ""
     timeout_seconds: int = 600
+    request_retry_attempts: int = 3
 
 
 @dataclass(frozen=True)

@@ -116,8 +116,6 @@ export const en: Messages = {
       "How many requests run in parallel for this profile. 0 means automatic; higher explicit values are faster but may hit per-key rate limits.",
     rpm: "Soft cap on requests per minute. The backend pre-throttles before each call to stay under this.",
     tpm: "Soft cap on tokens per minute. 0 disables the cap (use only when the provider exposes a TPM quota).",
-    retry:
-      "Maximum retry attempts on transient failures (5xx, timeouts, rate-limit). Backoff is exponential.",
     maxOutputTokens:
       "Upper bound on tokens emitted per request. Lower = cheaper, higher = more headroom for reasoning. 0 defers to the provider default; Anthropic requires a cap, so 0 is auto-substituted with 8192.",
     temperature:
@@ -701,9 +699,15 @@ export const en: Messages = {
       precedingLines: "Preceding lines threshold",
       precedingLinesHelp:
         "Maximum number of preceding source lines included as context for each translation task. More context = better consistency, slightly higher token cost.",
+      requestRetryAttempts: "Network request retry attempts",
+      requestRetryAttemptsHelp:
+        "Extra retries for transient request failures such as timeouts, 429, 5xx, or network errors. Backoff is fixed internally. Set to 0 to fail after the first request attempt.",
       lowConfidenceMaxRetries: "Low-confidence retry attempts",
       lowConfidenceMaxRetriesHelp:
         "When a translated segment looks suspicious (length far off, source-language characters left over, etc.), retry that segment up to this many times. Set to 0 to disable retries.",
+      advancedTitle: "Advanced",
+      advancedSub:
+        "Quality retry controls for suspicious translations. Network retry is configured above.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 600.",
@@ -1034,6 +1038,9 @@ export const en: Messages = {
       maxTermDisplayLength: "Max term display length",
       maxTermDisplayLengthHelp:
         "Drop candidates whose display width exceeds this — guards against the LLM returning a whole sentence as a term. Default 32.",
+      requestRetryAttempts: "Network request retry attempts",
+      requestRetryAttemptsHelp:
+        "Extra retries per extraction batch for transient request failures such as timeouts, 429, 5xx, or network errors. Backoff is fixed internally. Set to 0 to fail after the first request attempt.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 600.",
@@ -1111,9 +1118,9 @@ export const en: Messages = {
       batchSize: "Terms per batch",
       batchSizeHelp:
         "How many terms each model request reviews. Smaller is steadier; larger uses fewer requests.",
-      retryAttempts: "Retry attempts",
+      retryAttempts: "Network request retry attempts",
       retryAttemptsHelp:
-        "Extra retries per batch for transient network, rate-limit, or timeout errors. Wait time increases between retries. Set to 0 to use only the model profile retry setting.",
+        "Extra retries per review batch for transient request failures such as timeouts, 429, 5xx, or network errors. Backoff is fixed internally. Set to 0 to fail after the first request attempt.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed.",
@@ -1383,9 +1390,6 @@ export const en: Messages = {
     tpm: "Tokens / minute (TPM)",
     tpmHelp:
       "Soft cap on input + output tokens consumed per minute. Useful when the provider throttles by token bucket. 0 = unlimited.",
-    retryAttempts: "Retry attempts",
-    retryAttemptsHelp:
-      "How many times to retry on transient errors (5xx, 429, network). Each retry waits longer (exponential backoff).",
     reasoning: "Reasoning",
     reasoningHint:
       "Controls native model reasoning. Has no effect on non-thinking models.",

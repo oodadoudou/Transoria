@@ -113,11 +113,12 @@ class GlossaryReviewSubtaskRunner:
     key_pool: KeyPool | None = None
     stream: bool = False
     debug_log_dir: Path | None = None
+    transport_retry_attempts: int = 3
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         return await retry_async(
             lambda: self._attempt(subtask),
-            model=self.model,
+            transport_retry_attempts=self.transport_retry_attempts,
             should_retry=is_transient_llm_error,
         )
 

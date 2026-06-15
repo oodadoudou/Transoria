@@ -74,9 +74,6 @@ interface Draft {
   concurrency_limit: number;
   rpm_limit: number;
   tpm_limit: number;
-  retry_attempts: number;
-  retry_initial_backoff_seconds: number;
-  retry_max_backoff_seconds: number;
   max_output_tokens: number;
   thinking_budget_tokens: number;
   input_token_limit: number;
@@ -100,9 +97,6 @@ const EMPTY_DRAFT: Draft = {
   concurrency_limit: 0,
   rpm_limit: 60,
   tpm_limit: 0,
-  retry_attempts: 2,
-  retry_initial_backoff_seconds: 1,
-  retry_max_backoff_seconds: 30,
   max_output_tokens: 4096,
   thinking_budget_tokens: 4096,
   input_token_limit: 0,
@@ -128,7 +122,6 @@ function templateToDraft(t: ProviderTemplate): Draft {
     concurrency_limit: r.concurrency_limit,
     rpm_limit: r.rpm_limit,
     tpm_limit: r.tpm_limit,
-    retry_attempts: r.retry_attempts,
     max_output_tokens: r.max_output_tokens,
     thinking_budget_tokens: r.max_output_tokens,
     temperature: r.temperature,
@@ -149,9 +142,6 @@ function profileToDraft(p: ModelProfile): Draft {
     concurrency_limit: p.concurrency_limit,
     rpm_limit: p.rpm_limit,
     tpm_limit: p.tpm_limit,
-    retry_attempts: p.retry_attempts,
-    retry_initial_backoff_seconds: p.retry_initial_backoff_seconds,
-    retry_max_backoff_seconds: p.retry_max_backoff_seconds,
     max_output_tokens: p.max_output_tokens,
     thinking_budget_tokens: p.thinking_budget_tokens,
     input_token_limit: p.input_token_limit,
@@ -186,9 +176,6 @@ function draftToCreatePayload(d: Draft): ModelProfileDraft {
     concurrency_limit: normalized.concurrency_limit,
     rpm_limit: normalized.rpm_limit,
     tpm_limit: normalized.tpm_limit,
-    retry_attempts: normalized.retry_attempts,
-    retry_initial_backoff_seconds: normalized.retry_initial_backoff_seconds,
-    retry_max_backoff_seconds: normalized.retry_max_backoff_seconds,
     max_output_tokens: normalized.max_output_tokens,
     thinking_budget_tokens: normalized.thinking_budget_tokens,
     input_token_limit: normalized.input_token_limit,
@@ -774,13 +761,6 @@ function FormStep({
               label={model.tpm}
               value={draft.tpm_limit}
               onChange={(v) => update("tpm_limit", v)}
-            />
-          </FieldRow>
-          <FieldRow hint={renderHint("retry_attempts")}>
-            <NumberField
-              label={model.retryAttempts}
-              value={draft.retry_attempts}
-              onChange={(v) => update("retry_attempts", v)}
             />
           </FieldRow>
         </div>
