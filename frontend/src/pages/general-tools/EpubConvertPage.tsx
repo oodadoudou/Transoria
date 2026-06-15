@@ -122,7 +122,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
   const isRunning =
     activeTaskId !== null &&
     (snapshot.status === "running" || snapshot.status === "pending");
-  const settled = snapshot.progress.completed + snapshot.progress.skipped;
+  const settled = snapshot.progress.completed;
   const percent =
     snapshot.progress.total > 0
       ? Math.floor((settled / snapshot.progress.total) * 100)

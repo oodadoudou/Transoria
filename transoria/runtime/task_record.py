@@ -106,11 +106,17 @@ class TaskSnapshot:
             counts[subtask.status] += 1
         rate = 0.0
         if elapsed_seconds is not None and elapsed_seconds > 0:
-            settled = counts[SubtaskStatus.COMPLETED] + counts[SubtaskStatus.SKIPPED]
+            settled = counts[SubtaskStatus.COMPLETED]
             if settled > 0:
                 rate = settled / elapsed_seconds
+        total = (
+            counts[SubtaskStatus.PENDING]
+            + counts[SubtaskStatus.RUNNING]
+            + counts[SubtaskStatus.COMPLETED]
+            + counts[SubtaskStatus.FAILED]
+        )
         return ProgressStats(
-            total=len(self.subtasks),
+            total=total,
             pending=counts[SubtaskStatus.PENDING],
             running=counts[SubtaskStatus.RUNNING],
             completed=counts[SubtaskStatus.COMPLETED],

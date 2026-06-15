@@ -239,9 +239,8 @@ export function RunPage() {
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
   const failed = snapshot.progress.failed;
-  const skipped = snapshot.progress.skipped;
   const remaining = snapshot.progress.pending + snapshot.progress.running;
-  const settled = completed + skipped;
+  const settled = completed;
   const roundProgress = snapshot.roundProgress;
   const roundCurrent = roundProgress
     ? Math.max(

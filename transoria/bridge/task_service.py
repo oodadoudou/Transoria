@@ -3674,10 +3674,10 @@ class TaskService:
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
             )
+        snapshot = self._reconcile_zombie(snapshot, cache)
         existing = self._resolve_live_running(task_id, snapshot.record.status)
         if existing is not None and not existing.is_done:
             self._raise_live_task_conflict(existing)
-        snapshot = self._reconcile_zombie(snapshot, cache)
         if snapshot.record.status not in (
             TaskStatus.STOPPED,
             TaskStatus.PAUSED,
@@ -4113,10 +4113,7 @@ class TaskService:
         return existing
 
     def _raise_live_task_conflict(self, running: RunningTask) -> None:
-        stalled = running.is_stalled(
-            active_timeout_seconds=_LIVE_TASK_STALL_SECONDS,
-            stopping_timeout_seconds=_STOP_REQUEST_STALL_SECONDS,
-        )
+        stalled = self._live_task_is_stalled(running)
         heartbeat_age = running.heartbeat_age_seconds()
         stop_age = running.stop_requested_age_seconds()
         details: dict[str, object] = {
@@ -4141,6 +4138,12 @@ class TaskService:
         else:
             message = f"task {running.task_id!r} is already running."
         raise BridgeError.conflict(message, details=details)
+
+    def _live_task_is_stalled(self, running: RunningTask) -> bool:
+        return running.is_stalled(
+            active_timeout_seconds=_LIVE_TASK_STALL_SECONDS,
+            stopping_timeout_seconds=_STOP_REQUEST_STALL_SECONDS,
+        )
 
     def _seed_placeholder(
         self,
@@ -4177,14 +4180,17 @@ class TaskService:
     ) -> TaskSnapshot:
         # After a host-process crash (e.g. SIGBUS, OOM, kill -9) the runtime
         # never writes a terminal state, so the cache stays transient while
-        # the in-memory executor is gone. Flip it to STOPPED here so the UI
-        # surfaces a continuable task instead of a zombie.
+        # the in-memory executor is gone or no longer heartbeating. Flip it to
+        # STOPPED here so the UI surfaces a continuable task instead of a
+        # zombie.
         record = snapshot.record
         if record.status not in _ZOMBIE_TASK_STATES:
             return snapshot
         live = self.registry.get(record.id)
         if live is not None and not live.is_done:
-            return snapshot
+            if not self._live_task_is_stalled(live):
+                return snapshot
+            live.mark_done()
         healed = record.with_status(TaskStatus.STOPPED).with_updated_at(
             _utc_now_iso()
         )

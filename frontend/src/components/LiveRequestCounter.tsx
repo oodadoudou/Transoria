@@ -22,7 +22,7 @@ export function LiveRequestCounter({
   inflightLabel,
   longestLabel,
 }: LiveRequestCounterProps) {
-  const done = progress.completed + progress.failed + progress.skipped;
+  const done = progress.completed + progress.failed;
   const inflight = progress.running;
   const total = progress.total;
   const longest = Math.floor(progress.longest_running_seconds ?? 0);

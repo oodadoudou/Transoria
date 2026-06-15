@@ -289,12 +289,9 @@ export function BatchReplacementPage() {
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
   const failed = snapshot.progress.failed;
-  const skipped = snapshot.progress.skipped;
   // Floor (not round) so near-finished runs like 400/402 stay at 99%
   // instead of misleadingly showing 100% before all subtasks settle.
-  // SKIPPED counts as settled so the failed-chunk split path
-  // doesn't park progress below 100% on a clean rerun.
-  const settled = completed + skipped;
+  const settled = completed;
   const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
 
   return (

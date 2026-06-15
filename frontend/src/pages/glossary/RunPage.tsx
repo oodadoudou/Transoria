@@ -149,13 +149,12 @@ export function RunPage() {
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
   const failed = snapshot.progress.failed;
-  const skipped = snapshot.progress.skipped;
   const remaining = snapshot.progress.pending + snapshot.progress.running;
   // Floor (not round) so a near-finished run like 400/402 renders 99%,
   // not a misleading 100%, until every subtask actually completes.
-  // SKIPPED counts as "settled" for percent purposes so the failed-
-  // chunk split path doesn't park progress at 91% on a clean rerun.
-  const settled = completed + skipped;
+  // SKIPPED split parents are diagnostics; progress tracks the real
+  // work units that remain after split children are created.
+  const settled = completed;
   const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
