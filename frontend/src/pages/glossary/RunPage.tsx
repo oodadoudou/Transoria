@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { glossaryBridge } from "@/bridge";
 import { useMessages, useI18n } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
@@ -50,7 +51,9 @@ export function RunPage() {
   const promptSlice = prompts.glossary;
   const appSettings = useModuleSettings("app");
   const glossarySettings = useModuleSettings("glossary");
+  const glossaryReviewSettings = useModuleSettings("glossary_review");
   const snapshot = useRunSnapshot("glossary");
+  const reviewSnapshot = useRunSnapshot("glossary_review");
   const activeTaskId = useRuntimeStore((state) => state.glossary.activeTaskId);
   usePollRunSnapshot("glossary");
 
@@ -59,10 +62,13 @@ export function RunPage() {
   // every 2s, and snapshot in store can be stale right after remount).
   useEffect(() => {
     void useRuntimeStore.getState().refreshActiveTask("glossary");
+    void useRuntimeStore.getState().refreshActiveTask("glossary_review");
   }, []);
 
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
+  const [hasReviewableArtifacts, setHasReviewableArtifacts] = useState(false);
+  const [sendingToReview, setSendingToReview] = useState(false);
 
   // Same as translation: fire even when every chunk failed so the
   // user is told that Continue can retry remaining chunks.
@@ -99,6 +105,32 @@ export function RunPage() {
     snapshot.progress.completed,
     messages.runCompleted.title,
   ]);
+
+  useEffect(() => {
+    if (!activeTaskId || snapshot.status !== "completed") {
+      setHasReviewableArtifacts(false);
+      return;
+    }
+    let cancelled = false;
+    setHasReviewableArtifacts(false);
+    glossaryBridge
+      .readArtifacts(activeTaskId)
+      .then((artifacts) => {
+        if (cancelled) return;
+        setHasReviewableArtifacts(
+          Boolean(artifacts.combined_artifact?.xlsx_path) ||
+            artifacts.per_novel_artifacts.some((item) =>
+              Boolean(item.xlsx_path),
+            ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setHasReviewableArtifacts(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, snapshot.status]);
 
   const handleAcceptCompletion = () => {
     if (activeTaskId) markCompletionWithFailuresDismissed(activeTaskId);
@@ -171,6 +203,31 @@ export function RunPage() {
     Boolean(activeTaskId) &&
     (snapshot.status === "pending" || snapshot.status === "running") &&
     snapshot.progress.total === 0;
+  const glossaryOutputFolder = glossarySettings.draft?.output_folder.trim() ?? "";
+  const reviewBusy =
+    !reviewSnapshot.isIdle &&
+    (reviewSnapshot.status === "pending" ||
+      reviewSnapshot.status === "running" ||
+      reviewSnapshot.status === "stopping" ||
+      reviewSnapshot.status === "paused");
+  const showSendToReview =
+    snapshot.status === "completed" &&
+    hasReviewableArtifacts &&
+    glossaryOutputFolder.length > 0;
+
+  const handleSendToReview = async () => {
+    if (!glossaryOutputFolder || !hasReviewableArtifacts || reviewBusy) return;
+    setSendingToReview(true);
+    try {
+      glossaryReviewSettings.update("input_folder", glossaryOutputFolder);
+      glossaryReviewSettings.update("selected_xlsx_path", "");
+      glossaryReviewSettings.update("selected_reference_paths", []);
+      await glossaryReviewSettings.saveNow();
+      navigate({ module: "glossary-review", page: "settings" });
+    } finally {
+      setSendingToReview(false);
+    }
+  };
 
   return (
     <>
@@ -300,6 +357,18 @@ export function RunPage() {
           </>
         ) : null}
       </Panel>
+
+      {showSendToReview ? (
+        <div className={styles.followupActions}>
+          <Pill
+            type="button"
+            onClick={() => void handleSendToReview()}
+            disabled={reviewBusy || sendingToReview}
+          >
+            {run.sendToReview}
+          </Pill>
+        </div>
+      ) : null}
 
       <RunControls kind="glossary" />
     </>

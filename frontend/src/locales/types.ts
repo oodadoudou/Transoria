@@ -658,6 +658,7 @@ export interface Messages {
       activeModel: string;
       activePrompt: string;
       switch: string;
+      sendToReview: string;
       stats: {
         completed: string;
         failed: string;

@@ -1030,6 +1030,7 @@ export const zh: Messages = {
       activeModel: "模型",
       activePrompt: "Prompt",
       switch: "切换",
+      sendToReview: "送审",
       stats: {
         completed: "已完成",
         failed: "失败",

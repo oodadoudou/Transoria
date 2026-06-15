@@ -148,3 +148,10 @@
   font-size: 12px;
   color: var(--muted);
 }
+
+.followupActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 4px 0 2px;
+}

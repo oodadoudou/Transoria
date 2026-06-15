@@ -1060,6 +1060,7 @@ export const en: Messages = {
       activeModel: "Model",
       activePrompt: "Prompt",
       switch: "Switch",
+      sendToReview: "Send to review",
       stats: {
         completed: "Completed",
         failed: "Failed",
