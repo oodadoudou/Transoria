@@ -131,6 +131,7 @@ class TaskSnapshot:
             total = total + TokenUsage(
                 input_tokens=subtask.input_tokens,
                 output_tokens=subtask.output_tokens,
+                cached_input_tokens=subtask.cached_input_tokens,
             )
         return total
 

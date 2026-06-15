@@ -74,6 +74,7 @@ class TranslationStatistics:
             ],
             "input_tokens": self.usage.input_tokens,
             "output_tokens": self.usage.output_tokens,
+            "cached_input_tokens": self.usage.cached_input_tokens,
             "total_tokens": self.usage.total_tokens,
         }
 

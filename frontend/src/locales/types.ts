@@ -35,6 +35,7 @@ export interface Messages {
       title: string;
       input: string;
       output: string;
+      cachedInput: string;
       total: string;
       perMinute: string;
       perSegment: string;

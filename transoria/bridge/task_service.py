@@ -687,6 +687,7 @@ def _usage_to_block(usage) -> dict[str, object]:
     return {
         "input_tokens": usage.input_tokens,
         "output_tokens": usage.output_tokens,
+        "cached_input_tokens": usage.cached_input_tokens,
         "total_tokens": usage.input_tokens + usage.output_tokens,
     }
 
@@ -760,9 +761,11 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
         if isinstance(frozen_usage, dict):
             input_t = int(frozen_usage.get("input_tokens", 0))
             output_t = int(frozen_usage.get("output_tokens", 0))
+            cached_input_t = int(frozen_usage.get("cached_input_tokens", 0))
             usage_block = {
                 "input_tokens": input_t,
                 "output_tokens": output_t,
+                "cached_input_tokens": cached_input_t,
                 "total_tokens": input_t + output_t,
             }
         else:
@@ -1494,6 +1497,7 @@ class TaskService:
         frozen["final_usage"] = {
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
+            "cached_input_tokens": usage.cached_input_tokens,
         }
         frozen["final_low_confidence"] = _low_confidence_summary(snapshot, frozen)
         frozen_record = replace(

@@ -383,6 +383,7 @@ export interface TaskProgress {
 export interface TaskUsage {
   input_tokens: number;
   output_tokens: number;
+  cached_input_tokens: number;
   total_tokens: number;
 }
 

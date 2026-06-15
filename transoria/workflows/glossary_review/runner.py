@@ -198,6 +198,7 @@ class GlossaryReviewSubtaskRunner:
             response_content=json.dumps(result_payload, ensure_ascii=False),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+            cached_input_tokens=response.usage.cached_input_tokens,
         )
 
 

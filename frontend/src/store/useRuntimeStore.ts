@@ -314,6 +314,7 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
       usage: runtime.snapshot?.usage ?? {
         input_tokens: 0,
         output_tokens: 0,
+        cached_input_tokens: 0,
         total_tokens: 0,
       },
       lowConfidence: {

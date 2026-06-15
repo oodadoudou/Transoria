@@ -32,6 +32,7 @@ def estimate_tokens_from_text(text: str, *, chars_per_token: float = _DEFAULT_CH
 class TokenUsage:
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_input_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -43,12 +44,16 @@ class TokenUsage:
         return TokenUsage(
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
+            cached_input_tokens=(
+                self.cached_input_tokens + other.cached_input_tokens
+            ),
         )
 
     def to_dict(self) -> dict[str, int]:
         return {
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
             "total_tokens": self.total_tokens,
         }
 
@@ -64,13 +69,26 @@ class TokenUsage:
 
         if not usage:
             return cls()
+        cached_tokens = 0
+        details = usage.get("prompt_tokens_details")
+        if isinstance(details, Mapping):
+            cached_tokens = int(details.get("cached_tokens") or 0)
+        if cached_tokens <= 0:
+            cached_tokens = int(usage.get("prompt_cache_hit_tokens") or 0)
+        prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens")
+        if prompt_tokens is None and (
+            "prompt_cache_hit_tokens" in usage
+            or "prompt_cache_miss_tokens" in usage
+        ):
+            prompt_tokens = int(usage.get("prompt_cache_hit_tokens") or 0) + int(
+                usage.get("prompt_cache_miss_tokens") or 0
+            )
         return cls(
-            input_tokens=int(
-                usage.get("prompt_tokens") or usage.get("input_tokens") or 0
-            ),
+            input_tokens=int(prompt_tokens or 0),
             output_tokens=int(
                 usage.get("completion_tokens") or usage.get("output_tokens") or 0
             ),
+            cached_input_tokens=cached_tokens,
         )
 
 

@@ -28,6 +28,7 @@ class SubtaskResult:
     response_content: str
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_input_tokens: int = 0
 
 
 class SubtaskRunner(Protocol):
@@ -358,6 +359,7 @@ class TaskExecutor:
                 response_content=result.response_content,
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
+                cached_input_tokens=result.cached_input_tokens,
                 last_error="",
                 started_at="",
             )

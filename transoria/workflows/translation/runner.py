@@ -343,6 +343,7 @@ class TranslationSubtaskRunner:
         retries_remaining = _PARTIAL_ACCEPT_MAX_RETRIES
         total_input = 0
         total_output = 0
+        total_cached_input = 0
         last_raw = ""
         first_user_prompt = ""
         finalized: dict[str, str] = {}
@@ -425,6 +426,7 @@ class TranslationSubtaskRunner:
                     break
                 total_input += response.usage.input_tokens
                 total_output += response.usage.output_tokens
+                total_cached_input += response.usage.cached_input_tokens
                 raw_content = self._restore_roster(response.content)
                 last_raw = raw_content
                 debug_attempts.append(
@@ -613,6 +615,7 @@ class TranslationSubtaskRunner:
                         break
                     total_input += solo_response.usage.input_tokens
                     total_output += solo_response.usage.output_tokens
+                    total_cached_input += solo_response.usage.cached_input_tokens
                     solo_raw = self._restore_roster(solo_response.content)
                     debug_attempts.append(
                         {
@@ -749,6 +752,7 @@ class TranslationSubtaskRunner:
                 response_content=json.dumps(payload, ensure_ascii=False),
                 input_tokens=total_input,
                 output_tokens=total_output,
+                cached_input_tokens=total_cached_input,
             )
         except BaseException as exc:
             terminal_error = exc
@@ -773,6 +777,7 @@ class TranslationSubtaskRunner:
                     "usage": {
                         "input_tokens": total_input,
                         "output_tokens": total_output,
+                        "cached_input_tokens": total_cached_input,
                         "total_tokens": total_input + total_output,
                     },
                 }

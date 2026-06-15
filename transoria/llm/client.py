@@ -234,6 +234,10 @@ class HttpxChatTransport:
                 usage_meta.setdefault(
                     "candidatesTokenCount", usage["completion_tokens"]
                 )
+            if "cachedContentTokenCount" in usage:
+                usage_meta["cachedContentTokenCount"] = usage[
+                    "cachedContentTokenCount"
+                ]
             if usage_meta:
                 body["usageMetadata"] = usage_meta
         return TransportResult(status_code=status_code, body=body)
@@ -381,7 +385,15 @@ class LlmClient:
             "max_tokens": _anthropic_max_tokens(request.model.max_output_tokens),
         }
         if request.system_prompt:
-            payload["system"] = request.system_prompt
+            # Anthropic silently ignores cache_control below its minimum
+            # cacheable token threshold; applying it to stable system text is harmless.
+            payload["system"] = [
+                {
+                    "type": "text",
+                    "text": request.system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         elif request.model.temperature is not None:
@@ -665,8 +677,9 @@ def _parse_anthropic_response(body: Mapping[str, object]) -> ChatResponse:
     """Anthropic ``/v1/messages`` returns ``content`` as a list of blocks.
 
     Each block has a ``type`` (``text`` for normal output) and a ``text``
-    field. We concatenate all text blocks. Token usage comes from
-    ``usage.input_tokens`` / ``usage.output_tokens``.
+    field. We concatenate all text blocks. Anthropic reports cache
+    reads/creation outside ``usage.input_tokens``; normalize to total prompt
+    tokens so usage has the same semantics as OpenAI-compatible providers.
     """
 
     blocks = body.get("content")
@@ -682,11 +695,18 @@ def _parse_anthropic_response(body: Mapping[str, object]) -> ChatResponse:
         if block.get("type") == "text":
             text_parts.append(str(block.get("text", "")))
     usage_block = body.get("usage")
-    usage = (
-        TokenUsage.from_openai_usage(usage_block)
-        if isinstance(usage_block, Mapping)
-        else TokenUsage()
-    )
+    usage = TokenUsage()
+    if isinstance(usage_block, Mapping):
+        uncached_input = int(usage_block.get("input_tokens") or 0)
+        cache_read = int(usage_block.get("cache_read_input_tokens") or 0)
+        cache_creation = int(
+            usage_block.get("cache_creation_input_tokens") or 0
+        )
+        usage = TokenUsage(
+            input_tokens=uncached_input + cache_read + cache_creation,
+            output_tokens=int(usage_block.get("output_tokens") or 0),
+            cached_input_tokens=cache_read,
+        )
     return ChatResponse(content="".join(text_parts), usage=usage, raw=body)
 
 
@@ -729,6 +749,9 @@ def _parse_google_response(body: Mapping[str, object]) -> ChatResponse:
             input_tokens=int(usage_meta.get("promptTokenCount", 0) or 0),
             output_tokens=int(
                 usage_meta.get("candidatesTokenCount", 0) or 0
+            ),
+            cached_input_tokens=int(
+                usage_meta.get("cachedContentTokenCount", 0) or 0
             ),
         )
     return ChatResponse(content="".join(text_parts), usage=usage, raw=body)

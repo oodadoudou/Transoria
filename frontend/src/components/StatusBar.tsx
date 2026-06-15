@@ -116,6 +116,12 @@ function TokenPill({ snapshot, messages }: TokenPillProps) {
               {FULL_FORMATTER.format(usage.output_tokens)}
             </span>
           </div>
+          <div className={styles.tokenRow}>
+            <span className={styles.tokenRowLabel}>{labels.cachedInput}</span>
+            <span className={styles.tokenRowValue}>
+              {FULL_FORMATTER.format(usage.cached_input_tokens)}
+            </span>
+          </div>
           <div className={styles.tokenDivider} />
           <div className={styles.tokenRow}>
             <span className={styles.tokenRowLabel}>{labels.total}</span>

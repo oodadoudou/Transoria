@@ -222,6 +222,7 @@ class GlossarySubtaskRunner:
                 ),
                 input_tokens=0,
                 output_tokens=0,
+                cached_input_tokens=0,
             )
 
     async def _attempt(
@@ -350,6 +351,7 @@ class GlossarySubtaskRunner:
             response_content=json.dumps(result_payload, ensure_ascii=False),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+            cached_input_tokens=response.usage.cached_input_tokens,
         )
         # Partial rows are useful for glossary extraction; only retry when
         # the response produced no usable entry and clearly missed the schema.
@@ -397,9 +399,11 @@ def _merge_glossary_results(results: list[SubtaskResult]) -> SubtaskResult:
     issues: list[Mapping[str, object]] = []
     input_tokens = 0
     output_tokens = 0
+    cached_input_tokens = 0
     for result in results:
         input_tokens += result.input_tokens
         output_tokens += result.output_tokens
+        cached_input_tokens += result.cached_input_tokens
         try:
             payload = json.loads(result.response_content)
         except json.JSONDecodeError:
@@ -419,6 +423,7 @@ def _merge_glossary_results(results: list[SubtaskResult]) -> SubtaskResult:
         ),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        cached_input_tokens=cached_input_tokens,
     )
 
 

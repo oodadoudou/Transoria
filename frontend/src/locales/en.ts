@@ -39,6 +39,7 @@ export const en: Messages = {
       title: "Token usage",
       input: "Input",
       output: "Output",
+      cachedInput: "Cached input",
       total: "Total",
       perMinute: "Per minute",
       perSegment: "Avg / segment",

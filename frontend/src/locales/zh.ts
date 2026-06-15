@@ -39,6 +39,7 @@ export const zh: Messages = {
       title: "Token 用量明细",
       input: "输入",
       output: "输出",
+      cachedInput: "缓存命中",
       total: "总计",
       perMinute: "每分钟",
       perSegment: "每段平均",

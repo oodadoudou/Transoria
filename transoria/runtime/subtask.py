@@ -27,6 +27,7 @@ class Subtask:
     response_content: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_input_tokens: int = 0
     attempt_count: int = 0
     started_at: str = ""
     last_error: str = ""
@@ -45,6 +46,7 @@ class Subtask:
             "response_content": self.response_content,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
             "attempt_count": self.attempt_count,
             "started_at": self.started_at,
             "last_error": self.last_error,
@@ -71,6 +73,7 @@ class Subtask:
             response_content=str(data.get("response_content", "")),
             input_tokens=int(data.get("input_tokens", 0)),
             output_tokens=int(data.get("output_tokens", 0)),
+            cached_input_tokens=int(data.get("cached_input_tokens", 0)),
             attempt_count=int(data.get("attempt_count", 0)),
             started_at=str(data.get("started_at", "")),
             last_error=str(data.get("last_error", "")),
