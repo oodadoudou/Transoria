@@ -1321,9 +1321,6 @@ export interface Messages {
   failedSubtasksModal: {
     triggerPrefix: string;
     triggerSuffix: string;
-    autoFixingPrefix: string;
-    autoFixingSuffix: string;
-    autoFixingHint: string;
     continueHint: string;
     title: string;
     fileLabel: string;

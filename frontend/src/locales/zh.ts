@@ -1437,10 +1437,6 @@ export const zh: Messages = {
   failedSubtasksModal: {
     triggerPrefix: "查看失败 (",
     triggerSuffix: ")",
-    autoFixingPrefix: "自动修复中 (",
-    autoFixingSuffix: ")",
-    autoFixingHint:
-      "检测到失败分块，正在自动拆分重跑或等待 30 秒后重试。无需手动操作。",
     continueHint: "点击下方「继续」可重跑失败分块。",
     title: "失败分块",
     fileLabel: "文件",

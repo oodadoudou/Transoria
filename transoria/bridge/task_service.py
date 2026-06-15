@@ -175,13 +175,25 @@ _TERMINAL_TASK_STATES: frozenset[TaskStatus] = frozenset(
         TaskStatus.STOPPED,
     }
 )
-_LIVE_TASK_STALL_SECONDS = 600.0
-_STOP_REQUEST_STALL_SECONDS = 90.0
+_LIVE_TASK_STALL_SECONDS = 900.0
+_STOP_REQUEST_STALL_SECONDS = 900.0
+_LIVE_TASK_STALL_TIMEOUT_HEADROOM_SECONDS = 120.0
 _MAX_RETRANSLATE_JOBS = 50
 _RETRANSLATE_TERMINAL_TTL_SECONDS = 300.0
 _RETRANSLATE_TERMINAL_STATUSES = frozenset(
     {"completed", "failed", "stale", "skipped"}
 )
+
+
+def _metadata_timeout_seconds(metadata: Mapping[str, object]) -> float | None:
+    raw = metadata.get("timeout_seconds")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
 
 
 @dataclass
@@ -2163,6 +2175,7 @@ class TaskService:
                 "target_language": target_lang.value,
                 "model_id": model.id,
                 "prompt_preset_id": preset.id,
+                "timeout_seconds": float(model.timeout_seconds),
                 "request_id": request_id,
             },
         )
@@ -2296,6 +2309,7 @@ class TaskService:
                 "target_language": target_lang.value,
                 "model_id": model.id,
                 "prompt_preset_id": preset.id,
+                "timeout_seconds": float(model.timeout_seconds),
                 "request_id": request_id,
             },
         )
@@ -2440,6 +2454,7 @@ class TaskService:
                 "review_round_completed_batches": 0,
                 "model_id": model.id,
                 "prompt_preset_id": preset.id,
+                "timeout_seconds": float(model.timeout_seconds),
                 "request_id": request_id,
             },
         )
@@ -3677,7 +3692,10 @@ class TaskService:
         snapshot = self._reconcile_zombie(snapshot, cache)
         existing = self._resolve_live_running(task_id, snapshot.record.status)
         if existing is not None and not existing.is_done:
-            self._raise_live_task_conflict(existing)
+            self._raise_live_task_conflict(
+                existing,
+                stall_seconds=self._live_task_stall_seconds_for_snapshot(snapshot),
+            )
         if snapshot.record.status not in (
             TaskStatus.STOPPED,
             TaskStatus.PAUSED,
@@ -4112,8 +4130,12 @@ class TaskService:
             return None
         return existing
 
-    def _raise_live_task_conflict(self, running: RunningTask) -> None:
-        stalled = self._live_task_is_stalled(running)
+    def _raise_live_task_conflict(
+        self, running: RunningTask, *, stall_seconds: float | None = None
+    ) -> None:
+        stalled = self._live_task_is_stalled(
+            running, stall_seconds=stall_seconds
+        )
         heartbeat_age = running.heartbeat_age_seconds()
         stop_age = running.stop_requested_age_seconds()
         details: dict[str, object] = {
@@ -4121,6 +4143,12 @@ class TaskService:
             "stalled": stalled,
             "stop_requested": running.stop_requested,
             "heartbeat_age_seconds": round(heartbeat_age, 3),
+            "stall_threshold_seconds": round(
+                stall_seconds
+                if stall_seconds is not None
+                else _LIVE_TASK_STALL_SECONDS,
+                3,
+            ),
         }
         if stop_age is not None:
             details["stop_requested_age_seconds"] = round(stop_age, 3)
@@ -4139,10 +4167,26 @@ class TaskService:
             message = f"task {running.task_id!r} is already running."
         raise BridgeError.conflict(message, details=details)
 
-    def _live_task_is_stalled(self, running: RunningTask) -> bool:
+    def _live_task_is_stalled(
+        self, running: RunningTask, *, stall_seconds: float | None = None
+    ) -> bool:
+        threshold = (
+            _LIVE_TASK_STALL_SECONDS if stall_seconds is None else stall_seconds
+        )
         return running.is_stalled(
-            active_timeout_seconds=_LIVE_TASK_STALL_SECONDS,
-            stopping_timeout_seconds=_STOP_REQUEST_STALL_SECONDS,
+            active_timeout_seconds=threshold,
+            stopping_timeout_seconds=max(_STOP_REQUEST_STALL_SECONDS, threshold),
+        )
+
+    def _live_task_stall_seconds_for_snapshot(
+        self, snapshot: TaskSnapshot
+    ) -> float:
+        timeout_seconds = _metadata_timeout_seconds(snapshot.record.metadata)
+        if timeout_seconds is None:
+            return _LIVE_TASK_STALL_SECONDS
+        return max(
+            _LIVE_TASK_STALL_SECONDS,
+            timeout_seconds + _LIVE_TASK_STALL_TIMEOUT_HEADROOM_SECONDS,
         )
 
     def _seed_placeholder(
@@ -4188,7 +4232,10 @@ class TaskService:
             return snapshot
         live = self.registry.get(record.id)
         if live is not None and not live.is_done:
-            if not self._live_task_is_stalled(live):
+            stall_seconds = self._live_task_stall_seconds_for_snapshot(snapshot)
+            if not self._live_task_is_stalled(
+                live, stall_seconds=stall_seconds
+            ):
                 return snapshot
             live.mark_done()
         healed = record.with_status(TaskStatus.STOPPED).with_updated_at(

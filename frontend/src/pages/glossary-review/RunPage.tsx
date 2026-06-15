@@ -272,7 +272,12 @@ export function RunPage() {
       )
     : null;
   const rawPercent =
-    roundPercent ?? (total > 0 ? Math.floor((settled / total) * 100) : 0);
+    roundPercent ??
+    (total > 0
+      ? Math.floor((settled / total) * 100)
+      : snapshot.status === "completed"
+        ? 100
+        : 0);
   const percent =
     snapshot.status === "completed" ? rawPercent : Math.min(rawPercent, 99);
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
@@ -349,15 +354,8 @@ export function RunPage() {
           <Pill
             variant="ghost"
             onClick={() => setFailedModalOpen(true)}
-            title={
-              snapshot.status === "running"
-                ? failedModalMessages.autoFixingHint
-                : undefined
-            }
           >
-            {snapshot.status === "running"
-              ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
-              : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
+            {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
           </Pill>
           <span className={styles.failuresHint}>
             {failedModalMessages.continueHint}

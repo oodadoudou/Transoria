@@ -208,7 +208,12 @@ export function RunPage() {
   // SKIPPED split parents are diagnostics; progress tracks the real
   // work units that remain after split children are created.
   const settled = completed;
-  const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
+  const percent =
+    total > 0
+      ? Math.floor((settled / total) * 100)
+      : snapshot.status === "completed"
+        ? 100
+        : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
   const showLowConfidenceAction =
@@ -277,15 +282,8 @@ export function RunPage() {
           <Pill
             variant="ghost"
             onClick={() => setFailedModalOpen(true)}
-            title={
-              snapshot.status === "running"
-                ? failedModalMessages.autoFixingHint
-                : undefined
-            }
           >
-            {snapshot.status === "running"
-              ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
-              : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
+            {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
           </Pill>
           {snapshot.status === "failed" ||
           snapshot.status === "stopped" ||

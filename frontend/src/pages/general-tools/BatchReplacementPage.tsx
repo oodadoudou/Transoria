@@ -435,15 +435,8 @@ export function BatchReplacementPage() {
               <Pill
                 variant="ghost"
                 onClick={() => setFailedModalOpen(true)}
-                title={
-                  snapshot.status === "running"
-                    ? failedModalMessages.autoFixingHint
-                    : undefined
-                }
               >
-                {snapshot.status === "running"
-                  ? `${failedModalMessages.autoFixingPrefix}${snapshot.failures.length}${failedModalMessages.autoFixingSuffix}`
-                  : `${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
+                {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
               </Pill>
             </div>
           ) : null}

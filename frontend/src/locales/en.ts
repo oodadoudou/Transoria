@@ -1488,10 +1488,6 @@ export const en: Messages = {
   failedSubtasksModal: {
     triggerPrefix: "View failures (",
     triggerSuffix: ")",
-    autoFixingPrefix: "Auto-fixing (",
-    autoFixingSuffix: ")",
-    autoFixingHint:
-      "Failed chunks detected — auto-splitting and retrying. No manual action needed.",
     continueHint: "Click the Continue button below to rerun failed chunks.",
     title: "Failed subtasks",
     fileLabel: "File",
