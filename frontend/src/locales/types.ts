@@ -346,8 +346,6 @@ export interface Messages {
       precedingLinesHelp: string;
       lowConfidenceMaxRetries: string;
       lowConfidenceMaxRetriesHelp: string;
-      autoRetryMaxRounds: string;
-      autoRetryMaxRoundsHelp: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
       on: string;
@@ -773,10 +771,10 @@ export interface Messages {
         originalDst: string;
         suggestedDst: string;
         originalInfo: string;
-          suggestedInfo: string;
-          reason: string;
-          actions: string;
-        };
+        suggestedInfo: string;
+        reason: string;
+        actions: string;
+      };
       restoreDelete: string;
       restoring: string;
       restored: string;

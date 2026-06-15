@@ -75,13 +75,6 @@ class TranslationConfig:
         default_factory=FakeNameSession
     )
 
-    # Extra rounds of orchestrator-level auto-retry after the split
-    # loop finishes with leftover FAILED subtasks. Each round waits
-    # ``_AUTO_RETRY_DELAY_SECONDS`` (30s) before reset+rerun. 0 keeps
-    # the legacy "stop after split" behavior. See orchestrator
-    # docstring for the full recovery sequence.
-    auto_retry_max_rounds: int = 5
-
     # When True, the translation orchestrator buffers each source EPUB's
     # archive bytes in memory at parse time so writeback survives the source
     # file being moved or deleted mid-task. The trade-off is peak memory:

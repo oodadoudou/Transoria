@@ -13,15 +13,12 @@ Design decisions worth calling out:
   multiple files are present. Subtasks carry a stable ``segment_id`` of the
   form ``"<file_index>:<segment_index>"`` so the orchestrator can route each
   decoded result back to the right file at writeback time.
-- After the executor + split-failed-chunks loop finishes, if any FAILED
-  subtasks remain the orchestrator runs up to ``_AUTO_RETRY_MAX_ROUNDS``
-  (3) extra recovery rounds. Each round waits
-  ``_AUTO_RETRY_DELAY_SECONDS`` (60s — long enough for a typical RPM
-  rate-limit window to reset), resets the FAILED subtasks back to
-  PENDING, and re-runs the executor. The loop exits early once no
-  FAILED subtasks remain. This catches the common rate-limit /
-  transient-network case without forcing the user to manually click
-  "Continue".
+- After the executor + split-failed-chunks loop finishes the run
+  settles to a terminal status immediately. Leftover FAILED subtasks
+  stay continuable: the user clicks "Continue" (or proofreads the
+  flagged segments) instead of the orchestrator silently re-running the
+  whole task. Transient transport errors are absorbed by request-level
+  backoff retries, not by whole-task recovery rounds.
 - User-facing translated files are written on any terminal status
   (COMPLETED or FAILED) that produced at least one translated segment.
   Missing segments fall back to original source text in the writers,
@@ -93,16 +90,12 @@ from transoria.workflows.translation.statistics import (
 )
 
 
-# Wait between automatic recovery rounds. Bounded by upstream API
-# rate-limit windows (RPM is the common case), not user preference,
-# so it stays a constant. The number of rounds itself is the
-# user-facing knob (``TranslationConfig.auto_retry_max_rounds``).
-_AUTO_RETRY_DELAY_SECONDS = 30.0
-
-# 32-line chunk that keeps failing → round 0: 16+16 → round 1: 8+8+8+8 → stop.
-# Smaller than 8 starts paying singleton prompt-overhead without obvious
-# reliability gains, so the cap is 2.
-_SPLIT_ROUNDS = 2
+# One split round only: a 32-line chunk that keeps failing splits once
+# (16+16) so a single malformed response loses less work, then any
+# still-failed chunk settles to FAILED for the user to Continue or
+# proofread. Deeper geometric splitting re-translated whole sub-chunks
+# repeatedly for little reliability gain and large token cost.
+_SPLIT_ROUNDS = 1
 
 
 class TranslationEmptyInputError(RuntimeError):
@@ -305,40 +298,18 @@ class TranslationOrchestrator:
             self.on_executor_created(executor)
 
         snapshot = await executor.run(task_id)
-        # All subsequent recovery loops must respect the stop signal —
+        # The split-failed-chunks loop must respect the stop signal —
         # otherwise pressing Stop and waiting for in-flight requests to
-        # drain would just be followed by either a split-rerun or a
-        # 30-second sleep + auto-retry, defeating the user's intent.
+        # drain would just be followed by a split-rerun, defeating the
+        # user's intent. After it finishes the run settles to a terminal
+        # status right away; leftover FAILED subtasks stay continuable
+        # via Continue / proofreading rather than a whole-task auto-retry
+        # storm. Transient transport errors are handled by request-level
+        # backoff, not by re-running the whole task.
         while (
             not executor.is_stopping
             and self._split_failed_subtasks(task_id, snapshot.subtasks, config)
         ):
-            snapshot = await executor.run(task_id)
-
-        # Auto-retry loop: rate-limit and other transient failures often
-        # clear in 30+ seconds. Reset still-FAILED subtasks back to
-        # PENDING and re-run, up to ``auto_retry_max_rounds`` times,
-        # waiting between rounds so the upstream limiter actually has a
-        # chance to reset. Stops early when no failures remain or the
-        # user pressed Stop (the sleep itself polls the stop flag every
-        # second so we abort the wait promptly).
-        for _ in range(max(0, config.auto_retry_max_rounds)):
-            if executor.is_stopping:
-                break
-            if not _has_failed_subtasks(snapshot.subtasks):
-                break
-            # Flip RUNNING *before* the sleep so the 30s wait window
-            # does not show a stale FAILED status to pollers (which
-            # would stop them and hide the eventual COMPLETED). On
-            # stop during the sleep we restore STOPPED so user intent
-            # is honored — no executor.run will fire after this break.
-            self._mark_task_running(task_id)
-            if not await _interruptible_sleep(
-                _AUTO_RETRY_DELAY_SECONDS, executor
-            ):
-                self._mark_task_status(task_id, TaskStatus.STOPPED)
-                break
-            self._reset_failed_subtasks(snapshot.subtasks)
             snapshot = await executor.run(task_id)
 
         translations_by_segment, low_confidence_records = _collect_translations(
@@ -491,27 +462,6 @@ class TranslationOrchestrator:
         # Flip the record back to RUNNING right before we commit more
         # work, so the transient FAILED does not leak to pollers.
         self._mark_task_status(task_id, TaskStatus.RUNNING)
-
-    def _reset_failed_subtasks(self, subtasks: tuple[Subtask, ...]) -> int:
-        """Flip every FAILED subtask back to PENDING for the auto-retry
-        loop. Mirrors the continue_task reset path so a clean re-run
-        can replace the prior failure record. Returns the count of
-        subtasks reset (callers can short-circuit when 0)."""
-
-        reset = 0
-        for subtask in subtasks:
-            if subtask.status is not SubtaskStatus.FAILED:
-                continue
-            self.cache.save_subtask(
-                replace(
-                    subtask,
-                    status=SubtaskStatus.PENDING,
-                    last_error="",
-                    last_error_at="",
-                )
-            )
-            reset += 1
-        return reset
 
     def _split_failed_subtasks(
         self,
@@ -732,29 +682,6 @@ def _collect_translations(
             for segment_id, text in payload.items():
                 translations[str(segment_id)] = str(text)
     return translations, low_confidence
-
-
-def _has_failed_subtasks(subtasks: tuple[Subtask, ...]) -> bool:
-    return any(s.status is SubtaskStatus.FAILED for s in subtasks)
-
-
-async def _interruptible_sleep(seconds: float, executor: TaskExecutor) -> bool:
-    """Sleep up to ``seconds`` while polling the executor's stop flag
-    every second. Returns True if the wait completed naturally,
-    False if the wait was cut short by a stop request — callers should
-    skip whatever was queued after the wait when the result is False.
-    """
-
-    if seconds <= 0:
-        return not executor.is_stopping
-    elapsed = 0.0
-    while elapsed < seconds:
-        if executor.is_stopping:
-            return False
-        step = min(1.0, seconds - elapsed)
-        await asyncio.sleep(step)
-        elapsed += step
-    return not executor.is_stopping
 
 
 def _failed_files_for_missing_translations(

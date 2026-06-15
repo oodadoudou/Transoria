@@ -58,6 +58,12 @@ SUBTASK_RESPONSE_VERSION = 2
 _SOURCE_FALLBACK_RESIDUE_RATIO = 0.15
 _RESCUE_TRANSPORT_RETRY_BUDGET = 1
 _TRANSLATION_TRANSPORT_RETRY_BUDGET = 1
+# Bounded re-asks for missing/duplicate lines within one subtask. This is a
+# content-quality loop (only the still-missing indices are re-sent, so it is
+# cheap), kept small because a model that mis-aligns twice rarely self-heals on
+# a third batch ask — the leftover lines fall through to the isolated solo
+# retry instead. Deliberately decoupled from the user's network-retry setting.
+_PARTIAL_ACCEPT_MAX_RETRIES = 2
 _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 360.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
@@ -333,7 +339,7 @@ class TranslationSubtaskRunner:
         debug_attempts: list[dict[str, object]] = []
         metadata_by_index = {m.chunk_index: m for m in metadata}
         pending_indices: set[int] = set(metadata_by_index.keys())
-        retries_remaining = max(0, self.model.retry_attempts)
+        retries_remaining = _PARTIAL_ACCEPT_MAX_RETRIES
         total_input = 0
         total_output = 0
         last_raw = ""

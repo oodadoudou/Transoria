@@ -215,7 +215,8 @@ export const en: Messages = {
   },
   appSettingsExtra: {
     colorTheme: "Color theme",
-    colorThemeHint: "Switch the app between light and dark appearance. Light is the default.",
+    colorThemeHint:
+      "Switch the app between light and dark appearance. Light is the default.",
     colorThemeLight: "Light",
     colorThemeDark: "Dark",
     uiScale: "UI scale",
@@ -244,7 +245,8 @@ export const en: Messages = {
     cacheManageAction: "Manage cache",
     cacheSummary: "{count} tasks · {size} on disk.",
     cacheSummaryEmpty: "No cached tasks.",
-    cacheRunningBlock: "A task is running; cache cleanup is temporarily disabled.",
+    cacheRunningBlock:
+      "A task is running; cache cleanup is temporarily disabled.",
     cacheModalTitle: "Manage task cache",
     cacheModalHint: "Pick a scope to clean. In-flight tasks are never deleted.",
     cachePurgeAll: "Delete all",
@@ -407,7 +409,8 @@ export const en: Messages = {
     execute: "Merge",
     stop: "Stop",
     previewLabel: "Preview",
-    noPlan: "Choose a folder and scan to preview mergeable files and the default output.",
+    noPlan:
+      "Choose a folder and scan to preview mergeable files and the default output.",
     noActions: "No files to merge.",
     epubsFound: "EPUB files",
     txtFound: "TXT files",
@@ -447,7 +450,8 @@ export const en: Messages = {
     filePlaceholder: "Choose or paste an .epub file path",
     chooseFile: "Choose EPUB",
     recursive: "Scan subfolders",
-    outputHint: "TXT files are written beside the source EPUB. Existing names get a numeric suffix.",
+    outputHint:
+      "TXT files are written beside the source EPUB. Existing names get a numeric suffix.",
     scan: "Scan preview",
     execute: "Convert",
     stop: "Stop",
@@ -496,14 +500,16 @@ export const en: Messages = {
     apply: "Save EPUB",
     openOutput: "Open output",
     dialogTitle: "Edit EPUB metadata",
-    dialogSub: "OK uses the title as the EPUB filename. If the output folder is blank, the input EPUB folder is used.",
+    dialogSub:
+      "OK uses the title as the EPUB filename. If the output folder is blank, the input EPUB folder is used.",
     cancel: "Cancel",
     ok: "OK",
     coverPlaceholder: "Leave empty to keep the source EPUB cover",
     compressOutput: "Also output a compressed EPUB",
     generatedOutput: "Will output as",
     overwriteTitle: "Output file matches the input file",
-    overwriteBody: "Continuing will overwrite the original EPUB. Choose No to do nothing.",
+    overwriteBody:
+      "Continuing will overwrite the original EPUB. Choose No to do nothing.",
     overwriteYes: "Overwrite",
     overwriteNo: "No",
     currentLabel: "Current EPUB",
@@ -513,7 +519,8 @@ export const en: Messages = {
     currentOutput: "Output location",
     coverPresent: "Cover present",
     coverMissing: "No cover",
-    noMetadata: "Choose an EPUB to read its current title, authors, and cover status.",
+    noMetadata:
+      "Choose an EPUB to read its current title, authors, and cover status.",
     saved: "New EPUB written.",
     savedCompressed: "New compressed EPUB written.",
   },
@@ -536,7 +543,8 @@ export const en: Messages = {
     xmlRepaired: "XML/OPF/NCX",
     voidContainers: "Invalid tags",
     wrappersAdded: "Document wrappers",
-    noResult: "Choose an EPUB and run repair to see the repair statistics here.",
+    noResult:
+      "Choose an EPUB and run repair to see the repair statistics here.",
     repaired: "Repaired EPUB written.",
   },
   txtToEpubTool: {
@@ -566,7 +574,8 @@ export const en: Messages = {
     selectAll: "Select",
     addTocText: "Add TOC by text",
     addTocPlaceholder: "Enter a full heading or source text fragment",
-    addTocNotFound: "No matching text was found in the source TXT. Copy the full heading or a longer source fragment.",
+    addTocNotFound:
+      "No matching text was found in the source TXT. Copy the full heading or a longer source fragment.",
     addToc: "Add",
     batchSetLevel: "Batch level",
     applyLevel: "Apply level",
@@ -595,22 +604,27 @@ export const en: Messages = {
     generate: "Generate EPUB",
     generating: "Generating",
     stop: "Stop",
-    outputHint: "Filename defaults to the title; blank output folder uses the input TXT folder.",
+    outputHint:
+      "Filename defaults to the title; blank output folder uses the input TXT folder.",
     output: "Output",
     noOutput: "No output files yet",
     openOutputFolder: "Open output folder",
     copyPath: "Copy path",
     copiedPath: "Output path copied",
-    reportSummary: "Chapters {chapters} · TOC items {toc} · Characters {characters}",
+    reportSummary:
+      "Chapters {chapters} · TOC items {toc} · Characters {characters}",
     overwriteConfirm: "Output file already exists:\n{path}\n\nOverwrite it?",
     cssImportBlocked: "Custom CSS cannot use @import.",
-    cssUrlBlocked: "Custom CSS cannot reference remote URLs or local absolute paths.",
+    cssUrlBlocked:
+      "Custom CSS cannot reference remote URLs or local absolute paths.",
     previewHeading1: "Volume One: Spring",
     previewHeading2: "Chapter One: Reunion",
     previewHeading3: "Section One: Letter",
     previewHeading4: "Fragment 1",
-    previewParagraph1: "This EPUB style preview shows paragraph indentation, line height, and chapter heading depth.",
-    previewParagraph2: "Generated chapter XHTML will link to the same CSS selected here.",
+    previewParagraph1:
+      "This EPUB style preview shows paragraph indentation, line height, and chapter heading depth.",
+    previewParagraph2:
+      "Generated chapter XHTML will link to the same CSS selected here.",
   },
   batchReplacementReport: {
     title: "Replacement report",
@@ -690,9 +704,6 @@ export const en: Messages = {
       lowConfidenceMaxRetries: "Low-confidence retry attempts",
       lowConfidenceMaxRetriesHelp:
         "When a translated segment looks suspicious (length far off, source-language characters left over, etc.), retry that segment up to this many times. Set to 0 to disable retries.",
-      autoRetryMaxRounds: "Auto-retry rounds",
-      autoRetryMaxRoundsHelp:
-        "After the full run finishes, if any chunks still failed, automatically reset and rerun them up to this many rounds. Each round waits 30 seconds — long enough for typical RPM rate-limit windows to reset. Set to 0 to disable (manual Continue still works). Max 100.",
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed. Raise for slow models or long outputs. Default 600.",
@@ -866,14 +877,16 @@ export const en: Messages = {
     proofreadingPage: {
       title: "Proofreading",
       sub: "Review and edit translations from settled runs; failed or stopped runs can be reviewed with their current results. Edits write to cache immediately. Click 'Regenerate output' to re-emit the original .epub / .txt files in place (overwrite).",
-      noTasks: "No tasks available for proofreading. Run, stop, or finish a translation first.",
+      noTasks:
+        "No tasks available for proofreading. Run, stop, or finish a translation first.",
       taskPicker: "Select task",
       loading: "Loading…",
       regenerateAction: "Regenerate output",
       regenerateBilingualAction: "Export bilingual",
       regenerating: "Generating…",
       regenerateSuccess: "Regenerated {n} files.",
-      regeneratePartial: "Regenerated {n} files, but some files failed: {reason}",
+      regeneratePartial:
+        "Regenerated {n} files, but some files failed: {reason}",
       regenerateFailed: "Regenerate failed: {reason}",
       regenerateFailureReasons: {
         noMatchingTranslations:
@@ -919,7 +932,8 @@ export const en: Messages = {
         modelAnomaly: "{n} model anomalies",
         untranslated: "{n} untranslated",
       },
-      qualitySummaryClean: "No priority proofreading risks detected in this list.",
+      qualitySummaryClean:
+        "No priority proofreading risks detected in this list.",
       qualitySummaryNeedsReview: "{n} item(s) need priority review: {focus}.",
       qualitySummaryFocus: "{label} {n}",
       filterPresetDefault: "Default risks",
@@ -962,7 +976,8 @@ export const en: Messages = {
       retranslateSuccess: "Retranslated and saved to cache.",
       retranslateSelectedDone:
         "Batch retranslate finished: {done} completed, {stale} discarded, {failed} failed.",
-      retranslateSelectedDoneWithReasons: "{summary} Failure reasons: {reasons}.",
+      retranslateSelectedDoneWithReasons:
+        "{summary} Failure reasons: {reasons}.",
       retranslateProgressLabel:
         "Batch retranslate progress: {processed}/{total} ({percent}%)",
       retranslateProgressDetail:
@@ -1074,12 +1089,14 @@ export const en: Messages = {
       sub: "Choose the folder containing one glossary XLSX and reference TXT files. The reviewed XLSX is written back into the same folder.",
       inputFolder: "Input folder",
       glossaryFile: "Glossary XLSX",
-      glossaryFileHelp: "When the folder contains multiple XLSX files, choose the source glossary to review.",
+      glossaryFileHelp:
+        "When the folder contains multiple XLSX files, choose the source glossary to review.",
       glossaryFilePlaceholder: "Choose a glossary",
       referenceFiles: "Reference TXT",
       referenceFilesHelp:
         "Multiple files can be selected. The selected TXT files are merged as novel context for the model.",
-      referenceFilesEmpty: "No TXT reference files are available in this folder.",
+      referenceFilesEmpty:
+        "No TXT reference files are available in this folder.",
       inputScanLoading: "Scanning input folder...",
       inputScanError: "Failed to scan input folder: {reason}",
       outputFilename: "Final filename",
@@ -1220,7 +1237,8 @@ export const en: Messages = {
     epubTools: {
       title: "EPUB Tools",
       sub: "EPUB compression, merge, conversion, metadata, repair, and TXT to EPUB now live in one compact workspace.",
-      intro: "Pick a tool to open its focused dialog. Existing behavior and task cache are preserved.",
+      intro:
+        "Pick a tool to open its focused dialog. Existing behavior and task cache are preserved.",
       open: "Open",
       close: "Close",
     },

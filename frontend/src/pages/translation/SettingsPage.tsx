@@ -151,16 +151,6 @@ export function SettingsPage() {
         </Row>
         <Row label="" hint="">
           <NumberField
-            label={settings.autoRetryMaxRounds}
-            value={draft.auto_retry_max_rounds}
-            onChange={(v) => moduleSettings.update("auto_retry_max_rounds", v)}
-            help={settings.autoRetryMaxRoundsHelp}
-            min={0}
-            max={100}
-          />
-        </Row>
-        <Row label="" hint="">
-          <NumberField
             label={settings.timeoutSeconds}
             value={draft.timeout_seconds}
             onChange={(v) => moduleSettings.update("timeout_seconds", v)}

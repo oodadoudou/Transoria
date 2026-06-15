@@ -2129,9 +2129,6 @@ class TaskService:
             low_confidence_max_retries=max(
                 0, int(translation.low_confidence_max_retries)
             ),
-            auto_retry_max_rounds=max(
-                0, min(100, int(translation.auto_retry_max_rounds))
-            ),
         )
         return config, model, preset
 

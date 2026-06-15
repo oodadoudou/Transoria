@@ -242,7 +242,8 @@ export const zh: Messages = {
     cachePurgeAll: "全部清除",
     cachePurgeAllHint: "删除所有任务缓存（包括最近的）。",
     cachePurgeCompleted: "只清已完成任务",
-    cachePurgeCompletedHint: "保留失败、停止和未跑完的任务，方便继续排查或恢复。",
+    cachePurgeCompletedHint:
+      "保留失败、停止和未跑完的任务，方便继续排查或恢复。",
     cachePurgeMonth: "清除一个月之前",
     cachePurgeMonthHint: "保留最近 30 天内的任务。",
     cachePurgeWeek: "清除一周之前",
@@ -314,7 +315,8 @@ export const zh: Messages = {
     outputFolder: "输出文件夹",
     rulesLabel: "规则",
     importRules: "导入 TXT / RED 规则",
-    noRules: "尚未导入规则。请导入包含 `原文->新文` 条目的 TXT 文件，或 Reeden 阅读器 .red 替换规则文件。",
+    noRules:
+      "尚未导入规则。请导入包含 `原文->新文` 条目的 TXT 文件，或 Reeden 阅读器 .red 替换规则文件。",
     execute: "执行",
     stop: "停止",
     progressLabel: "进度",
@@ -486,7 +488,8 @@ export const zh: Messages = {
     apply: "保存 EPUB",
     openOutput: "打开输出",
     dialogTitle: "编辑 EPUB 元数据",
-    dialogSub: "确认后会按书名生成 EPUB 文件名；输出文件夹为空时使用输入 EPUB 同目录。",
+    dialogSub:
+      "确认后会按书名生成 EPUB 文件名；输出文件夹为空时使用输入 EPUB 同目录。",
     cancel: "取消",
     ok: "OK",
     coverPlaceholder: "留空则沿用源 EPUB 封面",
@@ -556,7 +559,8 @@ export const zh: Messages = {
     selectAll: "选择",
     addTocText: "按文本新增目录",
     addTocPlaceholder: "输入原文中完整标题或片段",
-    addTocNotFound: "没有在原文 TXT 中找到匹配文本。请复制原文里的完整标题或更长片段。",
+    addTocNotFound:
+      "没有在原文 TXT 中找到匹配文本。请复制原文里的完整标题或更长片段。",
     addToc: "新增",
     batchSetLevel: "批量层级",
     applyLevel: "应用层级",
@@ -599,7 +603,8 @@ export const zh: Messages = {
     previewHeading2: "第一章 重逢",
     previewHeading3: "第一节 书信",
     previewHeading4: "片段 1",
-    previewParagraph1: "这是 EPUB 样式预览。正文会保持段落缩进、行距和章节标题层级。",
+    previewParagraph1:
+      "这是 EPUB 样式预览。正文会保持段落缩进、行距和章节标题层级。",
     previewParagraph2: "用户选择样式后，生成的章节 XHTML 会引用同一份 CSS。",
   },
   batchReplacementReport: {
@@ -679,9 +684,6 @@ export const zh: Messages = {
       lowConfidenceMaxRetries: "低置信度重试次数",
       lowConfidenceMaxRetriesHelp:
         "当某段译文异常时(长度差异过大、原文语言字符残留等),最多重译该段几次。设为 0 关闭重试。",
-      autoRetryMaxRounds: "自动重试轮数",
-      autoRetryMaxRoundsHelp:
-        "整次任务跑完后若仍有失败分块，自动 reset 重跑的最大轮数。每轮间隔 30 秒，足以让 API 的 RPM 限流窗口重置。设为 0 关闭自动重试（仍可手动「继续」）。最大 100。",
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。慢模型/长输出可调高，默认 600。",
@@ -955,7 +957,8 @@ export const zh: Messages = {
       retranslateUndoAction: "撤回上次重翻",
       retranslateUndoRunning: "撤回中…",
       retranslateUndoDone: "已撤回 {n} 条重翻结果。",
-      retranslateSaveDirtyFirst: "当前选中译文有未保存修改，请先保存再批量重翻。",
+      retranslateSaveDirtyFirst:
+        "当前选中译文有未保存修改，请先保存再批量重翻。",
       retranslateFailed: "重翻失败：{reason}",
       retranslateStale: "您已手动修改，本次重翻结果已丢弃。",
       retranslateTimeout: "重翻超时，可稍后再试。",
@@ -1058,8 +1061,7 @@ export const zh: Messages = {
       glossaryFileHelp: "当文件夹内有多个 XLSX 时，请选择要审查的原始术语表。",
       glossaryFilePlaceholder: "请选择术语表",
       referenceFiles: "参考 TXT",
-      referenceFilesHelp:
-        "可多选。模型会把选中的 TXT 合并为小说参考上下文。",
+      referenceFilesHelp: "可多选。模型会把选中的 TXT 合并为小说参考上下文。",
       referenceFilesEmpty: "当前文件夹没有可用 TXT 参考文件。",
       inputScanLoading: "正在扫描输入文件夹…",
       inputScanError: "扫描输入文件夹失败：{reason}",
@@ -1070,11 +1072,9 @@ export const zh: Messages = {
       novelBackgroundHelp:
         "可选。补充世界观、人名规则或题材信息，帮助模型判断术语是否合理。",
       reviewRounds: "审查轮数",
-      reviewRoundsHelp:
-        "多轮会基于上一轮修改后的术语表继续审查。默认 1。",
+      reviewRoundsHelp: "多轮会基于上一轮修改后的术语表继续审查。默认 1。",
       batchSize: "每批术语数",
-      batchSizeHelp:
-        "每个模型请求包含多少条术语。较小更稳，较大更省请求数。",
+      batchSizeHelp: "每个模型请求包含多少条术语。较小更稳，较大更省请求数。",
       retryAttempts: "重试次数",
       retryAttemptsHelp:
         "瞬时网络错误、限速或超时时，每批最多额外重试几次。等待时间会递增；设为 0 则只使用模型配置里的重试次数。",
@@ -1455,7 +1455,8 @@ export const zh: Messages = {
       title: "失败归因",
       subtitle: "根据失败记录和当前模型速率配置生成；不会自动修改配置。",
       configLabel: "当前配置",
-      configValue: "并发 {concurrency} · RPM {rpm} · 超时 {timeout}s · 重试 {retries}",
+      configValue:
+        "并发 {concurrency} · RPM {rpm} · 超时 {timeout}s · 重试 {retries}",
       dominant: "主要原因：{type}（{count}/{total}）",
       recommendations: {
         rateLimitHighConcurrency:

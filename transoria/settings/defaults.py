@@ -61,13 +61,6 @@ class TranslationSettings:
     # heuristic keeps token cost bounded.
     context_lines: int = 25
     low_confidence_max_retries: int = 3
-    # Extra rounds of automatic recovery the orchestrator runs after
-    # the executor + split-failed-chunks loop finishes with FAILED
-    # subtasks. Each round waits 30s (typical RPM rate-limit window)
-    # and re-runs the still-FAILED subtasks. 0 disables auto-retry
-    # entirely; the user still gets manual ``Continue`` afterward.
-    # Capped at 100 in the UI to avoid pathological wait loops.
-    auto_retry_max_rounds: int = 5
     auto_open_output_folder: bool = False
     timeout_seconds: int = 600
     # Glossary entries threaded into TranslationConfig.glossary at run
