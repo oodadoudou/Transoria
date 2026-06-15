@@ -1,0 +1,228 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.modal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel, #fff);
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.header {
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--hairline, #ece8e2);
+}
+
+.title {
+  margin: 0;
+  color: var(--ink, #2c2620);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: var(--muted, #7a7166);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.errorBanner {
+  margin: 12px 22px 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-warn, #6b3a1f);
+  background: var(--surface-warn, #fdf2ec);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.errorBanner code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.body {
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink, #2c2620);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sectionHeader small {
+  color: var(--muted, #7a7166);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.providerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+}
+
+.providerCard {
+  min-height: 74px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: var(--panel-soft, #f5f0e9);
+  color: var(--ink, #2c2620);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.providerCard:hover {
+  border-color: var(--hairline-strong, #d8d2c7);
+  background: var(--panel, #fff);
+}
+
+.providerCardSelected {
+  border-color: var(--action, #3d3530);
+  background: var(--primary-soft, rgba(61, 53, 48, 0.08));
+}
+
+.providerName {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.providerMeta {
+  max-width: 100%;
+  color: var(--muted, #7a7166);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid var(--hairline-strong, #d8d2c7);
+  border-radius: 8px;
+  background: var(--panel, #fff);
+  color: var(--ink, #2c2620);
+  font: inherit;
+  font-size: 13px;
+}
+
+.input:focus {
+  outline: 2px solid var(--focus, rgba(74, 118, 168, 0.35));
+  outline-offset: 1px;
+}
+
+.summaryLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  color: var(--muted, #7a7166);
+  font-size: 12px;
+}
+
+.summaryLine span,
+.summaryLine strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summaryLine strong {
+  color: var(--ink, #2c2620);
+  font-weight: 600;
+}
+
+.customGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.empty {
+  padding: 12px;
+  color: var(--muted, #7a7166);
+  background: var(--surface-quiet, #faf7f2);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--hairline, #ece8e2);
+}
+
+@media (max-width: 640px) {
+  .overlay {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 24px);
+  }
+
+  .footer {
+    flex-wrap: wrap;
+  }
+}

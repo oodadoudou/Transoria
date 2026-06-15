@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useI18n, useMessages } from "./locales";
 import { isRunPage, useTaskStore, type Route } from "./store/useTaskStore";
 import { useSettingsStore } from "./store/useSettingsStore";
+import { useModelProfilesStore } from "./store/useModelProfilesStore";
 import { SubNav, crumbFor } from "./components/SubNav";
 import { Rail } from "./components/Rail";
 import { StatusBar } from "./components/StatusBar";
@@ -17,7 +18,13 @@ import { ToastHost } from "./components/ToastHost";
 import { UpdateAvailableModal } from "./components/UpdateAvailableModal";
 import { useSettingsSaveToast } from "./components/useSettingsSaveToast";
 import { useUpdatePrompt } from "./components/useUpdatePrompt";
+import {
+  FirstRunOnboardingModal,
+  needsFirstRunOnboarding,
+} from "./components/FirstRunOnboardingModal";
 import styles from "./App.module.css";
+
+let firstRunOnboardingDismissed = false;
 
 export function App() {
   const messages = useMessages();
@@ -25,6 +32,12 @@ export function App() {
   const setLocale = useI18n((state) => state.setLocale);
   const route = useTaskStore((state) => state.route);
   const hydrateSettings = useSettingsStore((state) => state.hydrate);
+  const settingsHydrated = useSettingsStore((state) => state.hydrated);
+  const appSettings = useSettingsStore((state) => state.app.draft);
+  const hydrateProfiles = useModelProfilesStore((state) => state.hydrate);
+  const profileHydrated = useModelProfilesStore((state) => state.hydrated);
+  const profileLoading = useModelProfilesStore((state) => state.loading);
+  const profiles = useModelProfilesStore((state) => state.profiles);
   const interfaceLanguage = useSettingsStore(
     (state) => state.app.draft?.interface_language,
   );
@@ -33,10 +46,17 @@ export function App() {
   );
   useSettingsSaveToast();
   const updatePrompt = useUpdatePrompt();
+  const [onboardingDismissed, setOnboardingDismissed] = useState(
+    firstRunOnboardingDismissed,
+  );
 
   useEffect(() => {
     void hydrateSettings();
   }, [hydrateSettings]);
+
+  useEffect(() => {
+    void hydrateProfiles();
+  }, [hydrateProfiles]);
 
   useEffect(() => {
     if (interfaceLanguage && interfaceLanguage !== locale) {
@@ -51,6 +71,12 @@ export function App() {
 
   const onRunPage = isRunPage(route);
   const crumb = crumbFor(route, messages);
+  const showFirstRunOnboarding =
+    !onboardingDismissed &&
+    settingsHydrated &&
+    profileHydrated &&
+    !profileLoading &&
+    needsFirstRunOnboarding(profiles, appSettings);
 
   const shellClass = `${styles.app} ${onRunPage ? styles.withInspector : styles.minimal}`;
 
@@ -86,6 +112,18 @@ export function App() {
       ) : (
         <CacheSizeReminder />
       )}
+      {showFirstRunOnboarding ? (
+        <FirstRunOnboardingModal
+          onDone={() => {
+            firstRunOnboardingDismissed = true;
+            setOnboardingDismissed(true);
+          }}
+          onSkip={() => {
+            firstRunOnboardingDismissed = true;
+            setOnboardingDismissed(true);
+          }}
+        />
+      ) : null}
       <ToastHost />
     </div>
   );

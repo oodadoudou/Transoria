@@ -71,6 +71,24 @@ export interface Messages {
     dismiss: string;
     openModelConfig: string;
   };
+  firstRun: {
+    title: string;
+    subtitle: string;
+    providerLabel: string;
+    loadingProviders: string;
+    noProviders: string;
+    customProviderMeta: string;
+    apiKeyLabel: string;
+    apiKeyPlaceholder: string;
+    customDefaultName: string;
+    customNameLabel: string;
+    customBaseUrlLabel: string;
+    customModelIdLabel: string;
+    skipAction: string;
+    finishAction: string;
+    savingAction: string;
+    savedTitle: string;
+  };
   runControls: {
     start: string;
     starting: string;
