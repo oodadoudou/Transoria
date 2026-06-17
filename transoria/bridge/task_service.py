@@ -3922,9 +3922,9 @@ class TaskService:
                 except (TaskNotFoundError, ValueError, OSError):
                     continue
                 record = snapshot.record
-            elif (
-                record.kind is TaskKind.GLOSSARY_REVIEW
-                and record.status is TaskStatus.COMPLETED
+            elif record.kind is TaskKind.GLOSSARY_REVIEW and record.status in (
+                TaskStatus.COMPLETED,
+                TaskStatus.STOPPED,
             ):
                 try:
                     snapshot = self._reconcile_glossary_review_completion(
@@ -4260,11 +4260,27 @@ class TaskService:
         self, snapshot: TaskSnapshot, cache: TaskCache
     ) -> TaskSnapshot:
         record = snapshot.record
+        if record.kind is not TaskKind.GLOSSARY_REVIEW:
+            return snapshot
+        artifacts_exist = self._glossary_review_artifacts_exist(record)
+        progress = snapshot.progress()
         if (
-            record.kind is not TaskKind.GLOSSARY_REVIEW
-            or record.status is not TaskStatus.COMPLETED
-            or self._glossary_review_artifacts_exist(record)
+            record.status is TaskStatus.STOPPED
+            and artifacts_exist
+            and progress.total > 0
+            and progress.pending == 0
+            and progress.running == 0
+            and progress.failed == 0
+            and progress.completed == progress.total
         ):
+            healed = record.with_status(TaskStatus.COMPLETED).with_updated_at(
+                _utc_now_iso()
+            )
+            cache.save_task(healed)
+            return TaskSnapshot(record=healed, subtasks=snapshot.subtasks)
+        if record.status is not TaskStatus.COMPLETED:
+            return snapshot
+        if artifacts_exist:
             return snapshot
         live = self.registry.get(record.id)
         if live is not None and not live.is_done:

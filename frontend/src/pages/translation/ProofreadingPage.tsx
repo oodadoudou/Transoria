@@ -16,6 +16,7 @@ import {
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
+import { ChevronDownIcon } from "@/components/Icon";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -401,6 +402,7 @@ export function ProofreadingPage() {
   const [replacementValue, setReplacementValue] = useState("");
   const [replacementRegex, setReplacementRegex] = useState(false);
   const [replacing, setReplacing] = useState<"one" | "all" | null>(null);
+  const [termAuditOpen, setTermAuditOpen] = useState(false);
   const consumeProofreadingLaunch = useTaskStore(
     (state) => state.consumeProofreadingLaunch,
   );
@@ -1837,67 +1839,91 @@ export function ProofreadingPage() {
 
       {termAuditGroups.length > 0 ? (
         <div className={styles.termAuditPanel}>
-          <div className={styles.termAuditHeader}>
-            <div>
-              <div className={styles.termAuditTitle}>{m.termAuditTitle}</div>
-              <div className={styles.termAuditSub}>{m.termAuditSub}</div>
-            </div>
-            <span className={styles.termAuditCount}>
-              {format(m.termAuditGroupCount, { n: termAuditGroups.length })}
+          <button
+            type="button"
+            className={styles.termAuditHeaderButton}
+            onClick={() => setTermAuditOpen((open) => !open)}
+            aria-expanded={termAuditOpen}
+          >
+            <span className={styles.termAuditHeaderText}>
+              <span
+                className={`${styles.termAuditChevron} ${
+                  termAuditOpen ? styles.termAuditChevronOpen : ""
+                }`.trim()}
+                aria-hidden="true"
+              >
+                <ChevronDownIcon size={14} />
+              </span>
+              <span>
+                <span className={styles.termAuditTitle}>
+                  {m.termAuditTitle}
+                </span>
+                <span className={styles.termAuditSub}>{m.termAuditSub}</span>
+              </span>
             </span>
-          </div>
-          <div className={styles.termAuditList}>
-            {termAuditGroups.map((group) => {
-              const visibleSegments = group.segmentIds.slice(0, 4);
-              const hiddenCount =
-                group.segmentIds.length - visibleSegments.length;
-              return (
-                <div className={styles.termAuditRow} key={group.key}>
-                  <div className={styles.termAuditMain}>
-                    <div className={styles.termAuditTerm}>
-                      <span>{group.src}</span>
-                      <span aria-hidden="true">-&gt;</span>
-                      <span>{group.dst}</span>
-                      {group.info ? (
-                        <span className={styles.termAuditInfo}>
-                          {group.info}
+            <span className={styles.termAuditHeaderActions}>
+              <span className={styles.termAuditCount}>
+                {format(m.termAuditGroupCount, { n: termAuditGroups.length })}
+              </span>
+              <span className={styles.termAuditToggleText}>
+                {termAuditOpen ? m.termAuditCollapse : m.termAuditExpand}
+              </span>
+            </span>
+          </button>
+          {termAuditOpen ? (
+            <div className={styles.termAuditList}>
+              {termAuditGroups.map((group) => {
+                const visibleSegments = group.segmentIds.slice(0, 4);
+                const hiddenCount =
+                  group.segmentIds.length - visibleSegments.length;
+                return (
+                  <div className={styles.termAuditRow} key={group.key}>
+                    <div className={styles.termAuditMain}>
+                      <div className={styles.termAuditTerm}>
+                        <span>{group.src}</span>
+                        <span aria-hidden="true">-&gt;</span>
+                        <span>{group.dst}</span>
+                        {group.info ? (
+                          <span className={styles.termAuditInfo}>
+                            {group.info}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className={styles.termAuditMeta}>
+                        {format(m.termAuditApplied, { n: group.applied })}
+                        <span aria-hidden="true">·</span>
+                        {format(m.termAuditMissing, { n: group.missing })}
+                        {group.inconsistent ? (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            {m.termAuditInconsistent}
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className={styles.termAuditSegments}>
+                      <span>{m.termAuditSegments}</span>
+                      {visibleSegments.map((segmentId) => (
+                        <button
+                          type="button"
+                          className={styles.termAuditSegment}
+                          key={segmentId}
+                          onClick={() => handleJumpToTermSegment(segmentId)}
+                        >
+                          {segmentId}
+                        </button>
+                      ))}
+                      {hiddenCount > 0 ? (
+                        <span className={styles.termAuditMore}>
+                          {format(m.termAuditMoreSegments, { n: hiddenCount })}
                         </span>
                       ) : null}
                     </div>
-                    <div className={styles.termAuditMeta}>
-                      {format(m.termAuditApplied, { n: group.applied })}
-                      <span aria-hidden="true">·</span>
-                      {format(m.termAuditMissing, { n: group.missing })}
-                      {group.inconsistent ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          {m.termAuditInconsistent}
-                        </>
-                      ) : null}
-                    </div>
                   </div>
-                  <div className={styles.termAuditSegments}>
-                    <span>{m.termAuditSegments}</span>
-                    {visibleSegments.map((segmentId) => (
-                      <button
-                        type="button"
-                        className={styles.termAuditSegment}
-                        key={segmentId}
-                        onClick={() => handleJumpToTermSegment(segmentId)}
-                      >
-                        {segmentId}
-                      </button>
-                    ))}
-                    {hiddenCount > 0 ? (
-                      <span className={styles.termAuditMore}>
-                        {format(m.termAuditMoreSegments, { n: hiddenCount })}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

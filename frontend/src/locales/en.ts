@@ -1051,6 +1051,8 @@ export const en: Messages = {
       termAuditInconsistent: "inconsistent",
       termAuditSegments: "Segments",
       termAuditMoreSegments: "+{n} more",
+      termAuditExpand: "Expand",
+      termAuditCollapse: "Collapse",
       filterAll: "All",
       nextRiskAction: "Next risk",
       replacementToggle: "Batch replacement",

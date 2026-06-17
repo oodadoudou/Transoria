@@ -654,6 +654,8 @@ export interface Messages {
       termAuditInconsistent: string;
       termAuditSegments: string;
       termAuditMoreSegments: string;
+      termAuditExpand: string;
+      termAuditCollapse: string;
       filterAll: string;
       nextRiskAction: string;
       replacementToggle: string;

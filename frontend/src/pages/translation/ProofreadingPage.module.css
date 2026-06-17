@@ -248,14 +248,58 @@
   background: var(--panel-soft);
 }
 
-.termAuditHeader {
+.termAuditHeaderButton {
   display: flex;
+  width: 100%;
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.termAuditHeaderButton:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 6px;
+}
+
+.termAuditHeaderText {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.termAuditChevron {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--muted);
+  transition: transform 160ms ease, color 160ms ease;
+}
+
+.termAuditHeaderButton:hover .termAuditChevron,
+.termAuditHeaderButton:hover .termAuditTitle {
+  color: var(--ink);
+}
+
+.termAuditChevronOpen {
+  transform: rotate(180deg);
+}
+
+.termAuditHeaderActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .termAuditTitle {
+  display: block;
   color: var(--ink);
   font-size: 12.5px;
   font-weight: 650;
@@ -271,7 +315,19 @@
   line-height: 1.4;
 }
 
+.termAuditSub {
+  display: block;
+}
+
 .termAuditCount {
+  white-space: nowrap;
+}
+
+.termAuditToggleText {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
   white-space: nowrap;
 }
 

@@ -1019,6 +1019,8 @@ export const zh: Messages = {
       termAuditInconsistent: "存在不一致",
       termAuditSegments: "段落",
       termAuditMoreSegments: "另有 {n} 条",
+      termAuditExpand: "展开",
+      termAuditCollapse: "收起",
       filterAll: "全部",
       nextRiskAction: "下一条风险",
       replacementToggle: "批量替换",
