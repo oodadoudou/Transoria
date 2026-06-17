@@ -8,6 +8,11 @@ import { Segmented } from "@/components/Segmented";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
+import {
+  SettingsField,
+  SettingsFieldFrame,
+  SettingsFieldStack,
+} from "@/components/SettingsField";
 import styles from "./SettingsPage.module.css";
 
 type Toggle = "on" | "off";
@@ -59,120 +64,129 @@ export function SettingsPage() {
       </Panel>
 
       <Panel>
-        <Row label={messages.language.sourceLabel} hint="">
-          <LanguageSelect
-            ariaLabel={messages.language.sourceLabel}
-            value={draft.source_language as Language}
-            onChange={(v) => moduleSettings.update("source_language", v)}
-          />
-        </Row>
-        <Row label={messages.language.targetLabel} hint="">
-          <LanguageSelect
-            ariaLabel={messages.language.targetLabel}
-            value={draft.target_language as Language}
-            onChange={(v) => {
-              moduleSettings.update("target_language", v);
-              moduleSettings.update(
-                "chinese_output_form",
-                v === "zh-Hant" ? "traditional" : "simplified",
-              );
-            }}
-          />
-        </Row>
+        <SettingsFieldStack>
+          <SettingsField label={messages.language.sourceLabel}>
+            <LanguageSelect
+              ariaLabel={messages.language.sourceLabel}
+              value={draft.source_language as Language}
+              onChange={(v) => moduleSettings.update("source_language", v)}
+            />
+          </SettingsField>
+          <SettingsField label={messages.language.targetLabel}>
+            <LanguageSelect
+              ariaLabel={messages.language.targetLabel}
+              value={draft.target_language as Language}
+              onChange={(v) => {
+                moduleSettings.update("target_language", v);
+                moduleSettings.update(
+                  "chinese_output_form",
+                  v === "zh-Hant" ? "traditional" : "simplified",
+                );
+              }}
+            />
+          </SettingsField>
+        </SettingsFieldStack>
       </Panel>
 
       <Panel>
-        <Row
-          label={settings.openOutputOnComplete}
-          hint={settings.openOutputOnCompleteHint}
-        >
-          <Segmented<Toggle>
-            ariaLabel={settings.openOutputOnComplete}
-            options={[
-              { id: "on", label: settings.on },
-              { id: "off", label: settings.off },
-            ]}
-            value={draft.auto_open_output_folder ? "on" : "off"}
-            onChange={(v) =>
-              moduleSettings.update("auto_open_output_folder", v === "on")
-            }
-          />
-        </Row>
-        <Row label={messages.bilingual.label} hint={messages.bilingual.hint}>
-          <Segmented<Toggle>
-            ariaLabel={messages.bilingual.label}
-            options={[
-              { id: "on", label: settings.on },
-              { id: "off", label: settings.off },
-            ]}
-            value={draft.bilingual_enabled ? "on" : "off"}
-            onChange={(v) =>
-              moduleSettings.update("bilingual_enabled", v === "on")
-            }
-          />
-        </Row>
-        {draft.bilingual_enabled ? (
-          <Row
-            label={messages.bilingual.dedupeLabel}
-            hint={messages.bilingual.dedupeHint}
+        <SettingsFieldStack>
+          <SettingsField
+            label={settings.openOutputOnComplete}
+            hint={settings.openOutputOnCompleteHint}
           >
             <Segmented<Toggle>
-              ariaLabel={messages.bilingual.dedupeLabel}
+              ariaLabel={settings.openOutputOnComplete}
               options={[
                 { id: "on", label: settings.on },
                 { id: "off", label: settings.off },
               ]}
-              value={draft.bilingual_dedupe_identical ? "on" : "off"}
+              value={draft.auto_open_output_folder ? "on" : "off"}
               onChange={(v) =>
-                moduleSettings.update("bilingual_dedupe_identical", v === "on")
+                moduleSettings.update("auto_open_output_folder", v === "on")
               }
             />
-          </Row>
-        ) : null}
-        <Row label="" hint="">
-          <NumberField
-            label={settings.precedingLines}
-            value={draft.context_lines}
-            onChange={(v) => moduleSettings.update("context_lines", v)}
-            help={settings.precedingLinesHelp}
-            min={0}
-            max={200}
-          />
-        </Row>
-        <Row label="" hint="">
-          <NumberField
-            label={settings.requestRetryAttempts}
-            value={draft.request_retry_attempts}
-            onChange={(v) => moduleSettings.update("request_retry_attempts", v)}
-            help={settings.requestRetryAttemptsHelp}
-            min={0}
-            max={20}
-          />
-        </Row>
-        <Row label="" hint="">
-          <NumberField
-            label={settings.timeoutSeconds}
-            value={draft.timeout_seconds}
-            onChange={(v) => moduleSettings.update("timeout_seconds", v)}
-            help={settings.timeoutSecondsHelp}
-            min={5}
-          />
-        </Row>
+          </SettingsField>
+          <SettingsField
+            label={messages.bilingual.label}
+            hint={messages.bilingual.hint}
+          >
+            <Segmented<Toggle>
+              ariaLabel={messages.bilingual.label}
+              options={[
+                { id: "on", label: settings.on },
+                { id: "off", label: settings.off },
+              ]}
+              value={draft.bilingual_enabled ? "on" : "off"}
+              onChange={(v) =>
+                moduleSettings.update("bilingual_enabled", v === "on")
+              }
+            />
+          </SettingsField>
+          {draft.bilingual_enabled ? (
+            <SettingsField
+              label={messages.bilingual.dedupeLabel}
+              hint={messages.bilingual.dedupeHint}
+            >
+              <Segmented<Toggle>
+                ariaLabel={messages.bilingual.dedupeLabel}
+                options={[
+                  { id: "on", label: settings.on },
+                  { id: "off", label: settings.off },
+                ]}
+                value={draft.bilingual_dedupe_identical ? "on" : "off"}
+                onChange={(v) =>
+                  moduleSettings.update("bilingual_dedupe_identical", v === "on")
+                }
+              />
+            </SettingsField>
+          ) : null}
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.precedingLines}
+              value={draft.context_lines}
+              onChange={(v) => moduleSettings.update("context_lines", v)}
+              help={settings.precedingLinesHelp}
+              min={0}
+              max={200}
+            />
+          </SettingsFieldFrame>
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.requestRetryAttempts}
+              value={draft.request_retry_attempts}
+              onChange={(v) => moduleSettings.update("request_retry_attempts", v)}
+              help={settings.requestRetryAttemptsHelp}
+              min={0}
+              max={20}
+            />
+          </SettingsFieldFrame>
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.timeoutSeconds}
+              value={draft.timeout_seconds}
+              onChange={(v) => moduleSettings.update("timeout_seconds", v)}
+              help={settings.timeoutSecondsHelp}
+              min={5}
+            />
+          </SettingsFieldFrame>
+        </SettingsFieldStack>
       </Panel>
 
       <Panel title={settings.advancedTitle} subtitle={settings.advancedSub}>
-        <Row label="" hint="">
-          <NumberField
-            label={settings.lowConfidenceMaxRetries}
-            value={draft.low_confidence_max_retries}
-            onChange={(v) =>
-              moduleSettings.update("low_confidence_max_retries", v)
-            }
-            help={settings.lowConfidenceMaxRetriesHelp}
-            min={0}
-            max={10}
-          />
-        </Row>
+        <SettingsFieldStack>
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.lowConfidenceMaxRetries}
+              value={draft.low_confidence_max_retries}
+              onChange={(v) =>
+                moduleSettings.update("low_confidence_max_retries", v)
+              }
+              help={settings.lowConfidenceMaxRetriesHelp}
+              min={0}
+              max={10}
+            />
+          </SettingsFieldFrame>
+        </SettingsFieldStack>
       </Panel>
 
       <SettingsToolbar
@@ -186,26 +200,5 @@ export function SettingsPage() {
         }}
       />
     </>
-  );
-}
-
-interface RowProps {
-  label: string;
-  hint: string;
-  children: React.ReactNode;
-}
-
-function Row({ label, hint, children }: RowProps) {
-  if (!label && !hint) {
-    return <div className={styles.fieldRow}>{children}</div>;
-  }
-  return (
-    <div className={styles.row}>
-      <div className={styles.rowText}>
-        <div className={styles.rowLabel}>{label}</div>
-        {hint ? <div className={styles.rowHint}>{hint}</div> : null}
-      </div>
-      <div className={styles.rowControl}>{children}</div>
-    </div>
   );
 }

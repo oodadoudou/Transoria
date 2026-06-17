@@ -8,6 +8,11 @@ import { Segmented } from "@/components/Segmented";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { TextField } from "@/components/TextField";
+import {
+  SettingsField,
+  SettingsFieldFrame,
+  SettingsFieldStack,
+} from "@/components/SettingsField";
 import styles from "../glossary/SettingsPage.module.css";
 
 type Toggle = "on" | "off";
@@ -124,71 +129,79 @@ export function SettingsPage() {
       </Panel>
 
       <Panel>
-        <TextField
-          label={settings.novelBackground}
-          value={draft.novel_background}
-          onChange={(value) => moduleSettings.update("novel_background", value)}
-          help={settings.novelBackgroundHelp}
-          multiline
-        />
+        <SettingsFieldStack>
+          <SettingsFieldFrame>
+            <TextField
+              label={settings.novelBackground}
+              value={draft.novel_background}
+              onChange={(value) =>
+                moduleSettings.update("novel_background", value)
+              }
+              help={settings.novelBackgroundHelp}
+              multiline
+            />
+          </SettingsFieldFrame>
+        </SettingsFieldStack>
       </Panel>
 
       <Panel>
-        <ToggleRow label="" hint="">
-          <NumberField
-            label={settings.reviewRounds}
-            value={draft.review_rounds}
-            onChange={(v) => moduleSettings.update("review_rounds", v)}
-            help={settings.reviewRoundsHelp}
-            min={1}
-            max={10}
-          />
-        </ToggleRow>
-        <ToggleRow label="" hint="">
-          <NumberField
-            label={settings.batchSize}
-            value={draft.batch_size}
-            onChange={(v) => moduleSettings.update("batch_size", v)}
-            help={settings.batchSizeHelp}
-            min={1}
-            max={200}
-          />
-        </ToggleRow>
-        <ToggleRow label="" hint="">
-          <NumberField
-            label={settings.retryAttempts}
-            value={draft.retry_attempts}
-            onChange={(v) => moduleSettings.update("retry_attempts", v)}
-            help={settings.retryAttemptsHelp}
-            min={0}
-            max={20}
-          />
-        </ToggleRow>
-        <ToggleRow label="" hint="">
-          <NumberField
-            label={settings.timeoutSeconds}
-            value={draft.timeout_seconds}
-            onChange={(v) => moduleSettings.update("timeout_seconds", v)}
-            help={settings.timeoutSecondsHelp}
-            min={5}
-          />
-        </ToggleRow>
-        <ToggleRow
-          label={settings.openOutputOnComplete}
-          hint={settings.openOutputOnCompleteHint}
-        >
-          <Segmented<Toggle>
-            ariaLabel={settings.openOutputOnComplete}
-            options={[
-              { id: "on", label: settings.on },
-              { id: "off", label: settings.off },
-            ]}
-            value={draft.auto_open_output_folder ? "on" : "off"}
-            onChange={(v) =>
-              moduleSettings.update("auto_open_output_folder", v === "on")
-            }
-          />
-        </ToggleRow>
+        <SettingsFieldStack>
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.reviewRounds}
+              value={draft.review_rounds}
+              onChange={(v) => moduleSettings.update("review_rounds", v)}
+              help={settings.reviewRoundsHelp}
+              min={1}
+              max={10}
+            />
+          </SettingsFieldFrame>
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.batchSize}
+              value={draft.batch_size}
+              onChange={(v) => moduleSettings.update("batch_size", v)}
+              help={settings.batchSizeHelp}
+              min={1}
+              max={200}
+            />
+          </SettingsFieldFrame>
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.retryAttempts}
+              value={draft.retry_attempts}
+              onChange={(v) => moduleSettings.update("retry_attempts", v)}
+              help={settings.retryAttemptsHelp}
+              min={0}
+              max={20}
+            />
+          </SettingsFieldFrame>
+          <SettingsFieldFrame>
+            <NumberField
+              label={settings.timeoutSeconds}
+              value={draft.timeout_seconds}
+              onChange={(v) => moduleSettings.update("timeout_seconds", v)}
+              help={settings.timeoutSecondsHelp}
+              min={5}
+            />
+          </SettingsFieldFrame>
+          <SettingsField
+            label={settings.openOutputOnComplete}
+            hint={settings.openOutputOnCompleteHint}
+          >
+            <Segmented<Toggle>
+              ariaLabel={settings.openOutputOnComplete}
+              options={[
+                { id: "on", label: settings.on },
+                { id: "off", label: settings.off },
+              ]}
+              value={draft.auto_open_output_folder ? "on" : "off"}
+              onChange={(v) =>
+                moduleSettings.update("auto_open_output_folder", v === "on")
+              }
+            />
+          </SettingsField>
+        </SettingsFieldStack>
       </Panel>
 
       <SettingsToolbar
@@ -301,27 +314,6 @@ function ReferencePicker({
         </div>
       )}
       <div className={styles.rowHint}>{help}</div>
-    </div>
-  );
-}
-
-interface ToggleRowProps {
-  label: string;
-  hint: string;
-  children: React.ReactNode;
-}
-
-function ToggleRow({ label, hint, children }: ToggleRowProps) {
-  if (!label && !hint) {
-    return <div className={styles.fieldRow ?? ""}>{children}</div>;
-  }
-  return (
-    <div className={styles.row}>
-      <div className={styles.rowText}>
-        <div className={styles.rowLabel}>{label}</div>
-        {hint ? <div className={styles.rowHint}>{hint}</div> : null}
-      </div>
-      <div className={styles.rowControl}>{children}</div>
     </div>
   );
 }
