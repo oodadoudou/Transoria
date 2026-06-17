@@ -250,6 +250,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               value={inputPath}
               variant="input"
               onChange={setInputPath}
+              historyKey="general_tools:folders"
               compact
             />
           ) : (

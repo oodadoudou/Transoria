@@ -309,6 +309,9 @@ export const en: Messages = {
     choose: "Choose folder",
     open: "Open",
     placeholder: "Type or paste a folder path…",
+    recent: "Recently used",
+    recentPlaceholder: "Recent",
+    clearRecent: "Clear recent",
   },
   language: {
     sourceLabel: "Source language",

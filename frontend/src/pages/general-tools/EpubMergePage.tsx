@@ -287,6 +287,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             value={inputDir}
             variant="input"
             onChange={setInputDir}
+            historyKey="general_tools:folders"
             compact
           />
           <FolderPickerRow
@@ -294,6 +295,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             value={outputDir}
             variant="output"
             onChange={setOutputDir}
+            historyKey="general_tools:folders"
             compact
           />
         </div>

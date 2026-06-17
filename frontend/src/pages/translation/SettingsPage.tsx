@@ -46,12 +46,14 @@ export function SettingsPage() {
             value={draft.input_folder}
             variant="input"
             onChange={(path) => moduleSettings.update("input_folder", path)}
+            historyKey="translation:input_folder"
           />
           <FolderPickerRow
             label={settings.outputFolder}
             value={draft.output_folder}
             variant="output"
             onChange={(path) => moduleSettings.update("output_folder", path)}
+            historyKey="translation:output_folder"
           />
         </div>
       </Panel>

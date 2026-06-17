@@ -300,6 +300,9 @@ export const zh: Messages = {
     choose: "选择文件夹",
     open: "打开",
     placeholder: "输入或粘贴文件夹路径…",
+    recent: "最近使用",
+    recentPlaceholder: "最近",
+    clearRecent: "清空最近",
   },
   language: {
     sourceLabel: "源语言",

@@ -280,6 +280,9 @@ export interface Messages {
     choose: string;
     open: string;
     placeholder: string;
+    recent: string;
+    recentPlaceholder: string;
+    clearRecent: string;
   };
   language: {
     sourceLabel: string;

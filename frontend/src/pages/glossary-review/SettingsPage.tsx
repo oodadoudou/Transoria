@@ -86,6 +86,7 @@ export function SettingsPage() {
               moduleSettings.update("selected_xlsx_path", "");
               moduleSettings.update("selected_reference_paths", []);
             }}
+            historyKey="glossary_review:input_folder"
           />
           <TextField
             label={settings.outputFilename}

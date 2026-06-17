@@ -306,12 +306,14 @@ export function BatchReplacementPage() {
             value={inputFolder}
             variant="input"
             onChange={setInputFolder}
+            historyKey="general_tools:folders"
           />
           <FolderPickerRow
             label={messages.batchReplacement.outputFolder}
             value={outputFolder}
             variant="output"
             onChange={setOutputFolder}
+            historyKey="general_tools:folders"
           />
         </div>
       </Panel>
