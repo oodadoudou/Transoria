@@ -764,10 +764,24 @@ export const en: Messages = {
         sourcePlaceholder: "Source term",
         translationPlaceholder: "Translated term",
         descriptionPlaceholder: "Description",
+        regex: "Regex match",
+        regexHelp:
+          "Treat the source field as a regular expression. Invalid patterns are highlighted but imports and saves are not blocked.",
         caseSensitive: "Case-sensitive match",
         caseSensitiveHelp:
           "When off (default), `Aa` matches regardless of case. Turn on for languages where case matters or when the source string already mixes cases on purpose.",
         active: "Active",
+      },
+      conflicts: {
+        banner: "{n} glossary conflict warnings",
+        locate: "Locate conflict",
+        statusLabel: "Glossary conflict warning",
+        duplicateSource:
+          "The same source term maps to multiple translations.",
+        overlap:
+          "This entry overlaps another enabled entry through case-insensitive or regex matching.",
+        invalidRegex:
+          "This regex source pattern is invalid, so it cannot match reliably.",
       },
       actions: {
         add: "Add",

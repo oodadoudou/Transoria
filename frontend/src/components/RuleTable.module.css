@@ -95,6 +95,10 @@
   background: var(--panel-soft);
 }
 
+.rowWarning {
+  background: color-mix(in srgb, var(--warning, #8a4b0c) 8%, transparent);
+}
+
 .rowActive,
 .rowActive:hover {
   background: var(--panel-soft);
@@ -215,6 +219,51 @@
 .statusDotOn {
   background: var(--action);
   opacity: 1;
+}
+
+.warningChip {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-avatar);
+  border: 1px solid
+    color-mix(in srgb, var(--warning, #8a4b0c) 45%, var(--hairline));
+  background: color-mix(in srgb, var(--warning, #8a4b0c) 12%, var(--panel));
+  color: var(--warning, #8a4b0c);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.warningBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid
+    color-mix(in srgb, var(--warning, #8a4b0c) 35%, var(--hairline));
+  border-radius: var(--radius-inset);
+  background: color-mix(in srgb, var(--warning, #8a4b0c) 9%, var(--panel));
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.warningBanner button {
+  border: 0;
+  background: transparent;
+  color: var(--action);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.warningBanner button:hover {
+  text-decoration: underline;
 }
 
 .empty {

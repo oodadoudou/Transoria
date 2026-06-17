@@ -205,6 +205,8 @@ export function RunPage() {
     (snapshot.status === "pending" || snapshot.status === "running") &&
     snapshot.progress.total === 0;
   const glossaryOutputFolder = glossarySettings.draft?.output_folder.trim() ?? "";
+  const glossaryNovelBackground =
+    glossarySettings.draft?.novel_background ?? "";
   const reviewBusy =
     !reviewSnapshot.isIdle &&
     (reviewSnapshot.status === "pending" ||
@@ -221,6 +223,10 @@ export function RunPage() {
     setSendingToReview(true);
     try {
       glossaryReviewSettings.update("input_folder", glossaryOutputFolder);
+      glossaryReviewSettings.update(
+        "novel_background",
+        glossaryNovelBackground,
+      );
       glossaryReviewSettings.update("selected_xlsx_path", "");
       glossaryReviewSettings.update("selected_reference_paths", []);
       await glossaryReviewSettings.saveNow();

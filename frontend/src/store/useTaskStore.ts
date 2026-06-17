@@ -160,6 +160,7 @@ export interface GlossaryEntry {
   source: string;
   translation: string;
   description: string;
+  regex: boolean;
   caseSensitive: boolean;
   enabled: boolean;
   /** 0 for hand-authored/imported rows that do not track frequency. */
@@ -260,6 +261,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         source: "",
         translation: "",
         description: "",
+        regex: false,
         caseSensitive: false,
         enabled: true,
         frequency: 0,

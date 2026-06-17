@@ -743,10 +743,21 @@ export const zh: Messages = {
         sourcePlaceholder: "原文术语",
         translationPlaceholder: "译文术语",
         descriptionPlaceholder: "说明",
+        regex: "正则匹配",
+        regexHelp:
+          "将原文字段视为正则表达式。无效表达式会被高亮提醒，但不会阻断导入或保存。",
         caseSensitive: "区分大小写",
         caseSensitiveHelp:
           "默认关闭,`Aa` 表示忽略大小写。源串本身刻意混用大小写、或语言区分大小写时开启。",
         active: "已启用",
+      },
+      conflicts: {
+        banner: "{n} 个术语冲突告警",
+        locate: "定位冲突",
+        statusLabel: "术语冲突告警",
+        duplicateSource: "同一个原文术语映射到了多个不同译文。",
+        overlap: "该条目会通过忽略大小写或正则匹配与另一条启用条目重叠。",
+        invalidRegex: "该正则原文模式无效，无法稳定匹配。",
       },
       actions: {
         add: "新增",

@@ -26,6 +26,7 @@ function persistedToEntry(
     source: entry.src,
     translation: entry.dst,
     description: entry.info,
+    regex: entry.regex,
     caseSensitive: entry.case_sensitive,
     enabled: entry.enabled,
     frequency: entry.frequency ?? 0,

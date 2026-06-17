@@ -81,6 +81,7 @@ interface RuleTableProps<T> {
   /** Fired when a sortable header is clicked. ``next`` is ``null``
    * when the user clicks through to clear the sort. */
   onSortChange?: (next: SortState | null) => void;
+  getRowClassName?: (rule: T, index: number) => string | undefined;
 }
 
 interface ContextMenuState {
@@ -120,6 +121,7 @@ export function RuleTable<T>({
   contextMenuLabels,
   sortState,
   onSortChange,
+  getRowClassName,
 }: RuleTableProps<T>) {
   const messages = useMessages();
   const gridTemplate = ["28px", "36px", ...columns.map((c) => c.width)].join(
@@ -358,6 +360,7 @@ export function RuleTable<T>({
               isPrimary ? styles.rowActive : "",
               inSelection && !isPrimary ? styles.rowMultiSelected : "",
               enabled ? "" : styles.rowDisabled,
+              getRowClassName?.(rule, index) ?? "",
             ]
               .filter(Boolean)
               .join(" ");

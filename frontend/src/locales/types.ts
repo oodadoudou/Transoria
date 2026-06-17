@@ -402,9 +402,19 @@ export interface Messages {
         sourcePlaceholder: string;
         translationPlaceholder: string;
         descriptionPlaceholder: string;
+        regex: string;
+        regexHelp: string;
         caseSensitive: string;
         caseSensitiveHelp: string;
         active: string;
+      };
+      conflicts: {
+        banner: string;
+        locate: string;
+        statusLabel: string;
+        duplicateSource: string;
+        overlap: string;
+        invalidRegex: string;
       };
       actions: {
         add: string;

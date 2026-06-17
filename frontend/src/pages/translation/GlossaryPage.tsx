@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format, useMessages } from "@/locales";
 import {
   BridgeError,
@@ -41,6 +41,7 @@ function glossaryEntryKey(entry: GlossaryEntry): string {
     entry.source,
     entry.translation,
     entry.description,
+    entry.regex,
     entry.caseSensitive,
     entry.enabled,
     entry.frequency,
@@ -62,7 +63,7 @@ function entryToPersisted(entry: GlossaryEntry): PersistedEntry {
     src: entry.source,
     dst: entry.translation,
     info: entry.description,
-    regex: false,
+    regex: entry.regex,
     case_sensitive: entry.caseSensitive,
     enabled: entry.enabled,
     frequency: entry.frequency,
@@ -80,10 +81,128 @@ function persistedToEntry(raw: unknown, index: number): GlossaryEntry | null {
     source: src,
     translation: dst,
     description: typeof obj.info === "string" ? obj.info : "",
+    regex: obj.regex === true,
     caseSensitive: obj.case_sensitive === true,
     enabled: obj.enabled !== false,
     frequency: freq,
   };
+}
+
+type GlossaryConflictKind = "duplicateSource" | "overlap" | "invalidRegex";
+
+interface GlossaryConflictSummary {
+  byEntryId: Map<string, GlossaryConflictKind[]>;
+  conflicts: Array<{ kind: GlossaryConflictKind; entryIds: string[] }>;
+  firstEntryId: string | null;
+}
+
+function buildGlossaryConflictSummary(
+  entries: GlossaryEntry[],
+): GlossaryConflictSummary {
+  const byEntryId = new Map<string, Set<GlossaryConflictKind>>();
+  const conflicts: Array<{ kind: GlossaryConflictKind; entryIds: string[] }> =
+    [];
+  const active = entries.filter(
+    (entry) =>
+      entry.enabled &&
+      entry.source.trim().length > 0 &&
+      entry.translation.trim().length > 0,
+  );
+
+  const addConflict = (
+    kind: GlossaryConflictKind,
+    entryIds: string[],
+  ): void => {
+    const uniqueIds = Array.from(new Set(entryIds));
+    if (uniqueIds.length === 0) return;
+    conflicts.push({ kind, entryIds: uniqueIds });
+    uniqueIds.forEach((id) => {
+      const kinds = byEntryId.get(id) ?? new Set<GlossaryConflictKind>();
+      kinds.add(kind);
+      byEntryId.set(id, kinds);
+    });
+  };
+
+  active.forEach((entry) => {
+    if (!entry.regex) return;
+    if (!compileRegex(entry)) addConflict("invalidRegex", [entry.id]);
+  });
+
+  const bySource = new Map<string, GlossaryEntry[]>();
+  active.forEach((entry) => {
+    const source = entry.source.trim();
+    const bucket = bySource.get(source) ?? [];
+    bucket.push(entry);
+    bySource.set(source, bucket);
+  });
+  bySource.forEach((bucket) => {
+    const translations = new Set(
+      bucket.map((entry) => entry.translation.trim()).filter(Boolean),
+    );
+    if (translations.size > 1) {
+      addConflict(
+        "duplicateSource",
+        bucket.map((entry) => entry.id),
+      );
+    }
+  });
+
+  for (let i = 0; i < active.length; i += 1) {
+    for (let j = i + 1; j < active.length; j += 1) {
+      const left = active[i];
+      const right = active[j];
+      if (left.translation.trim() === right.translation.trim()) continue;
+      if (left.source.trim() === right.source.trim()) continue;
+      if (entriesOverlap(left, right)) {
+        addConflict("overlap", [left.id, right.id]);
+      }
+    }
+  }
+
+  return {
+    byEntryId: new Map(
+      Array.from(byEntryId.entries()).map(([id, kinds]) => [
+        id,
+        Array.from(kinds),
+      ]),
+    ),
+    conflicts,
+    firstEntryId: conflicts[0]?.entryIds[0] ?? null,
+  };
+}
+
+function entriesOverlap(left: GlossaryEntry, right: GlossaryEntry): boolean {
+  if (!left.regex && !right.regex) {
+    if (left.caseSensitive && right.caseSensitive) return false;
+    return (
+      left.source.trim().toLowerCase() === right.source.trim().toLowerCase()
+    );
+  }
+  if (left.regex && right.regex) {
+    if (!compileRegex(left) || !compileRegex(right)) return false;
+    return (
+      (left.source.trim() === right.source.trim() &&
+        left.caseSensitive === right.caseSensitive) ||
+      regexMatchesSource(left, right.source.trim()) ||
+      regexMatchesSource(right, left.source.trim())
+    );
+  }
+  const regexEntry = left.regex ? left : right;
+  const plainEntry = left.regex ? right : left;
+  return regexMatchesSource(regexEntry, plainEntry.source.trim());
+}
+
+function compileRegex(entry: GlossaryEntry): RegExp | null {
+  try {
+    return new RegExp(entry.source, entry.caseSensitive ? "" : "i");
+  } catch {
+    return null;
+  }
+}
+
+function regexMatchesSource(entry: GlossaryEntry, source: string): boolean {
+  const compiled = compileRegex(entry);
+  return compiled ? compiled.test(source) : false;
 }
 
 export function GlossaryPage() {
@@ -221,6 +340,7 @@ export function GlossaryPage() {
         source: entry.src,
         translation: entry.dst,
         description: entry.info,
+        regex: entry.regex,
         caseSensitive: entry.case_sensitive,
         enabled: entry.enabled,
         frequency: entry.frequency ?? 0,
@@ -268,7 +388,7 @@ export function GlossaryPage() {
           src: entry.source,
           dst: entry.translation,
           info: entry.description,
-          regex: false,
+          regex: entry.regex,
           case_sensitive: entry.caseSensitive,
           enabled: entry.enabled,
           frequency: entry.frequency,
@@ -286,6 +406,43 @@ export function GlossaryPage() {
   const commitFromIndex = (idx: number, patch: Partial<GlossaryEntry>) => {
     const target = filteredEntries[idx];
     if (target) updateEntry(target.id, patch);
+  };
+
+  const conflictSummary = useMemo(
+    () => buildGlossaryConflictSummary(state.entries),
+    [state.entries],
+  );
+  const conflictLabel = (kind: GlossaryConflictKind): string => {
+    switch (kind) {
+      case "duplicateSource":
+        return g.conflicts.duplicateSource;
+      case "overlap":
+        return g.conflicts.overlap;
+      case "invalidRegex":
+        return g.conflicts.invalidRegex;
+      default:
+        return "";
+    }
+  };
+  const conflictTitleFor = (entry: GlossaryEntry): string => {
+    const kinds = conflictSummary.byEntryId.get(entry.id);
+    return kinds?.map(conflictLabel).join("\n") ?? "";
+  };
+  const handleLocateConflict = () => {
+    const targetId = conflictSummary.firstEntryId;
+    if (!targetId) return;
+    const visibleIndex = filteredEntries.findIndex(
+      (entry) => entry.id === targetId,
+    );
+    if (visibleIndex >= 0) {
+      setSelection({ indices: [visibleIndex], last: visibleIndex });
+      return;
+    }
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSortState(null);
+    const rawIndex = state.entries.findIndex((entry) => entry.id === targetId);
+    if (rawIndex >= 0) setSelection({ indices: [rawIndex], last: rawIndex });
   };
 
   const columns: RuleTableColumn<GlossaryEntry>[] = [
@@ -325,6 +482,26 @@ export function GlossaryPage() {
       },
     },
     {
+      key: "status",
+      label: g.columns.status,
+      width: "64px",
+      align: "center",
+      render: (entry) => {
+        const title = conflictTitleFor(entry);
+        return title ? (
+          <span
+            className={ruleTableStyles.warningChip}
+            title={title}
+            aria-label={g.conflicts.statusLabel}
+          >
+            !
+          </span>
+        ) : (
+          <span className={ruleTableStyles.cellMuted}>—</span>
+        );
+      },
+    },
+    {
       key: "frequency",
       label: g.columns.frequency,
       width: "84px",
@@ -339,14 +516,24 @@ export function GlossaryPage() {
     {
       key: "rule",
       label: g.columns.rule,
-      width: "56px",
+      width: "72px",
       align: "right",
       render: (entry) => (
-        <span
-          className={`${ruleTableStyles.ruleChip} ${entry.caseSensitive ? ruleTableStyles.ruleChipOn : ""}`.trim()}
-          title={g.editor.caseSensitive}
-        >
-          Aa
+        <span className={ruleTableStyles.ruleChipGroup}>
+          {entry.regex ? (
+            <span
+              className={`${ruleTableStyles.ruleChip} ${ruleTableStyles.ruleChipOn}`}
+              title={g.editor.regex}
+            >
+              .*
+            </span>
+          ) : null}
+          <span
+            className={`${ruleTableStyles.ruleChip} ${entry.caseSensitive ? ruleTableStyles.ruleChipOn : ""}`.trim()}
+            title={g.editor.caseSensitive}
+          >
+            Aa
+          </span>
         </span>
       ),
     },
@@ -437,6 +624,18 @@ export function GlossaryPage() {
             }}
           />
         ) : null}
+        {conflictSummary.conflicts.length > 0 ? (
+          <div className={ruleTableStyles.warningBanner}>
+            <span>
+              {format(g.conflicts.banner, {
+                n: conflictSummary.conflicts.length,
+              })}
+            </span>
+            <button type="button" onClick={handleLocateConflict}>
+              {g.conflicts.locate}
+            </button>
+          </div>
+        ) : null}
         <RuleTable
           rules={filteredEntries}
           selection={selection}
@@ -452,6 +651,11 @@ export function GlossaryPage() {
           sortState={sortState}
           onSortChange={setSortState}
           isEnabled={(entry) => entry.enabled}
+          getRowClassName={(entry) =>
+            conflictSummary.byEntryId.has(entry.id)
+              ? ruleTableStyles.rowWarning
+              : undefined
+          }
           columns={columns}
           emptyMessage={
             <GuidedEmptyState
@@ -520,6 +724,7 @@ export function GlossaryPage() {
               source: entry.src,
               translation: entry.dst,
               description: entry.info,
+              regex: entry.regex,
               caseSensitive: entry.case_sensitive,
               enabled: entry.enabled,
               frequency: 0,
@@ -585,6 +790,12 @@ function EntryEditor({
         value={entry.description}
         onChange={(v) => onChange({ description: v })}
         placeholder={g.editor.descriptionPlaceholder}
+      />
+      <ToggleSwitch
+        label={g.editor.regex}
+        checked={entry.regex}
+        onChange={(next) => onChange({ regex: next })}
+        help={g.editor.regexHelp}
       />
       <ToggleSwitch
         label={g.editor.caseSensitive}
