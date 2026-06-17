@@ -26,11 +26,13 @@ export const en: Messages = {
     },
   },
   status: {
+    pending: "Pending",
     running: "Running",
     stopping: "Stopping",
     stopped: "Stopped",
     failed: "Failed",
     completed: "Completed",
+    skipped: "Skipped",
     inFlight: "batch #{n} in flight",
     activeRequests: "{n} active requests",
     perMinute: "{n} segments / min",

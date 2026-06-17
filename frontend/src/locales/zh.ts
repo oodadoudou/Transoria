@@ -26,11 +26,13 @@ export const zh: Messages = {
     },
   },
   status: {
+    pending: "等待中",
     running: "运行中",
     stopping: "正在停止",
     stopped: "已停止",
     failed: "已失败",
     completed: "已完成",
+    skipped: "已跳过",
     inFlight: "正在处理批次 #{n}",
     activeRequests: "{n} 个进行中的请求",
     perMinute: "{n} 段 / 分钟",

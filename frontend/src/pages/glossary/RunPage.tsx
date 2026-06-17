@@ -354,6 +354,7 @@ export function RunPage() {
             <ChunkStatusGrid
               subtasks={snapshot.subtasks}
               itemLabel={run.liveCounter.chunksLabel}
+              statusLabels={messages.status}
             />
           </>
         ) : null}

@@ -22,11 +22,13 @@ export interface Messages {
     start: { translation: string; extraction: string };
   };
   status: {
+    pending: string;
     running: string;
     stopping: string;
     stopped: string;
     failed: string;
     completed: string;
+    skipped: string;
     inFlight: string;
     activeRequests: string;
     perMinute: string;

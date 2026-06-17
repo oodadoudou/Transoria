@@ -61,9 +61,49 @@
   padding: 8px 0;
 }
 
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 6px;
+  color: var(--ink-soft, #1f1f23);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryItem {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+.swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--hairline-strong, #d8d2c7);
+  flex: 0 0 auto;
+}
+
+.summaryText {
+  min-width: 0;
+}
+
 .canvas {
   display: block;
   width: 100%;
-  height: 16px;
+  height: 18px;
   border-radius: 4px;
+  cursor: crosshair;
+}
+
+.canvasDetail {
+  margin-top: 6px;
+  color: var(--ink-soft, #1f1f23);
+  font-size: 11px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
