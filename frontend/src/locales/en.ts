@@ -673,6 +673,7 @@ export const en: Messages = {
       settings: "Settings",
       glossary: "Glossary",
       proofreading: "Proofreading",
+      rulesGroup: "Rules",
       textPreserve: "Text Preserve",
       preReplacement: "Pre-Replacement",
       postReplacement: "Post-Replacement",

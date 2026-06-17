@@ -67,6 +67,10 @@
   color: var(--ink-soft);
 }
 
+.nestedChild {
+  padding-left: 43px;
+}
+
 .leaf {
   font-weight: 500;
 }
@@ -98,6 +102,32 @@
   flex-direction: column;
   gap: 1px;
   padding: 1px 0 4px;
+}
+
+.subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.subgroupToggle {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.subgroupToggle:hover {
+  color: var(--ink);
+}
+
+.subgroupActive {
+  color: var(--ink-soft);
+}
+
+.subgroupChildren {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .label2 {

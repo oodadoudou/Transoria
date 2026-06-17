@@ -8,10 +8,19 @@ import {
 } from "@/store/useTaskStore";
 import styles from "./Rail.module.css";
 
-interface ChildSpec {
+interface PageChildSpec {
   page: Route["page"];
   label: string;
 }
+
+interface ChildGroupSpec {
+  kind: "group";
+  id: string;
+  label: string;
+  children: ReadonlyArray<PageChildSpec>;
+}
+
+type ChildSpec = PageChildSpec | ChildGroupSpec;
 
 interface ModuleSpec {
   id: ModuleId;
@@ -47,9 +56,16 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
           { page: "proofreading", label: t.proofreading },
           { page: "prompt", label: t.prompt },
           { page: "settings", label: t.settings },
-          { page: "textPreserve", label: t.textPreserve },
-          { page: "preReplacement", label: t.preReplacement },
-          { page: "postReplacement", label: t.postReplacement },
+          {
+            kind: "group",
+            id: "rules",
+            label: t.rulesGroup,
+            children: [
+              { page: "textPreserve", label: t.textPreserve },
+              { page: "preReplacement", label: t.preReplacement },
+              { page: "postReplacement", label: t.postReplacement },
+            ],
+          },
         ],
       },
       {
@@ -125,6 +141,10 @@ function isModuleId(value: unknown): value is ModuleId {
     value === "general-tools" ||
     value === "app-settings"
   );
+}
+
+function isChildGroup(child: ChildSpec): child is ChildGroupSpec {
+  return "kind" in child && child.kind === "group";
 }
 
 export function Rail() {
@@ -246,26 +266,104 @@ function ModuleNode({
       {open ? (
         <div className={styles.children}>
           {spec.children.map((child) => {
-            const active =
-              route.module === spec.id && route.page === child.page;
+            if (isChildGroup(child)) {
+              return (
+                <ChildGroup
+                  key={child.id}
+                  group={child}
+                  moduleId={spec.id}
+                  route={route}
+                  onNavigate={onNavigate}
+                />
+              );
+            }
             return (
-              <button
+              <ChildButton
                 key={child.page}
-                type="button"
-                className={`${styles.row} ${styles.child} ${active ? styles.active : ""}`.trim()}
-                aria-current={active ? "page" : undefined}
-                onClick={() =>
-                  onNavigate({
-                    module: spec.id,
-                    page: child.page,
-                  } as Route)
-                }
-              >
-                <span className={styles.ind} />
-                <span className={styles.label2}>{child.label}</span>
-              </button>
+                child={child}
+                moduleId={spec.id}
+                route={route}
+                onNavigate={onNavigate}
+              />
             );
           })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface ChildButtonProps {
+  child: PageChildSpec;
+  moduleId: ModuleId;
+  route: Route;
+  onNavigate: (route: Route) => void;
+  nested?: boolean;
+}
+
+function ChildButton({
+  child,
+  moduleId,
+  route,
+  onNavigate,
+  nested = false,
+}: ChildButtonProps) {
+  const active = route.module === moduleId && route.page === child.page;
+  return (
+    <button
+      type="button"
+      className={`${styles.row} ${styles.child} ${nested ? styles.nestedChild : ""} ${active ? styles.active : ""}`.trim()}
+      aria-current={active ? "page" : undefined}
+      onClick={() =>
+        onNavigate({
+          module: moduleId,
+          page: child.page,
+        } as Route)
+      }
+    >
+      <span className={styles.ind} />
+      <span className={styles.label2}>{child.label}</span>
+    </button>
+  );
+}
+
+interface ChildGroupProps {
+  group: ChildGroupSpec;
+  moduleId: ModuleId;
+  route: Route;
+  onNavigate: (route: Route) => void;
+}
+
+function ChildGroup({ group, moduleId, route, onNavigate }: ChildGroupProps) {
+  const active = route.module === moduleId && group.children.some(
+    (child) => child.page === route.page,
+  );
+  const [open, setOpen] = useState(active);
+  const visible = open || active;
+
+  return (
+    <div className={styles.subgroup}>
+      <button
+        type="button"
+        className={`${styles.row} ${styles.child} ${styles.subgroupToggle} ${active ? styles.subgroupActive : ""}`.trim()}
+        aria-expanded={visible}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Chevron open={visible} />
+        <span className={styles.label2}>{group.label}</span>
+      </button>
+      {visible ? (
+        <div className={styles.subgroupChildren}>
+          {group.children.map((child) => (
+            <ChildButton
+              key={child.page}
+              child={child}
+              moduleId={moduleId}
+              route={route}
+              onNavigate={onNavigate}
+              nested
+            />
+          ))}
         </div>
       ) : null}
     </div>

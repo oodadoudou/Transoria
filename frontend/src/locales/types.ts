@@ -317,6 +317,7 @@ export interface Messages {
       settings: string;
       glossary: string;
       proofreading: string;
+      rulesGroup: string;
       textPreserve: string;
       preReplacement: string;
       postReplacement: string;
