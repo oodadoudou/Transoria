@@ -581,7 +581,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             variant="output"
             onChange={setOutputDir}
             onError={setActionError}
-            historyKey="general_tools:folders"
+            historyKey="general_tools:txt_to_epub:output_folder"
             compact
           />
         </div>

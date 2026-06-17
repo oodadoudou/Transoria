@@ -271,7 +271,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               value={inputPath}
               variant="input"
               onChange={handleInputPathChange}
-              historyKey="general_tools:folders"
+              historyKey="general_tools:epub_convert:input_folder"
               compact
             />
           ) : (
