@@ -73,6 +73,8 @@ interface ProofreadingItemMeta {
   fileIndex: number;
   segmentIndex: number;
   sourceResidue: boolean;
+  glossaryNotApplied: boolean;
+  termInconsistency: boolean;
   possibleDuplicate: boolean;
   modelAnomaly: boolean;
   untranslated: boolean;
@@ -82,6 +84,8 @@ interface ProofreadingItemMeta {
 interface RiskCounts {
   lowConf: number;
   residue: number;
+  glossaryNotApplied: number;
+  termInconsistency: number;
   possibleDuplicate: number;
   modelAnomaly: number;
   untranslated: number;
@@ -92,6 +96,8 @@ interface RiskCounts {
 const EMPTY_RISK_COUNTS: RiskCounts = {
   lowConf: 0,
   residue: 0,
+  glossaryNotApplied: 0,
+  termInconsistency: 0,
   possibleDuplicate: 0,
   modelAnomaly: 0,
   untranslated: 0,
@@ -99,7 +105,7 @@ const EMPTY_RISK_COUNTS: RiskCounts = {
   total: 0,
 };
 
-const REVIEW_RISK_MAX_RANK = 4;
+const REVIEW_RISK_MAX_RANK = 6;
 const RETRANSLATE_CONCURRENCY_FALLBACK = 4;
 const RETRANSLATE_CONCURRENCY_AUTO_MAX = 48;
 const RETRANSLATE_FRONTEND_JOB_CAP = 50;
@@ -116,6 +122,18 @@ const MODEL_ANOMALY_TAGS = new Set([
   "length_ratio_anomaly",
   "punctuation_anomaly",
 ]);
+
+interface TermAuditGroup {
+  key: string;
+  src: string;
+  dst: string;
+  info: string;
+  total: number;
+  applied: number;
+  missing: number;
+  inconsistent: boolean;
+  segmentIds: string[];
+}
 
 interface StoredRetranslateQueueEntry {
   taskId: string;
@@ -331,8 +349,16 @@ function formatRegenerateFailure(
       missing: numberDetail(file.details, "missing_segments"),
       expected: numberDetail(file.details, "expected_segments"),
       matched: numberDetail(file.details, "matched_segments"),
-      parsedFingerprint: stringDetail(file.details, "parsed_source_fingerprint", "-"),
-      cacheFingerprint: stringDetail(file.details, "cache_source_fingerprint", "-"),
+      parsedFingerprint: stringDetail(
+        file.details,
+        "parsed_source_fingerprint",
+        "-",
+      ),
+      cacheFingerprint: stringDetail(
+        file.details,
+        "cache_source_fingerprint",
+        "-",
+      ),
       firstMissing: stringDetail(file.details, "first_missing_segment_id", "-"),
     });
   } else if (file.code === "missing_translations") {
@@ -393,8 +419,9 @@ export function ProofreadingPage() {
   const [regenerating, setRegenerating] = useState<
     "translated" | "bilingual" | null
   >(null);
-  const [regenerateFeedback, setRegenerateFeedback] =
-    useState<Feedback | null>(null);
+  const [regenerateFeedback, setRegenerateFeedback] = useState<Feedback | null>(
+    null,
+  );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [inflightRetranslates, setInflightRetranslates] = useState<
     Record<string, string>
@@ -433,9 +460,12 @@ export function ProofreadingPage() {
   const localeDefaultPromptId = `default-translation-${locale}`;
   const fallbackPromptId =
     activeTranslationPromptId ??
-    (translationPromptSlice.presets.some((preset) => preset.id === localeDefaultPromptId)
+    (translationPromptSlice.presets.some(
+      (preset) => preset.id === localeDefaultPromptId,
+    )
       ? localeDefaultPromptId
-      : translationPromptSlice.presets.find((preset) => preset.enabled)?.id ?? null);
+      : (translationPromptSlice.presets.find((preset) => preset.enabled)?.id ??
+        null));
   const modelItems = useMemo<QuickSwitchItem[]>(
     () =>
       profiles.profiles
@@ -467,7 +497,9 @@ export function ProofreadingPage() {
 
   useEffect(() => {
     if (proofreadingModelOverridden) return;
-    setProofreadingModelId(activeTranslationModelId ?? modelItems[0]?.id ?? null);
+    setProofreadingModelId(
+      activeTranslationModelId ?? modelItems[0]?.id ?? null,
+    );
   }, [activeTranslationModelId, modelItems, proofreadingModelOverridden]);
 
   useEffect(() => {
@@ -557,11 +589,18 @@ export function ProofreadingPage() {
   const proofreadingIndex = useMemo(() => {
     const itemsBySegmentId = new Map<string, ProofreadingItem>();
     const metaBySegmentId = new Map<string, ProofreadingItemMeta>();
-    const riskCounts = { ...EMPTY_RISK_COUNTS, total: snapshot?.items.length ?? 0 };
+    const riskCounts = {
+      ...EMPTY_RISK_COUNTS,
+      total: snapshot?.items.length ?? 0,
+    };
     for (const item of snapshot?.items ?? []) {
       itemsBySegmentId.set(item.segment_id, item);
       const [fileIndex, segmentIndex] = segmentSortKey(item.segment_id);
       const sourceResidue = item.tags?.includes("source_residue") ?? false;
+      const glossaryNotApplied =
+        item.tags?.includes("glossary_not_applied") ?? false;
+      const termInconsistency =
+        item.tags?.includes("term_inconsistency") ?? false;
       const possibleDuplicate =
         item.tags?.includes("possible_duplicate") ?? false;
       const modelAnomaly =
@@ -570,17 +609,21 @@ export function ProofreadingPage() {
       const formatRescue =
         hasReasonText(item.reasons, "format", "rescue") ||
         hasReasonText(item.reasons, "format", "fallback");
-      let rank = 5;
+      let rank = 7;
       if (sourceResidue) rank = 0;
-      else if (possibleDuplicate) rank = 1;
-      else if (modelAnomaly) rank = 2;
-      else if (untranslated) rank = 3;
-      else if (item.low_confidence) rank = 4;
+      else if (glossaryNotApplied) rank = 1;
+      else if (termInconsistency) rank = 2;
+      else if (possibleDuplicate) rank = 3;
+      else if (modelAnomaly) rank = 4;
+      else if (untranslated) rank = 5;
+      else if (item.low_confidence) rank = 6;
       metaBySegmentId.set(item.segment_id, {
         rank,
         fileIndex,
         segmentIndex,
         sourceResidue,
+        glossaryNotApplied,
+        termInconsistency,
         possibleDuplicate,
         modelAnomaly,
         untranslated,
@@ -588,6 +631,8 @@ export function ProofreadingPage() {
       });
       if (item.low_confidence) riskCounts.lowConf += 1;
       if (sourceResidue) riskCounts.residue += 1;
+      if (glossaryNotApplied) riskCounts.glossaryNotApplied += 1;
+      if (termInconsistency) riskCounts.termInconsistency += 1;
       if (possibleDuplicate) riskCounts.possibleDuplicate += 1;
       if (modelAnomaly) riskCounts.modelAnomaly += 1;
       if (untranslated) riskCounts.untranslated += 1;
@@ -604,6 +649,45 @@ export function ProofreadingPage() {
       );
     });
     return { itemsBySegmentId, metaBySegmentId, riskCounts, sortedItems };
+  }, [snapshot]);
+
+  const termAuditGroups = useMemo<TermAuditGroup[]>(() => {
+    const groups = new Map<string, TermAuditGroup>();
+    for (const item of snapshot?.items ?? []) {
+      for (const term of item.glossary_terms ?? []) {
+        if (term.applied && !term.inconsistent) continue;
+        const key = `${term.src}\0${term.dst}\0${term.info}`;
+        const existing = groups.get(key) ?? {
+          key,
+          src: term.src,
+          dst: term.dst,
+          info: term.info,
+          total: 0,
+          applied: 0,
+          missing: 0,
+          inconsistent: false,
+          segmentIds: [],
+        };
+        existing.total += 1;
+        if (term.applied) {
+          existing.applied += 1;
+        } else {
+          existing.missing += 1;
+        }
+        existing.inconsistent = existing.inconsistent || term.inconsistent;
+        if (!existing.segmentIds.includes(item.segment_id)) {
+          existing.segmentIds.push(item.segment_id);
+        }
+        groups.set(key, existing);
+      }
+    }
+    return [...groups.values()].sort(
+      (left, right) =>
+        Number(right.inconsistent) - Number(left.inconsistent) ||
+        right.missing - left.missing ||
+        right.total - left.total ||
+        left.src.localeCompare(right.src),
+    );
   }, [snapshot]);
 
   // Sync draft when selection changes.
@@ -626,6 +710,8 @@ export function ProofreadingPage() {
         !(
           (filters.has("low_conf") && item.low_confidence) ||
           (filters.has("source_residue") && meta?.sourceResidue) ||
+          (filters.has("glossary_not_applied") && meta?.glossaryNotApplied) ||
+          (filters.has("term_inconsistency") && meta?.termInconsistency) ||
           (filters.has("possible_duplicate") && meta?.possibleDuplicate) ||
           (filters.has("model_anomaly") && meta?.modelAnomaly) ||
           (filters.has("untranslated") && meta?.untranslated) ||
@@ -636,8 +722,7 @@ export function ProofreadingPage() {
       }
       if (!q) return true;
       return (
-        item.src.toLowerCase().includes(q) ||
-        item.dst.toLowerCase().includes(q)
+        item.src.toLowerCase().includes(q) || item.dst.toLowerCase().includes(q)
       );
     });
   }, [proofreadingIndex, search, filters]);
@@ -813,7 +898,8 @@ export function ProofreadingPage() {
     if (!plan) return;
     const changes = filteredItems
       .map((item) => {
-        const base = item.segment_id === selectedSegmentId ? draftDst : item.dst;
+        const base =
+          item.segment_id === selectedSegmentId ? draftDst : item.dst;
         const next = plan.apply(base);
         return next === base ? null : { segmentId: item.segment_id, dst: next };
       })
@@ -1015,9 +1101,7 @@ export function ProofreadingPage() {
       );
       void proofreadingBridge
         .resumeRetranslate(entry.requestId)
-        .then(() =>
-          pollRetranslate(entry.segmentId, entry.requestId, false),
-        )
+        .then(() => pollRetranslate(entry.segmentId, entry.requestId, false))
         .catch(() => {
           forgetRetranslateRequest(entry.requestId);
           setInflightRetranslates((prev) => {
@@ -1035,7 +1119,10 @@ export function ProofreadingPage() {
   ): Promise<RetranslateOutcome> => {
     const showFeedback = options.showFeedback ?? true;
     if (!activeTaskId || inflightRetranslates[segmentId]) {
-      return { status: "failed", reason: "retranslate request is already running" };
+      return {
+        status: "failed",
+        reason: "retranslate request is already running",
+      };
     }
     if (showFeedback) setFeedback(null);
     try {
@@ -1082,7 +1169,11 @@ export function ProofreadingPage() {
 
   const handleRetranslateSelected = async () => {
     if (selectedSegmentIds.size === 0 || batchRetranslating) return;
-    if (dirty && selectedSegmentId && selectedSegmentIds.has(selectedSegmentId)) {
+    if (
+      dirty &&
+      selectedSegmentId &&
+      selectedSegmentIds.has(selectedSegmentId)
+    ) {
       setFeedback({ kind: "error", text: m.retranslateSaveDirtyFirst });
       return;
     }
@@ -1109,7 +1200,9 @@ export function ProofreadingPage() {
       selectedProofreadingModel,
       ids.length,
     );
-    const waitForRateSlot = createRetranslateRateGate(selectedProofreadingModel);
+    const waitForRateSlot = createRetranslateRateGate(
+      selectedProofreadingModel,
+    );
     setBatchRetranslating(true);
     setBatchRetranslateProgress({
       total: ids.length,
@@ -1158,10 +1251,7 @@ export function ProofreadingPage() {
               if (previous !== undefined) {
                 undoEntries.push({ segmentId, dst: previous });
               }
-            } else if (
-              result.status === "stale" ||
-              result.status === "skipped"
-            )
+            } else if (result.status === "stale" || result.status === "skipped")
               staleCount += 1;
             else {
               failedCount += 1;
@@ -1197,7 +1287,8 @@ export function ProofreadingPage() {
   };
 
   const handleUndoRetranslate = async () => {
-    if (!activeTaskId || !retranslateUndo || undoingRetranslate || dirty) return;
+    if (!activeTaskId || !retranslateUndo || undoingRetranslate || dirty)
+      return;
     setUndoingRetranslate(true);
     setFeedback(null);
     try {
@@ -1247,7 +1338,9 @@ export function ProofreadingPage() {
             ? [anchorIndex, targetIndex]
             : [targetIndex, anchorIndex];
         setSelectedSegmentIds(
-          new Set(filteredItems.slice(from, to + 1).map((item) => item.segment_id)),
+          new Set(
+            filteredItems.slice(from, to + 1).map((item) => item.segment_id),
+          ),
         );
         return;
       }
@@ -1273,6 +1366,18 @@ export function ProofreadingPage() {
     setSelectedSegmentId(segmentId);
     setSelectedSegmentIds(new Set([segmentId]));
     setSelectionAnchorId(segmentId);
+  };
+
+  const handleJumpToTermSegment = (segmentId: string) => {
+    if (!filteredItems.some((item) => item.segment_id === segmentId)) {
+      setSearch("");
+      setFilters(new Set(["glossary_not_applied", "term_inconsistency"]));
+    }
+    selectSingleSegment(segmentId);
+    const visibleIndex = filteredItems.findIndex(
+      (item) => item.segment_id === segmentId,
+    );
+    if (visibleIndex >= 0) virtual.scrollToIndex(visibleIndex);
   };
 
   const handleSelectNextRisk = () => {
@@ -1314,6 +1419,9 @@ export function ProofreadingPage() {
 
   const lowConfCount = proofreadingIndex.riskCounts.lowConf;
   const residueCount = proofreadingIndex.riskCounts.residue;
+  const glossaryNotAppliedCount =
+    proofreadingIndex.riskCounts.glossaryNotApplied;
+  const termInconsistencyCount = proofreadingIndex.riskCounts.termInconsistency;
   const possibleDuplicateCount = proofreadingIndex.riskCounts.possibleDuplicate;
   const modelAnomalyCount = proofreadingIndex.riskCounts.modelAnomaly;
   const untranslatedCount = proofreadingIndex.riskCounts.untranslated;
@@ -1340,6 +1448,16 @@ export function ProofreadingPage() {
       key: "source_residue",
       label: m.filterOnlySourceResidue,
       count: residueCount,
+    },
+    {
+      key: "glossary_not_applied",
+      label: m.filterOnlyGlossaryNotApplied,
+      count: glossaryNotAppliedCount,
+    },
+    {
+      key: "term_inconsistency",
+      label: m.filterOnlyTermInconsistency,
+      count: termInconsistencyCount,
     },
     {
       key: "possible_duplicate",
@@ -1388,11 +1506,23 @@ export function ProofreadingPage() {
   }> = [
     {
       label: m.filterPresetDefault,
-      keys: ["low_conf", "source_residue", "possible_duplicate"],
+      keys: [
+        "low_conf",
+        "source_residue",
+        "glossary_not_applied",
+        "term_inconsistency",
+        "possible_duplicate",
+      ],
     },
     {
       label: m.filterPresetHighRisk,
-      keys: ["source_residue", "possible_duplicate", "model_anomaly"],
+      keys: [
+        "source_residue",
+        "glossary_not_applied",
+        "term_inconsistency",
+        "possible_duplicate",
+        "model_anomaly",
+      ],
     },
     {
       label: m.filterPresetCompletion,
@@ -1403,6 +1533,8 @@ export function ProofreadingPage() {
       keys: [
         "low_conf",
         "source_residue",
+        "glossary_not_applied",
+        "term_inconsistency",
         "possible_duplicate",
         "model_anomaly",
         "untranslated",
@@ -1422,9 +1554,7 @@ export function ProofreadingPage() {
     const reasons = Array.isArray(record.reasons)
       ? record.reasons.filter(Boolean)
       : [];
-    const tags = Array.isArray(record.tags)
-      ? record.tags.filter(Boolean)
-      : [];
+    const tags = Array.isArray(record.tags) ? record.tags.filter(Boolean) : [];
     const parts: string[] = [];
     if (reasons.length > 0) {
       parts.push(`${m.riskReasonPrefix}${reasons.join("；")}`);
@@ -1454,9 +1584,7 @@ export function ProofreadingPage() {
           <button
             type="button"
             className={styles.copyButton}
-            onClick={() =>
-              void copyToClipboard(activeTaskId, m.copyTaskIdDone)
-            }
+            onClick={() => void copyToClipboard(activeTaskId, m.copyTaskIdDone)}
           >
             {m.copyTaskId}
           </button>
@@ -1606,6 +1734,22 @@ export function ProofreadingPage() {
           </button>
           <button
             type="button"
+            className={`${styles.filterChip} ${filters.has("glossary_not_applied") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("glossary_not_applied")}
+            onClick={() => toggleFilter("glossary_not_applied")}
+          >
+            {m.filterOnlyGlossaryNotApplied}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("term_inconsistency") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("term_inconsistency")}
+            onClick={() => toggleFilter("term_inconsistency")}
+          >
+            {m.filterOnlyTermInconsistency}
+          </button>
+          <button
+            type="button"
             className={`${styles.filterChip} ${filters.has("possible_duplicate") ? styles.filterChipActive : ""}`.trim()}
             aria-pressed={filters.has("possible_duplicate")}
             onClick={() => toggleFilter("possible_duplicate")}
@@ -1691,6 +1835,72 @@ export function ProofreadingPage() {
         </div>
       ) : null}
 
+      {termAuditGroups.length > 0 ? (
+        <div className={styles.termAuditPanel}>
+          <div className={styles.termAuditHeader}>
+            <div>
+              <div className={styles.termAuditTitle}>{m.termAuditTitle}</div>
+              <div className={styles.termAuditSub}>{m.termAuditSub}</div>
+            </div>
+            <span className={styles.termAuditCount}>
+              {format(m.termAuditGroupCount, { n: termAuditGroups.length })}
+            </span>
+          </div>
+          <div className={styles.termAuditList}>
+            {termAuditGroups.map((group) => {
+              const visibleSegments = group.segmentIds.slice(0, 4);
+              const hiddenCount =
+                group.segmentIds.length - visibleSegments.length;
+              return (
+                <div className={styles.termAuditRow} key={group.key}>
+                  <div className={styles.termAuditMain}>
+                    <div className={styles.termAuditTerm}>
+                      <span>{group.src}</span>
+                      <span aria-hidden="true">-&gt;</span>
+                      <span>{group.dst}</span>
+                      {group.info ? (
+                        <span className={styles.termAuditInfo}>
+                          {group.info}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className={styles.termAuditMeta}>
+                      {format(m.termAuditApplied, { n: group.applied })}
+                      <span aria-hidden="true">·</span>
+                      {format(m.termAuditMissing, { n: group.missing })}
+                      {group.inconsistent ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          {m.termAuditInconsistent}
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className={styles.termAuditSegments}>
+                    <span>{m.termAuditSegments}</span>
+                    {visibleSegments.map((segmentId) => (
+                      <button
+                        type="button"
+                        className={styles.termAuditSegment}
+                        key={segmentId}
+                        onClick={() => handleJumpToTermSegment(segmentId)}
+                      >
+                        {segmentId}
+                      </button>
+                    ))}
+                    {hiddenCount > 0 ? (
+                      <span className={styles.termAuditMore}>
+                        {format(m.termAuditMoreSegments, { n: hiddenCount })}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       <div style={{ marginBottom: 8 }}>
         <input
           type="text"
@@ -1756,7 +1966,7 @@ export function ProofreadingPage() {
       <div className={styles.layout}>
         <div className={styles.tableContainer}>
           <div className={styles.tableHead}>
-          <span>{m.columns.index}</span>
+            <span>{m.columns.index}</span>
             <span>{m.columns.src}</span>
             <span>{m.columns.dst}</span>
             <span>{m.columns.status}</span>
@@ -1801,7 +2011,9 @@ export function ProofreadingPage() {
                         left: 0,
                         right: 0,
                       }}
-                      onClick={(event) => handleRowSelect(item.segment_id, event)}
+                      onClick={(event) =>
+                        handleRowSelect(item.segment_id, event)
+                      }
                     >
                       <span
                         className={`${styles.cell} ${styles.cellIndex}`.trim()}
@@ -1845,6 +2057,22 @@ export function ProofreadingPage() {
                             title={m.statusSourceResidueHint}
                           >
                             {m.statusSourceResidue}
+                          </span>
+                        ) : null}
+                        {item.tags?.includes("glossary_not_applied") ? (
+                          <span
+                            className={`${styles.statusChip} ${styles.statusGlossary}`}
+                            title={m.statusGlossaryNotAppliedHint}
+                          >
+                            {m.statusGlossaryNotApplied}
+                          </span>
+                        ) : null}
+                        {item.tags?.includes("term_inconsistency") ? (
+                          <span
+                            className={`${styles.statusChip} ${styles.statusTerm}`}
+                            title={m.statusTermInconsistencyHint}
+                          >
+                            {m.statusTermInconsistency}
                           </span>
                         ) : null}
                         {item.tags?.includes("possible_duplicate") ? (

@@ -52,6 +52,7 @@ from transoria.workflows.translation.glossary_report import (
     GlossaryApplicationReport,
     GlossaryApplicationReportPaths,
     build_glossary_application_report,
+    target_term_present,
     write_glossary_application_report,
 )
 from transoria.workflows.translation.statistics import (
@@ -98,6 +99,7 @@ __all__ = [
     "format_glossary_section",
     "postprocess_segment",
     "preprocess_segment",
+    "target_term_present",
     "write_translation_statistics",
     "write_glossary_application_report",
 ]

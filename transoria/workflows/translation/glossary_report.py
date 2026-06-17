@@ -57,9 +57,7 @@ def build_glossary_application_report(
     models may correctly adapt glossary terms to fit the target language.
     """
 
-    records_by_key: dict[
-        tuple[str, str, str, str], GlossaryApplicationRecord
-    ] = {}
+    records_by_key: dict[tuple[str, str, str, str], GlossaryApplicationRecord] = {}
     for subtask in subtasks:
         if subtask.status is not SubtaskStatus.COMPLETED:
             continue
@@ -97,7 +95,7 @@ def build_glossary_application_report(
                     src=entry.src,
                     dst=entry.dst,
                     info=entry.info,
-                    target_term_present=_target_term_present(entry, translated_text),
+                    target_term_present=target_term_present(entry, translated_text),
                     source_text=source_text,
                     translated_text=translated_text,
                 )
@@ -105,11 +103,13 @@ def build_glossary_application_report(
     records = tuple(
         records_by_key[key] for key in sorted(records_by_key, key=lambda item: item[0])
     )
-    target_term_present = sum(1 for record in records if record.target_term_present)
-    review_suggested = len(records) - target_term_present
+    target_term_present_count = sum(
+        1 for record in records if record.target_term_present
+    )
+    review_suggested = len(records) - target_term_present_count
     return GlossaryApplicationReport(
         total_matches=len(records),
-        target_term_present_matches=target_term_present,
+        target_term_present_matches=target_term_present_count,
         review_suggested_matches=review_suggested,
         segments_with_matches=len({record.segment_id for record in records}),
         segments_with_review_suggestions=len(
@@ -160,7 +160,7 @@ def _payload_glossary_entries(raw: object) -> tuple[GlossaryEntry, ...]:
     return tuple(entries)
 
 
-def _target_term_present(entry: GlossaryEntry, translated_text: str) -> bool:
+def target_term_present(entry: GlossaryEntry, translated_text: str) -> bool:
     expected = entry.dst.strip()
     if not expected:
         return False
@@ -226,5 +226,6 @@ __all__ = [
     "GlossaryApplicationReport",
     "GlossaryApplicationReportPaths",
     "build_glossary_application_report",
+    "target_term_present",
     "write_glossary_application_report",
 ]

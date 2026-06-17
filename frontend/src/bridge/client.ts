@@ -317,6 +317,13 @@ export interface ProofreadingItem {
   low_confidence: boolean;
   reasons?: string[];
   subtask_ids?: string[];
+  glossary_terms?: Array<{
+    src: string;
+    dst: string;
+    info: string;
+    applied: boolean;
+    inconsistent: boolean;
+  }>;
   /** Optional per-segment classification tags such as source residue or
    * possible adjacent duplicate translation. */
   tags?: string[];

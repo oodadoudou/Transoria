@@ -175,6 +175,8 @@ export interface ModuleGlossaryRules {
 export type ProofreadingFilterKey =
   | "low_conf"
   | "source_residue"
+  | "glossary_not_applied"
+  | "term_inconsistency"
   | "possible_duplicate"
   | "model_anomaly"
   | "untranslated"
@@ -183,6 +185,8 @@ export type ProofreadingFilterKey =
 export const DEFAULT_PROOFREADING_FILTERS: ProofreadingFilterKey[] = [
   "low_conf",
   "source_residue",
+  "glossary_not_applied",
+  "term_inconsistency",
   "possible_duplicate",
 ];
 

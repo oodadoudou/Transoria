@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import OrderedDict
 from dataclasses import replace
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -32,12 +33,18 @@ from transoria.bridge.task_service import (
 from transoria.domain import Language, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
 from transoria.workflows.translation import evaluate_segment_confidence
+from transoria.workflows.translation.glossary_report import target_term_present
+from transoria.workflows.translation.rules import Glossary, GlossaryEntry
 
 _PROOFREADABLE_TRANSLATION_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED}
 )
 _POSSIBLE_DUPLICATE_TAG = "possible_duplicate"
 _POSSIBLE_DUPLICATE_REASON = "adjacent_translation_possible_duplicate"
+_TERM_INCONSISTENCY_TAG = "term_inconsistency"
+_TERM_INCONSISTENCY_REASON = "glossary_term_translation_inconsistent"
+_GLOSSARY_NOT_APPLIED_TAG = "glossary_not_applied"
+_GLOSSARY_NOT_APPLIED_REASON = "glossary_term_target_missing"
 _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH = 4
 _DUPLICATE_SCAN_WINDOW = 3
 _DUPLICATE_SCAN_TRANSLATION_RATIO = 0.92
@@ -49,7 +56,18 @@ _DUPLICATE_SCAN_SOURCE_RATIO = 0.56
 _DUPLICATE_SCAN_MIN_DELTA = 0.32
 _DUPLICATE_SCAN_TAGGED_PARTNER_RATIO = 0.74
 _DUPLICATE_SCAN_TAGGED_PARTNER_OVERLAP = 0.74
+_TERM_AUDIT_CACHE_MAX_TASKS = 8
 _TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
+
+
+def _glossary_entry_key(entry: GlossaryEntry) -> tuple[str, str, str, bool, bool]:
+    return (
+        entry.src,
+        entry.dst,
+        entry.info,
+        entry.regex,
+        entry.case_sensitive,
+    )
 
 
 def _optional_string(payload: Mapping[str, object], key: str) -> str | None:
@@ -148,6 +166,36 @@ def _source_segments_fingerprint(segments: list[tuple[str, str]]) -> str:
         digest.update(source_text.encode("utf-8"))
         digest.update(b"\0")
     return digest.hexdigest()[:16]
+
+
+def _term_audit_fingerprint(
+    items: list[dict[str, object]], glossary: Glossary
+) -> str:
+    if not items or not glossary.entries:
+        return ""
+    digest = hashlib.sha256()
+    for entry in glossary.entries:
+        digest.update(entry.src.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(entry.dst.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(entry.info.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(entry.regex).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(str(entry.case_sensitive).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(str(entry.enabled).encode("ascii"))
+        digest.update(b"\0")
+    digest.update(b"\1")
+    for item in items:
+        digest.update(str(item.get("segment_id", "")).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(item.get("src", "")).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(item.get("dst", "")).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()[:24]
 
 
 def _normalized_similarity_text(text: str) -> str:
@@ -262,13 +310,168 @@ def _looks_like_tagged_duplicate_partner(
     )
 
 
-def _mark_possible_duplicate(item: dict[str, object]) -> None:
+def _mark_item_risk(item: dict[str, object], tag: str, reason: str) -> None:
     tags = item.setdefault("tags", [])
-    if isinstance(tags, list) and _POSSIBLE_DUPLICATE_TAG not in tags:
-        tags.append(_POSSIBLE_DUPLICATE_TAG)
+    if isinstance(tags, list) and tag not in tags:
+        tags.append(tag)
     reasons = item.setdefault("reasons", [])
-    if isinstance(reasons, list) and _POSSIBLE_DUPLICATE_REASON not in reasons:
-        reasons.append(_POSSIBLE_DUPLICATE_REASON)
+    if isinstance(reasons, list) and reason not in reasons:
+        reasons.append(reason)
+
+
+def _mark_possible_duplicate(item: dict[str, object]) -> None:
+    _mark_item_risk(item, _POSSIBLE_DUPLICATE_TAG, _POSSIBLE_DUPLICATE_REASON)
+
+
+def _append_unique_values(item: dict[str, object], key: str, values: object) -> None:
+    if not isinstance(values, list):
+        return
+    target = item.setdefault(key, [])
+    if not isinstance(target, list):
+        return
+    for value in values:
+        if isinstance(value, str) and value not in target:
+            target.append(value)
+
+
+def _glossary_from_metadata(value: object) -> Glossary:
+    if not isinstance(value, list):
+        return Glossary.empty()
+    records = [item for item in value if isinstance(item, Mapping)]
+    return Glossary.from_records(records)
+
+
+def _append_glossary_term_audit(
+    item: dict[str, object],
+    entry: GlossaryEntry,
+    *,
+    applied: bool,
+) -> dict[str, object] | None:
+    terms = item.setdefault("glossary_terms", [])
+    if not isinstance(terms, list):
+        return None
+    record: dict[str, object] = {
+        "src": entry.src,
+        "dst": entry.dst,
+        "info": entry.info,
+        "applied": applied,
+        "inconsistent": False,
+    }
+    terms.append(record)
+    return record
+
+
+def _tag_term_glossary_risks(
+    items: list[dict[str, object]], glossary: Glossary
+) -> None:
+    if not items or not glossary.entries:
+        return
+
+    occurrences: dict[
+        tuple[str, str, str, bool, bool],
+        list[tuple[dict[str, object], dict[str, object], bool]],
+    ] = {}
+    for item in items:
+        source_text = str(item.get("src", ""))
+        translated_text = str(item.get("dst", ""))
+        matched = glossary.match(source_text)
+        if not matched:
+            continue
+        seen_keys: set[tuple[str, str, str, bool, bool]] = set()
+        for entry in matched:
+            key = _glossary_entry_key(entry)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            applied = target_term_present(entry, translated_text)
+            audit_record = _append_glossary_term_audit(
+                item,
+                entry,
+                applied=applied,
+            )
+            if audit_record is None:
+                continue
+            occurrences.setdefault(key, []).append((item, audit_record, applied))
+            if not applied:
+                _mark_item_risk(
+                    item,
+                    _GLOSSARY_NOT_APPLIED_TAG,
+                    _GLOSSARY_NOT_APPLIED_REASON,
+                )
+
+    for grouped in occurrences.values():
+        applied_values = {applied for _item, _record, applied in grouped}
+        if len(applied_values) <= 1:
+            continue
+        for item, audit_record, _applied in grouped:
+            audit_record["inconsistent"] = True
+            _mark_item_risk(
+                item,
+                _TERM_INCONSISTENCY_TAG,
+                _TERM_INCONSISTENCY_REASON,
+            )
+
+
+def _term_audit_annotations(
+    items: list[dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    annotations: dict[str, dict[str, object]] = {}
+    term_tags = {_GLOSSARY_NOT_APPLIED_TAG, _TERM_INCONSISTENCY_TAG}
+    term_reasons = {_GLOSSARY_NOT_APPLIED_REASON, _TERM_INCONSISTENCY_REASON}
+    for item in items:
+        segment_id = item.get("segment_id")
+        if not isinstance(segment_id, str):
+            continue
+        raw_tags = item.get("tags", [])
+        raw_reasons = item.get("reasons", [])
+        raw_terms = item.get("glossary_terms", [])
+        tags: list[str] = []
+        if isinstance(raw_tags, list):
+            tags = [
+                tag
+                for tag in raw_tags
+                if isinstance(tag, str) and tag in term_tags
+            ]
+        reasons: list[str] = []
+        if isinstance(raw_reasons, list):
+            reasons = [
+                reason
+                for reason in raw_reasons
+                if isinstance(reason, str) and reason in term_reasons
+            ]
+        terms: list[dict[str, object]] = []
+        if isinstance(raw_terms, list):
+            terms = [
+                dict(term)
+                for term in raw_terms
+                if isinstance(term, Mapping)
+            ]
+        if tags or reasons or terms:
+            annotations[segment_id] = {
+                "tags": tags,
+                "reasons": reasons,
+                "glossary_terms": terms,
+            }
+    return annotations
+
+
+def _apply_term_audit_annotations(
+    items: list[dict[str, object]], annotations: Mapping[str, Mapping[str, object]]
+) -> None:
+    for item in items:
+        segment_id = item.get("segment_id")
+        if not isinstance(segment_id, str):
+            continue
+        annotation = annotations.get(segment_id)
+        if not annotation:
+            continue
+        _append_unique_values(item, "tags", annotation.get("tags"))
+        _append_unique_values(item, "reasons", annotation.get("reasons"))
+        terms = annotation.get("glossary_terms")
+        if isinstance(terms, list):
+            item["glossary_terms"] = [
+                dict(term) for term in terms if isinstance(term, Mapping)
+            ]
 
 
 def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
@@ -460,6 +663,10 @@ def _replacement_rules_from_metadata(value: object):
 
 
 def _build_handlers(service: TaskService) -> dict[str, object]:
+    term_audit_cache: OrderedDict[
+        tuple[str, str], dict[str, dict[str, object]]
+    ] = OrderedDict()
+
     def require_proofreadable_translation_task(task_id: str):
         try:
             snapshot = service.cache.load(task_id)
@@ -538,6 +745,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                                         merged.append(t)
 
         metadata = snapshot.record.metadata
+        glossary = _glossary_from_metadata(metadata.get("glossary"))
         try:
             source_language = Language(str(metadata.get("source_language", "")))
         except ValueError:
@@ -616,7 +824,23 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     item["reasons"] = reasons_for_seg
                 seen[seg_id] = item
 
-        items = sorted(seen.values(), key=lambda i: _segment_sort_key(str(i["segment_id"])))
+        items = sorted(
+            seen.values(), key=lambda i: _segment_sort_key(str(i["segment_id"]))
+        )
+        audit_fingerprint = _term_audit_fingerprint(items, glossary)
+        if audit_fingerprint:
+            audit_key = (task_id, audit_fingerprint)
+            cached_audit = term_audit_cache.get(audit_key)
+            if cached_audit is None:
+                _tag_term_glossary_risks(items, glossary)
+                cached_audit = _term_audit_annotations(items)
+                term_audit_cache[audit_key] = cached_audit
+                term_audit_cache.move_to_end(audit_key)
+                while len(term_audit_cache) > _TERM_AUDIT_CACHE_MAX_TASKS:
+                    term_audit_cache.popitem(last=False)
+            else:
+                term_audit_cache.move_to_end(audit_key)
+                _apply_term_audit_annotations(items, cached_audit)
         _tag_possible_adjacent_duplicates(items)
         return {
             "task_id": task_id,
@@ -649,7 +873,10 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             if not isinstance(segments, list):
                 continue
             for segment in segments:
-                if isinstance(segment, dict) and segment.get("segment_id") == segment_id:
+                if (
+                    isinstance(segment, dict)
+                    and segment.get("segment_id") == segment_id
+                ):
                     owners.append(subtask)
                     break
         if not owners:
@@ -779,9 +1006,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         )
 
         try:
-            parsed_files = _scan_and_parse(
-                config.input_dir, buffer_epub_archives=False
-            )
+            parsed_files = _scan_and_parse(config.input_dir, buffer_epub_archives=False)
         except FileNotFoundError as exc:
             raise BridgeError.not_found(
                 f"input folder {input_dir_str!r} no longer exists.",

@@ -970,6 +970,12 @@ export const en: Messages = {
       statusSourceResidue: "Source residue",
       statusSourceResidueHint:
         "Translation kept source-language characters (Korean / Japanese / etc.) — manual review recommended.",
+      statusGlossaryNotApplied: "Glossary missing",
+      statusGlossaryNotAppliedHint:
+        "The source segment contains a glossary term, but the configured target term is not present in the translation.",
+      statusTermInconsistency: "Term inconsistency",
+      statusTermInconsistencyHint:
+        "This glossary term is applied in some matching segments but missing in others.",
       statusPossibleDuplicate: "Possible duplicate",
       statusPossibleDuplicateHint:
         "Adjacent source lines differ, but their translations are highly similar. Check for shifted or duplicated paragraphs.",
@@ -997,6 +1003,8 @@ export const en: Messages = {
         total: "{n} items",
         lowConfidence: "{n} low-confidence",
         sourceResidue: "{n} source-residue",
+        glossaryNotApplied: "{n} glossary missing",
+        termInconsistency: "{n} term inconsistencies",
         possibleDuplicate: "{n} possible duplicates",
         modelAnomaly: "{n} model anomalies",
         untranslated: "{n} untranslated",
@@ -1014,10 +1022,21 @@ export const en: Messages = {
       filterPlaceholder: "Search source / target…",
       filterOnlyLowConfidence: "Low confidence",
       filterOnlySourceResidue: "Source residue",
+      filterOnlyGlossaryNotApplied: "Glossary missing",
+      filterOnlyTermInconsistency: "Term inconsistency",
       filterOnlyPossibleDuplicate: "Possible duplicate",
       filterOnlyModelAnomaly: "Model anomaly",
       filterOnlyUntranslated: "Untranslated",
       filterOnlyFormatRescue: "Format rescue",
+      termAuditTitle: "Term consistency",
+      termAuditSub:
+        "Grouped by glossary entry from this translation task. Local audit only; no model calls.",
+      termAuditGroupCount: "{n} term group(s)",
+      termAuditApplied: "{n} applied",
+      termAuditMissing: "{n} missing",
+      termAuditInconsistent: "inconsistent",
+      termAuditSegments: "Segments",
+      termAuditMoreSegments: "+{n} more",
       filterAll: "All",
       nextRiskAction: "Next risk",
       replacementToggle: "Batch replacement",
