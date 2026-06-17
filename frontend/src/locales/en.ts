@@ -805,6 +805,23 @@ export const en: Messages = {
       switch: "Switch →",
       taskId: "Task ID",
       proofreadLowConfidence: "Proofread {n} low-confidence",
+      nextStep: {
+        ariaLabel: "Workflow next step",
+        label: "Next step",
+        modelTitle: "Configure a model first",
+        modelBody:
+          "Translation needs an active model profile with an API key before it can run.",
+        modelAction: "Configure model",
+        startTitle: "Choose an input folder and start translation",
+        startBody:
+          "Set the input and output folders in Settings. For terminology consistency, run glossary extraction first when needed.",
+        startAction: "Open translation settings",
+        proofreadingTitle: "Review {n} proofreading risks",
+        proofreadingBody:
+          "This translation finished with low-confidence or residue risks that need a manual pass.",
+        proofreadingAction: "Open proofreading",
+        dismiss: "Don't show again",
+      },
       stats: {
         completed: "Completed",
         failed: "Failed",

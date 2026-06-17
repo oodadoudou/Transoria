@@ -38,11 +38,31 @@ import {
 import styles from "./RunPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
+const NEXT_STEP_DISMISSED_KEY = "transoria.translation.next-step.dismissed";
+type NextStepKind = "model" | "start" | "proofreading";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function loadNextStepDismissed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(NEXT_STEP_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveNextStepDismissed(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NEXT_STEP_DISMISSED_KEY, "1");
+  } catch {
+    // Optional UI hint; storage failure should not block the Run page.
+  }
 }
 
 export function RunPage() {
@@ -60,6 +80,9 @@ export function RunPage() {
   const activeTaskId = useRuntimeStore(
     (state) => state.translation.activeTaskId,
   );
+  const recentTranslationTask = useRuntimeStore(
+    (state) => state.translation.header,
+  );
   usePollRunSnapshot("translation");
 
   // Refresh active-task state on mount so re-entering the page after
@@ -71,6 +94,9 @@ export function RunPage() {
 
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
+  const [nextStepDismissed, setNextStepDismissed] = useState(
+    loadNextStepDismissed,
+  );
 
   // Auto-open the completion-with-failures dialog the first time we
   // see a terminal status with failures for this task. Fires even when
@@ -162,6 +188,9 @@ export function RunPage() {
   const activeModel = activeModelId
     ? profiles.profiles.find((p) => p.id === activeModelId)
     : undefined;
+  const hasUsableModel =
+    activeModel?.api_key_status === "present" ||
+    activeModel?.api_key_status === "from_env";
   const locale = useI18n((state) => state.locale);
   const localeDefaultPromptId = `default-translation-${locale}`;
   const displayedPromptId =
@@ -198,6 +227,10 @@ export function RunPage() {
   const handleSelectPrompt = async (id: string) => {
     await prompts.selectActive("translation", id);
   };
+  const dismissNextStep = () => {
+    saveNextStepDismissed();
+    setNextStepDismissed(true);
+  };
 
   const total = snapshot.progress.total;
   const completed = snapshot.progress.completed;
@@ -228,11 +261,39 @@ export function RunPage() {
     Boolean(activeTaskId) &&
     (snapshot.status === "pending" || snapshot.status === "running") &&
     snapshot.progress.total === 0;
+  const nextStepReady = profiles.hydrated && appSettings.isHydrated;
+  const nextStepKind: NextStepKind | null = !nextStepReady
+    ? null
+    : !hasUsableModel
+      ? "model"
+      : activeTaskId &&
+          snapshot.status === "completed" &&
+          snapshot.lowConfidence.total > 0
+        ? "proofreading"
+        : !recentTranslationTask
+          ? "start"
+          : null;
   return (
     <>
       <Panel title={run.title} subtitle={run.sub} />
 
       <RunErrorBanner kind="translation" />
+
+      {!nextStepDismissed && nextStepKind ? (
+        <NextStepCard
+          kind={nextStepKind}
+          riskCount={snapshot.lowConfidence.total}
+          onDismiss={dismissNextStep}
+          onConfigureModel={() => navigate({ module: "model", page: "general" })}
+          onOpenSettings={() =>
+            navigate({ module: "translation", page: "settings" })
+          }
+          onOpenProofreading={() => {
+            if (!activeTaskId) return;
+            openProofreadingTask(activeTaskId, DEFAULT_PROOFREADING_FILTERS);
+          }}
+        />
+      ) : null}
 
       <Panel label={run.activeConfig}>
         <div className={styles.activeStrip}>
@@ -412,6 +473,70 @@ function ActiveCard({
         {switchLabel}
       </button>
     </div>
+  );
+}
+
+interface NextStepCardProps {
+  kind: NextStepKind;
+  riskCount: number;
+  onDismiss: () => void;
+  onConfigureModel: () => void;
+  onOpenSettings: () => void;
+  onOpenProofreading: () => void;
+}
+
+function NextStepCard({
+  kind,
+  riskCount,
+  onDismiss,
+  onConfigureModel,
+  onOpenSettings,
+  onOpenProofreading,
+}: NextStepCardProps) {
+  const messages = useMessages();
+  const copy = messages.translation.run.nextStep;
+  const content =
+    kind === "model"
+      ? {
+          title: copy.modelTitle,
+          body: copy.modelBody,
+          action: copy.modelAction,
+          onAction: onConfigureModel,
+        }
+      : kind === "proofreading"
+        ? {
+            title: copy.proofreadingTitle.replace("{n}", String(riskCount)),
+            body: copy.proofreadingBody,
+            action: copy.proofreadingAction,
+            onAction: onOpenProofreading,
+          }
+        : {
+            title: copy.startTitle,
+            body: copy.startBody,
+            action: copy.startAction,
+            onAction: onOpenSettings,
+          };
+
+  return (
+    <section className={styles.nextStepCard} aria-label={copy.ariaLabel}>
+      <div className={styles.nextStepCopy}>
+        <div className={styles.nextStepLabel}>{copy.label}</div>
+        <h3>{content.title}</h3>
+        <p>{content.body}</p>
+      </div>
+      <div className={styles.nextStepActions}>
+        <Pill variant="primary" onClick={content.onAction}>
+          {content.action}
+        </Pill>
+        <button
+          type="button"
+          className={styles.nextStepDismiss}
+          onClick={onDismiss}
+        >
+          {copy.dismiss}
+        </button>
+      </div>
+    </section>
   );
 }
 

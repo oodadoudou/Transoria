@@ -783,6 +783,22 @@ export const zh: Messages = {
       switch: "切换 →",
       taskId: "任务 ID",
       proofreadLowConfidence: "校对 {n} 条低置信",
+      nextStep: {
+        ariaLabel: "工作流下一步",
+        label: "下一步",
+        modelTitle: "先配置模型",
+        modelBody: "需要一个已填写 API Key 的激活模型才能开始翻译。",
+        modelAction: "配置模型",
+        startTitle: "选择输入文件夹并开始翻译",
+        startBody:
+          "先在设置页选择输入/输出文件夹。需要术语一致性时,可以先做术语提取。",
+        startAction: "打开翻译设置",
+        proofreadingTitle: "去校对处理 {n} 项风险",
+        proofreadingBody:
+          "本次翻译已完成,还有低置信或残留风险需要人工确认。",
+        proofreadingAction: "打开校对",
+        dismiss: "不再提示",
+      },
       stats: {
         completed: "已完成",
         failed: "失败",

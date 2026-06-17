@@ -440,6 +440,20 @@ export interface Messages {
       switch: string;
       taskId: string;
       proofreadLowConfidence: string;
+      nextStep: {
+        ariaLabel: string;
+        label: string;
+        modelTitle: string;
+        modelBody: string;
+        modelAction: string;
+        startTitle: string;
+        startBody: string;
+        startAction: string;
+        proofreadingTitle: string;
+        proofreadingBody: string;
+        proofreadingAction: string;
+        dismiss: string;
+      };
       stats: {
         completed: string;
         failed: string;
