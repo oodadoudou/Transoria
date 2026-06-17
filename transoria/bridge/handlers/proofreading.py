@@ -56,6 +56,7 @@ _DUPLICATE_SCAN_SOURCE_RATIO = 0.56
 _DUPLICATE_SCAN_MIN_DELTA = 0.32
 _DUPLICATE_SCAN_TAGGED_PARTNER_RATIO = 0.74
 _DUPLICATE_SCAN_TAGGED_PARTNER_OVERLAP = 0.74
+_TERM_AUDIT_VERSION = "canonical-missing-v2"
 _TERM_AUDIT_CACHE_MAX_TASKS = 8
 _TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
 
@@ -174,6 +175,8 @@ def _term_audit_fingerprint(
     if not items or not glossary.entries:
         return ""
     digest = hashlib.sha256()
+    digest.update(_TERM_AUDIT_VERSION.encode("ascii"))
+    digest.update(b"\0")
     for entry in glossary.entries:
         digest.update(entry.src.encode("utf-8"))
         digest.update(b"\0")
@@ -367,10 +370,6 @@ def _tag_term_glossary_risks(
     if not items or not glossary.entries:
         return
 
-    occurrences: dict[
-        tuple[str, str, str, bool, bool],
-        list[tuple[dict[str, object], dict[str, object], bool]],
-    ] = {}
     for item in items:
         source_text = str(item.get("src", ""))
         translated_text = str(item.get("dst", ""))
@@ -391,25 +390,12 @@ def _tag_term_glossary_risks(
             )
             if audit_record is None:
                 continue
-            occurrences.setdefault(key, []).append((item, audit_record, applied))
             if not applied:
                 _mark_item_risk(
                     item,
                     _GLOSSARY_NOT_APPLIED_TAG,
                     _GLOSSARY_NOT_APPLIED_REASON,
                 )
-
-    for grouped in occurrences.values():
-        applied_values = {applied for _item, _record, applied in grouped}
-        if len(applied_values) <= 1:
-            continue
-        for item, audit_record, _applied in grouped:
-            audit_record["inconsistent"] = True
-            _mark_item_risk(
-                item,
-                _TERM_INCONSISTENCY_TAG,
-                _TERM_INCONSISTENCY_REASON,
-            )
 
 
 def _term_audit_annotations(
