@@ -418,6 +418,12 @@ export interface Messages {
         preset: string;
       };
       empty: string;
+      emptyState: {
+        label: string;
+        title: string;
+        body: string;
+        action: string;
+      };
       importEmpty: string;
       searchPlaceholder: string;
       stats: {
@@ -458,6 +464,12 @@ export interface Messages {
         proofreadingBody: string;
         proofreadingAction: string;
         dismiss: string;
+      };
+      emptyState: {
+        label: string;
+        title: string;
+        body: string;
+        action: string;
       };
       stats: {
         completed: string;
@@ -584,6 +596,14 @@ export interface Messages {
       editorSavedHint: string;
       editorDirty: string;
       empty: string;
+      emptyState: {
+        label: string;
+        noTasksTitle: string;
+        noTasksBody: string;
+        noTasksAction: string;
+        noItemsTitle: string;
+        noItemsBody: string;
+      };
       stats: {
         total: string;
         lowConfidence: string;
@@ -736,6 +756,13 @@ export interface Messages {
       referenceFiles: string;
       referenceFilesHelp: string;
       referenceFilesEmpty: string;
+      emptyState: {
+        label: string;
+        noFolderTitle: string;
+        noFolderBody: string;
+        noCandidatesTitle: string;
+        noCandidatesBody: string;
+      };
       inputScanLoading: string;
       inputScanError: string;
       outputFilename: string;
@@ -835,6 +862,14 @@ export interface Messages {
       pathHint: string;
       searchPlaceholder: string;
       empty: string;
+      emptyState: {
+        label: string;
+        noTasksTitle: string;
+        noTasksBody: string;
+        noTasksAction: string;
+        noRowsTitle: string;
+        noRowsBody: string;
+      };
       columns: {
         index: string;
         src: string;

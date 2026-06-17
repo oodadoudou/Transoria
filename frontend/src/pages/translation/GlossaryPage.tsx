@@ -10,6 +10,7 @@ import { useTaskStore, type GlossaryEntry } from "@/store/useTaskStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import { TextField } from "@/components/TextField";
 import { Segmented } from "@/components/Segmented";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
@@ -452,7 +453,15 @@ export function GlossaryPage() {
           onSortChange={setSortState}
           isEnabled={(entry) => entry.enabled}
           columns={columns}
-          emptyMessage={g.empty}
+          emptyMessage={
+            <GuidedEmptyState
+              label={g.emptyState.label}
+              title={g.emptyState.title}
+              body={g.emptyState.body}
+              actionLabel={g.emptyState.action}
+              onAction={handleAdd}
+            />
+          }
           editor={
             selected ? (
               <EntryEditor

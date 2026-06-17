@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { BridgeError, glossaryReviewBridge, type GlossaryReviewFinalRow, type GlossaryReviewFinalSheet, type TaskHeader } from "@/bridge";
 import { format, useMessages } from "@/locales";
+import { useTaskStore } from "@/store/useTaskStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import styles from "./ReviewPage.module.css";
 import { ImportFinalGlossaryConfirmModal } from "./ImportFinalGlossaryConfirmModal";
 import {
@@ -38,6 +40,7 @@ export function ReviewPage() {
   const messages = useMessages();
   const labels = messages.glossaryReview.review;
   const runLabels = messages.glossaryReview.run;
+  const navigate = useTaskStore((state) => state.navigate);
   const [tasks, setTasks] = useState<TaskHeader[] | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<GlossaryReviewFinalSheet | null>(null);
@@ -385,7 +388,15 @@ export function ReviewPage() {
   if (tasks !== null && tasks.length === 0) {
     return (
       <Panel title={labels.title} subtitle={labels.sub}>
-        <div className={styles.empty}>{labels.noTasks}</div>
+        <GuidedEmptyState
+          label={labels.emptyState.label}
+          title={labels.emptyState.noTasksTitle}
+          body={labels.emptyState.noTasksBody}
+          actionLabel={labels.emptyState.noTasksAction}
+          onAction={() =>
+            navigate({ module: "glossary-review", page: "settings" })
+          }
+        />
       </Panel>
     );
   }
@@ -434,7 +445,11 @@ export function ReviewPage() {
           {loading ? (
             <div className={styles.empty}>{labels.loading}</div>
           ) : rows.length === 0 ? (
-            <div className={styles.empty}>{labels.empty}</div>
+            <GuidedEmptyState
+              label={labels.emptyState.label}
+              title={labels.emptyState.noRowsTitle}
+              body={labels.emptyState.noRowsBody}
+            />
           ) : (
             <table className={styles.table}>
               <thead>

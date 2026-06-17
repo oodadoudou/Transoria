@@ -72,6 +72,10 @@
   margin-top: 10px;
 }
 
+.guidedEmptyWrap {
+  margin-top: 12px;
+}
+
 .scanError {
   color: #a33a26;
 }

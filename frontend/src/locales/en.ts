@@ -781,6 +781,12 @@ export const en: Messages = {
         preset: "Preset",
       },
       empty: "No glossary entries yet. Click + Add to create one.",
+      emptyState: {
+        label: "Glossary",
+        title: "Build the terms you want enforced",
+        body: "Add entries manually, import a reviewed XLSX, or start from a preset. Enabled entries are injected into translation prompts.",
+        action: "Add term",
+      },
       importEmpty:
         "File parsed successfully but contained no importable entries.",
       searchPlaceholder: "Search source / translation / description…",
@@ -826,6 +832,12 @@ export const en: Messages = {
           "This translation finished with low-confidence or residue risks that need a manual pass.",
         proofreadingAction: "Open proofreading",
         dismiss: "Don't show again",
+      },
+      emptyState: {
+        label: "Translation",
+        title: "No translation task is loaded",
+        body: "Choose an input folder, output folder, and language pair in Settings, then start the run from the controls below.",
+        action: "Open settings",
       },
       stats: {
         completed: "Completed",
@@ -971,6 +983,16 @@ export const en: Messages = {
       editorSavedHint: "Saved",
       editorDirty: "Unsaved edits",
       empty: "No proofreadable items in this task.",
+      emptyState: {
+        label: "Proofreading",
+        noTasksTitle: "No finished translation task yet",
+        noTasksBody:
+          "Run, stop, or finish a translation first. Settled tasks appear here for manual review and output regeneration.",
+        noTasksAction: "Open translation run",
+        noItemsTitle: "No rows match the current view",
+        noItemsBody:
+          "This task has no proofreadable rows for the active filters or search. Clear filters, or return after a translation has produced cache entries.",
+      },
       stats: {
         total: "{n} items",
         lowConfidence: "{n} low-confidence",
@@ -1148,6 +1170,15 @@ export const en: Messages = {
         "Multiple files can be selected. The selected TXT files are merged as novel context for the model.",
       referenceFilesEmpty:
         "No TXT reference files are available in this folder.",
+      emptyState: {
+        label: "Review input",
+        noFolderTitle: "Choose the extraction output folder",
+        noFolderBody:
+          "Pick the folder produced by glossary extraction. Transoria will auto-detect the glossary XLSX and reference TXT files.",
+        noCandidatesTitle: "No review candidates found",
+        noCandidatesBody:
+          "This folder does not contain a glossary XLSX or reference TXT files. Send a completed extraction to review, or choose its output folder manually.",
+      },
       inputScanLoading: "Scanning input folder...",
       inputScanError: "Failed to scan input folder: {reason}",
       outputFilename: "Final filename",
@@ -1259,6 +1290,16 @@ export const en: Messages = {
       pathHint: "Final file: {path}",
       searchPlaceholder: "Search source / translation / category…",
       empty: "No editable terms.",
+      emptyState: {
+        label: "Term review",
+        noTasksTitle: "No completed glossary review yet",
+        noTasksBody:
+          "Run glossary review after selecting an extraction output folder. Completed reviews appear here for final manual edits.",
+        noTasksAction: "Open review settings",
+        noRowsTitle: "No editable terms in this final file",
+        noRowsBody:
+          "The final XLSX has no rows matching this view. Clear search, or rerun review with a glossary that contains importable terms.",
+      },
       columns: {
         index: "Row",
         src: "Source",

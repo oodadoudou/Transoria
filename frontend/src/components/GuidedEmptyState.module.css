@@ -1,0 +1,54 @@
+.root {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-inset);
+  background: var(--panel-soft);
+  color: var(--ink);
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.copy h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.extra {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .root {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

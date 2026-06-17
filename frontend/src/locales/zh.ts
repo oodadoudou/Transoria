@@ -760,6 +760,12 @@ export const zh: Messages = {
         preset: "预设",
       },
       empty: "暂无术语条目。点击 + 新增 添加一条。",
+      emptyState: {
+        label: "术语表",
+        title: "先建立需要强制一致的术语",
+        body: "可以手动新增、导入审查后的 XLSX，或从预设开始。启用的条目会注入翻译提示词。",
+        action: "新增术语",
+      },
       importEmpty: "文件解析成功,但没有可导入的条目。",
       searchPlaceholder: "搜索原文 / 译文 / 描述…",
       stats: {
@@ -788,6 +794,12 @@ export const zh: Messages = {
       switch: "切换 →",
       taskId: "任务 ID",
       proofreadLowConfidence: "校对 {n} 条低置信",
+      emptyState: {
+        label: "翻译",
+        title: "当前还没有加载翻译任务",
+        body: "先在设置页选择输入/输出文件夹和语言对，然后从下方任务控制开始运行。",
+        action: "打开设置",
+      },
       nextStep: {
         ariaLabel: "工作流下一步",
         label: "下一步",
@@ -900,6 +912,16 @@ export const zh: Messages = {
       title: "校对",
       sub: "对已结束的翻译任务进行人工校对；失败或停止的任务也可先校对当前结果。修改即写入缓存，点击「重新生成输出」时把最新译文回写到原 epub / txt 文件（覆盖）。",
       noTasks: "暂无可校对的任务。翻译完成、失败或停止后这里会出现入口。",
+      emptyState: {
+        label: "校对",
+        noTasksTitle: "还没有可校对的翻译任务",
+        noTasksBody:
+          "先完成、停止或失败一次翻译任务。已结束的任务会出现在这里，用于人工校对和重新生成输出。",
+        noTasksAction: "打开翻译运行页",
+        noItemsTitle: "当前视图没有匹配条目",
+        noItemsBody:
+          "当前任务在这些筛选或搜索条件下没有可校对行。可以清空筛选，或等翻译产生缓存条目后再回来。",
+      },
       taskPicker: "选择任务",
       loading: "加载中…",
       regenerateAction: "重新生成输出",
@@ -1113,6 +1135,15 @@ export const zh: Messages = {
       referenceFiles: "参考 TXT",
       referenceFilesHelp: "可多选。模型会把选中的 TXT 合并为小说参考上下文。",
       referenceFilesEmpty: "当前文件夹没有可用 TXT 参考文件。",
+      emptyState: {
+        label: "审查输入",
+        noFolderTitle: "选择术语提取的输出文件夹",
+        noFolderBody:
+          "请选择术语提取生成的目录。Transoria 会自动发现术语 XLSX 和参考 TXT。",
+        noCandidatesTitle: "没有找到可送审候选",
+        noCandidatesBody:
+          "当前文件夹没有术语 XLSX 或参考 TXT。可以从已完成的术语提取一键送审，或手动选择它的输出目录。",
+      },
       inputScanLoading: "正在扫描输入文件夹…",
       inputScanError: "扫描输入文件夹失败：{reason}",
       outputFilename: "最终文件名",
@@ -1213,6 +1244,16 @@ export const zh: Messages = {
       title: "术语校对",
       sub: "直接编辑术语审查生成的最终 XLSX，保存后覆盖原文件，可直接导入翻译术语表。",
       noTasks: "暂无可校对的术语审查任务。",
+      emptyState: {
+        label: "术语校对",
+        noTasksTitle: "还没有完成的术语审查任务",
+        noTasksBody:
+          "先选择术语提取输出目录并运行术语审查。完成后的任务会出现在这里，用于最终人工编辑。",
+        noTasksAction: "打开审查设置",
+        noRowsTitle: "最终文件里没有可编辑术语",
+        noRowsBody:
+          "当前最终 XLSX 在这个视图下没有行。可以清空搜索，或用包含可导入术语的表重新审查。",
+      },
       taskPicker: "选择任务",
       loading: "加载中…",
       pathHint: "最终文件：{path}",

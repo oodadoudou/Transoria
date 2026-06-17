@@ -15,6 +15,7 @@ import {
 } from "@/store/useTaskStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -377,6 +378,7 @@ export function ProofreadingPage() {
   const consumeProofreadingLaunch = useTaskStore(
     (state) => state.consumeProofreadingLaunch,
   );
+  const navigate = useTaskStore((state) => state.navigate);
   const [filters, setFilters] = useState<ReadonlySet<ProofreadingFilterKey>>(
     () => new Set(DEFAULT_PROOFREADING_FILTERS),
   );
@@ -1299,7 +1301,13 @@ export function ProofreadingPage() {
   if (tasks !== null && tasks.length === 0) {
     return (
       <Panel title={m.title} subtitle={m.sub}>
-        <div className={styles.empty}>{m.noTasks}</div>
+        <GuidedEmptyState
+          label={m.emptyState.label}
+          title={m.emptyState.noTasksTitle}
+          body={m.emptyState.noTasksBody}
+          actionLabel={m.emptyState.noTasksAction}
+          onAction={() => navigate({ module: "translation", page: "run" })}
+        />
       </Panel>
     );
   }
@@ -1761,7 +1769,11 @@ export function ProofreadingPage() {
             {loading ? (
               <div className={styles.empty}>{m.loading}</div>
             ) : filteredItems.length === 0 ? (
-              <div className={styles.empty}>{m.empty}</div>
+              <GuidedEmptyState
+                label={m.emptyState.label}
+                title={m.emptyState.noItemsTitle}
+                body={m.emptyState.noItemsBody}
+              />
             ) : (
               <div
                 style={{

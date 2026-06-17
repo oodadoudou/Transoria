@@ -8,6 +8,7 @@ import { Segmented } from "@/components/Segmented";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { TextField } from "@/components/TextField";
+import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import {
   SettingsField,
   SettingsFieldFrame,
@@ -78,6 +79,15 @@ export function SettingsPage() {
     return <Panel title={settings.title} subtitle={settings.sub} />;
   }
 
+  const hasInputFolder = draft.input_folder.trim().length > 0;
+  const hasCandidates =
+    (candidates?.xlsx_candidates.length ?? 0) > 0 ||
+    (candidates?.reference_candidates.length ?? 0) > 0;
+  const showCandidateEmpty =
+    !scanLoading &&
+    !scanError &&
+    (!hasInputFolder || (candidates !== null && !hasCandidates));
+
   return (
     <>
       <Panel title={settings.title} subtitle={settings.sub}>
@@ -126,6 +136,23 @@ export function SettingsPage() {
           <div className={styles.scanHint}>{settings.inputScanLoading}</div>
         ) : null}
         {scanError ? <div className={styles.scanError}>{scanError}</div> : null}
+        {showCandidateEmpty ? (
+          <div className={styles.guidedEmptyWrap}>
+            <GuidedEmptyState
+              label={settings.emptyState.label}
+              title={
+                hasInputFolder
+                  ? settings.emptyState.noCandidatesTitle
+                  : settings.emptyState.noFolderTitle
+              }
+              body={
+                hasInputFolder
+                  ? settings.emptyState.noCandidatesBody
+                  : settings.emptyState.noFolderBody
+              }
+            />
+          </div>
+        ) : null}
       </Panel>
 
       <Panel>

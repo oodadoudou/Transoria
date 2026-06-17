@@ -31,6 +31,7 @@ import { RunErrorBanner } from "@/components/RunErrorBanner";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailuresDialog";
 import { RunControls } from "@/components/RunControls";
+import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -261,6 +262,7 @@ export function RunPage() {
     Boolean(activeTaskId) &&
     (snapshot.status === "pending" || snapshot.status === "running") &&
     snapshot.progress.total === 0;
+  const showProgressEmpty = !activeTaskId && snapshot.subtasks.length === 0;
   const nextStepReady = profiles.hydrated && appSettings.isHydrated;
   const nextStepKind: NextStepKind | null = !nextStepReady
     ? null
@@ -389,41 +391,55 @@ export function RunPage() {
             <code>{activeTaskId}</code>
           </div>
         ) : null}
-        <div className={styles.progressCard}>
-          <ProgressRing percent={percent} completed={settled} total={total} />
-          <div className={styles.statGrid}>
-            <Stat label={run.stats.completed} value={NUM.format(completed)} />
-            <Stat label={run.stats.failed} value={NUM.format(failed)} />
-            <Stat label={run.stats.remaining} value={NUM.format(remaining)} />
-            <Stat
-              label={run.stats.elapsed}
-              value={snapshot.isIdle ? "—" : formatDuration(elapsedSeconds)}
-            />
-            <Stat
-              label={run.stats.avgSpeed}
-              value={NUM.format(ratePerMinute)}
-              delta="/min"
-            />
-          </div>
-        </div>
-        {showStartupNotice ? (
-          <p className={styles.startupNotice}>{run.startupNotice}</p>
-        ) : null}
-        {snapshot.subtasks.length > 0 ? (
+        {showProgressEmpty ? (
+          <GuidedEmptyState
+            label={run.emptyState.label}
+            title={run.emptyState.title}
+            body={run.emptyState.body}
+            actionLabel={run.emptyState.action}
+            onAction={() =>
+              navigate({ module: "translation", page: "settings" })
+            }
+          />
+        ) : (
           <>
-            <LiveRequestCounter
-              progress={snapshot.progress}
-              label={run.liveCounter.progressLabel}
-              inflightLabel={run.liveCounter.inflightLabel}
-              longestLabel={run.liveCounter.longestLabel}
-            />
-            <ChunkStatusGrid
-              subtasks={snapshot.subtasks}
-              itemLabel={run.liveCounter.chunksLabel}
-              statusLabels={messages.status}
-            />
+            <div className={styles.progressCard}>
+              <ProgressRing percent={percent} completed={settled} total={total} />
+              <div className={styles.statGrid}>
+                <Stat label={run.stats.completed} value={NUM.format(completed)} />
+                <Stat label={run.stats.failed} value={NUM.format(failed)} />
+                <Stat label={run.stats.remaining} value={NUM.format(remaining)} />
+                <Stat
+                  label={run.stats.elapsed}
+                  value={snapshot.isIdle ? "—" : formatDuration(elapsedSeconds)}
+                />
+                <Stat
+                  label={run.stats.avgSpeed}
+                  value={NUM.format(ratePerMinute)}
+                  delta="/min"
+                />
+              </div>
+            </div>
+            {showStartupNotice ? (
+              <p className={styles.startupNotice}>{run.startupNotice}</p>
+            ) : null}
+            {snapshot.subtasks.length > 0 ? (
+              <>
+                <LiveRequestCounter
+                  progress={snapshot.progress}
+                  label={run.liveCounter.progressLabel}
+                  inflightLabel={run.liveCounter.inflightLabel}
+                  longestLabel={run.liveCounter.longestLabel}
+                />
+                <ChunkStatusGrid
+                  subtasks={snapshot.subtasks}
+                  itemLabel={run.liveCounter.chunksLabel}
+                  statusLabels={messages.status}
+                />
+              </>
+            ) : null}
           </>
-        ) : null}
+        )}
         {showLowConfidenceAction && activeTaskId ? (
           <div className={styles.reviewActionRow}>
             <Pill

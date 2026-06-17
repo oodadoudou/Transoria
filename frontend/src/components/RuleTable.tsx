@@ -61,7 +61,7 @@ interface RuleTableProps<T> {
   onSelectionChange: (next: RuleTableSelection) => void;
   isEnabled: (rule: T) => boolean;
   columns: RuleTableColumn<T>[];
-  emptyMessage: string;
+  emptyMessage: ReactNode;
   editor?: ReactNode;
   toolbar?: RuleTableAction[];
   /** Right-click → "Delete N rules"; called with the rows the user
