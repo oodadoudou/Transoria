@@ -74,7 +74,7 @@ _PARTIAL_ACCEPT_MAX_RETRIES = 2
 # A chunk with many safety refusals or source echoes can mark most lines as
 # low-confidence. Keep isolated rescue useful for normal cases, but bound the
 # total paid re-asks so one pathological chunk cannot hold the task for minutes.
-_LOW_CONFIDENCE_SOLO_RETRY_MAX_CALLS_PER_CHUNK = 12
+_LOW_CONFIDENCE_SOLO_RETRY_CALLS_PER_CONFIGURED_RETRY = 4
 _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 360.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
@@ -549,7 +549,10 @@ class TranslationSubtaskRunner:
             # so short fillers (네./응./等) and ambiguous phrases that
             # were echoed in the batch call usually get a real translation.
             still_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
-            solo_retry_budget = _LOW_CONFIDENCE_SOLO_RETRY_MAX_CALLS_PER_CHUNK
+            solo_retry_budget = (
+                self.low_confidence_max_retries
+                * _LOW_CONFIDENCE_SOLO_RETRY_CALLS_PER_CONFIGURED_RETRY
+            )
             for meta, last_text, last_reasons in pending:
                 solo_retried_indices.add(meta.chunk_index)
                 current_text = last_text
