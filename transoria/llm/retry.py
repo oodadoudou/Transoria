@@ -92,6 +92,7 @@ async def retry_async(
     transport_retry_attempts: int,
     max_retry_attempts: int | None = None,
     max_transport_retry_attempts: int | None = None,
+    max_format_retry_attempts: int | None = None,
     should_retry: Callable[[BaseException], bool] = is_transient_llm_error,
     is_format_retry_error: Callable[[BaseException], bool] = _is_format_drift_error,
     initial_backoff_seconds: float | None = None,
@@ -107,10 +108,12 @@ async def retry_async(
     model that already produced semantically wrong output. Backoff doubles from
     ``initial_backoff_seconds`` up to ``max_backoff_seconds``.
     ``max_retry_attempts`` caps every retry class; ``max_transport_retry_attempts``
-    caps only transport-style retries so callers can keep format self-repair
-    without letting a wedged provider burn the full budget.
-    ``is_format_retry_error`` lets workflow-local format errors share that
-    budget. ``asyncio.CancelledError`` is re-raised verbatim.
+    caps only transport-style retries and ``max_format_retry_attempts`` caps only
+    format-drift retries, so callers can keep transport resilience high while
+    holding format self-repair low (or vice versa) without letting a wedged
+    provider burn the full budget. ``is_format_retry_error`` lets workflow-local
+    format errors share that budget. ``asyncio.CancelledError`` is re-raised
+    verbatim.
     """
 
     retry_budget = max(0, transport_retry_attempts)
@@ -118,6 +121,8 @@ async def retry_async(
         retry_budget = min(retry_budget, max(0, max_retry_attempts))
     transport_remaining = max(0, retry_budget)
     format_remaining = min(_FORMAT_DRIFT_RETRY_BUDGET, transport_remaining)
+    if max_format_retry_attempts is not None:
+        format_remaining = min(format_remaining, max(0, max_format_retry_attempts))
     if max_transport_retry_attempts is not None:
         transport_remaining = min(
             transport_remaining, max(0, max_transport_retry_attempts)

@@ -50,8 +50,12 @@ _FORMAT_RETRY_REMINDER = (
     "Output JSONLINE only. The first non-whitespace character must be \"{\". "
     'Each object must include non-empty "src", "dst", and "type" values.'
 )
+# Format-drift cap: an empty/malformed extraction rarely self-heals, and a
+# chunk with no extractable terms shouldn't burn tokens on re-asks, so keep
+# format retries minimal. Transport retries are capped separately (and higher)
+# because transient 5xx/timeouts are cheap and worth a few attempts.
 _GLOSSARY_RETRY_BUDGET = 1
-_TRANSPORT_RETRY_BUDGET = 1
+_TRANSPORT_RETRY_BUDGET = 3
 _SOFT_TIMEOUT_SECONDS = 90.0
 _HIGH_CONCURRENCY_MAX_SPLIT_DEPTH = 1
 
@@ -204,7 +208,7 @@ class GlossarySubtaskRunner:
             return await retry_async(
                 operation,
                 transport_retry_attempts=self.transport_retry_attempts,
-                max_retry_attempts=_GLOSSARY_RETRY_BUDGET,
+                max_format_retry_attempts=_GLOSSARY_RETRY_BUDGET,
                 max_transport_retry_attempts=_transport_retry_budget(self.model),
                 should_retry=lambda exc: _should_retry_glossary_request(
                     self.model, exc

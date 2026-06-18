@@ -57,7 +57,13 @@ SUBTASK_PAYLOAD_VERSION = 1
 SUBTASK_RESPONSE_VERSION = 2
 _SOURCE_FALLBACK_RESIDUE_RATIO = 0.15
 _RESCUE_TRANSPORT_RETRY_BUDGET = 1
-_TRANSLATION_TRANSPORT_RETRY_BUDGET = 1
+# Hard cap on transport-level retries (timeout / 429 / 5xx / read error) for the
+# batch call. Transport retries are cheap (a failed connection or 5xx produces
+# no output tokens) and transient outages — read timeouts, 503 "model loading" —
+# routinely need a few attempts to clear, so allow 3 (4 attempts) while still
+# capping below the user's configured network-retry budget so a wedged provider
+# can't burn it all on one chunk.
+_TRANSLATION_TRANSPORT_RETRY_BUDGET = 3
 # Bounded re-asks for missing/duplicate lines within one subtask. This is a
 # content-quality loop (only the still-missing indices are re-sent, so it is
 # cheap), kept small because a model that mis-aligns twice rarely self-heals on
