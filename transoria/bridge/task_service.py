@@ -668,8 +668,12 @@ def _format_header(record: TaskRecord) -> dict[str, object]:
 
 
 def _format_request_events(
-    events: Sequence[Mapping[str, object]], *, limit: int | None
-) -> list[dict[str, object]]:
+    events: Sequence[Mapping[str, object]],
+    *,
+    limit: int | None,
+    offset: int = 0,
+    status: str = "",
+) -> tuple[list[dict[str, object]], int]:
     latest_by_request: dict[str, dict[str, object]] = {}
     order: dict[str, int] = {}
     for index, event in enumerate(events):
@@ -685,9 +689,14 @@ def _format_request_events(
         key=lambda row: order.get(str(row.get("request_id", "")), 0),
         reverse=True,
     )
+    if status:
+        rows = [row for row in rows if str(row.get("status", "")) == status]
+    total = len(rows)
+    if offset > 0:
+        rows = rows[offset:]
     if limit is not None:
         rows = rows[:limit]
-    return rows
+    return rows, total
 
 
 def _progress_to_block(
@@ -4013,7 +4022,13 @@ class TaskService:
         return {"failures": _format_failures(snapshot)}
 
     def read_request_events(
-        self, *, kind: str, task_id: str, limit: int | None = None
+        self,
+        *,
+        kind: str,
+        task_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+        status: str = "",
     ) -> dict[str, object]:
         record_kind = self._kind(kind)
         cache = self._cache_for_task(task_id)
@@ -4032,18 +4047,20 @@ class TaskService:
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
             )
-        events, truncated = cache.load_recent_request_events(task_id)
-        formatted = _format_request_events(events, limit=limit)
-        total = len(
-            {
-                str(event.get("request_id", ""))
-                for event in events
-                if event.get("request_id")
-            }
+        if offset > 0 or status:
+            events = cache.load_request_events(task_id)
+            truncated = False
+        else:
+            events, truncated = cache.load_recent_request_events(task_id)
+        formatted, total = _format_request_events(
+            events,
+            limit=limit,
+            offset=offset,
+            status=status,
         )
         return {
             "events": formatted,
-            "total": min(total, len(formatted)) if truncated else total,
+            "total": total,
             "truncated": truncated,
         }
 

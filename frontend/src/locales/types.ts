@@ -53,6 +53,15 @@ export interface Messages {
     empty: string;
     errorPrefix: string;
     showing: string;
+    showingRecent: string;
+    truncated: string;
+    filterLabel: string;
+    filterAll: string;
+    filterRunning: string;
+    filterCompleted: string;
+    filterFailed: string;
+    filterCancelled: string;
+    loadOlder: string;
     columnTime: string;
     columnStatus: string;
     columnRequest: string;
@@ -69,6 +78,7 @@ export interface Messages {
     inputTokens: string;
     outputTokens: string;
     cachedTokens: string;
+    estimatedTokens: string;
     showResponse: string;
     hideResponse: string;
     noResponse: string;

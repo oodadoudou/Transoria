@@ -74,6 +74,7 @@ class RequestLogHandle:
                 "output_tokens": usage.output_tokens,
                 "cached_input_tokens": usage.cached_input_tokens,
                 "total_tokens": usage.total_tokens,
+                "usage_estimated": usage.estimated,
                 "response_text": _truncate(response_text, _MAX_TEXT_LENGTH),
             }
         )

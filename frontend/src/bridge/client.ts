@@ -48,7 +48,8 @@ import type {
   ReplacementRule,
   ReplacementRuleParseResult,
   ReplacementValidationIssue,
-  RequestLogEvent,
+  RequestLogQuery,
+  RequestLogResult,
   SettingsModule,
   TaskFailure,
   TaskHeader,
@@ -311,9 +312,9 @@ export const translationBridge = {
   },
   readRequestEvents(
     taskId: string,
-    limit?: number,
-  ): Promise<{ events: RequestLogEvent[]; total: number; truncated?: boolean }> {
-    return call("translation.read_request_events", { task_id: taskId, limit });
+    query: RequestLogQuery = {},
+  ): Promise<RequestLogResult> {
+    return call("translation.read_request_events", { task_id: taskId, ...query });
   },
 };
 
@@ -439,9 +440,9 @@ export const glossaryBridge = {
   },
   readRequestEvents(
     taskId: string,
-    limit?: number,
-  ): Promise<{ events: RequestLogEvent[]; total: number; truncated?: boolean }> {
-    return call("glossary.read_request_events", { task_id: taskId, limit });
+    query: RequestLogQuery = {},
+  ): Promise<RequestLogResult> {
+    return call("glossary.read_request_events", { task_id: taskId, ...query });
   },
   importRules(path: string): Promise<{
     entries: Array<{
@@ -577,9 +578,12 @@ export const glossaryReviewBridge = {
   },
   readRequestEvents(
     taskId: string,
-    limit?: number,
-  ): Promise<{ events: RequestLogEvent[]; total: number; truncated?: boolean }> {
-    return call("glossary_review.read_request_events", { task_id: taskId, limit });
+    query: RequestLogQuery = {},
+  ): Promise<RequestLogResult> {
+    return call("glossary_review.read_request_events", {
+      task_id: taskId,
+      ...query,
+    });
   },
 };
 

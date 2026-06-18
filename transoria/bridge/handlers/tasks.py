@@ -67,22 +67,49 @@ def _expect_int_list(payload: Mapping[str, object], key: str) -> list[int]:
 
 
 def _optional_limit(payload: Mapping[str, object]) -> int | None:
-    raw = payload.get("limit")
+    return _optional_non_negative_int(payload, "limit")
+
+
+def _optional_offset(payload: Mapping[str, object]) -> int:
+    return _optional_non_negative_int(payload, "offset") or 0
+
+
+def _optional_non_negative_int(
+    payload: Mapping[str, object], key: str
+) -> int | None:
+    raw = payload.get(key)
     if raw is None:
         return None
     try:
         value = int(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError) as exc:
         raise BridgeError.invalid_argument(
-            "limit must be an integer.",
-            field="limit",
+            f"{key} must be an integer.",
+            field=key,
         ) from exc
     if value < 0:
         raise BridgeError.invalid_argument(
-            "limit must be >= 0.",
-            field="limit",
+            f"{key} must be >= 0.",
+            field=key,
         )
     return value
+
+
+def _optional_request_status(payload: Mapping[str, object]) -> str:
+    raw = payload.get("status", "")
+    if raw is None or raw == "all":
+        return ""
+    if not isinstance(raw, str):
+        raise BridgeError.invalid_argument(
+            "status must be a string.",
+            field="status",
+        )
+    if raw not in {"", "running", "completed", "failed", "cancelled"}:
+        raise BridgeError.invalid_argument(
+            "status must be one of running, completed, failed, cancelled, or all.",
+            field="status",
+        )
+    return raw
 
 
 def _build_handlers(
@@ -127,6 +154,8 @@ def _build_handlers(
             kind=kind,
             task_id=_expect_task_id(payload),
             limit=_optional_limit(payload),
+            offset=_optional_offset(payload),
+            status=_optional_request_status(payload),
         )
 
     def read_artifacts(payload: Mapping[str, object]) -> dict[str, object]:

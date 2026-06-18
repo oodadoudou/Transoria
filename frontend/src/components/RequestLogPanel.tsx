@@ -1,10 +1,14 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   glossaryBridge,
   glossaryReviewBridge,
   translationBridge,
 } from "@/bridge";
-import type { RequestLogEvent, TaskStatus } from "@/bridge/types";
+import type {
+  RequestLogEvent,
+  RequestLogStatusFilter,
+  TaskStatus,
+} from "@/bridge/types";
 import { useMessages } from "@/locales";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import styles from "./RequestLogPanel.module.css";
@@ -84,9 +88,13 @@ export function RequestLogPanel({
   const [visible, setVisible] = useState(() => loadVisible(kind));
   const [events, setEvents] = useState<RequestLogEvent[]>([]);
   const [total, setTotal] = useState(0);
+  const [truncated, setTruncated] = useState(false);
+  const [statusFilter, setStatusFilter] =
+    useState<RequestLogStatusFilter>("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const eventCountRef = useRef(0);
 
   const statusLabels = useMemo(
     () => ({
@@ -107,25 +115,37 @@ export function RequestLogPanel({
     [],
   );
 
-  const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async (append = false) => {
     if (!taskId) {
       setEvents([]);
       setTotal(0);
+      setTruncated(false);
       setError("");
       return;
     }
     setLoading(true);
     try {
-      const result = await BRIDGES[kind].readRequestEvents(taskId, LIMIT);
-      setEvents(result.events);
+      const result = await BRIDGES[kind].readRequestEvents(taskId, {
+        limit: LIMIT,
+        offset: append ? eventCountRef.current : 0,
+        status: statusFilter,
+      });
+      setEvents((current) =>
+        append ? [...current, ...result.events] : result.events,
+      );
       setTotal(result.total);
+      setTruncated(Boolean(result.truncated));
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [kind, taskId]);
+  }, [kind, statusFilter, taskId]);
+
+  useEffect(() => {
+    eventCountRef.current = events.length;
+  }, [events.length]);
 
   useEffect(() => {
     saveVisible(kind, visible);
@@ -145,6 +165,11 @@ export function RequestLogPanel({
   const handleToggle = (next: boolean) => {
     setVisible(next);
     if (next) void loadEvents();
+  };
+
+  const handleStatusFilter = (next: RequestLogStatusFilter) => {
+    setStatusFilter(next);
+    setExpanded({});
   };
 
   return (
@@ -181,6 +206,38 @@ export function RequestLogPanel({
               {copy.errorPrefix} {error}
             </div>
           ) : null}
+          {taskId && !error ? (
+            <div className={styles.toolbar}>
+              <div className={styles.filters} aria-label={copy.filterLabel}>
+                {(
+                  [
+                    ["all", copy.filterAll],
+                    ["failed", copy.filterFailed],
+                    ["completed", copy.filterCompleted],
+                    ["running", copy.filterRunning],
+                    ["cancelled", copy.filterCancelled],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`${styles.filterButton} ${
+                      statusFilter === value ? styles.filterButtonActive : ""
+                    }`.trim()}
+                    onClick={() => handleStatusFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.meta}>
+                {(truncated ? copy.showingRecent : copy.showing)
+                  .replace("{shown}", String(events.length))
+                  .replace("{total}", String(total))}
+                {truncated ? ` · ${copy.truncated}` : ""}
+              </div>
+            </div>
+          ) : null}
           {taskId && !error && events.length === 0 ? (
             <div className={styles.empty}>
               {loading ? copy.loading : copy.empty}
@@ -188,12 +245,6 @@ export function RequestLogPanel({
           ) : null}
           {events.length > 0 ? (
             <>
-              <div className={styles.meta}>
-                {copy.showing.replace("{shown}", String(events.length)).replace(
-                  "{total}",
-                  String(total),
-                )}
-              </div>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
@@ -267,6 +318,11 @@ export function RequestLogPanel({
                                   )}
                                 </div>
                               ) : null}
+                              {event.usage_estimated ? (
+                                <div className={styles.estimated}>
+                                  {copy.estimatedTokens}
+                                </div>
+                              ) : null}
                             </td>
                             <td>
                               <button
@@ -297,6 +353,16 @@ export function RequestLogPanel({
                   </tbody>
                 </table>
               </div>
+              {events.length < total || truncated ? (
+                <button
+                  type="button"
+                  className={styles.loadMore}
+                  onClick={() => void loadEvents(true)}
+                  disabled={loading}
+                >
+                  {loading ? copy.loading : copy.loadOlder}
+                </button>
+              ) : null}
             </>
           ) : null}
         </div>

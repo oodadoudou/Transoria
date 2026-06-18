@@ -18,7 +18,7 @@ import httpx
 
 from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.io_log import log_error, log_recv, log_send
-from transoria.llm.usage import TokenUsage
+from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
 from transoria.runtime.request_log import RequestLogHandle, begin_llm_request
 
@@ -241,6 +241,13 @@ class HttpxChatTransport:
                     usage = {**(usage or {}), **dict(event["usage"])}
 
         accumulated = "".join(chunks)
+        if accumulated and (
+            usage is None or not _usage_has_token_counts(usage)
+        ):
+            usage = {
+                **dict(usage or {}),
+                **_estimate_stream_usage(payload, accumulated),
+            }
         # Synthesize a body that satisfies all three provider parsers — the
         # streaming transport doesn't know which provider it served, but the
         # subsequent parser does, and each looks at a different field.
@@ -274,6 +281,8 @@ class HttpxChatTransport:
                 usage_meta["cachedContentTokenCount"] = usage[
                     "cachedContentTokenCount"
                 ]
+            if usage.get("transoria_estimated"):
+                usage_meta["transoriaEstimated"] = True
             if usage_meta:
                 body["usageMetadata"] = usage_meta
         return TransportResult(status_code=status_code, body=body)
@@ -344,14 +353,87 @@ def _request_prompt_chars(request: ChatRequest) -> int:
     )
 
 
+def _prompt_text_from_payload(payload: Mapping[str, object]) -> str:
+    parts: list[str] = []
+
+    def append_text(value: object) -> None:
+        if isinstance(value, str):
+            parts.append(value)
+        elif isinstance(value, Mapping):
+            for key in ("content", "text"):
+                if key in value:
+                    append_text(value[key])
+            if "parts" in value:
+                append_text(value["parts"])
+        elif isinstance(value, list):
+            for item in value:
+                append_text(item)
+
+    for key in ("messages", "system", "systemInstruction", "contents"):
+        if key in payload:
+            append_text(payload[key])
+    return "\n".join(part for part in parts if part)
+
+
+def _estimate_stream_usage(
+    payload: Mapping[str, object], accumulated_response: str
+) -> dict[str, object]:
+    prompt_tokens = estimate_tokens_from_text(_prompt_text_from_payload(payload))
+    output_tokens = estimate_tokens_from_text(accumulated_response)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": output_tokens,
+        "input_tokens": prompt_tokens,
+        "output_tokens": output_tokens,
+        "transoria_estimated": True,
+    }
+
+
+def _usage_has_token_counts(usage: Mapping[str, object]) -> bool:
+    return any(
+        key in usage
+        for key in (
+            "prompt_tokens",
+            "completion_tokens",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+            "promptTokenCount",
+            "candidatesTokenCount",
+            "cachedContentTokenCount",
+        )
+    )
+
+
 def _body_mentions_stream_options(body: Mapping[str, object]) -> bool:
     text = json.dumps(body, ensure_ascii=False, default=str).lower()
     return "stream_options" in text or "include_usage" in text
 
 
-def _body_mentions_stream(body: Mapping[str, object]) -> bool:
+def _body_rejects_streaming(body: Mapping[str, object]) -> bool:
     text = json.dumps(body, ensure_ascii=False, default=str).lower()
-    return re.search(r"(?<![a-z0-9_])stream(?:ing)?(?![a-z0-9_])", text) is not None
+    has_stream = re.search(r"(?<![a-z0-9_])stream(?:ing)?(?![a-z0-9_])", text)
+    if has_stream is None:
+        return False
+    rejection_terms = (
+        r"not\s+support(?:ed)?",
+        r"unsupported",
+        r"unknown\s+(?:request\s+)?(?:parameter|field|argument)",
+        r"unrecognized\s+(?:request\s+)?(?:parameter|field|argument)",
+        r"invalid\s+(?:request\s+)?(?:parameter|field|argument)",
+        r"unexpected\s+(?:request\s+)?(?:parameter|field|argument)",
+        r"extra\s+inputs?\s+are\s+not\s+permitted",
+        r"not\s+permitted",
+        r"not\s+allowed",
+    )
+    rejection = "|".join(rejection_terms)
+    stream_word = r"(?<![a-z0-9_])stream(?:ing)?(?![a-z0-9_])"
+    nearby = r"[^.;\n]{0,120}"
+    return bool(
+        re.search(f"{stream_word}{nearby}(?:{rejection})", text)
+        or re.search(f"(?:{rejection}){nearby}{stream_word}", text)
+    )
 
 
 def _should_retry_without_stream_options(
@@ -373,7 +455,7 @@ def _should_retry_without_streaming(
         return False
     if _body_mentions_stream_options(result.body):
         return False
-    return _body_mentions_stream(result.body)
+    return _body_rejects_streaming(result.body)
 
 
 @dataclass(frozen=True)
@@ -1045,6 +1127,11 @@ def _parse_anthropic_response(body: Mapping[str, object]) -> ChatResponse:
             input_tokens=uncached_input + cache_read + cache_creation,
             output_tokens=int(usage_block.get("output_tokens") or 0),
             cached_input_tokens=cache_read,
+            estimated=bool(
+                usage_block.get("usage_estimated")
+                or usage_block.get("transoria_estimated")
+                or usage_block.get("estimated")
+            ),
         )
     return ChatResponse(content="".join(text_parts), usage=usage, raw=body)
 
@@ -1091,6 +1178,10 @@ def _parse_google_response(body: Mapping[str, object]) -> ChatResponse:
             ),
             cached_input_tokens=int(
                 usage_meta.get("cachedContentTokenCount", 0) or 0
+            ),
+            estimated=bool(
+                usage_meta.get("usageEstimated")
+                or usage_meta.get("transoriaEstimated")
             ),
         )
     return ChatResponse(content="".join(text_parts), usage=usage, raw=body)

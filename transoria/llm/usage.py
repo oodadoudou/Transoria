@@ -33,6 +33,7 @@ class TokenUsage:
     input_tokens: int = 0
     output_tokens: int = 0
     cached_input_tokens: int = 0
+    estimated: bool = False
 
     @property
     def total_tokens(self) -> int:
@@ -47,14 +48,16 @@ class TokenUsage:
             cached_input_tokens=(
                 self.cached_input_tokens + other.cached_input_tokens
             ),
+            estimated=self.estimated or other.estimated,
         )
 
-    def to_dict(self) -> dict[str, int]:
+    def to_dict(self) -> dict[str, int | bool]:
         return {
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "cached_input_tokens": self.cached_input_tokens,
             "total_tokens": self.total_tokens,
+            "usage_estimated": self.estimated,
         }
 
     @classmethod
@@ -89,6 +92,11 @@ class TokenUsage:
                 usage.get("completion_tokens") or usage.get("output_tokens") or 0
             ),
             cached_input_tokens=cached_tokens,
+            estimated=bool(
+                usage.get("usage_estimated")
+                or usage.get("transoria_estimated")
+                or usage.get("estimated")
+            ),
         )
 
 

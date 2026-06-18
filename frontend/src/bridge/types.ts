@@ -449,6 +449,20 @@ export interface TaskLogLine {
 
 export type RequestLogStatus = "running" | "completed" | "failed" | "cancelled";
 
+export type RequestLogStatusFilter = RequestLogStatus | "all";
+
+export interface RequestLogQuery {
+  limit?: number;
+  offset?: number;
+  status?: RequestLogStatusFilter;
+}
+
+export interface RequestLogResult {
+  events: RequestLogEvent[];
+  total: number;
+  truncated?: boolean;
+}
+
 export interface RequestLogEvent {
   schema_version: number;
   request_id: string;
@@ -470,6 +484,7 @@ export interface RequestLogEvent {
   output_tokens?: number;
   cached_input_tokens?: number;
   total_tokens?: number;
+  usage_estimated?: boolean;
   response_text?: string;
   error?: string;
 }
