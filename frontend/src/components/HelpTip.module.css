@@ -33,12 +33,12 @@
 
 .popover {
   position: absolute;
-  top: 24px;
-  left: 50%;
+  top: 50%;
+  left: calc(100% + 8px);
   z-index: 30;
   min-width: 240px;
-  max-width: 360px;
-  transform: translateX(-50%);
+  max-width: min(360px, calc(100vw - 96px));
+  transform: translateY(-50%);
   border: 1px solid var(--hairline, #ece8e2);
   border-radius: 8px;
   background: var(--panel, #fffaf3);
