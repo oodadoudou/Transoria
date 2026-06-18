@@ -8,6 +8,7 @@ a fake :class:`ChatTransport`; production uses :class:`HttpxChatTransport`.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol
@@ -309,6 +310,21 @@ def _request_prompt_chars(request: ChatRequest) -> int:
     )
 
 
+def _body_mentions_stream_options(body: Mapping[str, object]) -> bool:
+    text = json.dumps(body, ensure_ascii=False, default=str).lower()
+    return "stream_options" in text or "include_usage" in text
+
+
+def _should_retry_without_stream_options(
+    payload: Mapping[str, object], result: TransportResult
+) -> bool:
+    if "stream_options" not in payload:
+        return False
+    if result.status_code not in {400, 422}:
+        return False
+    return _body_mentions_stream_options(result.body)
+
+
 @dataclass(frozen=True)
 class LlmClient:
     transport: ChatTransport
@@ -360,6 +376,11 @@ class LlmClient:
             payload["frequency_penalty"] = request.model.frequency_penalty
         if request.stream:
             payload["stream"] = True
+            if request.model.provider_format in (
+                ProviderFormat.OPENAI,
+                ProviderFormat.CUSTOM,
+            ):
+                payload["stream_options"] = {"include_usage": True}
         thinking = _thinking_payload(request.model.thinking_level)
         if thinking is not None:
             payload["thinking"] = thinking
@@ -539,6 +560,62 @@ class LlmClient:
                     code="llm.transport_error",
                 ) from exc
 
+            if _should_retry_without_stream_options(payload, result):
+                latency = time.monotonic() - send_start
+                if request_log is not None:
+                    request_log.fail(
+                        error=(
+                            "HTTP "
+                            f"{result.status_code}: provider rejected stream_options; "
+                            "retrying without streaming usage request"
+                        ),
+                        status_code=result.status_code,
+                    )
+                log_recv(
+                    request.log_label,
+                    request.model.id,
+                    latency_seconds=latency,
+                    status_code=result.status_code,
+                    body=result.body,
+                    input_tokens=0,
+                    output_tokens=0,
+                )
+                payload.pop("stream_options", None)
+                log_send(request.log_label, request.model.id, payload)
+                send_start = time.monotonic()
+                request_log = begin_llm_request(
+                    label=request.log_label,
+                    model=request.model,
+                    provider_attempt=attempt + 1,
+                    prompt_chars=_request_prompt_chars(request),
+                )
+                try:
+                    result = await self.transport.execute(
+                        url, headers, payload, request.model.timeout_seconds
+                    )
+                except asyncio.CancelledError:
+                    if request_log is not None:
+                        request_log.cancel()
+                    raise
+                except Exception as exc:
+                    latency = time.monotonic() - send_start
+                    log_error(
+                        request.log_label,
+                        request.model.id,
+                        latency_seconds=latency,
+                        error=exc,
+                    )
+                    if request_log is not None:
+                        request_log.fail(error=_transport_error_detail(exc))
+                    last_error = exc
+                    if attempt + 1 < attempts:
+                        continue
+                    detail = _transport_error_detail(exc)
+                    raise LlmRequestError(
+                        f"Transport failed for model {request.model.id!r}: {detail}",
+                        code="llm.transport_error",
+                    ) from exc
+
             latency = time.monotonic() - send_start
             try:
                 response = parser(result.body) if result.status_code < 400 else None
@@ -665,6 +742,59 @@ class LlmClient:
                     f"Transport failed for model {request.model.id!r}: {detail}",
                     code="llm.transport_error",
                 ) from exc
+
+            if _should_retry_without_stream_options(payload, result):
+                latency = time.monotonic() - send_start
+                if request_log is not None:
+                    request_log.fail(
+                        error=(
+                            "HTTP "
+                            f"{result.status_code}: provider rejected stream_options; "
+                            "retrying without streaming usage request"
+                        ),
+                        status_code=result.status_code,
+                    )
+                log_recv(
+                    request.log_label,
+                    request.model.id,
+                    latency_seconds=latency,
+                    status_code=result.status_code,
+                    body=result.body,
+                    input_tokens=0,
+                    output_tokens=0,
+                )
+                payload.pop("stream_options", None)
+                log_send(request.log_label, request.model.id, payload)
+                send_start = time.monotonic()
+                request_log = begin_llm_request(
+                    label=request.log_label,
+                    model=request.model,
+                    provider_attempt=provider_attempt,
+                    prompt_chars=_request_prompt_chars(request),
+                )
+                try:
+                    result = await self.transport.execute(
+                        url, headers, payload, request.model.timeout_seconds
+                    )
+                except asyncio.CancelledError:
+                    if request_log is not None:
+                        request_log.cancel()
+                    raise
+                except Exception as exc:
+                    latency = time.monotonic() - send_start
+                    log_error(
+                        request.log_label,
+                        request.model.id,
+                        latency_seconds=latency,
+                        error=exc,
+                    )
+                    if request_log is not None:
+                        request_log.fail(error=_transport_error_detail(exc))
+                    detail = _transport_error_detail(exc)
+                    raise LlmRequestError(
+                        f"Transport failed for model {request.model.id!r}: {detail}",
+                        code="llm.transport_error",
+                    ) from exc
 
             latency = time.monotonic() - send_start
             try:
