@@ -90,19 +90,25 @@ def evaluate_segment_confidence(
         source_text, translated_text
     ):
         return ConfidenceVerdict(is_low_confidence=False)
+    preserved_title_or_identifier = _looks_like_preserved_title_or_identifier(
+        source_text,
+        translated_text,
+        source_language=source_language,
+        target_language=target_language,
+    )
 
     ratio = len(translated_text) / max(len(source_text), 1)
-    if ratio < min_length_ratio:
+    if not preserved_title_or_identifier and ratio < min_length_ratio:
         reasons.append(f"length ratio {ratio:.2f} < min {min_length_ratio:.2f}")
         tags.append(TAG_LENGTH_RATIO_ANOMALY)
-    elif ratio > max_length_ratio:
+    elif not preserved_title_or_identifier and ratio > max_length_ratio:
         reasons.append(f"length ratio {ratio:.2f} > max {max_length_ratio:.2f}")
         tags.append(TAG_LENGTH_RATIO_ANOMALY)
 
     source_punct = _count_punctuation(source_text)
     translated_punct = _count_punctuation(translated_text)
     delta = abs(translated_punct - source_punct)
-    if delta > max_punctuation_delta:
+    if not preserved_title_or_identifier and delta > max_punctuation_delta:
         reasons.append(
             f"punctuation delta {delta} > max {max_punctuation_delta}"
         )
@@ -117,7 +123,7 @@ def evaluate_segment_confidence(
         source_language=source_language,
         target_language=target_language,
     )
-    if english_leak_reason:
+    if english_leak_reason and not preserved_title_or_identifier:
         reasons.append(english_leak_reason)
         tags.append(TAG_FUNCTION_WORD_RESIDUE)
 
@@ -126,7 +132,7 @@ def evaluate_segment_confidence(
         translated_text,
         target_language=target_language,
     )
-    if target_language_reason:
+    if target_language_reason and not preserved_title_or_identifier:
         reasons.append(target_language_reason)
         tags.append(TAG_TARGET_LANGUAGE_WEAK)
 
@@ -135,7 +141,9 @@ def evaluate_segment_confidence(
         reasons.append(chatter_reason)
         tags.append(TAG_MODEL_CHATTER)
 
-    if _too_similar(source_text, translated_text):
+    if not preserved_title_or_identifier and _too_similar(
+        source_text, translated_text
+    ):
         reasons.append("source and translation are too similar")
         tags.append(TAG_VERBATIM_ECHO)
 
@@ -182,6 +190,10 @@ _KOREAN_SOFT_RESIDUE_PATTERN = re.compile(
 _KOREAN_TARGET_SCRIPT_PATTERN = re.compile(
     r"[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f"
     r"\ua960-\ua97f\ud7b0-\ud7ff\uffa0-\uffdc]"
+)
+_KOREAN_SOURCE_SCRIPT_PATTERN = re.compile(
+    r"[\uac00-\ud7af\uffa0-\uffdc\u1100-\u11ff\u3130-\u318f"
+    r"\ua960-\ua97f\ud7b0-\ud7ff]"
 )
 
 # Japanese kana \u2014 translation output should never contain these.
@@ -244,6 +256,73 @@ _MODEL_CHATTER_PATTERNS = (
     re.compile(r"^\s*(?:as an ai|i(?:'|’)m sorry|sorry,?\s+i)\b", re.I),
     re.compile(r"```"),
 )
+_CLASSIC_IDENTIFIER_PATTERN = re.compile(
+    r"\b(?:ISBN(?:-1[03])?|ISSN|DOI|EAN|ASIN)\b", re.I
+)
+_LATIN_NUMBER_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:[xX][A-Za-z0-9]+)?")
+_PRESERVED_TITLE_MAX_SOURCE_CHARS = 120
+_PRESERVED_TITLE_MAX_TARGET_CHARS = 160
+_PRESERVED_TITLE_MAX_SOURCE_SCRIPT_RATIO = 0.25
+_PRESERVED_TITLE_MIN_TARGET_TOKEN_COVERAGE = 0.60
+
+
+def _looks_like_preserved_title_or_identifier(
+    source_text: str,
+    translated_text: str,
+    *,
+    source_language: Language | None,
+    target_language: Language | None,
+) -> bool:
+    """Allow short title/identifier lines to keep Latin tokens in Chinese output."""
+
+    if target_language not in _CHINESE_TARGET_LANGUAGES:
+        return False
+    if source_language is Language.ENGLISH:
+        return False
+    source = source_text.strip()
+    translated = translated_text.strip()
+    if not source or not translated:
+        return False
+    if _source_language_residue(translated, source_language):
+        return False
+    if _CLASSIC_IDENTIFIER_PATTERN.search(source) or _CLASSIC_IDENTIFIER_PATTERN.search(
+        translated
+    ):
+        return True
+    if (
+        len(source) > _PRESERVED_TITLE_MAX_SOURCE_CHARS
+        or len(translated) > _PRESERVED_TITLE_MAX_TARGET_CHARS
+    ):
+        return False
+    if (
+        _source_script_ratio(source, source_language)
+        > _PRESERVED_TITLE_MAX_SOURCE_SCRIPT_RATIO
+    ):
+        return False
+    source_tokens = set(_latin_number_tokens(source))
+    translated_tokens = set(_latin_number_tokens(translated))
+    if not source_tokens or not translated_tokens:
+        return False
+    shared = source_tokens & translated_tokens
+    if not shared:
+        return False
+    target_coverage = len(shared) / len(translated_tokens)
+    return target_coverage >= _PRESERVED_TITLE_MIN_TARGET_TOKEN_COVERAGE
+
+
+def _source_script_ratio(text: str, source_language: Language | None) -> float:
+    if source_language is Language.KOREAN:
+        return _ratio(_KOREAN_SOURCE_SCRIPT_PATTERN, text)
+    if source_language is Language.JAPANESE:
+        return _ratio(_JAPANESE_KANA_PATTERN, text)
+    return 0.0
+
+
+def _latin_number_tokens(text: str) -> list[str]:
+    return [
+        match.group(0).casefold()
+        for match in _LATIN_NUMBER_TOKEN_PATTERN.finditer(text)
+    ]
 
 
 def _source_language_residue(

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -115,6 +116,9 @@ _SYSTEM_LANGUAGE_CONTRACT_HINT = (
 _JSONL_KEYWORD_PATTERN = re.compile(
     r"jsonl(?:ine)?|\{\s*\"\s*<\s*INDEX", re.IGNORECASE
 )
+_LOW_CONFIDENCE_RETRY_EQUIVALENT_PATTERN = re.compile(
+    r"[\s,，.。;；:：!！?？\"'“”‘’「」『』《》〈〉()\[\]{}（）【】<>〈〉\-—–_]+"
+)
 
 
 def _augment_system_prompt(
@@ -131,6 +135,17 @@ def _augment_system_prompt(
     ):
         parts.append(_SYSTEM_FORMAT_CONTRACT_HINT)
     return "".join(parts)
+
+
+def _same_low_confidence_retry_candidate(left: str, right: str) -> bool:
+    return _normalize_low_confidence_retry_candidate(
+        left
+    ) == _normalize_low_confidence_retry_candidate(right)
+
+
+def _normalize_low_confidence_retry_candidate(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    return _LOW_CONFIDENCE_RETRY_EQUIVALENT_PATTERN.sub("", normalized)
 
 
 @dataclass(frozen=True)
@@ -652,7 +667,13 @@ class TranslationSubtaskRunner:
                         finalized[meta.segment_id] = retry_final
                         current_text = None  # signal: passed
                         break
-                    if retry_final.strip() == current_text.strip():
+                    if (
+                        retry_final.strip() == current_text.strip()
+                        or _same_low_confidence_retry_candidate(
+                            retry_final, current_text
+                        )
+                    ):
+                        current_text = retry_final
                         current_reasons = verdict.reasons
                         break
                     # Still low-conf: keep tracking the current best as
