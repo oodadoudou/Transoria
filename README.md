@@ -32,16 +32,10 @@ Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权�
 
 ### 最近更新
 
-- **通用工具** 已整理为更集中的 EPUB 工具页：EPUB 压缩、文本文档合并、EPUB 转 TXT、TXT 转 EPUB、元数据编辑和 EPUB 修复都可以从同一入口打开。
-- 新增 **TXT 转 EPUB**：支持章节预设 / 自定义正则扫描、目录编辑、封面、内置阅读样式、自定义 CSS 和标准 EPUB 输出。
-- **文本文档合并** 同时支持 EPUB 和 TXT：EPUB 合并会重建目录和资源引用，TXT 合并会按选择顺序直接拼接输出。
-- EPUB 合并和修复增加结构诊断：会检查 manifest、spine、nav、toc 和实际文件引用，减少不存在子目录、正文误入杂项、无效链接等问题。
-- EPUB 元数据编辑支持读取封面预览，修改书名、作者和封面后输出新 EPUB；输出同名时会提示是否覆盖。
-- 批量替换兼容 Reeden / Reading 新旧 `.red` 规则容器，同时继续支持旧版 TXT 箭头规则。
-- 校对页增强风险定位：默认关注低置信度、原文残留和疑似重复，也会提示模型异常、混入异常英文片段、未译和格式兜底等风险。
-- 单条 / 批量重翻会显示进度，并按模型配置的并发和 RPM 节流，降低高并发下的失败重试浪费。
-- 深色模式适配了文本选择、复选框、校对表格和通用工具弹窗，提升暗色主题下的可读性。
-- 打包版本补齐 TXT 转 EPUB 样式资源，预设样式、模板复制 / 下载 / 导入在安装包内可用。
+- 新增弹出式请求记录窗口，可查看翻译、术语提取、术语审查的每条模型请求与回复。
+- 优化高并发 LLM 请求：默认流式、连接复用、连接池调优，减少卡住和超时误判。
+- 改进校对页布局，术语一致性面板支持折叠，并减少误报。
+- 修复运行耗时统计、术语审查状态同步、桌面端滚动和滚动条遮挡问题。
 
 完整列表见 [Releases](https://github.com/oodadoudou/Transoria/releases)。
 
@@ -108,7 +102,8 @@ python app.py
 3. 在该模块的「**设置**」页指定输入、输出和模型相关配置。
 4. 回到「**运行**」页面点开始。
 
-进度、token 用量、失败重试、日志都会在运行页面实时显示。
+进度、token 用量、失败重试会在运行页面实时显示。需要排查模型
+请求时，可以在运行控件中打开弹出式请求记录窗口查看每次请求和回复。
 
 ---
 
@@ -139,16 +134,10 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 
 ### What's new
 
-- **General Tools** now has a consolidated EPUB Tools workspace for EPUB compression, document merging, EPUB to TXT, TXT to EPUB, metadata editing, and EPUB repair.
-- Added **TXT to EPUB** with heading presets, custom regex scanning, editable TOC entries, covers, built-in reading styles, custom CSS, and clean standard EPUB output.
-- **Document Merger** supports both EPUB and TXT. EPUB merge rebuilds navigation and resource references; TXT merge concatenates files in the selected order.
-- EPUB merge and repair now include structure diagnostics for manifest, spine, nav, toc, and file references, reducing missing folders, misplaced content files, and broken links.
-- EPUB metadata editing can preview covers and write updated title, author, and cover information to a new EPUB, with overwrite confirmation for same-name outputs.
-- Batch replacement supports newer and older Reeden / Reading `.red` rule containers while keeping legacy TXT arrow-rule imports.
-- Proofreading risk discovery is stronger: low confidence, source residue, and possible duplicates are prioritized by default, with additional model-anomaly, mixed English residue, untranslated, and format fallback signals.
-- Single-item and batch retranslation show progress and throttle by model concurrency and RPM settings to avoid excessive retry churn under high concurrency.
-- Dark mode readability improved for text selection, checkboxes, proofreading tables, and General Tools dialogs.
-- Packaged builds now include TXT to EPUB style resources, so preset styles and CSS template copy / download / import work in installers.
+- Added a pop-out request log window for translation, glossary extraction, and glossary review LLM calls.
+- Improved high-concurrency LLM handling with default streaming, client reuse, and tuned connection pooling.
+- Simplified the proofreading layout, made term audit collapsible, and reduced false positives.
+- Fixed runtime duration, glossary review state sync, desktop scrolling, and scrollbar overlap issues.
 
 Full list on [Releases](https://github.com/oodadoudou/Transoria/releases).
 
@@ -215,4 +204,6 @@ python app.py
 3. Configure input, output, and model-related settings on that module's **Settings** page.
 4. Back on the **Run** page, click Start.
 
-Progress, token usage, retry counts, and logs all stream live on the run page.
+Progress, token usage, and retry counts update live on the run page. For model
+debugging, open the pop-out request log from the run controls to inspect each
+LLM request and response.

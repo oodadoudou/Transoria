@@ -64,7 +64,7 @@ class TranslationSettings:
     # enough that quality-sensitive users see no clipping while the
     # heuristic keeps token cost bounded.
     context_lines: int = 25
-    low_confidence_max_retries: int = 3
+    low_confidence_max_retries: int = 2
     request_retry_attempts: int = 3
     auto_open_output_folder: bool = False
     timeout_seconds: int = 600

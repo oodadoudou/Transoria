@@ -66,7 +66,7 @@ class TranslationConfig:
     # 12 still catches genuine sentence-merge / drop failures (delta
     # 15+) while letting normal punctuation drift through.
     max_punctuation_delta: int = 12
-    low_confidence_max_retries: int = 3
+    low_confidence_max_retries: int = 2
 
     # How many times a failed *network request* (timeout / 429 / 5xx /
     # transport error) is re-sent with backoff. This is the per-module

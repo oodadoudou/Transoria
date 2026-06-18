@@ -32,12 +32,9 @@
 }
 
 .popover {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 8px);
-  z-index: 30;
+  position: fixed;
+  z-index: 100;
   min-width: 240px;
-  max-width: min(360px, calc(100vw - 96px));
   transform: translateY(-50%);
   border: 1px solid var(--hairline, #ece8e2);
   border-radius: 8px;
@@ -48,16 +45,10 @@
   font-weight: 500;
   line-height: 1.45;
   letter-spacing: 0;
-  opacity: 0;
+  opacity: 1;
   padding: 9px 11px;
   pointer-events: none;
-  visibility: hidden;
   white-space: normal;
   text-transform: none;
-}
-
-.wrap:hover .popover,
-.wrap:focus-within .popover {
-  opacity: 1;
   visibility: visible;
 }
