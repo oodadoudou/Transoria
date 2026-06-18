@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Mapping, Protocol
@@ -348,6 +349,11 @@ def _body_mentions_stream_options(body: Mapping[str, object]) -> bool:
     return "stream_options" in text or "include_usage" in text
 
 
+def _body_mentions_stream(body: Mapping[str, object]) -> bool:
+    text = json.dumps(body, ensure_ascii=False, default=str).lower()
+    return re.search(r"(?<![a-z0-9_])stream(?:ing)?(?![a-z0-9_])", text) is not None
+
+
 def _should_retry_without_stream_options(
     payload: Mapping[str, object], result: TransportResult
 ) -> bool:
@@ -356,6 +362,18 @@ def _should_retry_without_stream_options(
     if result.status_code not in {400, 422}:
         return False
     return _body_mentions_stream_options(result.body)
+
+
+def _should_retry_without_streaming(
+    payload: Mapping[str, object], result: TransportResult
+) -> bool:
+    if "stream" not in payload:
+        return False
+    if result.status_code not in {400, 422}:
+        return False
+    if _body_mentions_stream_options(result.body):
+        return False
+    return _body_mentions_stream(result.body)
 
 
 @dataclass(frozen=True)
@@ -535,7 +553,7 @@ class LlmClient:
             url_takes_key=True,
         )
 
-    async def _retry_without_stream_options(
+    async def _retry_after_payload_rejection(
         self,
         *,
         request: ChatRequest,
@@ -546,6 +564,9 @@ class LlmClient:
         send_start: float,
         request_log: RequestLogHandle | None,
         provider_attempt: int,
+        rejected_feature: str,
+        retry_action: str,
+        drop_fields: tuple[str, ...],
     ) -> tuple[TransportResult, float, RequestLogHandle | None]:
         latency = time.monotonic() - send_start
         if request_log is not None:
@@ -553,7 +574,7 @@ class LlmClient:
                 error=(
                     "HTTP "
                     f"{rejected_result.status_code}: provider rejected "
-                    "stream_options; retrying without streaming usage request"
+                    f"{rejected_feature}; retrying {retry_action}"
                 ),
                 status_code=rejected_result.status_code,
             )
@@ -566,8 +587,9 @@ class LlmClient:
             input_tokens=0,
             output_tokens=0,
         )
-        # The field is endpoint-level; once rejected, remaining key attempts skip it.
-        payload.pop("stream_options", None)
+        # Rejected payload features are endpoint-level, so later key attempts skip them.
+        for field_name in drop_fields:
+            payload.pop(field_name, None)
         log_send(request.log_label, request.model.id, payload)
         fallback_start = time.monotonic()
         fallback_log = begin_llm_request(
@@ -663,7 +685,7 @@ class LlmClient:
             if _should_retry_without_stream_options(payload, result):
                 try:
                     result, send_start, request_log = (
-                        await self._retry_without_stream_options(
+                        await self._retry_after_payload_rejection(
                             request=request,
                             url=url,
                             headers=headers,
@@ -672,6 +694,38 @@ class LlmClient:
                             send_start=send_start,
                             request_log=request_log,
                             provider_attempt=attempt + 1,
+                            rejected_feature="stream_options",
+                            retry_action="without streaming usage request",
+                            drop_fields=("stream_options",),
+                        )
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    last_error = exc
+                    if attempt + 1 < attempts:
+                        continue
+                    detail = _transport_error_detail(exc)
+                    raise LlmRequestError(
+                        f"Transport failed for model {request.model.id!r}: {detail}",
+                        code="llm.transport_error",
+                    ) from exc
+
+            if _should_retry_without_streaming(payload, result):
+                try:
+                    result, send_start, request_log = (
+                        await self._retry_after_payload_rejection(
+                            request=request,
+                            url=url,
+                            headers=headers,
+                            payload=payload,
+                            rejected_result=result,
+                            send_start=send_start,
+                            request_log=request_log,
+                            provider_attempt=attempt + 1,
+                            rejected_feature="streaming",
+                            retry_action="without stream",
+                            drop_fields=("stream_options", "stream"),
                         )
                     )
                 except asyncio.CancelledError:
@@ -816,7 +870,7 @@ class LlmClient:
             if _should_retry_without_stream_options(payload, result):
                 try:
                     result, send_start, request_log = (
-                        await self._retry_without_stream_options(
+                        await self._retry_after_payload_rejection(
                             request=request,
                             url=url,
                             headers=headers,
@@ -825,6 +879,35 @@ class LlmClient:
                             send_start=send_start,
                             request_log=request_log,
                             provider_attempt=provider_attempt,
+                            rejected_feature="stream_options",
+                            retry_action="without streaming usage request",
+                            drop_fields=("stream_options",),
+                        )
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    detail = _transport_error_detail(exc)
+                    raise LlmRequestError(
+                        f"Transport failed for model {request.model.id!r}: {detail}",
+                        code="llm.transport_error",
+                    ) from exc
+
+            if _should_retry_without_streaming(payload, result):
+                try:
+                    result, send_start, request_log = (
+                        await self._retry_after_payload_rejection(
+                            request=request,
+                            url=url,
+                            headers=headers,
+                            payload=payload,
+                            rejected_result=result,
+                            send_start=send_start,
+                            request_log=request_log,
+                            provider_attempt=provider_attempt,
+                            rejected_feature="streaming",
+                            retry_action="without stream",
+                            drop_fields=("stream_options", "stream"),
                         )
                     )
                 except asyncio.CancelledError:

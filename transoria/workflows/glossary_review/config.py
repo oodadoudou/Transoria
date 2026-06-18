@@ -25,7 +25,7 @@ class GlossaryReviewConfig:
     retry_attempts: int
     model: ModelConfig
     prompt_preset: PromptPreset
-    stream: bool = False
+    stream: bool = True
     debug_log_dir: Path | None = None
 
 

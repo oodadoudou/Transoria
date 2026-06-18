@@ -74,7 +74,7 @@ class TranslationConfig:
     # solo) are fixed internal policy, not driven by this number.
     request_retry_attempts: int = 3
 
-    stream: bool = False
+    stream: bool = True
     debug_log_dir: Path | None = None
 
     fake_name_roster: FakeNameRoster | FakeNameSession = field(

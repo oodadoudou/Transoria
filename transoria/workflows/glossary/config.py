@@ -50,7 +50,7 @@ class GlossaryConfig:
     # request (timeout / 429 / 5xx / transport error) with backoff.
     request_retry_attempts: int = 3
 
-    stream: bool = False
+    stream: bool = True
     debug_log_dir: Path | None = None
     buffer_epub_archives: bool = False
     fake_name_session: FakeNameSession = field(default_factory=FakeNameSession)
