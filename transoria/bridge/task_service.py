@@ -2053,7 +2053,10 @@ class TaskService:
                 0, int(settings.translation.request_retry_attempts)
             ),
         )
-        result = await runner.run(subtask)
+        try:
+            result = await runner.run(subtask)
+        finally:
+            await runner.client.aclose()
         try:
             response = json.loads(result.response_content)
         except json.JSONDecodeError as exc:
@@ -2246,16 +2249,19 @@ class TaskService:
             payload = _translation_result_payload(result, config=config)
             self._write_result(task_id, payload)
 
-        orchestrator = TranslationOrchestrator(
-            cache=cache,
-            client=client,
-            id_factory=lambda: task_id,
-            progress=_touch_progress,
-            on_executor_created=_capture,
-            on_result_finalized=_finalize,
-        )
-        await orchestrator.run(config)
-        self._maybe_cleanup_cache("translation", task_id)
+        try:
+            orchestrator = TranslationOrchestrator(
+                cache=cache,
+                client=client,
+                id_factory=lambda: task_id,
+                progress=_touch_progress,
+                on_executor_created=_capture,
+                on_result_finalized=_finalize,
+            )
+            await orchestrator.run(config)
+            self._maybe_cleanup_cache("translation", task_id)
+        finally:
+            await client.aclose()
 
     def _build_glossary_config(
         self,
@@ -2377,16 +2383,19 @@ class TaskService:
             payload = _glossary_result_payload(result, config=config)
             self._write_result(task_id, payload)
 
-        orchestrator = GlossaryOrchestrator(
-            cache=cache,
-            client=client,
-            id_factory=lambda: task_id,
-            progress=_touch_progress,
-            on_executor_created=_capture,
-            on_result_finalized=_finalize,
-        )
-        await orchestrator.run(config)
-        self._maybe_cleanup_cache("glossary", task_id)
+        try:
+            orchestrator = GlossaryOrchestrator(
+                cache=cache,
+                client=client,
+                id_factory=lambda: task_id,
+                progress=_touch_progress,
+                on_executor_created=_capture,
+                on_result_finalized=_finalize,
+            )
+            await orchestrator.run(config)
+            self._maybe_cleanup_cache("glossary", task_id)
+        finally:
+            await client.aclose()
 
     def _build_glossary_review_config(
         self,
@@ -2522,16 +2531,19 @@ class TaskService:
             payload = _glossary_review_result_payload(result, config=config)
             self._write_result(task_id, payload)
 
-        orchestrator = GlossaryReviewOrchestrator(
-            cache=cache,
-            client=client,
-            id_factory=lambda: task_id,
-            progress=_touch_progress,
-            on_executor_created=_capture,
-            on_result_finalized=_finalize,
-        )
-        await orchestrator.run(config)
-        self._maybe_cleanup_cache("glossary_review", task_id)
+        try:
+            orchestrator = GlossaryReviewOrchestrator(
+                cache=cache,
+                client=client,
+                id_factory=lambda: task_id,
+                progress=_touch_progress,
+                on_executor_created=_capture,
+                on_result_finalized=_finalize,
+            )
+            await orchestrator.run(config)
+            self._maybe_cleanup_cache("glossary_review", task_id)
+        finally:
+            await client.aclose()
 
     def start_replacement(
         self,

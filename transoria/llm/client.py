@@ -115,12 +115,26 @@ class HttpxChatTransport:
 
     def __init__(self, proxy: str | None = None) -> None:
         self._proxy = proxy or None  # normalize "" → None
+        self._client: httpx.AsyncClient | None = None
 
-    def _client_kwargs(self, timeout: float) -> dict[str, object]:
-        kwargs: dict[str, object] = {"timeout": timeout}
+    def _client_kwargs(self) -> dict[str, object]:
+        kwargs: dict[str, object] = {}
         if self._proxy is not None:
             kwargs["proxy"] = self._proxy
         return kwargs
+
+    def _get_client(self) -> httpx.AsyncClient:
+        client = self._client
+        if client is None or client.is_closed:
+            client = httpx.AsyncClient(**self._client_kwargs())
+            self._client = client
+        return client
+
+    async def aclose(self) -> None:
+        client = self._client
+        if client is not None:
+            await client.aclose()
+            self._client = None
 
     async def execute(
         self,
@@ -131,8 +145,12 @@ class HttpxChatTransport:
     ) -> TransportResult:
         if bool(payload.get("stream")):
             return await self._execute_streaming(url, headers, payload, timeout)
-        async with httpx.AsyncClient(**self._client_kwargs(timeout)) as client:
-            response = await client.post(url, headers=dict(headers), json=dict(payload))
+        response = await self._get_client().post(
+            url,
+            headers=dict(headers),
+            json=dict(payload),
+            timeout=timeout,
+        )
         try:
             body = response.json()
         except ValueError:
@@ -151,60 +169,65 @@ class HttpxChatTransport:
         chunks: list[str] = []
         usage: Mapping[str, object] | None = None
         status_code = 0
-        async with httpx.AsyncClient(**self._client_kwargs(timeout)) as client:
-            async with client.stream(
-                "POST", url, headers=dict(headers), json=dict(payload)
-            ) as response:
-                status_code = response.status_code
-                if status_code >= 400:
-                    body_text = await response.aread()
-                    return TransportResult(
-                        status_code=status_code,
-                        body={"raw_text": body_text.decode("utf-8", "replace")},
-                    )
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    if line.startswith(":") or line.startswith("event:"):
-                        continue
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        event = json.loads(data)
-                    except ValueError:
-                        continue
-                    # OpenAI / Volcengine: ``choices[*].delta.content``
-                    choices = event.get("choices") or []
-                    for choice in choices:
-                        delta = choice.get("delta") or {}
-                        text = delta.get("content")
+        async with self._get_client().stream(
+            "POST",
+            url,
+            headers=dict(headers),
+            json=dict(payload),
+            timeout=timeout,
+        ) as response:
+            status_code = response.status_code
+            if status_code >= 400:
+                body_text = await response.aread()
+                return TransportResult(
+                    status_code=status_code,
+                    body={"raw_text": body_text.decode("utf-8", "replace")},
+                )
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                if line.startswith(":") or line.startswith("event:"):
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    event = json.loads(data)
+                except ValueError:
+                    continue
+                # OpenAI / Volcengine: ``choices[*].delta.content``
+                choices = event.get("choices") or []
+                for choice in choices:
+                    delta = choice.get("delta") or {}
+                    text = delta.get("content")
+                    if isinstance(text, str):
+                        chunks.append(text)
+                # Anthropic: ``content_block_delta`` carries
+                # ``delta.text``; ``message_delta`` carries ``usage``;
+                # ``message_start`` carries an initial ``usage`` block.
+                event_type = event.get("type")
+                if event_type == "content_block_delta":
+                    delta = event.get("delta") or {}
+                    if isinstance(delta, Mapping):
+                        text = delta.get("text")
                         if isinstance(text, str):
                             chunks.append(text)
-                    # Anthropic: ``content_block_delta`` carries
-                    # ``delta.text``; ``message_delta`` carries ``usage``;
-                    # ``message_start`` carries an initial ``usage`` block.
-                    event_type = event.get("type")
-                    if event_type == "content_block_delta":
-                        delta = event.get("delta") or {}
-                        if isinstance(delta, Mapping):
-                            text = delta.get("text")
-                            if isinstance(text, str):
-                                chunks.append(text)
-                    if event_type in ("message_start", "message_delta"):
-                        message_block = event.get("message") or {}
-                        message_usage = (
-                            message_block.get("usage") if isinstance(message_block, Mapping) else None
-                        )
-                        if isinstance(message_usage, Mapping):
-                            usage = {**(usage or {}), **dict(message_usage)}
-                        delta_usage = event.get("usage")
-                        if isinstance(delta_usage, Mapping):
-                            usage = {**(usage or {}), **dict(delta_usage)}
-                    if "usage" in event and isinstance(event["usage"], Mapping):
-                        usage = {**(usage or {}), **dict(event["usage"])}
+                if event_type in ("message_start", "message_delta"):
+                    message_block = event.get("message") or {}
+                    message_usage = (
+                        message_block.get("usage")
+                        if isinstance(message_block, Mapping)
+                        else None
+                    )
+                    if isinstance(message_usage, Mapping):
+                        usage = {**(usage or {}), **dict(message_usage)}
+                    delta_usage = event.get("usage")
+                    if isinstance(delta_usage, Mapping):
+                        usage = {**(usage or {}), **dict(delta_usage)}
+                if "usage" in event and isinstance(event["usage"], Mapping):
+                    usage = {**(usage or {}), **dict(event["usage"])}
 
         accumulated = "".join(chunks)
         # Synthesize a body that satisfies all three provider parsers — the
@@ -328,6 +351,11 @@ def _should_retry_without_stream_options(
 @dataclass(frozen=True)
 class LlmClient:
     transport: ChatTransport
+
+    async def aclose(self) -> None:
+        close = getattr(self.transport, "aclose", None)
+        if close is not None:
+            await close()
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
         provider = request.model.provider_format

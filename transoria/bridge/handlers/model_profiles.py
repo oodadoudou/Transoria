@@ -211,8 +211,15 @@ def _build_handlers(
             stream=False,
         )
         start = time.monotonic()
+
+        async def _run_probe():
+            try:
+                return await client.chat(request)
+            finally:
+                await client.aclose()
+
         try:
-            response = asyncio.run(client.chat(request))
+            response = asyncio.run(_run_probe())
         except LlmRequestError as exc:
             elapsed = int((time.monotonic() - start) * 1000)
             return {
