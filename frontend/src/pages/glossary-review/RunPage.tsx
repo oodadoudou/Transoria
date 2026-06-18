@@ -445,12 +445,6 @@ export function RunPage() {
         ) : null}
       </Panel>
 
-      <RequestLogPanel
-        kind="glossary_review"
-        taskId={activeTaskId}
-        taskStatus={snapshot.status}
-      />
-
       {canViewReport ? (
         <div className={styles.failuresPillRow}>
           <Pill
@@ -467,7 +461,13 @@ export function RunPage() {
         </div>
       ) : null}
 
-      <RunControls kind="glossary_review" />
+      <RunControls kind="glossary_review">
+        <RequestLogPanel
+          kind="glossary_review"
+          taskId={activeTaskId}
+          taskStatus={snapshot.status}
+        />
+      </RunControls>
 
       {reportOpen && report ? (
         <ReportModal

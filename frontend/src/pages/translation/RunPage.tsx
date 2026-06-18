@@ -458,13 +458,13 @@ export function RunPage() {
         ) : null}
       </Panel>
 
-      <RequestLogPanel
-        kind="translation"
-        taskId={activeTaskId}
-        taskStatus={snapshot.status}
-      />
-
-      <RunControls kind="translation" />
+      <RunControls kind="translation">
+        <RequestLogPanel
+          kind="translation"
+          taskId={activeTaskId}
+          taskStatus={snapshot.status}
+        />
+      </RunControls>
     </>
   );
 }

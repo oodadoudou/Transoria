@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMessages } from "@/locales";
 import {
   BridgeError,
@@ -16,6 +16,7 @@ import styles from "./RunControls.module.css";
 
 interface RunControlsProps {
   kind: RunKind;
+  children?: ReactNode;
 }
 
 type ControlAction = "start" | "continue" | "stop";
@@ -47,7 +48,7 @@ const EMPTY_PROBE: ProbeContinuable = {
   failed: 0,
 };
 
-export function RunControls({ kind }: RunControlsProps) {
+export function RunControls({ kind, children }: RunControlsProps) {
   const messages = useMessages();
   const labels = messages.runControls;
   const snapshot = useRunSnapshot(kind);
@@ -278,28 +279,31 @@ export function RunControls({ kind }: RunControlsProps) {
   return (
     <>
       <div className={styles.bar} role="group" aria-label={labels.taskControls}>
-        <Button
-          kind="primary"
-          icon={ICON_PLAY}
-          label={startLabel}
-          disabled={false}
-          inactive={startActive}
-          onClick={handleStartClick}
-        />
-        <Button
-          kind="ghost"
-          icon={ICON_CONTINUE}
-          label={labels.continue}
-          disabled={!canContinue}
-          onClick={handleContinue}
-        />
-        <Button
-          kind="warn"
-          icon={ICON_STOP}
-          label={stopLabel}
-          disabled={!canStop}
-          onClick={handleStop}
-        />
+        <div className={styles.primaryActions}>
+          <Button
+            kind="primary"
+            icon={ICON_PLAY}
+            label={startLabel}
+            disabled={false}
+            inactive={startActive}
+            onClick={handleStartClick}
+          />
+          <Button
+            kind="ghost"
+            icon={ICON_CONTINUE}
+            label={labels.continue}
+            disabled={!canContinue}
+            onClick={handleContinue}
+          />
+          <Button
+            kind="warn"
+            icon={ICON_STOP}
+            label={stopLabel}
+            disabled={!canStop}
+            onClick={handleStop}
+          />
+        </div>
+        {children ? <div className={styles.secondaryActions}>{children}</div> : null}
       </div>
       {restartClicks > 0 && restartRemaining > 0 ? (
         <p className={styles.hint} role="status" aria-live="polite">

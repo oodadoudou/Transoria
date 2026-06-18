@@ -2,10 +2,25 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   padding: 14px 18px;
   border-radius: 14px;
   background: var(--panel-soft, #f5f0e9);
   border: 1px solid var(--hairline, #ece8e2);
+}
+
+.primaryActions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.secondaryActions {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
 }
 
 .button {
@@ -126,4 +141,20 @@
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .primaryActions,
+  .secondaryActions {
+    width: 100%;
+  }
+
+  .secondaryActions {
+    margin-left: 0;
+  }
 }

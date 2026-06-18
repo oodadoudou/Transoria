@@ -367,12 +367,6 @@ export function RunPage() {
         ) : null}
       </Panel>
 
-      <RequestLogPanel
-        kind="glossary"
-        taskId={activeTaskId}
-        taskStatus={snapshot.status}
-      />
-
       {showSendToReview ? (
         <div className={styles.followupActions}>
           <Pill
@@ -385,7 +379,13 @@ export function RunPage() {
         </div>
       ) : null}
 
-      <RunControls kind="glossary" />
+      <RunControls kind="glossary">
+        <RequestLogPanel
+          kind="glossary"
+          taskId={activeTaskId}
+          taskStatus={snapshot.status}
+        />
+      </RunControls>
     </>
   );
 }
