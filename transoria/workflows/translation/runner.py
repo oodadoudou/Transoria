@@ -289,6 +289,19 @@ def _with_translation_request_timeout(model: ModelConfig, phase: str) -> ModelCo
     return replace(model, timeout_seconds=timeout)
 
 
+def _solo_retry_budget_for_attempt(
+    low_confidence_max_retries: int,
+    subtask_attempt: int,
+) -> int:
+    total_budget = (
+        max(0, low_confidence_max_retries)
+        * _LOW_CONFIDENCE_SOLO_RETRY_CALLS_PER_CONFIGURED_RETRY
+    )
+    if subtask_attempt <= 1:
+        return total_budget
+    return 0
+
+
 def _transport_retry_budget(_model: ModelConfig) -> int:
     return _TRANSLATION_TRANSPORT_RETRY_BUDGET
 
@@ -337,13 +350,20 @@ class TranslationSubtaskRunner:
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
-        return await self._attempt(chunk, metadata, subtask.id)
+        return await self._attempt(
+            chunk,
+            metadata,
+            subtask.id,
+            subtask_attempt=subtask.attempt_count,
+        )
 
     async def _attempt(
         self,
         chunk: TranslationChunk,
         metadata: tuple[_SegmentPayload, ...],
         subtask_id: str = "",
+        *,
+        subtask_attempt: int = 1,
     ) -> SubtaskResult:
         system_prompt = _augment_system_prompt(
             build_prompt(
@@ -542,16 +562,13 @@ class TranslationSubtaskRunner:
                         entry["tags"] = tags
                     low_confidence.append(entry)
 
-            # Single-item retry: each pending segment gets up to
-            # ``low_confidence_max_retries`` solo LLM calls, in isolation.
-            # When the model sees only one source line per request its
-            # attention isn't diluted across other segments of the chunk,
-            # so short fillers (네./응./等) and ambiguous phrases that
-            # were echoed in the batch call usually get a real translation.
+            # Single-item retry: low-confidence segments share one paid
+            # solo retry budget for the chunk lifecycle. Runtime subtask
+            # retries do not refresh it, keeping pathological chunks bounded.
             still_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
-            solo_retry_budget = (
-                self.low_confidence_max_retries
-                * _LOW_CONFIDENCE_SOLO_RETRY_CALLS_PER_CONFIGURED_RETRY
+            solo_retry_budget = _solo_retry_budget_for_attempt(
+                self.low_confidence_max_retries,
+                subtask_attempt,
             )
             for meta, last_text, last_reasons in pending:
                 solo_retried_indices.add(meta.chunk_index)

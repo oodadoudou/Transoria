@@ -904,8 +904,8 @@ export const en: Messages = {
       },
       liveCounter: {
         progressLabel: "Done {done} / {total}",
-        inflightLabel: "In-flight {n}",
-        longestLabel: "longest chunk {time}",
+        inflightLabel: "Running {n}",
+        longestLabel: "longest running {time}",
         chunksLabel: "Chunk status",
       },
       tuning: {
@@ -1211,8 +1211,8 @@ export const en: Messages = {
       },
       liveCounter: {
         progressLabel: "Done {done} / {total}",
-        inflightLabel: "In-flight {n}",
-        longestLabel: "longest chunk {time}",
+        inflightLabel: "Running {n}",
+        longestLabel: "longest running {time}",
         chunksLabel: "Chunk status",
       },
       tuning: {
@@ -1324,8 +1324,8 @@ export const en: Messages = {
       },
       liveCounter: {
         progressLabel: "Done {done} / {total}",
-        inflightLabel: "In-flight {n}",
-        longestLabel: "longest chunk {time}",
+        inflightLabel: "Running {n}",
+        longestLabel: "longest running {time}",
         chunksLabel: "Batch status",
       },
     },
