@@ -1483,6 +1483,9 @@ export function ProofreadingPage() {
     },
   ];
   const riskIssueSummaries = riskSummaries.filter((item) => item.count > 0);
+  const visibleRiskSummaries = riskIssueSummaries.slice(0, 4);
+  const hiddenRiskSummaryCount =
+    riskIssueSummaries.length - visibleRiskSummaries.length;
   const riskIssueTotal = riskIssueSummaries.reduce(
     (sum, card) => sum + card.count,
     0,
@@ -1569,50 +1572,56 @@ export function ProofreadingPage() {
 
   return (
     <Panel title={m.title} subtitle={m.sub}>
-      <div className={styles.headerRow}>
-        <select
-          className={styles.taskSelect}
-          value={activeTaskId ?? ""}
-          onChange={(e) => setActiveTaskId(e.target.value || null)}
-          aria-label={m.taskPicker}
-        >
-          {(tasks ?? []).map((task) => (
-            <option key={task.id} value={task.id}>
-              {task.id} · {task.status}
-            </option>
-          ))}
-        </select>
-        {activeTaskId ? (
-          <button
-            type="button"
-            className={styles.copyButton}
-            onClick={() => void copyToClipboard(activeTaskId, m.copyTaskIdDone)}
+      <div className={styles.taskToolbar}>
+        <div className={styles.taskIdentity}>
+          <select
+            className={styles.taskSelect}
+            value={activeTaskId ?? ""}
+            onChange={(e) => setActiveTaskId(e.target.value || null)}
+            aria-label={m.taskPicker}
           >
-            {m.copyTaskId}
-          </button>
-        ) : null}
-        <span className={styles.grow}>
+            {(tasks ?? []).map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.id} · {task.status}
+              </option>
+            ))}
+          </select>
+          {activeTaskId ? (
+            <button
+              type="button"
+              className={styles.copyButton}
+              onClick={() =>
+                void copyToClipboard(activeTaskId, m.copyTaskIdDone)
+              }
+            >
+              {m.copyTaskId}
+            </button>
+          ) : null}
           {snapshot ? (
-            <span className={styles.editorHint}>
+            <span className={styles.outputPathHint}>
               {format(m.taskFolderHint, { path: snapshot.output_dir })}
             </span>
           ) : null}
-        </span>
-        <Pill
-          onClick={() => void handleRegenerate(false)}
-          disabled={Boolean(regenerating) || !activeTaskId}
-        >
-          {regenerating === "translated" ? m.regenerating : m.regenerateAction}
-        </Pill>
-        <Pill
-          variant="ghost"
-          onClick={() => void handleRegenerate(true)}
-          disabled={Boolean(regenerating) || !activeTaskId}
-        >
-          {regenerating === "bilingual"
-            ? m.regenerating
-            : m.regenerateBilingualAction}
-        </Pill>
+        </div>
+        <div className={styles.taskActions}>
+          <Pill
+            onClick={() => void handleRegenerate(false)}
+            disabled={Boolean(regenerating) || !activeTaskId}
+          >
+            {regenerating === "translated"
+              ? m.regenerating
+              : m.regenerateAction}
+          </Pill>
+          <Pill
+            variant="ghost"
+            onClick={() => void handleRegenerate(true)}
+            disabled={Boolean(regenerating) || !activeTaskId}
+          >
+            {regenerating === "bilingual"
+              ? m.regenerating
+              : m.regenerateBilingualAction}
+          </Pill>
+        </div>
         {regenerateFeedback ? (
           <span
             className={`${styles.inlineFeedback} ${
@@ -1688,35 +1697,58 @@ export function ProofreadingPage() {
         />
       ) : null}
 
-      {snapshot ? (
-        <div
-          className={`${styles.summaryStrip} ${
-            riskIssueTotal === 0 ? styles.summaryGood : ""
-          }`.trim()}
-        >
-          {qualitySummary}
+      <div className={styles.filterPanel}>
+        <div className={styles.filterPanelTop}>
+          {snapshot ? (
+            <div
+              className={`${styles.reviewOverview} ${
+                riskIssueTotal === 0 ? styles.reviewOverviewGood : ""
+              }`.trim()}
+            >
+              <span className={styles.reviewOverviewText}>
+                {qualitySummary}
+              </span>
+              {visibleRiskSummaries.length > 0 ? (
+                <span className={styles.reviewMetricList}>
+                  {visibleRiskSummaries.map((item) => (
+                    <button
+                      type="button"
+                      key={item.key}
+                      className={styles.reviewMetric}
+                      onClick={() => setFilters(new Set([item.key]))}
+                    >
+                      <span>{item.label}</span>
+                      <strong>{item.count}</strong>
+                    </button>
+                  ))}
+                  {hiddenRiskSummaryCount > 0 ? (
+                    <span className={styles.reviewMetricMore}>
+                      +{hiddenRiskSummaryCount}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          <span className={styles.filterPresetRow}>
+            {filterPresets.map((preset) => {
+              const active = isPresetActive(preset.keys);
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className={`${styles.filterChip} ${
+                    active ? styles.filterChipActive : ""
+                  }`.trim()}
+                  aria-pressed={active}
+                  onClick={() => setFilterPreset(preset.keys)}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </span>
         </div>
-      ) : null}
-
-      <div className={styles.toggleRow}>
-        <span className={styles.filterPresetRow}>
-          {filterPresets.map((preset) => {
-            const active = isPresetActive(preset.keys);
-            return (
-              <button
-                key={preset.label}
-                type="button"
-                className={`${styles.filterChip} ${
-                  active ? styles.filterChipActive : ""
-                }`.trim()}
-                aria-pressed={active}
-                onClick={() => setFilterPreset(preset.keys)}
-              >
-                {preset.label}
-              </button>
-            );
-          })}
-        </span>
         <span className={styles.filterChips}>
           <button
             type="button"
@@ -1838,7 +1870,11 @@ export function ProofreadingPage() {
       ) : null}
 
       {termAuditGroups.length > 0 ? (
-        <div className={styles.termAuditPanel}>
+        <div
+          className={`${styles.termAuditPanel} ${
+            termAuditOpen ? "" : styles.termAuditPanelCollapsed
+          }`.trim()}
+        >
           <button
             type="button"
             className={styles.termAuditHeaderButton}
@@ -1858,7 +1894,9 @@ export function ProofreadingPage() {
                 <span className={styles.termAuditTitle}>
                   {m.termAuditTitle}
                 </span>
-                <span className={styles.termAuditSub}>{m.termAuditSub}</span>
+                {termAuditOpen ? (
+                  <span className={styles.termAuditSub}>{m.termAuditSub}</span>
+                ) : null}
               </span>
             </span>
             <span className={styles.termAuditHeaderActions}>
@@ -1927,7 +1965,7 @@ export function ProofreadingPage() {
         </div>
       ) : null}
 
-      <div style={{ marginBottom: 8 }}>
+      <div className={styles.listToolbar}>
         <input
           type="text"
           className={styles.searchInput}
@@ -1935,9 +1973,6 @@ export function ProofreadingPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder={m.filterPlaceholder}
         />
-      </div>
-
-      <div className={styles.replacementWrap}>
         <label className={styles.checkLabel}>
           <input
             type="checkbox"
@@ -1946,6 +1981,9 @@ export function ProofreadingPage() {
           />
           <span>{m.replacementToggle}</span>
         </label>
+      </div>
+
+      <div className={styles.replacementWrap}>
         {replacementEnabled ? (
           <div className={styles.replacementPanel}>
             <input

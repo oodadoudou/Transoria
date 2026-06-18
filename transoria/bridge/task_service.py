@@ -51,6 +51,10 @@ from transoria.runtime.cache import TaskCache, TaskNotFoundError
 from transoria.runtime.executor import TaskExecutor
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskRecord, TaskSnapshot
+from transoria.runtime.task_timing import (
+    elapsed_seconds_for_record,
+    runtime_metadata_for_status,
+)
 from transoria.settings import SettingsStore
 from transoria.tools.replacement import (
     REPLACED_SUFFIX,
@@ -876,14 +880,7 @@ def _low_confidence_summary(
 
 
 def _task_elapsed_seconds(record: TaskRecord) -> float:
-    start = _parse_iso_timestamp(record.created_at)
-    if start is None:
-        return 0.0
-    if record.status is TaskStatus.RUNNING:
-        end = datetime.now(timezone.utc)
-    else:
-        end = _parse_iso_timestamp(record.updated_at) or datetime.now(timezone.utc)
-    return max(0.0, (end - start).total_seconds())
+    return elapsed_seconds_for_record(record)
 
 
 def _longest_running_seconds(snapshot: TaskSnapshot) -> float:
@@ -4306,8 +4303,14 @@ class TaskService:
             return
         if record.status is status:
             return
+        now = _utc_now_iso()
         cache.save_task(
-            record.with_status(status).with_updated_at(_utc_now_iso())
+            replace(
+                record,
+                status=status,
+                updated_at=now,
+                metadata=runtime_metadata_for_status(record, status, now),
+            )
         )
 
     def _reconcile_zombie(
@@ -4329,8 +4332,12 @@ class TaskService:
             ):
                 return snapshot
             live.mark_done()
-        healed = record.with_status(TaskStatus.STOPPED).with_updated_at(
-            _utc_now_iso()
+        now = _utc_now_iso()
+        healed = replace(
+            record,
+            status=TaskStatus.STOPPED,
+            updated_at=now,
+            metadata=runtime_metadata_for_status(record, TaskStatus.STOPPED, now),
         )
         cache.save_task(healed)
         healed_subtasks: list[Subtask] = []
@@ -4360,8 +4367,14 @@ class TaskService:
             and progress.failed == 0
             and progress.completed == progress.total
         ):
-            healed = record.with_status(TaskStatus.COMPLETED).with_updated_at(
-                _utc_now_iso()
+            now = _utc_now_iso()
+            healed = replace(
+                record,
+                status=TaskStatus.COMPLETED,
+                updated_at=now,
+                metadata=runtime_metadata_for_status(
+                    record, TaskStatus.COMPLETED, now
+                ),
             )
             cache.save_task(healed)
             return TaskSnapshot(record=healed, subtasks=snapshot.subtasks)
@@ -4373,7 +4386,13 @@ class TaskService:
         if live is not None and not live.is_done:
             transient = record.with_status(TaskStatus.RUNNING)
             return TaskSnapshot(record=transient, subtasks=snapshot.subtasks)
-        healed = record.with_status(TaskStatus.STOPPED).with_updated_at(_utc_now_iso())
+        now = _utc_now_iso()
+        healed = replace(
+            record,
+            status=TaskStatus.STOPPED,
+            updated_at=now,
+            metadata=runtime_metadata_for_status(record, TaskStatus.STOPPED, now),
+        )
         cache.save_task(healed)
         return TaskSnapshot(record=healed, subtasks=snapshot.subtasks)
 
@@ -4410,12 +4429,16 @@ class TaskService:
         metadata["last_traceback"] = "".join(
             traceback.format_exception(type(exc), exc, exc.__traceback__)
         )[-2000:]
+        now = _utc_now_iso()
+        timed_metadata = runtime_metadata_for_status(record, TaskStatus.FAILED, now)
+        timed_metadata["last_error"] = metadata["last_error"]
+        timed_metadata["last_traceback"] = metadata["last_traceback"]
         cache.save_task(
             replace(
                 record,
                 status=TaskStatus.FAILED,
-                metadata=metadata,
-                updated_at=_utc_now_iso(),
+                metadata=timed_metadata,
+                updated_at=now,
             )
         )
 

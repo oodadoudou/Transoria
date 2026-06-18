@@ -21,6 +21,7 @@ from transoria.runtime.rate_limit import RpmLimiter
 from transoria.runtime.request_log import request_log_scope
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskSnapshot
+from transoria.runtime.task_timing import runtime_metadata_for_status
 
 
 @dataclass(frozen=True)
@@ -409,7 +410,15 @@ class TaskExecutor:
         record = self.cache.load_record(task_id)
         if record.status is status:
             return
-        self.cache.save_task(record.with_status(status).with_updated_at(self.clock()))
+        now = self.clock()
+        self.cache.save_task(
+            replace(
+                record,
+                status=status,
+                updated_at=now,
+                metadata=runtime_metadata_for_status(record, status, now),
+            )
+        )
 
     def _finalize(
         self, task_id: str, *, stopped: bool, paused: bool
@@ -446,8 +455,14 @@ class TaskExecutor:
         else:
             # Mixed terminal/non-terminal — keep current status.
             return snapshot
+        now = self.clock()
         self.cache.save_task(
-            snapshot.record.with_status(final).with_updated_at(self.clock())
+            replace(
+                snapshot.record,
+                status=final,
+                updated_at=now,
+                metadata=runtime_metadata_for_status(snapshot.record, final, now),
+            )
         )
         return self.cache.load(task_id)
 
