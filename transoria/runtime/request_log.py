@@ -12,15 +12,20 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Callable, Iterator, Mapping
+from typing import Callable, Iterator, Mapping, Protocol
 from uuid import uuid4
 
 from transoria.llm.config import ModelConfig
 from transoria.llm.usage import TokenUsage
-from transoria.runtime.cache import TaskCache
 
 _MAX_TEXT_LENGTH = 20000
 _MAX_ERROR_LENGTH = 2000
+
+
+class RequestEventCache(Protocol):
+    def append_request_event(
+        self, task_id: str, event: Mapping[str, object]
+    ) -> None: ...
 
 
 def _utc_now_iso() -> str:
@@ -35,7 +40,7 @@ def _truncate(value: str, limit: int) -> str:
 
 @dataclass
 class RequestLogContext:
-    cache: TaskCache
+    cache: RequestEventCache
     task_id: str
     subtask_id: str
     subtask_attempt: int
@@ -107,7 +112,7 @@ _CURRENT_CONTEXT: contextvars.ContextVar[RequestLogContext | None] = (
 
 @contextmanager
 def request_log_scope(
-    cache: TaskCache,
+    cache: RequestEventCache,
     *,
     task_id: str,
     subtask_id: str,
@@ -177,7 +182,7 @@ def _base_event(
 
 
 def _safe_append(
-    cache: TaskCache, task_id: str, event: Mapping[str, object]
+    cache: RequestEventCache, task_id: str, event: Mapping[str, object]
 ) -> None:
     try:
         cache.append_request_event(task_id, event)

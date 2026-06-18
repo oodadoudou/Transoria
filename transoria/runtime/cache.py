@@ -33,6 +33,10 @@ _SUBTASKS_DIRNAME = "subtasks"
 _REQUEST_EVENTS_FILENAME = "request-events.jsonl"
 _ATOMIC_REPLACE_RETRY_DELAYS = (0.02, 0.05, 0.1)
 _REQUEST_EVENT_LOCK = threading.Lock()
+_REQUEST_EVENTS_MAX_BYTES = 8 * 1024 * 1024
+_REQUEST_EVENTS_TRIM_BYTES = 4 * 1024 * 1024
+_REQUEST_EVENTS_TAIL_BYTES = 2 * 1024 * 1024
+_REQUEST_EVENTS_TAIL_LINES = 800
 
 # Restrict task/subtask ids to safe filename characters so we never need to
 # percent-encode or worry about path traversal. Workflows generate ids; tests
@@ -83,6 +87,7 @@ class TaskCache:
             with target.open("a", encoding="utf-8") as handle:
                 handle.write(line)
                 handle.write("\n")
+            _trim_request_events_file_if_needed(target)
 
     def load_request_events(self, task_id: str) -> tuple[dict[str, object], ...]:
         path = self.task_dir(task_id) / _REQUEST_EVENTS_FILENAME
@@ -101,6 +106,23 @@ class TaskCache:
                 if isinstance(payload, dict):
                     events.append(dict(payload))
         return tuple(events)
+
+    def load_recent_request_events(
+        self,
+        task_id: str,
+        *,
+        max_lines: int = _REQUEST_EVENTS_TAIL_LINES,
+        max_bytes: int = _REQUEST_EVENTS_TAIL_BYTES,
+    ) -> tuple[tuple[dict[str, object], ...], bool]:
+        path = self.task_dir(task_id) / _REQUEST_EVENTS_FILENAME
+        if not path.exists():
+            return (), False
+        with _REQUEST_EVENT_LOCK:
+            return _read_request_events_tail(
+                path,
+                max_lines=max_lines,
+                max_bytes=max_bytes,
+            )
 
     def load(self, task_id: str) -> TaskSnapshot:
         record = self.load_record(task_id)
@@ -202,6 +224,78 @@ def _atomic_write_text(path: Path, content: str) -> None:
             tmp.unlink()
         except FileNotFoundError:
             pass
+
+
+def _trim_request_events_file_if_needed(path: Path) -> None:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return
+    if size <= _REQUEST_EVENTS_MAX_BYTES:
+        return
+    keep_from = max(0, size - _REQUEST_EVENTS_TRIM_BYTES)
+    try:
+        with path.open("rb") as handle:
+            handle.seek(keep_from)
+            data = handle.read()
+    except OSError:
+        return
+    if keep_from > 0:
+        newline = data.find(b"\n")
+        data = data[newline + 1 :] if newline >= 0 else b""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _read_request_events_tail(
+    path: Path, *, max_lines: int, max_bytes: int
+) -> tuple[tuple[dict[str, object], ...], bool]:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return (), False
+    byte_limit = max(1, max_bytes)
+    line_limit = max(1, max_lines)
+    start = max(0, size - byte_limit)
+    try:
+        with path.open("rb") as handle:
+            handle.seek(start)
+            data = handle.read()
+    except OSError:
+        return (), False
+    truncated = start > 0
+    if start > 0:
+        newline = data.find(b"\n")
+        data = data[newline + 1 :] if newline >= 0 else b""
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    if len(lines) > line_limit:
+        lines = lines[-line_limit:]
+        truncated = True
+    return _parse_request_event_lines(lines), truncated
+
+
+def _parse_request_event_lines(
+    lines: Iterable[str],
+) -> tuple[dict[str, object], ...]:
+    events: list[dict[str, object]] = []
+    for line in lines:
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            events.append(dict(payload))
+    return tuple(events)
 
 
 def _read_json_mapping(path: Path) -> dict[str, object]:

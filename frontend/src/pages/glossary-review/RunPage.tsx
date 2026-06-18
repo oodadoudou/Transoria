@@ -445,7 +445,11 @@ export function RunPage() {
         ) : null}
       </Panel>
 
-      <RequestLogPanel kind="glossary_review" taskId={activeTaskId} />
+      <RequestLogPanel
+        kind="glossary_review"
+        taskId={activeTaskId}
+        taskStatus={snapshot.status}
+      />
 
       {canViewReport ? (
         <div className={styles.failuresPillRow}>

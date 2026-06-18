@@ -312,7 +312,7 @@ export const translationBridge = {
   readRequestEvents(
     taskId: string,
     limit?: number,
-  ): Promise<{ events: RequestLogEvent[]; total: number }> {
+  ): Promise<{ events: RequestLogEvent[]; total: number; truncated?: boolean }> {
     return call("translation.read_request_events", { task_id: taskId, limit });
   },
 };
@@ -440,7 +440,7 @@ export const glossaryBridge = {
   readRequestEvents(
     taskId: string,
     limit?: number,
-  ): Promise<{ events: RequestLogEvent[]; total: number }> {
+  ): Promise<{ events: RequestLogEvent[]; total: number; truncated?: boolean }> {
     return call("glossary.read_request_events", { task_id: taskId, limit });
   },
   importRules(path: string): Promise<{
@@ -578,7 +578,7 @@ export const glossaryReviewBridge = {
   readRequestEvents(
     taskId: string,
     limit?: number,
-  ): Promise<{ events: RequestLogEvent[]; total: number }> {
+  ): Promise<{ events: RequestLogEvent[]; total: number; truncated?: boolean }> {
     return call("glossary_review.read_request_events", { task_id: taskId, limit });
   },
 };

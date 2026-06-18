@@ -4020,7 +4020,7 @@ class TaskService:
                 f"task {task_id!r} kind mismatch.",
                 field="task_id",
             )
-        events = cache.load_request_events(task_id)
+        events, truncated = cache.load_recent_request_events(task_id)
         formatted = _format_request_events(events, limit=limit)
         total = len(
             {
@@ -4031,7 +4031,8 @@ class TaskService:
         )
         return {
             "events": formatted,
-            "total": total,
+            "total": min(total, len(formatted)) if truncated else total,
+            "truncated": truncated,
         }
 
     def read_artifacts(self, *, kind: str, task_id: str) -> dict[str, object]:

@@ -4,7 +4,7 @@ import {
   glossaryReviewBridge,
   translationBridge,
 } from "@/bridge";
-import type { RequestLogEvent } from "@/bridge/types";
+import type { RequestLogEvent, TaskStatus } from "@/bridge/types";
 import { useMessages } from "@/locales";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import styles from "./RequestLogPanel.module.css";
@@ -41,6 +41,15 @@ function saveVisible(kind: RequestLogKind, visible: boolean): void {
   }
 }
 
+function isTerminalTaskStatus(status: TaskStatus | null | undefined): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "stopped" ||
+    status === "paused"
+  );
+}
+
 function formatNumber(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "0";
   return new Intl.NumberFormat("en").format(value);
@@ -64,9 +73,11 @@ function formatTime(value: string): string {
 export function RequestLogPanel({
   kind,
   taskId,
+  taskStatus,
 }: {
   kind: RequestLogKind;
   taskId: string | null;
+  taskStatus?: TaskStatus | null;
 }) {
   const messages = useMessages();
   const copy = messages.requestLog;
@@ -119,15 +130,17 @@ export function RequestLogPanel({
   useEffect(() => {
     saveVisible(kind, visible);
     if (visible) void loadEvents();
-  }, [kind, loadEvents, visible]);
+  }, [kind, loadEvents, taskStatus, visible]);
 
   useEffect(() => {
-    if (!visible || !taskId) return undefined;
+    if (!visible || !taskId || isTerminalTaskStatus(taskStatus)) {
+      return undefined;
+    }
     const timer = window.setInterval(() => {
       void loadEvents();
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [loadEvents, taskId, visible]);
+  }, [loadEvents, taskId, taskStatus, visible]);
 
   const handleToggle = (next: boolean) => {
     setVisible(next);
