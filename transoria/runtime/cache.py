@@ -17,11 +17,12 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskRecord, TaskSnapshot
@@ -29,7 +30,9 @@ from transoria.runtime.task_record import TaskRecord, TaskSnapshot
 
 _TASK_FILENAME = "task.json"
 _SUBTASKS_DIRNAME = "subtasks"
+_REQUEST_EVENTS_FILENAME = "request-events.jsonl"
 _ATOMIC_REPLACE_RETRY_DELAYS = (0.02, 0.05, 0.1)
+_REQUEST_EVENT_LOCK = threading.Lock()
 
 # Restrict task/subtask ids to safe filename characters so we never need to
 # percent-encode or worry about path traversal. Workflows generate ids; tests
@@ -69,6 +72,35 @@ class TaskCache:
         target = self.subtask_path(subtask.task_id, subtask.id)
         target.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_text(target, subtask.to_json())
+
+    def append_request_event(
+        self, task_id: str, event: Mapping[str, object]
+    ) -> None:
+        target = self.task_dir(task_id) / _REQUEST_EVENTS_FILENAME
+        target.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(dict(event), ensure_ascii=False, separators=(",", ":"))
+        with _REQUEST_EVENT_LOCK:
+            with target.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+                handle.write("\n")
+
+    def load_request_events(self, task_id: str) -> tuple[dict[str, object], ...]:
+        path = self.task_dir(task_id) / _REQUEST_EVENTS_FILENAME
+        if not path.exists():
+            return ()
+        events: list[dict[str, object]] = []
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(payload, dict):
+                    events.append(dict(payload))
+        return tuple(events)
 
     def load(self, task_id: str) -> TaskSnapshot:
         record = self.load_record(task_id)

@@ -32,6 +32,7 @@ import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailuresDialog";
 import { RunControls } from "@/components/RunControls";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
+import { RequestLogPanel } from "@/components/RequestLogPanel";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -456,6 +457,8 @@ export function RunPage() {
           </div>
         ) : null}
       </Panel>
+
+      <RequestLogPanel kind="translation" taskId={activeTaskId} />
 
       <RunControls kind="translation" />
     </>

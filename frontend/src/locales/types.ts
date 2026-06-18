@@ -43,6 +43,36 @@ export interface Messages {
       perSegment: string;
     };
   };
+  requestLog: {
+    title: string;
+    subtitle: string;
+    toggle: string;
+    refresh: string;
+    loading: string;
+    emptyNoTask: string;
+    empty: string;
+    errorPrefix: string;
+    showing: string;
+    columnTime: string;
+    columnStatus: string;
+    columnRequest: string;
+    columnModel: string;
+    columnDuration: string;
+    columnTokens: string;
+    columnResponse: string;
+    statusRunning: string;
+    statusCompleted: string;
+    statusFailed: string;
+    statusCancelled: string;
+    attempt: string;
+    secondsSuffix: string;
+    inputTokens: string;
+    outputTokens: string;
+    cachedTokens: string;
+    showResponse: string;
+    hideResponse: string;
+    noResponse: string;
+  };
   errors: {
     notifications: string;
     runFailureTitle: string;

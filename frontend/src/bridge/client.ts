@@ -48,6 +48,7 @@ import type {
   ReplacementRule,
   ReplacementRuleParseResult,
   ReplacementValidationIssue,
+  RequestLogEvent,
   SettingsModule,
   TaskFailure,
   TaskHeader,
@@ -308,6 +309,12 @@ export const translationBridge = {
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("translation.list_failed_subtasks", { task_id: taskId });
   },
+  readRequestEvents(
+    taskId: string,
+    limit?: number,
+  ): Promise<{ events: RequestLogEvent[]; total: number }> {
+    return call("translation.read_request_events", { task_id: taskId, limit });
+  },
 };
 
 export interface ProofreadingItem {
@@ -429,6 +436,12 @@ export const glossaryBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("glossary.list_failed_subtasks", { task_id: taskId });
+  },
+  readRequestEvents(
+    taskId: string,
+    limit?: number,
+  ): Promise<{ events: RequestLogEvent[]; total: number }> {
+    return call("glossary.read_request_events", { task_id: taskId, limit });
   },
   importRules(path: string): Promise<{
     entries: Array<{
@@ -561,6 +574,12 @@ export const glossaryReviewBridge = {
   },
   listFailedSubtasks(taskId: string): Promise<{ failures: TaskFailure[] }> {
     return call("glossary_review.list_failed_subtasks", { task_id: taskId });
+  },
+  readRequestEvents(
+    taskId: string,
+    limit?: number,
+  ): Promise<{ events: RequestLogEvent[]; total: number }> {
+    return call("glossary_review.read_request_events", { task_id: taskId, limit });
   },
 };
 

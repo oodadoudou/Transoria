@@ -447,6 +447,33 @@ export interface TaskLogLine {
   context?: Record<string, unknown>;
 }
 
+export type RequestLogStatus = "running" | "completed" | "failed" | "cancelled";
+
+export interface RequestLogEvent {
+  schema_version: number;
+  request_id: string;
+  timestamp: string;
+  task_id: string;
+  subtask_id: string;
+  subtask_attempt: number;
+  status: RequestLogStatus;
+  label?: string;
+  model_profile_id?: string;
+  model_id?: string;
+  provider_format?: ProviderFormat;
+  provider_attempt?: number;
+  prompt_chars?: number;
+  timeout_seconds?: number;
+  http_status?: number;
+  duration_seconds?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_input_tokens?: number;
+  total_tokens?: number;
+  response_text?: string;
+  error?: string;
+}
+
 export interface TaskOutcome {
   status: "completed" | "stopped" | "failed";
   artifacts_path: string;

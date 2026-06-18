@@ -32,6 +32,7 @@ import { RunErrorBanner } from "@/components/RunErrorBanner";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailuresDialog";
 import { RunControls } from "@/components/RunControls";
+import { RequestLogPanel } from "@/components/RequestLogPanel";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -443,6 +444,8 @@ export function RunPage() {
           </>
         ) : null}
       </Panel>
+
+      <RequestLogPanel kind="glossary_review" taskId={activeTaskId} />
 
       {canViewReport ? (
         <div className={styles.failuresPillRow}>

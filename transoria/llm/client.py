@@ -18,6 +18,7 @@ from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.io_log import log_error, log_recv, log_send
 from transoria.llm.usage import TokenUsage
 from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
+from transoria.runtime.request_log import begin_llm_request
 
 
 class LlmRequestError(RuntimeError):
@@ -300,6 +301,14 @@ def _transport_error_detail(exc: Exception) -> str:
     return type(exc).__name__
 
 
+def _request_prompt_chars(request: ChatRequest) -> int:
+    return (
+        len(request.system_prompt)
+        + len(request.user_prompt)
+        + sum(len(message.content) for message in request.history)
+    )
+
+
 @dataclass(frozen=True)
 class LlmClient:
     transport: ChatTransport
@@ -497,19 +506,30 @@ class LlmClient:
             headers = header_factory(key)
             log_send(request.log_label, request.model.id, payload)
             send_start = time.monotonic()
+            request_log = begin_llm_request(
+                label=request.log_label,
+                model=request.model,
+                provider_attempt=attempt + 1,
+                prompt_chars=_request_prompt_chars(request),
+            )
             try:
                 result = await self.transport.execute(
                     url, headers, payload, request.model.timeout_seconds
                 )
             except asyncio.CancelledError:
+                if request_log is not None:
+                    request_log.cancel()
                 raise
             except Exception as exc:
+                latency = time.monotonic() - send_start
                 log_error(
                     request.log_label,
                     request.model.id,
-                    latency_seconds=time.monotonic() - send_start,
+                    latency_seconds=latency,
                     error=exc,
                 )
+                if request_log is not None:
+                    request_log.fail(error=_transport_error_detail(exc))
                 last_error = exc
                 if attempt + 1 < attempts:
                     continue
@@ -520,7 +540,15 @@ class LlmClient:
                 ) from exc
 
             latency = time.monotonic() - send_start
-            response = parser(result.body) if result.status_code < 400 else None
+            try:
+                response = parser(result.body) if result.status_code < 400 else None
+            except Exception as exc:
+                if request_log is not None:
+                    request_log.fail(
+                        error=_transport_error_detail(exc),
+                        status_code=result.status_code,
+                    )
+                raise
             log_recv(
                 request.log_label,
                 request.model.id,
@@ -536,17 +564,33 @@ class LlmClient:
                 and request.model.rotate_keys
                 and attempt + 1 < attempts
             ):
+                if request_log is not None:
+                    request_log.fail(
+                        error=f"HTTP {result.status_code}: {result.body!r}",
+                        status_code=result.status_code,
+                    )
                 last_error = LlmRequestError(
                     f"HTTP {result.status_code}: {result.body!r}"
                 )
                 continue
 
             if result.status_code >= 400:
+                if request_log is not None:
+                    request_log.fail(
+                        error=f"HTTP {result.status_code}: {result.body!r}",
+                        status_code=result.status_code,
+                    )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
                     code="llm.http_error",
                 )
 
+            if request_log is not None:
+                request_log.complete(
+                    status_code=result.status_code,
+                    usage=response.usage,  # type: ignore[union-attr]
+                    response_text=response.content,  # type: ignore[union-attr]
+                )
             return response  # type: ignore[return-value]
 
         raise LlmRequestError(
@@ -572,8 +616,10 @@ class LlmClient:
         assert request.key_pool is not None
         pool = request.key_pool
         last_error: Exception | None = None
+        provider_attempt = 0
 
         while True:
+            provider_attempt += 1
             try:
                 key = await pool.acquire()
             except AllKeysFailedError as exc:
@@ -588,19 +634,30 @@ class LlmClient:
 
             log_send(request.log_label, request.model.id, payload)
             send_start = time.monotonic()
+            request_log = begin_llm_request(
+                label=request.log_label,
+                model=request.model,
+                provider_attempt=provider_attempt,
+                prompt_chars=_request_prompt_chars(request),
+            )
             try:
                 result = await self.transport.execute(
                     url, headers, payload, request.model.timeout_seconds
                 )
             except asyncio.CancelledError:
+                if request_log is not None:
+                    request_log.cancel()
                 raise
             except Exception as exc:
+                latency = time.monotonic() - send_start
                 log_error(
                     request.log_label,
                     request.model.id,
-                    latency_seconds=time.monotonic() - send_start,
+                    latency_seconds=latency,
                     error=exc,
                 )
+                if request_log is not None:
+                    request_log.fail(error=_transport_error_detail(exc))
                 # Transport / network error — don't evict; surface to
                 # the runner so retry_async can decide whether to retry.
                 detail = _transport_error_detail(exc)
@@ -610,7 +667,15 @@ class LlmClient:
                 ) from exc
 
             latency = time.monotonic() - send_start
-            response = parser(result.body) if result.status_code < 400 else None
+            try:
+                response = parser(result.body) if result.status_code < 400 else None
+            except Exception as exc:
+                if request_log is not None:
+                    request_log.fail(
+                        error=_transport_error_detail(exc),
+                        status_code=result.status_code,
+                    )
+                raise
             log_recv(
                 request.log_label,
                 request.model.id,
@@ -622,6 +687,11 @@ class LlmClient:
             )
 
             if result.status_code in {401, 403}:
+                if request_log is not None:
+                    request_log.fail(
+                        error=f"HTTP {result.status_code} (auth failure): {result.body!r}",
+                        status_code=result.status_code,
+                    )
                 pool.mark_dead(key)
                 last_error = LlmRequestError(
                     f"HTTP {result.status_code} (auth failure) from {_redact_url(url)}: {result.body!r}"
@@ -630,17 +700,33 @@ class LlmClient:
 
             if result.status_code == 429:
                 # Per-key rate limit — try the next key without evicting.
+                if request_log is not None:
+                    request_log.fail(
+                        error=f"HTTP 429 (rate limited): {result.body!r}",
+                        status_code=result.status_code,
+                    )
                 last_error = LlmRequestError(
                     f"HTTP 429 (rate limited) from {_redact_url(url)}: {result.body!r}"
                 )
                 continue
 
             if result.status_code >= 400:
+                if request_log is not None:
+                    request_log.fail(
+                        error=f"HTTP {result.status_code}: {result.body!r}",
+                        status_code=result.status_code,
+                    )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
                     code="llm.http_error",
                 )
 
+            if request_log is not None:
+                request_log.complete(
+                    status_code=result.status_code,
+                    usage=response.usage,  # type: ignore[union-attr]
+                    response_text=response.content,  # type: ignore[union-attr]
+                )
             return response  # type: ignore[return-value]
 
 

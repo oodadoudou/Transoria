@@ -667,6 +667,29 @@ def _format_header(record: TaskRecord) -> dict[str, object]:
     }
 
 
+def _format_request_events(
+    events: Sequence[Mapping[str, object]], *, limit: int | None
+) -> list[dict[str, object]]:
+    latest_by_request: dict[str, dict[str, object]] = {}
+    order: dict[str, int] = {}
+    for index, event in enumerate(events):
+        request_id = str(event.get("request_id", ""))
+        if not request_id:
+            continue
+        previous = latest_by_request.get(request_id, {})
+        merged = {**previous, **dict(event)}
+        latest_by_request[request_id] = merged
+        order[request_id] = index
+    rows = sorted(
+        latest_by_request.values(),
+        key=lambda row: order.get(str(row.get("request_id", "")), 0),
+        reverse=True,
+    )
+    if limit is not None:
+        rows = rows[:limit]
+    return rows
+
+
 def _progress_to_block(
     progress, *, elapsed_seconds: float, longest_running_seconds: float = 0.0
 ) -> dict[str, object]:
@@ -3976,6 +3999,40 @@ class TaskService:
                 field="task_id",
             )
         return {"failures": _format_failures(snapshot)}
+
+    def read_request_events(
+        self, *, kind: str, task_id: str, limit: int | None = None
+    ) -> dict[str, object]:
+        record_kind = self._kind(kind)
+        cache = self._cache_for_task(task_id)
+        try:
+            record = cache.load_record(task_id)
+        except TaskNotFoundError as exc:
+            mirrored = self._completed_snapshots.get(task_id)
+            if mirrored is not None and mirrored.record.kind is record_kind:
+                return {"events": [], "total": 0}
+            raise BridgeError.not_found(
+                f"task {task_id!r} not found.",
+                details={"task_id": task_id},
+            ) from exc
+        if record.kind is not record_kind:
+            raise BridgeError.invalid_argument(
+                f"task {task_id!r} kind mismatch.",
+                field="task_id",
+            )
+        events = cache.load_request_events(task_id)
+        formatted = _format_request_events(events, limit=limit)
+        total = len(
+            {
+                str(event.get("request_id", ""))
+                for event in events
+                if event.get("request_id")
+            }
+        )
+        return {
+            "events": formatted,
+            "total": total,
+        }
 
     def read_artifacts(self, *, kind: str, task_id: str) -> dict[str, object]:
         record_kind = self._kind(kind)

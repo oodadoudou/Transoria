@@ -17,6 +17,7 @@ from typing import Callable, Mapping, Protocol
 from transoria.domain import SubtaskStatus, TaskStatus
 from transoria.runtime.cache import TaskCache
 from transoria.runtime.rate_limit import RpmLimiter
+from transoria.runtime.request_log import request_log_scope
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskSnapshot
 
@@ -309,19 +310,26 @@ class TaskExecutor:
         self._active_runners += 1
         try:
             try:
-                if self.subtask_timeout_seconds > 0:
-                    try:
-                        result = await asyncio.wait_for(
-                            self.runner.run(running),
-                            timeout=self.subtask_timeout_seconds,
-                        )
-                    except TimeoutError as exc:
-                        raise TimeoutError(
-                            "Subtask exceeded "
-                            f"{self.subtask_timeout_seconds:.0f}s timeout"
-                        ) from exc
-                else:
-                    result = await self.runner.run(running)
+                with request_log_scope(
+                    self.cache,
+                    task_id=task_id,
+                    subtask_id=running.id,
+                    subtask_attempt=running.attempt_count,
+                    clock=self.clock,
+                ):
+                    if self.subtask_timeout_seconds > 0:
+                        try:
+                            result = await asyncio.wait_for(
+                                self.runner.run(running),
+                                timeout=self.subtask_timeout_seconds,
+                            )
+                        except TimeoutError as exc:
+                            raise TimeoutError(
+                                "Subtask exceeded "
+                                f"{self.subtask_timeout_seconds:.0f}s timeout"
+                            ) from exc
+                    else:
+                        result = await self.runner.run(running)
             except asyncio.CancelledError:
                 # Stop requested while in-flight: leave the subtask in
                 # PENDING so the next run picks it up. Re-raise so the

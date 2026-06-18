@@ -122,6 +122,13 @@ def _build_handlers(
             kind=kind, task_id=_expect_task_id(payload)
         )
 
+    def read_request_events(payload: Mapping[str, object]) -> dict[str, object]:
+        return service.read_request_events(
+            kind=kind,
+            task_id=_expect_task_id(payload),
+            limit=_optional_limit(payload),
+        )
+
     def read_artifacts(payload: Mapping[str, object]) -> dict[str, object]:
         return service.read_artifacts(
             kind=kind, task_id=_expect_task_id(payload)
@@ -136,6 +143,7 @@ def _build_handlers(
         f"{kind}.read_snapshot": read_snapshot,
         f"{kind}.list_recent_tasks": list_recent_tasks,
         f"{kind}.list_failed_subtasks": list_failed_subtasks,
+        f"{kind}.read_request_events": read_request_events,
         f"{kind}.read_artifacts": read_artifacts,
     }
     if kind == "glossary_review":
