@@ -10,9 +10,10 @@ persist progress → respond to stop.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Callable, Mapping, Protocol
+from typing import Awaitable, Callable, Mapping, Protocol
 
 from transoria.domain import SubtaskStatus, TaskStatus
 from transoria.runtime.cache import TaskCache
@@ -72,6 +73,12 @@ class TaskExecutor:
     # executor-level so a stuck runner cannot hold a worker forever even if
     # the lower HTTP/client timeout fails to unwind.
     subtask_timeout_seconds: float = 0.0
+    # Optional minimum gap between starting provider requests. Disabled by
+    # default; high-concurrency LLM workflows can enable a tiny gap to avoid
+    # sending a whole worker wave in the same instant.
+    launch_spacing_seconds: float = 0.0
+    launch_clock: Callable[[], float] = time.monotonic
+    launch_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
 
     _stop_event: asyncio.Event = field(default_factory=asyncio.Event, init=False, repr=False)
     _pause_request: asyncio.Event = field(
@@ -82,6 +89,8 @@ class TaskExecutor:
     )
     _active_runners: int = field(default=0, init=False, repr=False)
     _pause_observed: bool = field(default=False, init=False, repr=False)
+    _next_launch_at: float = field(default=0.0, init=False, repr=False)
+    _launch_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
     def request_stop(self) -> None:
         """Signal cooperative shutdown. Safe to call from any thread/coroutine."""
@@ -139,6 +148,8 @@ class TaskExecutor:
         self._pause_gate.set()  # gate open by default
         self._active_runners = 0
         self._pause_observed = False
+        self._next_launch_at = 0.0
+        self._launch_lock = asyncio.Lock()
         self._update_record_status(task_id, TaskStatus.RUNNING)
 
         await self._drive(task_id, pending)
@@ -295,6 +306,12 @@ class TaskExecutor:
             return
         if self._stop_event.is_set():
             return
+        try:
+            await self._pace_launch()
+        except asyncio.CancelledError:
+            return
+        if self._stop_event.is_set():
+            return
 
         running = replace(
             subtask,
@@ -375,6 +392,18 @@ class TaskExecutor:
             self._fire_progress(task_id, completed.id)
         finally:
             self._active_runners -= 1
+
+    async def _pace_launch(self) -> None:
+        spacing = max(0.0, self.launch_spacing_seconds)
+        if spacing <= 0:
+            return
+        async with self._launch_lock:
+            now = self.launch_clock()
+            wait_for = self._next_launch_at - now
+            if wait_for > 0:
+                await self.launch_sleep(wait_for)
+                now = self.launch_clock()
+            self._next_launch_at = max(now, self._next_launch_at) + spacing
 
     def _update_record_status(self, task_id: str, status: TaskStatus) -> None:
         record = self.cache.load_record(task_id)

@@ -68,6 +68,7 @@ from transoria.workflows.translation.chunker import (
     build_chunks,
 )
 from transoria.workflows.translation.config import TranslationConfig
+from transoria.workflows.executor_pacing import llm_launch_spacing_seconds
 from transoria.workflows.prefilter import should_translate_for_language
 from transoria.workflows.translation.glossary_report import (
     build_glossary_application_report,
@@ -293,6 +294,7 @@ class TranslationOrchestrator:
             # Request-level timeout/retry already bounds LLM calls; a second
             # aggregate cap can fail valid retry/rescue chains mid-flight.
             subtask_timeout_seconds=0.0,
+            launch_spacing_seconds=llm_launch_spacing_seconds(actual_concurrency),
         )
         if self.on_executor_created is not None:
             self.on_executor_created(executor)

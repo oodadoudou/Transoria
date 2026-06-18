@@ -17,6 +17,7 @@ from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskRecord, TaskSnapshot
+from transoria.workflows.executor_pacing import llm_launch_spacing_seconds
 from transoria.workflows.glossary_review.config import GlossaryReviewConfig
 from transoria.workflows.glossary_review.context import attach_reference_contexts
 from transoria.workflows.glossary_review.exporters import (
@@ -220,6 +221,7 @@ class GlossaryReviewOrchestrator:
                 # Request-level timeout/retry already bounds LLM calls; a second
                 # aggregate cap can fail valid retry/rescue chains mid-flight.
                 subtask_timeout_seconds=0.0,
+                launch_spacing_seconds=llm_launch_spacing_seconds(actual_concurrency),
             )
             if self.on_executor_created is not None:
                 self.on_executor_created(executor)
