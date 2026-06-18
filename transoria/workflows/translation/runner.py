@@ -71,6 +71,10 @@ _TRANSLATION_TRANSPORT_RETRY_BUDGET = 3
 # a third batch ask — the leftover lines fall through to the isolated solo
 # retry instead. Deliberately decoupled from the user's network-retry setting.
 _PARTIAL_ACCEPT_MAX_RETRIES = 2
+# A chunk with many safety refusals or source echoes can mark most lines as
+# low-confidence. Keep isolated rescue useful for normal cases, but bound the
+# total paid re-asks so one pathological chunk cannot hold the task for minutes.
+_LOW_CONFIDENCE_SOLO_RETRY_MAX_CALLS_PER_CHUNK = 12
 _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 360.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
@@ -545,11 +549,15 @@ class TranslationSubtaskRunner:
             # so short fillers (네./응./等) and ambiguous phrases that
             # were echoed in the batch call usually get a real translation.
             still_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
+            solo_retry_budget = _LOW_CONFIDENCE_SOLO_RETRY_MAX_CALLS_PER_CHUNK
             for meta, last_text, last_reasons in pending:
                 solo_retried_indices.add(meta.chunk_index)
                 current_text = last_text
                 current_reasons = last_reasons
                 for solo_round in range(self.low_confidence_max_retries):
+                    if solo_retry_budget <= 0:
+                        break
+                    solo_retry_budget -= 1
                     retry_round = max(retry_round, solo_round + 1)
                     # Mirror the proofreading-page "retranslate" path
                     # exactly: chunk_index=0 (model sees an isolated

@@ -878,7 +878,7 @@ export const zh: Messages = {
       liveCounter: {
         progressLabel: "已处理 {done} / {total}",
         inflightLabel: "正在请求 {n}",
-        longestLabel: "最久 {time}",
+        longestLabel: "分块最久 {time}",
         chunksLabel: "分块状态",
       },
       tuning: {
@@ -1176,7 +1176,7 @@ export const zh: Messages = {
       liveCounter: {
         progressLabel: "已处理 {done} / {total}",
         inflightLabel: "正在请求 {n}",
-        longestLabel: "最久 {time}",
+        longestLabel: "分块最久 {time}",
         chunksLabel: "分块状态",
       },
       tuning: {
@@ -1280,7 +1280,7 @@ export const zh: Messages = {
       liveCounter: {
         progressLabel: "已处理 {done} / {total}",
         inflightLabel: "正在请求 {n}",
-        longestLabel: "最久 {time}",
+        longestLabel: "分块最久 {time}",
         chunksLabel: "批次状态",
       },
     },

@@ -905,7 +905,7 @@ export const en: Messages = {
       liveCounter: {
         progressLabel: "Done {done} / {total}",
         inflightLabel: "In-flight {n}",
-        longestLabel: "longest {time}",
+        longestLabel: "longest chunk {time}",
         chunksLabel: "Chunk status",
       },
       tuning: {
@@ -1212,7 +1212,7 @@ export const en: Messages = {
       liveCounter: {
         progressLabel: "Done {done} / {total}",
         inflightLabel: "In-flight {n}",
-        longestLabel: "longest {time}",
+        longestLabel: "longest chunk {time}",
         chunksLabel: "Chunk status",
       },
       tuning: {
@@ -1325,7 +1325,7 @@ export const en: Messages = {
       liveCounter: {
         progressLabel: "Done {done} / {total}",
         inflightLabel: "In-flight {n}",
-        longestLabel: "longest {time}",
+        longestLabel: "longest chunk {time}",
         chunksLabel: "Batch status",
       },
     },
