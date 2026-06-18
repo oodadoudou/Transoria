@@ -48,6 +48,7 @@ export interface Messages {
     subtitle: string;
     toggle: string;
     refresh: string;
+    close: string;
     loading: string;
     emptyNoTask: string;
     empty: string;

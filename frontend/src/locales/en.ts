@@ -53,6 +53,7 @@ export const en: Messages = {
       "Shows this task's provider requests, timing, token usage, and model responses.",
     toggle: "Show request log",
     refresh: "Refresh",
+    close: "Close",
     loading: "Loading…",
     emptyNoTask: "Start or select a task to view request records.",
     empty: "No request records yet.",

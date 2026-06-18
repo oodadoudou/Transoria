@@ -52,6 +52,7 @@ export const zh: Messages = {
     subtitle: "查看本次任务的 provider 请求、耗时、Token 和模型回复。",
     toggle: "显示请求记录",
     refresh: "刷新",
+    close: "关闭",
     loading: "加载中…",
     emptyNoTask: "开始或选择一个任务后可查看请求记录。",
     empty: "暂无请求记录。",

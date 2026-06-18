@@ -1,11 +1,36 @@
-.panel {
+.launcher {
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-inset);
+  border-radius: 999px;
   background: var(--panel);
-  padding: 18px;
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
+  padding: 8px 10px 8px 12px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(6px);
+  padding: 28px;
+}
+
+.modal {
+  width: min(1480px, calc(100vw - 56px));
+  max-height: min(840px, calc(100dvh - 56px));
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-panel);
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  overflow: hidden;
 }
 
 .header {
@@ -13,6 +38,8 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 16px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 18px;
 }
 
 .heading {
@@ -38,11 +65,12 @@
 .actions {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .refresh,
-.responseButton {
+.responseButton,
+.closeButton {
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-inset);
   background: var(--panel-soft);
@@ -55,7 +83,8 @@
 }
 
 .refresh:hover,
-.responseButton:hover:not(:disabled) {
+.responseButton:hover:not(:disabled),
+.closeButton:hover {
   border-color: var(--action);
   color: var(--action);
 }
@@ -70,6 +99,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px 18px;
 }
 
 .empty,
@@ -129,6 +161,7 @@
   overflow: auto;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-inset);
+  max-height: min(560px, calc(100dvh - 270px));
 }
 
 .table {
@@ -258,6 +291,20 @@
 }
 
 @media (max-width: 760px) {
+  .launcher {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .overlay {
+    padding: 12px;
+  }
+
+  .modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
   .header {
     grid-template-columns: 1fr;
   }
