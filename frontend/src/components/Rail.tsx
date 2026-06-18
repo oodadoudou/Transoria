@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMessages } from "@/locales";
 import {
   defaultPageFor,
@@ -339,20 +339,25 @@ function ChildGroup({ group, moduleId, route, onNavigate }: ChildGroupProps) {
     (child) => child.page === route.page,
   );
   const [open, setOpen] = useState(active);
-  const visible = open || active;
+
+  useEffect(() => {
+    if (active) {
+      setOpen(true);
+    }
+  }, [active, route.page]);
 
   return (
     <div className={styles.subgroup}>
       <button
         type="button"
         className={`${styles.row} ${styles.child} ${styles.subgroupToggle} ${active ? styles.subgroupActive : ""}`.trim()}
-        aria-expanded={visible}
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <Chevron open={visible} />
+        <Chevron open={open} />
         <span className={styles.label2}>{group.label}</span>
       </button>
-      {visible ? (
+      {open ? (
         <div className={styles.subgroupChildren}>
           {group.children.map((child) => (
             <ChildButton
