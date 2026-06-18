@@ -1,11 +1,13 @@
 .shell {
-  min-height: 100vh;
+  height: 100dvh;
   padding: 18px 24px;
   background: var(--canvas);
+  overflow: hidden;
 }
 
 .app {
-  min-height: calc(100vh - 36px);
+  height: 100%;
+  min-height: 0;
   display: grid;
   column-gap: 28px;
   row-gap: 18px;
@@ -13,7 +15,7 @@
 
 .withInspector {
   grid-template-columns: 200px minmax(560px, 1fr);
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas:
     'topbar topbar'
     'rail   main'
@@ -22,7 +24,7 @@
 
 .minimal {
   grid-template-columns: 200px minmax(560px, 1fr);
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     'topbar topbar'
     'rail   main';
@@ -34,6 +36,9 @@
   flex-direction: column;
   gap: 36px;
   min-width: 0;
+  min-height: 0;
   max-width: 980px;
   padding: 8px 0 32px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
