@@ -21,7 +21,7 @@ import {
   useModelProfilesStore,
 } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
-import { useModuleSettings } from "@/store/useSettingsStore";
+import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { ProgressRing } from "@/components/ProgressRing";
@@ -96,7 +96,7 @@ export function RunPage() {
 
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
-  const [nextStepDismissed, setNextStepDismissed] = useState(
+  const [legacyNextStepDismissed, setLegacyNextStepDismissed] = useState(
     loadNextStepDismissed,
   );
 
@@ -229,9 +229,34 @@ export function RunPage() {
   const handleSelectPrompt = async (id: string) => {
     await prompts.selectActive("translation", id);
   };
-  const dismissNextStep = () => {
+  const persistNextStepDismissed = () => {
     saveNextStepDismissed();
-    setNextStepDismissed(true);
+    setLegacyNextStepDismissed(true);
+    if (appSettings.draft?.workflow_next_step_dismissed) return;
+    const settingsStore = useSettingsStore.getState();
+    settingsStore.updateField("app", "workflow_next_step_dismissed", true);
+    void settingsStore.saveNow("app");
+  };
+
+  useEffect(() => {
+    if (!legacyNextStepDismissed) return;
+    if (!appSettings.isHydrated) return;
+    if (appSettings.draft?.workflow_next_step_dismissed) return;
+    const settingsStore = useSettingsStore.getState();
+    settingsStore.updateField("app", "workflow_next_step_dismissed", true);
+    void settingsStore.saveNow("app");
+  }, [
+    appSettings.draft?.workflow_next_step_dismissed,
+    appSettings.isHydrated,
+    legacyNextStepDismissed,
+  ]);
+
+  const nextStepDismissed =
+    legacyNextStepDismissed ||
+    Boolean(appSettings.draft?.workflow_next_step_dismissed);
+
+  const dismissNextStep = () => {
+    persistNextStepDismissed();
   };
 
   const total = snapshot.progress.total;

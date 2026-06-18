@@ -39,6 +39,10 @@ class AppSettings:
     # diverges from this value, so a confirmed-or-dismissed release
     # never re-nags. Empty = no version skipped yet.
     skipped_update_version: str = ""
+    # Hidden dismissal for the Translation Run "next step" card. This
+    # must survive page switches and app restarts once the user clicks
+    # "Don't show again".
+    workflow_next_step_dismissed: bool = False
 
 
 @dataclass(frozen=True)

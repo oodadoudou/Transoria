@@ -84,6 +84,8 @@ export interface AppSettings {
    * startup update prompt only appears when ``latest_version`` differs
    * from this value, so a confirmed-or-dismissed release never re-nags. */
   skipped_update_version: string;
+  /** Hidden dismissal for the Translation Run "next step" guidance card. */
+  workflow_next_step_dismissed: boolean;
 }
 
 export interface PersistedGlossaryEntry {
