@@ -113,12 +113,22 @@ class HttpxChatTransport:
     matches the App Settings hint that promises proxy support.
     """
 
+    _MAX_CONNECTIONS = 100
+    _MAX_KEEPALIVE_CONNECTIONS = 100
+    _KEEPALIVE_EXPIRY_SECONDS = 30.0
+
     def __init__(self, proxy: str | None = None) -> None:
         self._proxy = proxy or None  # normalize "" → None
         self._client: httpx.AsyncClient | None = None
 
     def _client_kwargs(self) -> dict[str, object]:
-        kwargs: dict[str, object] = {}
+        kwargs: dict[str, object] = {
+            "limits": httpx.Limits(
+                max_connections=self._MAX_CONNECTIONS,
+                max_keepalive_connections=self._MAX_KEEPALIVE_CONNECTIONS,
+                keepalive_expiry=self._KEEPALIVE_EXPIRY_SECONDS,
+            )
+        }
         if self._proxy is not None:
             kwargs["proxy"] = self._proxy
         return kwargs
