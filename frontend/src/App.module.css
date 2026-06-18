@@ -38,7 +38,8 @@
   min-width: 0;
   min-height: 0;
   max-width: 980px;
-  padding: 8px 0 32px;
+  padding: 8px 18px 32px 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
