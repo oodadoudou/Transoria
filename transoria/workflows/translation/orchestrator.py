@@ -290,9 +290,9 @@ class TranslationOrchestrator:
             # timeout (with headroom) so a wedged HTTP call still
             # eventually unsticks Stop.
             stop_drain_seconds=max(5.0, float(config.model.timeout_seconds) + 5.0),
-            subtask_timeout_seconds=max(
-                5.0, float(config.model.timeout_seconds) + 10.0
-            ),
+            # Request-level timeout/retry already bounds LLM calls; a second
+            # aggregate cap can fail valid retry/rescue chains mid-flight.
+            subtask_timeout_seconds=0.0,
         )
         if self.on_executor_created is not None:
             self.on_executor_created(executor)
