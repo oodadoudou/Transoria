@@ -96,6 +96,12 @@ _FORMAT_RETRY_REMINDER = (
     'character must be "{". No prose, no Markdown headings, no code fence '
     "around the response, no extra lines."
 )
+_SOURCE_RESIDUE_RETRY_REMINDER = (
+    "SOURCE-RESIDUE RETRY: the previous answer was rejected because it copied "
+    "source text or kept source-language residue. Translate every requested "
+    "line fully into {target_language}. Output JSONLINE only: exactly one "
+    "object per requested source index, with no prose or extra lines."
+)
 
 # Custom presets that say nothing about the wire format need a
 # system-side reminder so a long literary persona can't drown out the
@@ -533,58 +539,144 @@ class TranslationSubtaskRunner:
                     break
                 retries_remaining -= 1
 
-            pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
-
-            mass_source_residue_count = 0
-            for meta in metadata:
-                fallback_reason = fallback_reasons_by_index.get(
-                    meta.chunk_index
-                )
-                if fallback_reason:
-                    final_text = meta.original_text
-                else:
-                    final_text = self._postprocess(
-                        meta, accumulated[meta.chunk_index]
+            mass_source_residue_rescued = False
+            while True:
+                pending: list[
+                    tuple[_SegmentPayload, str, tuple[str, ...]]
+                ] = []
+                finalized = {}
+                finalized_reasons = {}
+                low_confidence = []
+                mass_source_residue_count = 0
+                mass_source_residue_meta: list[_SegmentPayload] = []
+                for meta in metadata:
+                    fallback_reason = fallback_reasons_by_index.get(
+                        meta.chunk_index
                     )
-                verdict = self._evaluate_confidence(meta.original_text, final_text)
-                extra_reasons: list[str] = []
-                if fallback_reason:
-                    extra_reasons.append(fallback_reason)
-                all_reasons = tuple(extra_reasons) + verdict.reasons
-                if _is_mass_source_residue_candidate(
-                    meta, final_text, all_reasons, self.source_language
-                ):
-                    mass_source_residue_count += 1
-                if (
-                    (verdict.is_low_confidence or fallback_reason)
-                    and self.low_confidence_max_retries > 0
-                ):
-                    pending.append((meta, final_text, all_reasons))
-                    continue
-                finalized[meta.segment_id] = final_text
-                finalized_reasons[meta.segment_id] = all_reasons
-                if verdict.is_low_confidence or extra_reasons:
-                    entry: dict[str, object] = {
-                        "segment_id": meta.segment_id,
-                        "reasons": extra_reasons + list(verdict.reasons),
-                    }
-                    tags = list(verdict.tags)
-                    if fallback_reason and "source_residue" not in tags:
-                        tags.append("source_residue")
-                    if tags:
-                        entry["tags"] = tags
-                    low_confidence.append(entry)
+                    if fallback_reason:
+                        final_text = meta.original_text
+                    else:
+                        final_text = self._postprocess(
+                            meta, accumulated[meta.chunk_index]
+                        )
+                    verdict = self._evaluate_confidence(
+                        meta.original_text, final_text
+                    )
+                    extra_reasons: list[str] = []
+                    if fallback_reason:
+                        extra_reasons.append(fallback_reason)
+                    all_reasons = tuple(extra_reasons) + verdict.reasons
+                    if _is_mass_source_residue_candidate(
+                        meta, final_text, all_reasons, self.source_language
+                    ):
+                        mass_source_residue_count += 1
+                        mass_source_residue_meta.append(meta)
+                    if (
+                        (verdict.is_low_confidence or fallback_reason)
+                        and self.low_confidence_max_retries > 0
+                    ):
+                        pending.append((meta, final_text, all_reasons))
+                        continue
+                    finalized[meta.segment_id] = final_text
+                    finalized_reasons[meta.segment_id] = all_reasons
+                    if verdict.is_low_confidence or extra_reasons:
+                        entry: dict[str, object] = {
+                            "segment_id": meta.segment_id,
+                            "reasons": extra_reasons + list(verdict.reasons),
+                        }
+                        tags = list(verdict.tags)
+                        if fallback_reason and "source_residue" not in tags:
+                            tags.append("source_residue")
+                        if tags:
+                            entry["tags"] = tags
+                        low_confidence.append(entry)
 
-            if _should_fail_for_mass_source_residue(
-                mass_source_residue_count,
-                len(metadata),
-                include_small_all=False,
-            ):
-                raise TranslationQualityFailureError(
+                if not _should_fail_for_mass_source_residue(
+                    mass_source_residue_count,
+                    len(metadata),
+                    include_small_all=False,
+                ):
+                    break
+
+                failure_message = (
                     "mass_source_residue_after_batch: "
                     f"{mass_source_residue_count}/{len(metadata)} segments "
                     "echoed source or kept source-language residue"
                 )
+                if mass_source_residue_rescued:
+                    raise TranslationQualityFailureError(failure_message)
+                mass_source_residue_rescued = True
+                rescue_chunk = _build_subchunk_from_pending(
+                    chunk,
+                    tuple(mass_source_residue_meta),
+                    include_context=False,
+                )
+                rescue_user_prompt = self._compose_user_prompt(
+                    self._apply_roster(assemble_user_prompt(rescue_chunk)),
+                    format_retry=False,
+                    source_residue_retry=True,
+                )
+                rescue_request_model = _with_translation_request_timeout(
+                    self.model, "partial_retry"
+                )
+
+                async def _rescue_llm_call() -> object:
+                    return await self._one_llm_call(
+                        system_prompt,
+                        rescue_user_prompt,
+                        f"{log_label} source-residue-retry",
+                        model=rescue_request_model,
+                    )
+
+                try:
+                    rescue_response = await asyncio.wait_for(
+                        retry_async(
+                            _rescue_llm_call,
+                            transport_retry_attempts=self.transport_retry_attempts,
+                            max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
+                            max_transport_retry_attempts=_transport_retry_budget(
+                                self.model
+                            ),
+                            should_retry=lambda exc: _should_retry_translation_error(
+                                self.model, exc
+                            ),
+                        ),
+                        timeout=rescue_request_model.timeout_seconds,
+                    )
+                except BaseException as exc:
+                    debug_attempts.append(
+                        {
+                            "phase": "mass_source_residue_retry",
+                            "user_prompt": rescue_user_prompt,
+                            "timeout_seconds": rescue_request_model.timeout_seconds,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    )
+                    if not is_transient_llm_error(exc):
+                        raise
+                    raise TranslationQualityFailureError(failure_message) from exc
+
+                total_input += rescue_response.usage.input_tokens
+                total_output += rescue_response.usage.output_tokens
+                total_cached_input += rescue_response.usage.cached_input_tokens
+                rescue_raw = self._restore_roster(rescue_response.content)
+                last_raw = rescue_raw
+                debug_attempts.append(
+                    {
+                        "phase": "mass_source_residue_retry",
+                        "user_prompt": rescue_user_prompt,
+                        "timeout_seconds": rescue_request_model.timeout_seconds,
+                        "raw_response": rescue_raw,
+                    }
+                )
+                rescued_translations, _missing = self._decode_partial(
+                    rescue_raw,
+                    mass_source_residue_meta,
+                    rescue_chunk.context_lines,
+                )
+                for idx, text in rescued_translations.items():
+                    accumulated[idx] = text
+                    fallback_reasons_by_index.pop(idx, None)
 
             # Single-item retry: low-confidence segments share one paid
             # solo retry budget for the chunk lifecycle. Runtime subtask
@@ -735,8 +827,9 @@ class TranslationSubtaskRunner:
                         break
                     # Still low-conf: keep tracking the current best as
                     # whatever has the *least* source-language residue.
-                    # An attempt that's mostly Chinese is preferable to a
-                    # source-language echo even if both are low-conf.
+                    # An attempt that's mostly target-language text is
+                    # preferable to a source-language echo even if both
+                    # are low-conf.
                     if _residue_score(retry_final, self.source_language) < (
                         _residue_score(current_text, self.source_language)
                     ):
@@ -764,8 +857,8 @@ class TranslationSubtaskRunner:
                 #   source-passthrough. A mostly translated sentence with a
                 #   small residue leak is kept and tagged; it is easier to
                 #   fix than the raw source line.
-                # - Model produced a Chinese guess that's flawed but not
-                #   residue: keep it. A questionable Chinese line is
+                # - Model produced a target-language guess that's flawed but not
+                #   residue: keep it. A questionable translated line is
                 #   easier to fix than re-translating from scratch.
                 tags = list(final_verdict.tags)
                 if has_residue or echoes_source:
@@ -906,14 +999,24 @@ class TranslationSubtaskRunner:
         body: str,
         *,
         format_retry: bool,
+        source_residue_retry: bool = False,
     ) -> str:
         # Format contract lives in the system prompt (built-in suffix or
         # ``_augment_system_prompt``'s injected hint) so we don't repeat
         # it in every user message — that overhead was 3-5x amplified
         # by small chunk sizes. The retry banner still prepends here on
         # the second-and-later attempts.
+        reminders: list[str] = []
         if format_retry:
-            return f"{_FORMAT_RETRY_REMINDER}\n\n{body}"
+            reminders.append(_FORMAT_RETRY_REMINDER)
+        if source_residue_retry:
+            reminders.append(
+                _SOURCE_RESIDUE_RETRY_REMINDER.format(
+                    target_language=language_prompt_label(self.target_language)
+                )
+            )
+        if reminders:
+            return "\n\n".join((*reminders, body))
         return body
 
     def _apply_roster(self, prompt: str) -> str:
