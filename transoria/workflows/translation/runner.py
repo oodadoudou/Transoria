@@ -75,6 +75,8 @@ _PARTIAL_ACCEPT_MAX_RETRIES = 2
 # low-confidence. Keep isolated rescue useful for normal cases, but bound the
 # total paid re-asks so one pathological chunk cannot hold the task for minutes.
 _LOW_CONFIDENCE_SOLO_RETRY_CALLS_PER_CONFIGURED_RETRY = 4
+_MASS_SOURCE_RESIDUE_MIN_SEGMENTS = 4
+_MASS_SOURCE_RESIDUE_RATIO = 0.5
 _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 360.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
@@ -163,6 +165,10 @@ class _SegmentPayload:
     protection_spans: tuple[str, ...]
     leading_whitespace: str
     trailing_whitespace: str
+
+
+class TranslationQualityFailureError(RuntimeError):
+    pass
 
 
 def encode_subtask_payload(
@@ -392,6 +398,7 @@ class TranslationSubtaskRunner:
         last_raw = ""
         first_user_prompt = ""
         finalized: dict[str, str] = {}
+        finalized_reasons: dict[str, tuple[str, ...]] = {}
         low_confidence: list[dict[str, object]] = []
         retry_round = 0
         terminal_error: BaseException | None = None
@@ -527,6 +534,7 @@ class TranslationSubtaskRunner:
 
             pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
 
+            mass_source_residue_count = 0
             for meta in metadata:
                 fallback_reason = fallback_reasons_by_index.get(
                     meta.chunk_index
@@ -541,15 +549,19 @@ class TranslationSubtaskRunner:
                 extra_reasons: list[str] = []
                 if fallback_reason:
                     extra_reasons.append(fallback_reason)
+                all_reasons = tuple(extra_reasons) + verdict.reasons
+                if _is_mass_source_residue_candidate(
+                    meta, final_text, all_reasons, self.source_language
+                ):
+                    mass_source_residue_count += 1
                 if (
                     (verdict.is_low_confidence or fallback_reason)
                     and self.low_confidence_max_retries > 0
                 ):
-                    pending.append(
-                        (meta, final_text, tuple(extra_reasons) + verdict.reasons)
-                    )
+                    pending.append((meta, final_text, all_reasons))
                     continue
                 finalized[meta.segment_id] = final_text
+                finalized_reasons[meta.segment_id] = all_reasons
                 if verdict.is_low_confidence or extra_reasons:
                     entry: dict[str, object] = {
                         "segment_id": meta.segment_id,
@@ -561,6 +573,17 @@ class TranslationSubtaskRunner:
                     if tags:
                         entry["tags"] = tags
                     low_confidence.append(entry)
+
+            if _should_fail_for_mass_source_residue(
+                mass_source_residue_count,
+                len(metadata),
+                include_small_all=False,
+            ):
+                raise TranslationQualityFailureError(
+                    "mass_source_residue_after_batch: "
+                    f"{mass_source_residue_count}/{len(metadata)} segments "
+                    "echoed source or kept source-language residue"
+                )
 
             # Single-item retry: low-confidence segments share one paid
             # solo retry budget for the chunk lifecycle. Runtime subtask
@@ -693,6 +716,7 @@ class TranslationSubtaskRunner:
                     )
                     if not verdict.is_low_confidence:
                         finalized[meta.segment_id] = retry_final
+                        finalized_reasons[meta.segment_id] = verdict.reasons
                         current_text = None  # signal: passed
                         break
                     if (
@@ -751,6 +775,9 @@ class TranslationSubtaskRunner:
                 else:
                     finalized[meta.segment_id] = last_text
                     extra_reason = "force_accepted_after_max_retries"
+                finalized_reasons[meta.segment_id] = (
+                    tuple(last_reasons) + (extra_reason,)
+                )
                 entry: dict[str, object] = {
                     "segment_id": meta.segment_id,
                     "reasons": list(last_reasons) + [extra_reason],
@@ -758,6 +785,29 @@ class TranslationSubtaskRunner:
                 if tags:
                     entry["tags"] = tags
                 low_confidence.append(entry)
+
+            terminal_source_residue_count = 0
+            for meta in metadata:
+                final_text = finalized.get(meta.segment_id)
+                if final_text is None:
+                    continue
+                if _is_mass_source_residue_candidate(
+                    meta,
+                    final_text,
+                    finalized_reasons.get(meta.segment_id, ()),
+                    self.source_language,
+                ):
+                    terminal_source_residue_count += 1
+            if _should_fail_for_mass_source_residue(
+                terminal_source_residue_count,
+                len(metadata),
+                include_small_all=True,
+            ):
+                raise TranslationQualityFailureError(
+                    "mass_source_residue_after_retry: "
+                    f"{terminal_source_residue_count}/{len(metadata)} segments "
+                    "still echoed source or kept source-language residue"
+                )
 
             finalized_by_index = {
                 meta.chunk_index: finalized[meta.segment_id]
@@ -1151,6 +1201,42 @@ def _residue_score(text: str, source_language: Language) -> float:
     else:
         return 0.0
     return len(pattern.findall(text)) / max(1, len(text))
+
+
+def _is_mass_source_residue_candidate(
+    meta: _SegmentPayload,
+    text: str,
+    reasons: Sequence[str],
+    source_language: Language,
+) -> bool:
+    reason_text = " ".join(reasons).lower()
+    if text.strip() == meta.original_text.strip():
+        return "residue" in reason_text or "too similar" in reason_text
+    if "residue" not in reason_text and "too similar" not in reason_text:
+        return False
+    if _text_similarity(text, meta.original_text) >= 0.92:
+        return True
+    return _residue_score(text, source_language) >= 0.5
+
+
+def _should_fail_for_mass_source_residue(
+    count: int,
+    total: int,
+    *,
+    include_small_all: bool,
+) -> bool:
+    if total <= 0:
+        return False
+    if (
+        include_small_all
+        and 1 < total < _MASS_SOURCE_RESIDUE_MIN_SEGMENTS
+        and count == total
+    ):
+        return True
+    return (
+        count >= _MASS_SOURCE_RESIDUE_MIN_SEGMENTS
+        and count / total >= _MASS_SOURCE_RESIDUE_RATIO
+    )
 
 
 def _build_subchunk_from_pending(

@@ -34,6 +34,46 @@
   flex-shrink: 0;
 }
 
+.inlineControls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.themeShortcut {
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 12px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+.themeShortcut:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.themeShortcut:active {
+  transform: scale(0.96);
+}
+
+.themeShortcut:focus-visible {
+  outline: 2px solid var(--hairline-strong);
+  outline-offset: 2px;
+}
+
 .error {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 12px;
