@@ -76,6 +76,7 @@ _PARTIAL_ACCEPT_MAX_RETRIES = 2
 # low-confidence. Keep rescue useful for normal cases, but bound the total paid
 # re-asks so one pathological chunk cannot hold the task for minutes.
 _LOW_CONFIDENCE_RETRY_CALLS_PER_CONFIGURED_RETRY = 4
+_LOW_CONFIDENCE_RETRY_ATTEMPT_BUDGET = 1
 _LOW_CONFIDENCE_MICRO_BATCH_MIN_SEGMENTS = 4
 _LOW_CONFIDENCE_MICRO_BATCH_MAX_SEGMENTS = 5
 _LOW_CONFIDENCE_MICRO_BATCH_TOKEN_CAP = 1200
@@ -324,7 +325,7 @@ def _low_confidence_retry_budget_for_attempt(
     )
     if subtask_attempt <= 1:
         return total_budget
-    return 0
+    return min(total_budget, _LOW_CONFIDENCE_RETRY_ATTEMPT_BUDGET)
 
 
 def _transport_retry_budget(_model: ModelConfig) -> int:
@@ -691,10 +692,11 @@ class TranslationSubtaskRunner:
                     fallback_reasons_by_index.pop(idx, None)
 
             # Low-confidence rows share one paid rescue budget for the chunk
-            # lifecycle. Runtime subtask retries do not refresh it, keeping
-            # pathological chunks bounded. Larger pending sets get one compact
-            # micro-batch pass first; any leftovers consume the same budget in
-            # the existing focused solo path.
+            # lifecycle. Runtime subtask retries get only one rescue call,
+            # keeping pathological chunks bounded while preserving a small
+            # quality repair path after a failed attempt. Larger pending sets
+            # get one compact micro-batch pass first; any leftovers consume the
+            # same budget in the existing focused solo path.
             retry_call_budget = _low_confidence_retry_budget_for_attempt(
                 self.low_confidence_max_retries,
                 subtask_attempt,
@@ -861,6 +863,7 @@ class TranslationSubtaskRunner:
                     solo_user_prompt = self._compose_user_prompt(
                         self._apply_roster(assemble_user_prompt(solo_chunk)),
                         format_retry=False,
+                        low_confidence_retry=True,
                     )
                     solo_request_model = _with_translation_request_timeout(
                         self.model, "solo_retry"

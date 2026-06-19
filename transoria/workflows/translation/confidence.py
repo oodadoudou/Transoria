@@ -289,6 +289,8 @@ def _looks_like_preserved_title_or_identifier(
         translated
     ):
         return True
+    if not _CJK_IDEOGRAPH_PATTERN.search(translated):
+        return False
     if (
         len(source) > _PRESERVED_TITLE_MAX_SOURCE_CHARS
         or len(translated) > _PRESERVED_TITLE_MAX_TARGET_CHARS
