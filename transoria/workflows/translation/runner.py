@@ -73,9 +73,12 @@ _TRANSLATION_TRANSPORT_RETRY_BUDGET = 3
 # retry instead. Deliberately decoupled from the user's network-retry setting.
 _PARTIAL_ACCEPT_MAX_RETRIES = 2
 # A chunk with many safety refusals or source echoes can mark most lines as
-# low-confidence. Keep isolated rescue useful for normal cases, but bound the
-# total paid re-asks so one pathological chunk cannot hold the task for minutes.
-_LOW_CONFIDENCE_SOLO_RETRY_CALLS_PER_CONFIGURED_RETRY = 4
+# low-confidence. Keep rescue useful for normal cases, but bound the total paid
+# re-asks so one pathological chunk cannot hold the task for minutes.
+_LOW_CONFIDENCE_RETRY_CALLS_PER_CONFIGURED_RETRY = 4
+_LOW_CONFIDENCE_MICRO_BATCH_MIN_SEGMENTS = 4
+_LOW_CONFIDENCE_MICRO_BATCH_MAX_SEGMENTS = 5
+_LOW_CONFIDENCE_MICRO_BATCH_TOKEN_CAP = 1200
 _MASS_SOURCE_RESIDUE_MIN_SEGMENTS = 4
 _MASS_SOURCE_RESIDUE_RATIO = 0.5
 _HIGH_CONCURRENCY_THRESHOLD = 20
@@ -101,6 +104,12 @@ _SOURCE_RESIDUE_RETRY_REMINDER = (
     "source text or kept source-language residue. Translate every requested "
     "line fully into {target_language}. Output JSONLINE only: exactly one "
     "object per requested source index, with no prose or extra lines."
+)
+_LOW_CONFIDENCE_RETRY_REMINDER = (
+    "QUALITY RETRY: the previous answer was rejected by quality checks. "
+    "Translate every requested line fully into {target_language}. Output "
+    "JSONLINE only: exactly one object per requested source index, with no "
+    "prose or extra lines."
 )
 
 # Custom presets that say nothing about the wire format need a
@@ -172,6 +181,9 @@ class _SegmentPayload:
     protection_spans: tuple[str, ...]
     leading_whitespace: str
     trailing_whitespace: str
+
+
+_PendingLowConfidence = tuple[_SegmentPayload, str, tuple[str, ...]]
 
 
 class TranslationQualityFailureError(RuntimeError):
@@ -302,13 +314,13 @@ def _with_translation_request_timeout(model: ModelConfig, phase: str) -> ModelCo
     return replace(model, timeout_seconds=timeout)
 
 
-def _solo_retry_budget_for_attempt(
+def _low_confidence_retry_budget_for_attempt(
     low_confidence_max_retries: int,
     subtask_attempt: int,
 ) -> int:
     total_budget = (
         max(0, low_confidence_max_retries)
-        * _LOW_CONFIDENCE_SOLO_RETRY_CALLS_PER_CONFIGURED_RETRY
+        * _LOW_CONFIDENCE_RETRY_CALLS_PER_CONFIGURED_RETRY
     )
     if subtask_attempt <= 1:
         return total_budget
@@ -678,22 +690,150 @@ class TranslationSubtaskRunner:
                     accumulated[idx] = text
                     fallback_reasons_by_index.pop(idx, None)
 
-            # Single-item retry: low-confidence segments share one paid
-            # solo retry budget for the chunk lifecycle. Runtime subtask
-            # retries do not refresh it, keeping pathological chunks bounded.
-            still_pending: list[tuple[_SegmentPayload, str, tuple[str, ...]]] = []
-            solo_retry_budget = _solo_retry_budget_for_attempt(
+            # Low-confidence rows share one paid rescue budget for the chunk
+            # lifecycle. Runtime subtask retries do not refresh it, keeping
+            # pathological chunks bounded. Larger pending sets get one compact
+            # micro-batch pass first; any leftovers consume the same budget in
+            # the existing focused solo path.
+            retry_call_budget = _low_confidence_retry_budget_for_attempt(
                 self.low_confidence_max_retries,
                 subtask_attempt,
             )
+            if pending and retry_call_budget > 0:
+                micro_batches, micro_leftovers = (
+                    _split_low_confidence_micro_batches(pending)
+                )
+                batched_pending: list[_PendingLowConfidence] = list(
+                    micro_leftovers
+                )
+                for micro_batch in micro_batches:
+                    if retry_call_budget <= 0:
+                        batched_pending.extend(micro_batch)
+                        continue
+                    retry_call_budget -= 1
+                    retry_round = max(retry_round, 1)
+                    for meta, _last_text, _last_reasons in micro_batch:
+                        solo_retried_indices.add(meta.chunk_index)
+                    micro_meta = tuple(
+                        meta for meta, _last_text, _last_reasons in micro_batch
+                    )
+                    micro_chunk = _build_subchunk_from_pending(
+                        chunk,
+                        micro_meta,
+                        include_context=False,
+                    )
+                    micro_user_prompt = self._compose_user_prompt(
+                        self._apply_roster(assemble_user_prompt(micro_chunk)),
+                        format_retry=False,
+                        low_confidence_retry=True,
+                    )
+                    micro_request_model = _with_translation_request_timeout(
+                        self.model, "partial_retry"
+                    )
+
+                    async def _micro_llm_call() -> object:
+                        return await self._one_llm_call(
+                            system_prompt,
+                            micro_user_prompt,
+                            f"{log_label} low-confidence-batch-retry",
+                            model=micro_request_model,
+                        )
+
+                    try:
+                        micro_response = await asyncio.wait_for(
+                            retry_async(
+                                _micro_llm_call,
+                                transport_retry_attempts=self.transport_retry_attempts,
+                                max_retry_attempts=_RESCUE_TRANSPORT_RETRY_BUDGET,
+                                max_transport_retry_attempts=_transport_retry_budget(
+                                    self.model
+                                ),
+                                should_retry=lambda exc: _should_retry_translation_error(
+                                    self.model, exc
+                                ),
+                            ),
+                            timeout=micro_request_model.timeout_seconds,
+                        )
+                    except (LlmRequestError, TimeoutError) as exc:
+                        if not is_transient_llm_error(exc):
+                            raise
+                        debug_attempts.append(
+                            {
+                                "phase": "low_confidence_batch_retry",
+                                "user_prompt": micro_user_prompt,
+                                "segment_ids": [
+                                    meta.segment_id for meta in micro_meta
+                                ],
+                                "timeout_seconds": micro_request_model.timeout_seconds,
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        )
+                        for meta, last_text, last_reasons in micro_batch:
+                            batched_pending.append(
+                                (
+                                    meta,
+                                    last_text,
+                                    tuple(last_reasons)
+                                    + (
+                                        "low_confidence_batch_retry_transient_failed",
+                                    ),
+                                )
+                            )
+                        continue
+
+                    total_input += micro_response.usage.input_tokens
+                    total_output += micro_response.usage.output_tokens
+                    total_cached_input += micro_response.usage.cached_input_tokens
+                    micro_raw = self._restore_roster(micro_response.content)
+                    debug_attempts.append(
+                        {
+                            "phase": "low_confidence_batch_retry",
+                            "user_prompt": micro_user_prompt,
+                            "raw_response": micro_raw,
+                            "segment_ids": [
+                                meta.segment_id for meta in micro_meta
+                            ],
+                            "timeout_seconds": micro_request_model.timeout_seconds,
+                        }
+                    )
+                    micro_translations, _missing = self._decode_partial(
+                        micro_raw,
+                        micro_meta,
+                        micro_chunk.context_lines,
+                    )
+                    for meta, last_text, last_reasons in micro_batch:
+                        current_text = last_text
+                        current_reasons = last_reasons
+                        retry_text = micro_translations.get(meta.chunk_index)
+                        if retry_text is not None:
+                            retry_final = self._postprocess(meta, retry_text)
+                            verdict = self._evaluate_confidence(
+                                meta.original_text, retry_final
+                            )
+                            if not verdict.is_low_confidence:
+                                finalized[meta.segment_id] = retry_final
+                                finalized_reasons[meta.segment_id] = verdict.reasons
+                                continue
+                            if _residue_score(
+                                retry_final, self.source_language
+                            ) < _residue_score(current_text, self.source_language):
+                                current_text = retry_final
+                                current_reasons = verdict.reasons
+                        batched_pending.append(
+                            (meta, current_text, current_reasons)
+                        )
+                if micro_batches:
+                    pending = batched_pending
+
+            still_pending: list[_PendingLowConfidence] = []
             for meta, last_text, last_reasons in pending:
                 solo_retried_indices.add(meta.chunk_index)
                 current_text = last_text
                 current_reasons = last_reasons
                 for solo_round in range(self.low_confidence_max_retries):
-                    if solo_retry_budget <= 0:
+                    if retry_call_budget <= 0:
                         break
-                    solo_retry_budget -= 1
+                    retry_call_budget -= 1
                     retry_round = max(retry_round, solo_round + 1)
                     # Mirror the proofreading-page "retranslate" path
                     # exactly: chunk_index=0 (model sees an isolated
@@ -1000,6 +1140,7 @@ class TranslationSubtaskRunner:
         *,
         format_retry: bool,
         source_residue_retry: bool = False,
+        low_confidence_retry: bool = False,
     ) -> str:
         # Format contract lives in the system prompt (built-in suffix or
         # ``_augment_system_prompt``'s injected hint) so we don't repeat
@@ -1012,6 +1153,12 @@ class TranslationSubtaskRunner:
         if source_residue_retry:
             reminders.append(
                 _SOURCE_RESIDUE_RETRY_REMINDER.format(
+                    target_language=language_prompt_label(self.target_language)
+                )
+            )
+        if low_confidence_retry:
+            reminders.append(
+                _LOW_CONFIDENCE_RETRY_REMINDER.format(
                     target_language=language_prompt_label(self.target_language)
                 )
             )
@@ -1345,6 +1492,44 @@ def _should_fail_for_mass_source_residue(
         count >= _MASS_SOURCE_RESIDUE_MIN_SEGMENTS
         and count / total >= _MASS_SOURCE_RESIDUE_RATIO
     )
+
+
+def _split_low_confidence_micro_batches(
+    pending: Sequence[_PendingLowConfidence],
+) -> tuple[
+    list[tuple[_PendingLowConfidence, ...]],
+    tuple[_PendingLowConfidence, ...],
+]:
+    if len(pending) < _LOW_CONFIDENCE_MICRO_BATCH_MIN_SEGMENTS:
+        return [], tuple(pending)
+
+    batches: list[tuple[_PendingLowConfidence, ...]] = []
+    leftovers: list[_PendingLowConfidence] = []
+    current: list[_PendingLowConfidence] = []
+    current_tokens = 0
+    for item in pending:
+        meta = item[0]
+        item_tokens = max(1, estimate_tokens_from_text(meta.prompt_text))
+        if current and (
+            len(current) >= _LOW_CONFIDENCE_MICRO_BATCH_MAX_SEGMENTS
+            or current_tokens + item_tokens > _LOW_CONFIDENCE_MICRO_BATCH_TOKEN_CAP
+        ):
+            if len(current) >= _LOW_CONFIDENCE_MICRO_BATCH_MIN_SEGMENTS:
+                batches.append(tuple(current))
+            else:
+                leftovers.extend(current)
+            current = []
+            current_tokens = 0
+        current.append(item)
+        current_tokens += item_tokens
+
+    if current:
+        if len(current) >= _LOW_CONFIDENCE_MICRO_BATCH_MIN_SEGMENTS:
+            batches.append(tuple(current))
+        else:
+            leftovers.extend(current)
+
+    return batches, tuple(leftovers)
 
 
 def _build_subchunk_from_pending(
