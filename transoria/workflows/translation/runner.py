@@ -49,6 +49,7 @@ from transoria.workflows.translation.preprocessor import (
     postprocess_segment,
 )
 from transoria.workflows.translation.rules import (
+    Glossary,
     GlossaryEntry,
     ReplacementRule,
 )
@@ -610,6 +611,10 @@ class TranslationSubtaskRunner:
                     # against just this one source. This eliminates the
                     # batch-context drift where the model keyed a
                     # neighbor's translation under the wrong index.
+                    solo_glossary_entries = _match_retry_glossary(
+                        chunk,
+                        (meta.prompt_text,),
+                    )
                     solo_chunk = TranslationChunk(
                         segments=(
                             ChunkSegment(
@@ -619,7 +624,7 @@ class TranslationSubtaskRunner:
                             ),
                         ),
                         context_lines=(),
-                        glossary_entries=chunk.glossary_entries,
+                        glossary_entries=solo_glossary_entries,
                     )
                     solo_user_prompt = self._compose_user_prompt(
                         self._apply_roster(assemble_user_prompt(solo_chunk)),
@@ -1246,13 +1251,26 @@ def _build_subchunk_from_pending(
     include_context: bool = True,
 ) -> TranslationChunk:
     pending_indices = {m.chunk_index for m in pending}
-    return TranslationChunk(
-        segments=tuple(
-            seg for seg in original.segments if seg.chunk_index in pending_indices
-        ),
-        context_lines=original.context_lines if include_context else (),
-        glossary_entries=original.glossary_entries,
+    pending_segments = tuple(
+        seg for seg in original.segments if seg.chunk_index in pending_indices
     )
+    return TranslationChunk(
+        segments=pending_segments,
+        context_lines=original.context_lines if include_context else (),
+        glossary_entries=_match_retry_glossary(
+            original,
+            (seg.prompt_text for seg in pending_segments),
+        ),
+    )
+
+
+def _match_retry_glossary(
+    original: TranslationChunk,
+    source_texts: Iterable[str],
+) -> tuple[GlossaryEntry, ...]:
+    if not original.glossary_entries:
+        return ()
+    return Glossary(entries=original.glossary_entries).match_many(source_texts)
 
 
 __all__ = [

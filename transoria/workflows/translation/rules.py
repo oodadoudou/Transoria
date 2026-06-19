@@ -82,11 +82,10 @@ class Glossary:
         return tuple(matched)
 
     def match_many(self, source_texts: Iterable[str]) -> tuple[GlossaryEntry, ...]:
-        seen: dict[tuple[str, str, str], GlossaryEntry] = {}
+        seen: dict[GlossaryEntry, GlossaryEntry] = {}
         for text in source_texts:
             for entry in self.match(text):
-                key = (entry.src, entry.dst, entry.info)
-                seen.setdefault(key, entry)
+                seen.setdefault(entry, entry)
         ordered = sorted(seen.values(), key=lambda entry: len(entry.src), reverse=True)
         return tuple(ordered)
 
