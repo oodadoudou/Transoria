@@ -642,6 +642,8 @@ export interface Messages {
       statusTermInconsistencyHint: string;
       statusPossibleDuplicate: string;
       statusPossibleDuplicateHint: string;
+      statusStructureDrift: string;
+      statusStructureDriftHint: string;
       statusModelAnomaly: string;
       statusModelAnomalyHint: string;
       editorEmpty: string;

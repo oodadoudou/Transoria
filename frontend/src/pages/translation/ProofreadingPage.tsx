@@ -122,6 +122,11 @@ const MODEL_ANOMALY_TAGS = new Set([
   "verbatim_echo",
 ]);
 
+const STRUCTURAL_REVIEW_TAGS = new Set([
+  "length_ratio_anomaly",
+  "punctuation_anomaly",
+]);
+
 interface TermAuditGroup {
   key: string;
   src: string;
@@ -2107,6 +2112,16 @@ export function ProofreadingPage() {
                               ? m.statusEmpty
                               : m.statusOk}
                         </span>
+                        {item.tags?.some((tag) =>
+                          STRUCTURAL_REVIEW_TAGS.has(tag),
+                        ) ? (
+                          <span
+                            className={`${styles.statusChip} ${styles.statusStructure}`}
+                            title={m.statusStructureDriftHint}
+                          >
+                            {m.statusStructureDrift}
+                          </span>
+                        ) : null}
                         {item.tags?.includes("source_residue") ? (
                           <span
                             className={`${styles.statusChip} ${styles.statusResidue}`}

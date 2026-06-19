@@ -643,6 +643,12 @@
   color: var(--danger, #b04038);
 }
 
+.statusStructure {
+  background: color-mix(in srgb, var(--muted) 12%, var(--panel));
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--muted) 35%, var(--hairline));
+}
+
 .statusResidue {
   background: color-mix(in srgb, var(--warning, #8a4b0c) 14%, var(--panel));
   color: var(--warning, #8a4b0c);

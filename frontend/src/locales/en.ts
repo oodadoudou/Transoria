@@ -1035,9 +1035,12 @@ export const en: Messages = {
       statusPossibleDuplicate: "Possible duplicate",
       statusPossibleDuplicateHint:
         "Adjacent source lines differ, but their translations are highly similar. Check for shifted or duplicated paragraphs.",
+      statusStructureDrift: "Structure drift",
+      statusStructureDriftHint:
+        "Length or punctuation differs enough to review. This can be normal in good translations, but may indicate omitted or merged content.",
       statusModelAnomaly: "Model anomaly",
       statusModelAnomalyHint:
-        "Translation has signals such as model chatter, weak target-language script, abnormal length/punctuation, function-word leakage, or source echo.",
+        "Translation has signals such as model chatter, weak target-language script, function-word leakage, or source echo.",
       editorEmpty: "Pick a row on the left to edit.",
       editorSrcLabel: "Source",
       editorDstLabel: "Translation",

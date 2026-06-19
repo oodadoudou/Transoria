@@ -1014,9 +1014,12 @@ export const zh: Messages = {
       statusPossibleDuplicate: "疑似重复",
       statusPossibleDuplicateHint:
         "相邻两段原文不同，但译文高度相似，建议检查是否发生段落错位或重复。",
+      statusStructureDrift: "结构变化",
+      statusStructureDriftHint:
+        "译文长度或标点与原文差异较大，建议检查；这可能是正常意译，也可能提示漏译或合并内容。",
       statusModelAnomaly: "模型异常",
       statusModelAnomalyHint:
-        "译文存在模型废话、目标语言不足、长度/标点异常、功能词混入或原文回声等信号。",
+        "译文存在模型废话、目标语言不足、功能词混入或原文回声等信号。",
       editorEmpty: "在左侧表格点选一条以编辑。",
       editorSrcLabel: "原文",
       editorDstLabel: "译文",
