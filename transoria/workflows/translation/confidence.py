@@ -260,8 +260,12 @@ _CLASSIC_IDENTIFIER_PATTERN = re.compile(
     r"\b(?:ISBN(?:-1[03])?|ISSN|DOI|EAN|ASIN)\b", re.I
 )
 _LATIN_NUMBER_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:[xX][A-Za-z0-9]+)?")
+_TITLE_CONNECTOR_WORDS = frozenset(
+    "a an and at by for from in of on or the to vs with".split()
+)
 _PRESERVED_TITLE_MAX_SOURCE_CHARS = 120
 _PRESERVED_TITLE_MAX_TARGET_CHARS = 160
+_PRESERVED_TITLE_MAX_LATIN_TOKENS = 6
 _PRESERVED_TITLE_MAX_SOURCE_SCRIPT_RATIO = 0.25
 _PRESERVED_TITLE_MIN_TARGET_TOKEN_COVERAGE = 0.60
 
@@ -273,10 +277,8 @@ def _looks_like_preserved_title_or_identifier(
     source_language: Language | None,
     target_language: Language | None,
 ) -> bool:
-    """Allow short title/identifier lines to keep Latin tokens in Chinese output."""
+    """Allow short title/identifier lines to keep Latin tokens in output."""
 
-    if target_language not in _CHINESE_TARGET_LANGUAGES:
-        return False
     if source_language is Language.ENGLISH:
         return False
     source = source_text.strip()
@@ -289,8 +291,6 @@ def _looks_like_preserved_title_or_identifier(
         translated
     ):
         return True
-    if not _CJK_IDEOGRAPH_PATTERN.search(translated):
-        return False
     if (
         len(source) > _PRESERVED_TITLE_MAX_SOURCE_CHARS
         or len(translated) > _PRESERVED_TITLE_MAX_TARGET_CHARS
@@ -309,7 +309,35 @@ def _looks_like_preserved_title_or_identifier(
     if not shared:
         return False
     target_coverage = len(shared) / len(translated_tokens)
-    return target_coverage >= _PRESERVED_TITLE_MIN_TARGET_TOKEN_COVERAGE
+    if target_coverage < _PRESERVED_TITLE_MIN_TARGET_TOKEN_COVERAGE:
+        return False
+    return _CJK_IDEOGRAPH_PATTERN.search(translated) is not None or (
+        _looks_like_short_latin_title_text(source)
+        and _looks_like_short_latin_title_text(translated)
+    )
+
+
+def _looks_like_short_latin_title_text(text: str) -> bool:
+    tokens = [
+        match.group(0) for match in _LATIN_NUMBER_TOKEN_PATTERN.finditer(text)
+    ]
+    if not tokens or len(tokens) > _PRESERVED_TITLE_MAX_LATIN_TOKENS:
+        return False
+    has_title_token = False
+    for token in tokens:
+        folded = token.casefold()
+        if any(char.isdigit() for char in token):
+            has_title_token = True
+            continue
+        if folded in _TITLE_CONNECTOR_WORDS:
+            continue
+        if token.isupper() or token[:1].isupper():
+            has_title_token = True
+            continue
+        if not token[:1].isalpha():
+            return False
+        return False
+    return has_title_token
 
 
 def _source_script_ratio(text: str, source_language: Language | None) -> float:
