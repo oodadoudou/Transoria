@@ -120,8 +120,6 @@ const MODEL_ANOMALY_TAGS = new Set([
   "target_language_weak",
   "model_chatter",
   "verbatim_echo",
-  "length_ratio_anomaly",
-  "punctuation_anomaly",
 ]);
 
 interface TermAuditGroup {
@@ -1511,13 +1509,7 @@ export function ProofreadingPage() {
   }> = [
     {
       label: m.filterPresetDefault,
-      keys: [
-        "low_conf",
-        "source_residue",
-        "glossary_not_applied",
-        "term_inconsistency",
-        "possible_duplicate",
-      ],
+      keys: ["low_conf", "source_residue", "possible_duplicate"],
     },
     {
       label: m.filterPresetHighRisk,
