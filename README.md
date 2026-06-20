@@ -32,10 +32,11 @@ Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权�
 
 ### 最近更新
 
-- 新增弹出式请求记录窗口，可查看翻译、术语提取、术语审查的每条模型请求与回复。
-- 优化高并发 LLM 请求：默认流式、连接复用、连接池调优，减少卡住和超时误判。
-- 改进校对页布局，术语一致性面板支持折叠，并减少误报。
-- 修复运行耗时统计、术语审查状态同步、桌面端滚动和滚动条遮挡问题。
+- 弹出式请求记录窗口会保留完整流程记录，包括失败原因、本地质量事件和模型回复。
+- 质量重试耗尽后会保留最佳可校对结果并打标，避免仅因质量风险让整块任务失败。
+- 改进校对页：支持一键清空筛选、折叠术语审计，并默认聚焦高信号风险。
+- 优化高并发 LLM 请求和超时语义，减少卡住、误判和重复请求。
+- 修复术语审查状态同步、桌面端滚动、滚动条遮挡和弹窗关闭体验问题。
 
 完整列表见 [Releases](https://github.com/oodadoudou/Transoria/releases)。
 
@@ -134,10 +135,11 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 
 ### What's new
 
-- Added a pop-out request log window for translation, glossary extraction, and glossary review LLM calls.
-- Improved high-concurrency LLM handling with default streaming, client reuse, and tuned connection pooling.
-- Simplified the proofreading layout, made term audit collapsible, and reduced false positives.
-- Fixed runtime duration, glossary review state sync, desktop scrolling, and scrollbar overlap issues.
+- The pop-out request log now keeps the full flow, including failure reasons, local quality events, and model responses.
+- When quality retries are exhausted, Transoria keeps the best reviewable result with risk tags instead of failing the whole chunk for quality alone.
+- Proofreading now supports clearing filters, collapsible term audit, and defaults to high-signal risks.
+- High-concurrency LLM requests and timeout handling are smoother, reducing stalls, false timeout readings, and repeated requests.
+- Fixed glossary review state sync, desktop scrolling, scrollbar overlap, and modal close behavior.
 
 Full list on [Releases](https://github.com/oodadoudou/Transoria/releases).
 
