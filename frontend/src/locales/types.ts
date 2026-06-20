@@ -678,6 +678,7 @@ export interface Messages {
       filterPresetHighRisk: string;
       filterPresetCompletion: string;
       filterPresetAll: string;
+      filterClear: string;
       riskReasonPrefix: string;
       riskTagsPrefix: string;
       filterPlaceholder: string;

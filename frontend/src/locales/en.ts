@@ -1076,6 +1076,7 @@ export const en: Messages = {
       filterPresetHighRisk: "High risk",
       filterPresetCompletion: "Completion",
       filterPresetAll: "All risks",
+      filterClear: "Clear filters",
       riskReasonPrefix: "Reasons: ",
       riskTagsPrefix: "Tags: ",
       filterPlaceholder: "Search source / target…",

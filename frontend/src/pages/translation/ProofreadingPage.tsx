@@ -1744,6 +1744,14 @@ export function ProofreadingPage() {
                 </button>
               );
             })}
+            <button
+              type="button"
+              className={styles.filterChip}
+              onClick={() => setFilters(new Set())}
+              disabled={filters.size === 0}
+            >
+              {m.filterClear}
+            </button>
           </span>
         </div>
         <span className={styles.filterChips}>

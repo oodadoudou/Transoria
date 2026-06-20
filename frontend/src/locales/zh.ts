@@ -1044,6 +1044,7 @@ export const zh: Messages = {
       filterPresetHighRisk: "高风险",
       filterPresetCompletion: "完成度",
       filterPresetAll: "全部风险",
+      filterClear: "清空筛选",
       riskReasonPrefix: "原因：",
       riskTagsPrefix: "标签：",
       filterPlaceholder: "搜索原文 / 译文…",
