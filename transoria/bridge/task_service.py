@@ -765,6 +765,7 @@ def _failed_subtask_request_events(
         "subtask_attempt",
     )
     copied_keys = tuple(key for key in inherited_keys if key != "subtask_attempt")
+    local_failure_attempts_by_subtask: dict[str, set[int]] = {}
     for event in request_events:
         subtask_id = str(event.get("subtask_id", ""))
         if not subtask_id:
@@ -773,10 +774,27 @@ def _failed_subtask_request_events(
         for key in inherited_keys:
             if key in event:
                 metadata[key] = event[key]
+        if event.get("local_failure") is True:
+            try:
+                attempt = int(event.get("subtask_attempt", 0) or 0)
+            except (TypeError, ValueError):
+                attempt = 0
+            if attempt > 0:
+                local_failure_attempts_by_subtask.setdefault(
+                    subtask_id, set()
+                ).add(attempt)
 
     synthetic: list[dict[str, object]] = []
     for subtask in snapshot.subtasks:
         if subtask.status is not SubtaskStatus.FAILED:
+            continue
+        base = metadata_by_subtask.get(subtask.id, {})
+        subtask_attempt = subtask.attempt_count or int(
+            base.get("subtask_attempt", 1) or 1
+        )
+        if subtask_attempt in local_failure_attempts_by_subtask.get(
+            subtask.id, set()
+        ):
             continue
         debug_payload = _load_subtask_debug_log(
             cache, task_id=record.id, subtask_id=subtask.id
@@ -789,15 +807,13 @@ def _failed_subtask_request_events(
         if raw_response:
             response_text = f"{error}\n\n--- Last model response ---\n{raw_response}"
 
-        base = metadata_by_subtask.get(subtask.id, {})
         event: dict[str, object] = {
             "schema_version": 1,
             "request_id": f"{record.id}:{subtask.id}:local-failure",
             "timestamp": subtask.last_error_at or record.updated_at or record.created_at,
             "task_id": record.id,
             "subtask_id": subtask.id,
-            "subtask_attempt": subtask.attempt_count
-            or int(base.get("subtask_attempt", 1) or 1),
+            "subtask_attempt": subtask_attempt,
             "status": "failed",
             "label": f"{subtask.id} local validation",
             "error": _truncate_request_log_text(

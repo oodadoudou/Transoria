@@ -28,6 +28,7 @@ from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
 from transoria.runtime.executor import SubtaskResult
+from transoria.runtime.request_log import append_local_failure
 from transoria.runtime.subtask import Subtask
 from transoria.workflows.debug_log import write_subtask_debug_log
 from transoria.workflows.fake_name import (
@@ -627,13 +628,13 @@ class TranslationSubtaskRunner:
                 ):
                     break
 
-                failure_message = (
-                    "mass_source_residue_after_batch: "
-                    f"{mass_source_residue_count}/{len(metadata)} segments "
-                    "echoed source or kept source-language residue"
-                )
                 if mass_source_residue_rescued:
-                    raise TranslationQualityFailureError(failure_message)
+                    for meta in mass_source_residue_meta:
+                        fallback_reasons_by_index.setdefault(
+                            meta.chunk_index,
+                            "mass_source_residue_after_batch_retry_exhausted",
+                        )
+                    break
                 mass_source_residue_rescued = True
                 rescue_chunk = _build_subchunk_from_pending(
                     chunk,
@@ -683,7 +684,12 @@ class TranslationSubtaskRunner:
                     )
                     if not is_transient_llm_error(exc):
                         raise
-                    raise TranslationQualityFailureError(failure_message) from exc
+                    for meta in mass_source_residue_meta:
+                        fallback_reasons_by_index.setdefault(
+                            meta.chunk_index,
+                            "mass_source_residue_retry_transient_failed",
+                        )
+                    break
 
                 total_input += rescue_response.usage.input_tokens
                 total_output += rescue_response.usage.output_tokens
@@ -1060,11 +1066,27 @@ class TranslationSubtaskRunner:
                 len(metadata),
                 include_small_all=True,
             ):
-                raise TranslationQualityFailureError(
-                    "mass_source_residue_after_retry: "
-                    f"{terminal_source_residue_count}/{len(metadata)} segments "
-                    "still echoed source or kept source-language residue"
-                )
+                for meta in metadata:
+                    final_text = finalized.get(meta.segment_id)
+                    if final_text is None:
+                        continue
+                    if not _is_mass_source_residue_candidate(
+                        meta,
+                        final_text,
+                        finalized_reasons.get(meta.segment_id, ()),
+                        self.source_language,
+                    ):
+                        continue
+                    finalized_reasons[meta.segment_id] = (
+                        finalized_reasons.get(meta.segment_id, ())
+                        + ("mass_source_residue_after_retry",)
+                    )
+                    _upsert_low_confidence_entry(
+                        low_confidence,
+                        segment_id=meta.segment_id,
+                        reasons=("mass_source_residue_after_retry",),
+                        tags=("source_residue",),
+                    )
 
             finalized_by_index = {
                 meta.chunk_index: finalized[meta.segment_id]
@@ -1118,6 +1140,18 @@ class TranslationSubtaskRunner:
             )
         except BaseException as exc:
             terminal_error = exc
+            if isinstance(exc, TranslationQualityFailureError):
+                error_text = f"{type(exc).__name__}: {exc}"
+                response_text = error_text
+                if last_raw:
+                    response_text = (
+                        f"{error_text}\n\n--- Last model response ---\n{last_raw}"
+                    )
+                append_local_failure(
+                    label=f"{log_label} local validation",
+                    error=error_text,
+                    response_text=response_text,
+                )
             raise
         finally:
             if self.debug_log_dir is not None:
@@ -1452,6 +1486,42 @@ def _text_similarity(left: str, right: str) -> float:
 
 def _normalize_for_similarity(text: str) -> str:
     return _TEXT_SIMILARITY_NORMALIZE_RE.sub("", text)
+
+
+def _upsert_low_confidence_entry(
+    entries: list[dict[str, object]],
+    *,
+    segment_id: str,
+    reasons: Sequence[str] = (),
+    tags: Sequence[str] = (),
+) -> None:
+    for entry in entries:
+        if entry.get("segment_id") != segment_id:
+            continue
+        existing_reasons = entry.get("reasons")
+        if not isinstance(existing_reasons, list):
+            existing_reasons = []
+            entry["reasons"] = existing_reasons
+        for reason in reasons:
+            if reason not in existing_reasons:
+                existing_reasons.append(reason)
+        existing_tags = entry.get("tags")
+        if tags and not isinstance(existing_tags, list):
+            existing_tags = []
+            entry["tags"] = existing_tags
+        if isinstance(existing_tags, list):
+            for tag in tags:
+                if tag not in existing_tags:
+                    existing_tags.append(tag)
+        return
+
+    entry: dict[str, object] = {
+        "segment_id": segment_id,
+        "reasons": list(reasons),
+    }
+    if tags:
+        entry["tags"] = list(tags)
+    entries.append(entry)
 
 
 def _all_sources_equivalent(metadata: Sequence["_SegmentPayload"]) -> bool:

@@ -169,6 +169,33 @@ def begin_llm_request(
     return handle
 
 
+def append_local_failure(
+    *,
+    label: str,
+    error: str,
+    response_text: str = "",
+) -> None:
+    """Persist a non-provider validation failure in the current request scope."""
+
+    context = _CURRENT_CONTEXT.get()
+    if context is None:
+        return
+    request_index = context.next_request_index()
+    request_id = (
+        f"{context.subtask_id}:{context.subtask_attempt}:"
+        f"local:{request_index}:{uuid4().hex[:8]}"
+    )
+    event = {
+        **_base_event(context, request_id),
+        "status": "failed",
+        "label": label,
+        "error": _truncate(error, _MAX_ERROR_LENGTH),
+        "response_text": _truncate(response_text or error, _MAX_TEXT_LENGTH),
+        "local_failure": True,
+    }
+    _safe_append(context.cache, context.task_id, event)
+
+
 def _base_event(
     context: RequestLogContext, request_id: str
 ) -> dict[str, object]:
@@ -193,4 +220,4 @@ def _safe_append(
         pass
 
 
-__all__ = ["begin_llm_request", "request_log_scope"]
+__all__ = ["append_local_failure", "begin_llm_request", "request_log_scope"]
