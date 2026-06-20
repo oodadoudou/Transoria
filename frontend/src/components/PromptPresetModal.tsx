@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   BridgeError,
   type PromptKind,
@@ -113,6 +114,7 @@ export function PromptPresetModal({
     }
     onCancel();
   };
+  useEscapeKey(handleCancel, !saving);
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));

@@ -1,4 +1,5 @@
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { Pill } from "./Pill";
 import styles from "./CompletionWithFailuresDialog.module.css";
 
@@ -12,6 +13,8 @@ export function CompletionWithFailuresDialog({
   onAccept,
 }: CompletionWithFailuresDialogProps) {
   const messages = useMessages().completionWithFailures;
+  useEscapeKey(onAccept);
+
   return (
     <div
       className={styles.overlay}

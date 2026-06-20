@@ -9,6 +9,7 @@ import type {
   RequestLogStatusFilter,
   TaskStatus,
 } from "@/bridge/types";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import styles from "./RequestLogPanel.module.css";
@@ -139,14 +140,7 @@ export function RequestLogPanel({
     return () => window.clearInterval(timer);
   }, [loadEvents, taskId, taskStatus, visible]);
 
-  useEffect(() => {
-    if (!visible) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setVisible(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visible]);
+  useEscapeKey(() => setVisible(false), visible);
 
   const handleToggle = (next: boolean) => {
     setVisible(next);

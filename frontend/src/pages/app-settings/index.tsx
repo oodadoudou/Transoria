@@ -18,6 +18,7 @@ import { NumberField } from "@/components/NumberField";
 import { TextField } from "@/components/TextField";
 import { Segmented } from "@/components/Segmented";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import modalStyles from "@/components/GlossaryExportModal.module.css";
 import styles from "./index.module.css";
 
@@ -446,13 +447,7 @@ function CacheCleanupModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<BridgeError | null>(null);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const purge = async (
     scope: "all" | "older_than_days" | "completed",

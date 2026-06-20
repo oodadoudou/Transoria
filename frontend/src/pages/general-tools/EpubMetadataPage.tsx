@@ -9,6 +9,7 @@ import {
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import { useLocalState } from "@/utils/localState";
 import styles from "./EpubMetadataPage.module.css";
@@ -202,6 +203,14 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
       await dialogsBridge.openDirectory(folder);
     }
   };
+  useEscapeKey(
+    () => setConfirmOverwriteOpen(false),
+    confirmOverwriteOpen && !loading,
+  );
+  useEscapeKey(
+    () => setEditorOpen(false),
+    editorOpen && !confirmOverwriteOpen && !loading,
+  );
 
   return (
     <>

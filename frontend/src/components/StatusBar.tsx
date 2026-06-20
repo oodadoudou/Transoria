@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { format, useMessages } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useRunSnapshot, type RunKind } from "@/store/useRuntimeStore";
@@ -55,8 +56,9 @@ interface TokenPillProps {
 function TokenPill({ snapshot, messages }: TokenPillProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  useEscapeKey(() => setOpen(false), open);
 
-  // Dismiss on outside click + Esc.
+  // Dismiss on outside click.
   useEffect(() => {
     if (!open) return;
     function onDown(event: MouseEvent) {
@@ -64,14 +66,9 @@ function TokenPill({ snapshot, messages }: TokenPillProps) {
         setOpen(false);
       }
     }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
     window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
     };
   }, [open]);
 

@@ -1,4 +1,5 @@
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useRuntimeStore, type RunKind } from "@/store/useRuntimeStore";
 import { Pill } from "./Pill";
@@ -27,6 +28,10 @@ export function AllKeysFailedDialog() {
       : glossaryError?.code === ERROR_CODE
         ? "glossary"
         : null;
+
+  useEscapeKey(() => {
+    if (kind !== null) clearError(kind);
+  }, kind !== null);
 
   if (kind === null) return null;
 

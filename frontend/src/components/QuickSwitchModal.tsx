@@ -1,4 +1,5 @@
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { Pill } from "./Pill";
 import styles from "./QuickSwitchModal.module.css";
 
@@ -29,6 +30,7 @@ export function QuickSwitchModal({
 }: QuickSwitchModalProps) {
   const messages = useMessages();
   const labels = messages.quickSwitch;
+  useEscapeKey(onClose);
 
   const handlePick = (id: string) => {
     if (id === activeId) {

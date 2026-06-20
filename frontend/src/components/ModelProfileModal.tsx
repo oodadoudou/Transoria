@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   BridgeError,
   modelProfilesBridge,
@@ -268,6 +269,7 @@ export function ModelProfileModal({
     setProbeBusy(null);
     onCancel();
   };
+  useEscapeKey(handleCancel, !saving);
 
   useEffect(
     () => () => {

@@ -1,6 +1,7 @@
 import { useCallback, useId, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import styles from "./HelpTip.module.css";
 
 interface HelpTipProps {
@@ -31,6 +32,8 @@ export function HelpTip({ children, ariaLabel = "Help" }: HelpTipProps) {
     );
     setPopoverStyle({ left, top, width });
   }, []);
+  useEscapeKey(() => setOpen(false), open);
+
   if (!children.trim()) return null;
   return (
     <span

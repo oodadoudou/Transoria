@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMessages } from "@/locales";
 import { glossaryBridge, BridgeError } from "@/bridge";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { Pill } from "./Pill";
 import styles from "./QuickSwitchModal.module.css";
 
@@ -32,6 +33,7 @@ export function GlossaryPresetModal({
   const [presets, setPresets] = useState<PresetSummary[] | null>(null);
   const [directory, setDirectory] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  useEscapeKey(onClose);
 
   useEffect(() => {
     let cancelled = false;

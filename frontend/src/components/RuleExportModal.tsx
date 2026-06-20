@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import styles from "./GlossaryExportModal.module.css";
 
 export type RuleExportFormat = "json" | "xlsx";
@@ -11,14 +11,7 @@ interface RuleExportModalProps {
 
 export function RuleExportModal({ onPick, onClose }: RuleExportModalProps) {
   const labels = useMessages().ruleExport;
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return (
     <div

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   BridgeError,
   glossaryBridge,
@@ -387,6 +388,8 @@ function ConfirmStartDialog({
   onConfirm,
   onCancel,
 }: ConfirmStartDialogProps) {
+  useEscapeKey(onCancel);
+
   return (
     <div
       className={styles.dialogOverlay}

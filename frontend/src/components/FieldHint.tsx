@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { useMessages } from "@/locales";
 import type { ProviderTemplateFieldHint } from "@/bridge";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import styles from "./FieldHint.module.css";
 
 interface FieldHintProps {
@@ -23,6 +24,7 @@ export function FieldHint({ mode, providerName, hint }: FieldHintProps) {
   const showRecommendation =
     mode === "provider" && hint.recommended_value.length > 0;
   const showSource = mode === "provider" && hint.source_url !== null;
+  useEscapeKey(() => setOpen(false), open);
 
   return (
     <span className={styles.wrap}>

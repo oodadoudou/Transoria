@@ -1,4 +1,5 @@
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
   PersistedTextPreserveRule,
   PersistedTranslationReplacementRule,
@@ -20,6 +21,8 @@ type Props =
 export function RuleStatsModal(props: Props) {
   const labels = useMessages().ruleStats;
   const { rules } = props;
+  useEscapeKey(props.onClose);
+
   const total = rules.length;
   const enabled = rules.filter((r) => r.enabled).length;
 

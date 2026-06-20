@@ -25,6 +25,7 @@ import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { ProgressRing } from "@/components/ProgressRing";
 import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
 import { LiveRequestCounter } from "@/components/LiveRequestCounter";
@@ -560,6 +561,7 @@ interface ReportModalProps {
 function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
   const messages = useMessages();
   const labels = messages.glossaryReview.report;
+  useEscapeKey(onClose);
   const [query, setQuery] = useState("");
   const [action, setAction] = useState("all");
   const [restoring, setRestoring] = useState<string | null>(null);

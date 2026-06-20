@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import type { GeneralToolsPage } from "@/store/useTaskStore";
 import { EpubCompressPage } from "./EpubCompressPage";
@@ -63,6 +64,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   useEffect(() => {
     setActiveTool(initialTool);
   }, [initialTool]);
+  useEscapeKey(() => setActiveTool(null), activeTool !== null);
 
   return (
     <>

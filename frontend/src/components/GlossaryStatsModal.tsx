@@ -1,4 +1,5 @@
 import { useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { GlossaryEntry } from "@/store/useTaskStore";
 import styles from "./GlossaryStatsModal.module.css";
 
@@ -13,6 +14,7 @@ export function GlossaryStatsModal({
 }: GlossaryStatsModalProps) {
   const messages = useMessages();
   const labels = messages.glossaryStats;
+  useEscapeKey(onClose);
 
   const total = entries.length;
   const enabled = entries.filter((e) => e.enabled).length;

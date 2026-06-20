@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { format } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import styles from "@/components/GlossaryExportModal.module.css";
 import type { ImportFinalGlossaryMode } from "./importFinalGlossary";
 
@@ -28,13 +28,7 @@ export function ImportFinalGlossaryConfirmModal({
   onPick,
   onCancel,
 }: ImportFinalGlossaryConfirmModalProps) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  useEscapeKey(onCancel);
 
   return (
     <div

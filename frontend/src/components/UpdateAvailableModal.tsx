@@ -1,5 +1,6 @@
 import { useMessages } from "@/locales";
 import type { UpdateCheckResult } from "@/bridge";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { Pill } from "./Pill";
 import type { AutoUpdateState } from "./useUpdatePrompt";
 import styles from "./UpdateAvailableModal.module.css";
@@ -32,6 +33,7 @@ export function UpdateAvailableModal({
   const publishedAt = formatPublishedAt(result.published_at);
   const inFlight =
     autoUpdateState === "preparing" || autoUpdateState === "ready";
+  useEscapeKey(onDismiss, !inFlight);
 
   return (
     <div

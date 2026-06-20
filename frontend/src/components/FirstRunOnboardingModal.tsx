@@ -9,6 +9,7 @@ import {
   type ModelProfileDraft,
   type ProviderTemplate,
 } from "@/bridge";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import { useModelProfilesStore } from "@/store/useModelProfilesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -121,6 +122,7 @@ export function FirstRunOnboardingModal({
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<BridgeError | null>(null);
+  useEscapeKey(onSkip, !saving);
 
   useEffect(() => {
     let cancelled = false;

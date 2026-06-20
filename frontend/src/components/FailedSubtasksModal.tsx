@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { TaskFailure } from "@/bridge";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import { Pill } from "./Pill";
 import styles from "./FailedSubtasksModal.module.css";
@@ -66,6 +67,7 @@ export function FailedSubtasksModal({
     [groups, runtimeConfig],
   );
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  useEscapeKey(onClose);
 
   const toggle = (key: string): void => {
     setExpanded((current) => {

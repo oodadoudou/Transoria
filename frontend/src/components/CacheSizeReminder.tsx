@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { dialogsBridge, tasksBridge } from "@/bridge";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { format, useMessages } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -54,6 +55,7 @@ export function CacheSizeReminder() {
     window.sessionStorage.setItem(DISMISSED_KEY, "1");
     setCacheInfo(null);
   };
+  useEscapeKey(dismiss, cacheInfo !== null);
 
   if (cacheInfo === null) return null;
 

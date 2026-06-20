@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { format, useMessages } from "@/locales";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
   ReplacementReport,
   ReplacementReportRule,
@@ -35,14 +36,7 @@ export function BatchReplacementReportModal({
     }
     return initial;
   });
-
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const filteredRules = useMemo(
     () => filterRules(report.rules, query.trim().toLowerCase()),
