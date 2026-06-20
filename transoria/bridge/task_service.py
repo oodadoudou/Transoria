@@ -18,6 +18,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -142,6 +143,9 @@ _EPUB_COMPRESS_REPORT_FILENAME = "epub-compress-report.json"
 _EPUB_MERGE_REPORT_FILENAME = "epub-merge-report.json"
 _EPUB_CONVERT_REPORT_FILENAME = "epub-convert-report.json"
 _TXT_TO_EPUB_REPORT_FILENAME = "txt-to-epub-report.json"
+_DEBUG_LOG_FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]")
+_REQUEST_LOG_RESPONSE_PREVIEW_LIMIT = 20000
+_REQUEST_LOG_ERROR_PREVIEW_LIMIT = 2000
 # Hard cap on occurrences captured per rule across the whole task —
 # the per-file cap inside ``apply_rules`` already prevents pathological
 # files; this guards the aggregated report so a 100k-match rule cannot
@@ -701,6 +705,114 @@ def _format_request_events(
     if limit is not None:
         rows = rows[:limit]
     return rows, total
+
+
+def _truncate_request_log_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return value[: limit - 1] + "…"
+
+
+def _load_subtask_debug_log(
+    cache: TaskCache, *, task_id: str, subtask_id: str
+) -> Mapping[str, object]:
+    safe_id = _DEBUG_LOG_FILENAME_SAFE.sub("_", subtask_id)
+    path = cache.task_dir(task_id) / "debug" / f"{safe_id}.json"
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, Mapping):
+        return {}
+    return payload
+
+
+def _last_debug_response(debug_payload: Mapping[str, object]) -> str:
+    raw = debug_payload.get("raw_response")
+    if isinstance(raw, str) and raw:
+        return raw
+    attempts = debug_payload.get("attempts")
+    if isinstance(attempts, Sequence) and not isinstance(attempts, (str, bytes)):
+        for attempt in reversed(attempts):
+            if not isinstance(attempt, Mapping):
+                continue
+            raw = attempt.get("raw_response")
+            if isinstance(raw, str) and raw:
+                return raw
+    restored = debug_payload.get("restored_response")
+    if isinstance(restored, str) and restored:
+        return restored
+    return ""
+
+
+def _failed_subtask_request_events(
+    cache: TaskCache,
+    *,
+    record: TaskRecord,
+    snapshot: TaskSnapshot,
+    request_events: Sequence[Mapping[str, object]],
+) -> tuple[dict[str, object], ...]:
+    metadata_by_subtask: dict[str, dict[str, object]] = {}
+    inherited_keys = (
+        "model_profile_id",
+        "model_id",
+        "provider_format",
+        "provider_attempt",
+        "prompt_chars",
+        "timeout_seconds",
+        "subtask_attempt",
+    )
+    copied_keys = tuple(key for key in inherited_keys if key != "subtask_attempt")
+    for event in request_events:
+        subtask_id = str(event.get("subtask_id", ""))
+        if not subtask_id:
+            continue
+        metadata = metadata_by_subtask.setdefault(subtask_id, {})
+        for key in inherited_keys:
+            if key in event:
+                metadata[key] = event[key]
+
+    synthetic: list[dict[str, object]] = []
+    for subtask in snapshot.subtasks:
+        if subtask.status is not SubtaskStatus.FAILED:
+            continue
+        debug_payload = _load_subtask_debug_log(
+            cache, task_id=record.id, subtask_id=subtask.id
+        )
+        error = str(
+            debug_payload.get("terminal_error") or subtask.last_error or "Subtask failed."
+        )
+        raw_response = _last_debug_response(debug_payload)
+        response_text = error
+        if raw_response:
+            response_text = f"{error}\n\n--- Last model response ---\n{raw_response}"
+
+        base = metadata_by_subtask.get(subtask.id, {})
+        event: dict[str, object] = {
+            "schema_version": 1,
+            "request_id": f"{record.id}:{subtask.id}:local-failure",
+            "timestamp": subtask.last_error_at or record.updated_at or record.created_at,
+            "task_id": record.id,
+            "subtask_id": subtask.id,
+            "subtask_attempt": subtask.attempt_count
+            or int(base.get("subtask_attempt", 1) or 1),
+            "status": "failed",
+            "label": f"{subtask.id} local validation",
+            "error": _truncate_request_log_text(
+                error, _REQUEST_LOG_ERROR_PREVIEW_LIMIT
+            ),
+            "response_text": _truncate_request_log_text(
+                response_text, _REQUEST_LOG_RESPONSE_PREVIEW_LIMIT
+            ),
+            "local_failure": True,
+        }
+        for key in copied_keys:
+            if key in base:
+                event[key] = base[key]
+        synthetic.append(event)
+    return tuple(synthetic)
 
 
 def _progress_to_block(
@@ -4049,6 +4161,20 @@ class TaskService:
             truncated = False
         else:
             events, truncated = cache.load_recent_request_events(task_id)
+        try:
+            snapshot = cache.load(task_id)
+        except TaskNotFoundError:
+            snapshot = None
+        if snapshot is not None:
+            events = (
+                *events,
+                *_failed_subtask_request_events(
+                    cache,
+                    record=record,
+                    snapshot=snapshot,
+                    request_events=events,
+                ),
+            )
         formatted, total = _format_request_events(
             events,
             limit=limit,

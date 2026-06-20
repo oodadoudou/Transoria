@@ -136,6 +136,22 @@ _SYSTEM_LANGUAGE_CONTRACT_HINT = (
 )
 
 
+def _looks_truncated_jsonl_response(raw_content: str) -> bool:
+    """Return True when the last emitted JSONL row is visibly incomplete.
+
+    Some OpenAI-compatible providers stream a valid dense prefix and then cut
+    the response mid-object. ``json_repair`` can salvage that partial final row
+    into a misleading short value, so callers should keep only the fully closed
+    prefix rows and retry the tail.
+    """
+
+    lines = [line.strip().rstrip(",") for line in raw_content.splitlines()]
+    lines = [line for line in lines if line and not line.startswith("```")]
+    if not lines:
+        return False
+    return not lines[-1].endswith("}")
+
+
 _JSONL_KEYWORD_PATTERN = re.compile(
     r"jsonl(?:ine)?|\{\s*\"\s*<\s*INDEX", re.IGNORECASE
 )
@@ -1273,6 +1289,20 @@ class TranslationSubtaskRunner:
             and decoded_order == sorted_expected[: len(decoded_order)]
             and not _all_sources_equivalent(metadata)
         ):
+            if (
+                _looks_truncated_jsonl_response(raw_content)
+                and len(decoded.lines) > 1
+            ):
+                complete_prefix = decoded.lines[:-1]
+                translations_by_index = {
+                    line.index: line.text
+                    for line in complete_prefix
+                    if line.index in expected
+                }
+                return (
+                    translations_by_index,
+                    frozenset(expected - translations_by_index.keys()),
+                )
             return {}, frozenset(expected)
         if context_lines and len(decoded.lines) > len(expected):
             return {}, frozenset(expected)
