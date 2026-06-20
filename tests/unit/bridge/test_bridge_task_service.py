@@ -220,6 +220,8 @@ def test_read_request_events_includes_local_failed_subtask_debug(
     assert failed["total"] == 1
     event = failed["events"][0]
     assert event["status"] == "failed"
+    assert event["phase"] == "validation"
+    assert event["last_activity_at"] == "2026-06-18T00:01:00+00:00"
     assert event["local_failure"] is True
     assert event["subtask_id"] == "chunk-00068.s1.0"
     assert event["model_id"] == "model-x"

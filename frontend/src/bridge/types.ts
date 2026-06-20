@@ -451,6 +451,16 @@ export interface TaskLogLine {
 
 export type RequestLogStatus = "running" | "completed" | "failed" | "cancelled";
 
+export type RequestLogPhase =
+  | "sent"
+  | "headers_received"
+  | "first_token"
+  | "streaming"
+  | "validation"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 export type RequestLogStatusFilter = RequestLogStatus | "all";
 
 export interface RequestLogQuery {
@@ -480,13 +490,17 @@ export interface RequestLogEvent {
   provider_attempt?: number;
   prompt_chars?: number;
   timeout_seconds?: number;
+  phase?: RequestLogPhase;
+  last_activity_at?: string;
   http_status?: number;
   duration_seconds?: number;
+  response_chars?: number;
   input_tokens?: number;
   output_tokens?: number;
   cached_input_tokens?: number;
   total_tokens?: number;
   usage_estimated?: boolean;
+  partial_response_text?: string;
   response_text?: string;
   error?: string;
 }

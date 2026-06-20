@@ -86,7 +86,9 @@ It shows:
 - completed, failed, remaining, elapsed, and average speed stats
 - processed/running subtask counter with the longest running subtask age
 - compact request-log toggle that opens a pop-out request log for model calls
-  and retained failure records
+  and retained failure records, including lifecycle phase, last activity,
+  provider error bodies, and throttled partial streaming responses without
+  recording full prompts
 - token stats
 - failed subtask list
 - Start, Stop, and Continue controls

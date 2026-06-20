@@ -6,6 +6,7 @@ import {
 } from "@/bridge";
 import type {
   RequestLogEvent,
+  RequestLogPhase,
   RequestLogStatusFilter,
   TaskStatus,
 } from "@/bridge/types";
@@ -92,6 +93,19 @@ export function RequestLogPanel({
       cancelled: styles.cancelled,
     }),
     [],
+  );
+  const phaseLabels = useMemo<Record<RequestLogPhase, string>>(
+    () => ({
+      sent: copy.phaseSent,
+      headers_received: copy.phaseHeadersReceived,
+      first_token: copy.phaseFirstToken,
+      streaming: copy.phaseStreaming,
+      validation: copy.phaseValidation,
+      completed: copy.phaseCompleted,
+      failed: copy.phaseFailed,
+      cancelled: copy.phaseCancelled,
+    }),
+    [copy],
   );
 
   const loadEvents = useCallback(async (append = false) => {
@@ -257,8 +271,21 @@ export function RequestLogPanel({
                       <tbody>
                         {events.map((event) => {
                           const isExpanded = Boolean(expanded[event.request_id]);
-                          const response = event.response_text || event.error || "";
+                          const response =
+                            event.response_text ||
+                            event.partial_response_text ||
+                            event.error ||
+                            "";
                           const statusClass = statusClasses[event.status] ?? "";
+                          const phaseLabel = event.phase
+                            ? phaseLabels[event.phase] ?? event.phase
+                            : "";
+                          const lastActivity = event.last_activity_at
+                            ? copy.lastActivity.replace(
+                                "{time}",
+                                formatTime(event.last_activity_at),
+                              )
+                            : "";
                           return (
                             <Fragment key={event.request_id}>
                               <tr>
@@ -269,6 +296,9 @@ export function RequestLogPanel({
                                   >
                                     {statusLabels[event.status] ?? event.status}
                                   </span>
+                                  {phaseLabel ? (
+                                    <div className={styles.phase}>{phaseLabel}</div>
+                                  ) : null}
                                 </td>
                                 <td>
                                   <div className={styles.requestLabel}>
@@ -280,6 +310,11 @@ export function RequestLogPanel({
                                       String(event.subtask_attempt || 1),
                                     )}
                                   </div>
+                                  {lastActivity ? (
+                                    <div className={styles.requestMeta}>
+                                      {lastActivity}
+                                    </div>
+                                  ) : null}
                                 </td>
                                 <td>
                                   <div className={styles.model}>
@@ -321,6 +356,14 @@ export function RequestLogPanel({
                                       {copy.estimatedTokens}
                                     </div>
                                   ) : null}
+                                  {event.response_chars ? (
+                                    <div className={styles.tokens}>
+                                      {copy.responseChars.replace(
+                                        "{n}",
+                                        formatNumber(event.response_chars),
+                                      )}
+                                    </div>
+                                  ) : null}
                                 </td>
                                 <td>
                                   <button
@@ -344,7 +387,13 @@ export function RequestLogPanel({
                               {isExpanded ? (
                                 <tr className={styles.responseRow}>
                                   <td colSpan={7}>
-                                    <pre>{response || copy.noResponse}</pre>
+                                    <pre>
+                                      {event.response_text
+                                        ? response
+                                        : event.partial_response_text
+                                          ? `${copy.partialResponse}\n\n${response}`
+                                          : response || copy.noResponse}
+                                    </pre>
                                   </td>
                                 </tr>
                               ) : null}

@@ -815,6 +815,10 @@ def _failed_subtask_request_events(
             "subtask_id": subtask.id,
             "subtask_attempt": subtask_attempt,
             "status": "failed",
+            "phase": "validation",
+            "last_activity_at": subtask.last_error_at
+            or record.updated_at
+            or record.created_at,
             "label": f"{subtask.id} local validation",
             "error": _truncate_request_log_text(
                 error, _REQUEST_LOG_ERROR_PREVIEW_LIMIT

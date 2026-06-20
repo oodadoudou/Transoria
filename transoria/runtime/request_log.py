@@ -68,6 +68,8 @@ class RequestLogHandle:
         self._append(
             {
                 "status": "completed",
+                "phase": "completed",
+                "last_activity_at": self.context.clock(),
                 "http_status": status_code,
                 "duration_seconds": round(time.monotonic() - self.started_monotonic, 3),
                 "input_tokens": usage.input_tokens,
@@ -75,24 +77,64 @@ class RequestLogHandle:
                 "cached_input_tokens": usage.cached_input_tokens,
                 "total_tokens": usage.total_tokens,
                 "usage_estimated": usage.estimated,
+                "response_chars": len(response_text),
                 "response_text": _truncate(response_text, _MAX_TEXT_LENGTH),
             }
         )
 
-    def fail(self, *, error: str, status_code: int | None = None) -> None:
+    def progress(
+        self,
+        *,
+        phase: str,
+        status_code: int | None = None,
+        response_text: str = "",
+        response_chars: int | None = None,
+    ) -> None:
+        payload: dict[str, object] = {
+            "status": "running",
+            "phase": phase,
+            "last_activity_at": self.context.clock(),
+            "duration_seconds": round(time.monotonic() - self.started_monotonic, 3),
+        }
+        if status_code is not None:
+            payload["http_status"] = status_code
+        if response_chars is not None:
+            payload["response_chars"] = response_chars
+        if response_text:
+            payload["partial_response_text"] = _truncate(
+                response_text, _MAX_TEXT_LENGTH
+            )
+        self._append(payload)
+
+    def fail(
+        self,
+        *,
+        error: str,
+        status_code: int | None = None,
+        response_text: str = "",
+        response_chars: int | None = None,
+    ) -> None:
         payload: dict[str, object] = {
             "status": "failed",
+            "phase": "failed",
+            "last_activity_at": self.context.clock(),
             "duration_seconds": round(time.monotonic() - self.started_monotonic, 3),
             "error": _truncate(error, _MAX_ERROR_LENGTH),
         }
         if status_code is not None:
             payload["http_status"] = status_code
+        if response_chars is not None:
+            payload["response_chars"] = response_chars
+        if response_text:
+            payload["response_text"] = _truncate(response_text, _MAX_TEXT_LENGTH)
         self._append(payload)
 
     def cancel(self) -> None:
         self._append(
             {
                 "status": "cancelled",
+                "phase": "cancelled",
+                "last_activity_at": self.context.clock(),
                 "duration_seconds": round(time.monotonic() - self.started_monotonic, 3),
                 "error": "Request was cancelled.",
             }
@@ -164,6 +206,8 @@ def begin_llm_request(
         "provider_attempt": provider_attempt,
         "prompt_chars": prompt_chars,
         "timeout_seconds": model.timeout_seconds,
+        "phase": "sent",
+        "last_activity_at": context.clock(),
     }
     _safe_append(context.cache, context.task_id, event)
     return handle
@@ -188,6 +232,8 @@ def append_local_failure(
     event = {
         **_base_event(context, request_id),
         "status": "failed",
+        "phase": "validation",
+        "last_activity_at": context.clock(),
         "label": label,
         "error": _truncate(error, _MAX_ERROR_LENGTH),
         "response_text": _truncate(response_text or error, _MAX_TEXT_LENGTH),

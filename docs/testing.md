@@ -82,7 +82,8 @@ Use fake transports/runners for:
 - model profile and prompt stores
 - settings store
 - LLM client retry/streaming behavior
-- LLM request-event logging and capped/tail reads
+- LLM request-event logging, lifecycle/partial-response diagnostics, and
+  capped/tail reads
 
 Do not hit real networks in automated tests.
 
@@ -111,7 +112,8 @@ Use synthetic files and fake LLM transports to verify:
 - glossary threading
 - text preserve and replacement ordering
 - low-confidence retry behavior
-- request-log event emission for LLM calls and local workflow failure records
+- request-log event emission for LLM calls, local workflow failure records,
+  provider error bodies, and streaming progress without storing full prompts
 - runtime elapsed-time accounting as active runtime rather than task age
 - Glossary artifact generation
 - Glossary Extraction Send to Review handoff

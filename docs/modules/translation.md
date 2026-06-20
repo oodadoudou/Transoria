@@ -70,7 +70,9 @@ It shows:
 - chunk status grid
 - failed subtask list
 - request-log toggle that opens a pop-out request log for model calls and
-  local workflow failure/quality records
+  local workflow failure/quality records, including lifecycle phase, last
+  activity, provider error bodies, and throttled partial streaming responses
+  without recording full prompts
 - Start, Stop, and Continue controls
 
 It does not contain folder pickers, language selectors, provider credentials,
@@ -216,8 +218,10 @@ Current behavior:
 15. Write translation statistics, low-confidence summary, artifact metadata,
     per-subtask debug logs under `<task_cache>/debug/`, and compact request
     events under `<task_cache>/request-events.jsonl`. Request events include
-    provider calls, final model responses, failed attempts, and local
-    workflow quality/failure records retained for debugging.
+    provider calls, lifecycle phase, last activity, final or partial model
+    responses, failed attempts, provider error bodies, and local workflow
+    quality/failure records retained for debugging. Full system/user prompts
+    are not stored in request events.
 
 ## Confidence Checks
 

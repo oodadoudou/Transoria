@@ -180,9 +180,11 @@ credentials, runtime limit fields, or prompt editors.
 
 When the request-log toggle is enabled, `RequestLogPanel` opens as a modal
 window. It is shared by Translation, Glossary Extraction, and Glossary Review,
-polls `read_request_events` while open, shows request status/duration/tokens,
-and can expand a row to inspect the model response or local failure/quality
-event. It does not occupy the main run-page layout.
+polls `read_request_events` while open, shows request
+status/phase/duration/tokens/last activity, and can expand a row to inspect the
+model response, throttled partial streaming response, provider error body, or
+local failure/quality event. It does not occupy the main run-page layout and
+does not display full prompts.
 
 The Translation Run page also shows a single completion toast when the task
 finishes with at least one low-confidence segment, surfacing total and

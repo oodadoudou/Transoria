@@ -74,7 +74,17 @@ export interface Messages {
     statusCompleted: string;
     statusFailed: string;
     statusCancelled: string;
+    phaseSent: string;
+    phaseHeadersReceived: string;
+    phaseFirstToken: string;
+    phaseStreaming: string;
+    phaseValidation: string;
+    phaseCompleted: string;
+    phaseFailed: string;
+    phaseCancelled: string;
     attempt: string;
+    lastActivity: string;
+    responseChars: string;
     secondsSuffix: string;
     inputTokens: string;
     outputTokens: string;
@@ -82,6 +92,7 @@ export interface Messages {
     estimatedTokens: string;
     showResponse: string;
     hideResponse: string;
+    partialResponse: string;
     noResponse: string;
   };
   errors: {

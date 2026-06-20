@@ -110,14 +110,62 @@ def test_request_log_records_status_usage_and_response(tmp_path) -> None:
     events = cache.load_request_events("task-1")
     assert [event["status"] for event in events] == ["running", "completed"]
     assert events[0]["request_id"] == events[1]["request_id"]
+    assert events[0]["phase"] == "sent"
+    assert "last_activity_at" in events[0]
     assert events[0]["label"] == "translation chunk-1"
     assert events[0]["subtask_attempt"] == 2
     assert events[0]["provider_attempt"] == 1
     assert events[0]["prompt_chars"] == len("stable systemchunk text")
+    assert events[1]["phase"] == "completed"
     assert events[1]["input_tokens"] == 12
     assert events[1]["output_tokens"] == 5
     assert events[1]["cached_input_tokens"] == 7
+    assert events[1]["response_chars"] == len("model response text")
     assert events[1]["response_text"] == "model response text"
+
+
+def test_request_log_records_http_failure_body(tmp_path) -> None:
+    cache = TaskCache(root=tmp_path)
+    cache.save_task(TaskRecord(id="task-1", kind=TaskKind.TRANSLATION))
+    transport = RecordingTransport(
+        queue=[
+            _http(
+                500,
+                {
+                    "error": {
+                        "code": "ModelLoading",
+                        "message": "The model is currently loading.",
+                    }
+                },
+            )
+        ]
+    )
+    client = LlmClient(transport=transport)
+    request = ChatRequest(
+        model=_model("ka"),
+        system_prompt="stable system",
+        user_prompt="chunk text",
+        log_label="translation chunk-9",
+    )
+
+    with request_log_scope(
+        cache,
+        task_id="task-1",
+        subtask_id="chunk-9",
+        subtask_attempt=1,
+    ):
+        with pytest.raises(LlmRequestError) as caught:
+            asyncio.run(client.chat(request))
+
+    assert caught.value.code == "llm.http_error"
+    events = cache.load_request_events("task-1")
+    assert [event["status"] for event in events] == ["running", "failed"]
+    assert events[0]["phase"] == "sent"
+    assert events[1]["phase"] == "failed"
+    assert events[1]["http_status"] == 500
+    assert "ModelLoading" in str(events[1]["response_text"])
+    assert "stable system" not in str(events[1])
+    assert "chunk text" not in str(events[1])
 
 
 def test_request_log_records_local_validation_failure(tmp_path) -> None:
@@ -324,3 +372,42 @@ def test_pool_raises_all_keys_failed_when_every_key_dead() -> None:
 
     assert caught.value.code == "llm.all_keys_failed"
     assert pool.dead_keys == frozenset({"ka", "kb"})
+
+
+def test_pool_request_log_records_auth_failure_body(tmp_path) -> None:
+    cache = TaskCache(root=tmp_path)
+    cache.save_task(TaskRecord(id="task-1", kind=TaskKind.TRANSLATION))
+    transport = RecordingTransport(
+        queue=[
+            _http(
+                403,
+                {"error": {"message": "bad key"}},
+            )
+        ]
+    )
+    client = LlmClient(transport=transport)
+    pool = KeyPool(("ka",))
+    request = ChatRequest(
+        model=_model("ka"),
+        system_prompt="stable system",
+        user_prompt="chunk text",
+        key_pool=pool,
+    )
+
+    with request_log_scope(
+        cache,
+        task_id="task-1",
+        subtask_id="chunk-1",
+        subtask_attempt=1,
+    ):
+        with pytest.raises(LlmRequestError) as caught:
+            asyncio.run(client.chat(request))
+
+    assert caught.value.code == "llm.all_keys_failed"
+    events = cache.load_request_events("task-1")
+    assert [event["status"] for event in events] == ["running", "failed"]
+    assert events[1]["phase"] == "failed"
+    assert events[1]["http_status"] == 403
+    assert "bad key" in str(events[1]["response_text"])
+    assert "stable system" not in str(events[1])
+    assert "chunk text" not in str(events[1])

@@ -117,6 +117,8 @@ class HttpxChatTransport:
     _MAX_CONNECTIONS = 100
     _MAX_KEEPALIVE_CONNECTIONS = 100
     _KEEPALIVE_EXPIRY_SECONDS = 30.0
+    _REQUEST_LOG_PROGRESS_SECONDS = 15.0
+    _REQUEST_LOG_PROGRESS_CHARS = 4096
 
     def __init__(self, proxy: str | None = None) -> None:
         self._proxy = proxy or None  # normalize "" → None
@@ -154,8 +156,22 @@ class HttpxChatTransport:
         payload: Mapping[str, object],
         timeout: float,
     ) -> TransportResult:
+        return await self.execute_observed(
+            url, headers, payload, timeout, request_log=None
+        )
+
+    async def execute_observed(
+        self,
+        url: str,
+        headers: Mapping[str, str],
+        payload: Mapping[str, object],
+        timeout: float,
+        request_log: RequestLogHandle | None,
+    ) -> TransportResult:
         if bool(payload.get("stream")):
-            return await self._execute_streaming(url, headers, payload, timeout)
+            return await self._execute_streaming(
+                url, headers, payload, timeout, request_log=request_log
+            )
         response = await self._get_client().post(
             url,
             headers=dict(headers),
@@ -174,12 +190,18 @@ class HttpxChatTransport:
         headers: Mapping[str, str],
         payload: Mapping[str, object],
         timeout: float,
+        *,
+        request_log: RequestLogHandle | None = None,
     ) -> TransportResult:
         import json
 
         chunks: list[str] = []
         usage: Mapping[str, object] | None = None
         status_code = 0
+        last_progress_at = time.monotonic()
+        last_progress_chars = 0
+        current_chars = 0
+        first_token_logged = False
         async with self._get_client().stream(
             "POST",
             url,
@@ -188,6 +210,10 @@ class HttpxChatTransport:
             timeout=timeout,
         ) as response:
             status_code = response.status_code
+            if request_log is not None:
+                request_log.progress(
+                    phase="headers_received", status_code=status_code
+                )
             if status_code >= 400:
                 body_text = await response.aread()
                 return TransportResult(
@@ -215,6 +241,7 @@ class HttpxChatTransport:
                     text = delta.get("content")
                     if isinstance(text, str):
                         chunks.append(text)
+                        current_chars += len(text)
                 # Anthropic: ``content_block_delta`` carries
                 # ``delta.text``; ``message_delta`` carries ``usage``;
                 # ``message_start`` carries an initial ``usage`` block.
@@ -225,6 +252,33 @@ class HttpxChatTransport:
                         text = delta.get("text")
                         if isinstance(text, str):
                             chunks.append(text)
+                            current_chars += len(text)
+                if request_log is not None and current_chars > 0:
+                    now = time.monotonic()
+                    if not first_token_logged:
+                        request_log.progress(
+                            phase="first_token",
+                            status_code=status_code,
+                            response_text="".join(chunks),
+                            response_chars=current_chars,
+                        )
+                        first_token_logged = True
+                        last_progress_at = now
+                        last_progress_chars = current_chars
+                    elif (
+                        now - last_progress_at
+                        >= self._REQUEST_LOG_PROGRESS_SECONDS
+                        or current_chars - last_progress_chars
+                        >= self._REQUEST_LOG_PROGRESS_CHARS
+                    ):
+                        request_log.progress(
+                            phase="streaming",
+                            status_code=status_code,
+                            response_text="".join(chunks),
+                            response_chars=current_chars,
+                        )
+                        last_progress_at = now
+                        last_progress_chars = current_chars
                 if event_type in ("message_start", "message_delta"):
                     message_block = event.get("message") or {}
                     message_usage = (
@@ -326,6 +380,13 @@ def _redact_url(url: str) -> str:
     return re.sub(
         r"([?&])key=[^&]*", lambda m: f"{m.group(1)}key=***", url
     )
+
+
+def _body_to_request_log_text(body: Mapping[str, object]) -> str:
+    raw_text = body.get("raw_text")
+    if isinstance(raw_text, str):
+        return raw_text
+    return json.dumps(body, ensure_ascii=False, default=str)
 
 
 def _anthropic_max_tokens(configured: int) -> int:
@@ -466,6 +527,19 @@ class LlmClient:
         close = getattr(self.transport, "aclose", None)
         if close is not None:
             await close()
+
+    async def _execute_transport(
+        self,
+        url: str,
+        headers: Mapping[str, str],
+        payload: Mapping[str, object],
+        timeout: float,
+        request_log: RequestLogHandle | None,
+    ) -> TransportResult:
+        observed = getattr(self.transport, "execute_observed", None)
+        if callable(observed):
+            return await observed(url, headers, payload, timeout, request_log)
+        return await self.transport.execute(url, headers, payload, timeout)
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
         provider = request.model.provider_format
@@ -659,6 +733,7 @@ class LlmClient:
                     f"{rejected_feature}; retrying {retry_action}"
                 ),
                 status_code=rejected_result.status_code,
+                response_text=_body_to_request_log_text(rejected_result.body),
             )
         log_recv(
             request.log_label,
@@ -681,8 +756,8 @@ class LlmClient:
             prompt_chars=_request_prompt_chars(request),
         )
         try:
-            result = await self.transport.execute(
-                url, headers, payload, request.model.timeout_seconds
+            result = await self._execute_transport(
+                url, headers, payload, request.model.timeout_seconds, fallback_log
             )
         except asyncio.CancelledError:
             if fallback_log is not None:
@@ -738,8 +813,8 @@ class LlmClient:
                 prompt_chars=_request_prompt_chars(request),
             )
             try:
-                result = await self.transport.execute(
-                    url, headers, payload, request.model.timeout_seconds
+                result = await self._execute_transport(
+                    url, headers, payload, request.model.timeout_seconds, request_log
                 )
             except asyncio.CancelledError:
                 if request_log is not None:
@@ -830,6 +905,7 @@ class LlmClient:
                     request_log.fail(
                         error=_transport_error_detail(exc),
                         status_code=result.status_code,
+                        response_text=_body_to_request_log_text(result.body),
                     )
                 raise
             log_recv(
@@ -851,6 +927,7 @@ class LlmClient:
                     request_log.fail(
                         error=f"HTTP {result.status_code}: {result.body!r}",
                         status_code=result.status_code,
+                        response_text=_body_to_request_log_text(result.body),
                     )
                 last_error = LlmRequestError(
                     f"HTTP {result.status_code}: {result.body!r}"
@@ -862,6 +939,7 @@ class LlmClient:
                     request_log.fail(
                         error=f"HTTP {result.status_code}: {result.body!r}",
                         status_code=result.status_code,
+                        response_text=_body_to_request_log_text(result.body),
                     )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
@@ -924,8 +1002,8 @@ class LlmClient:
                 prompt_chars=_request_prompt_chars(request),
             )
             try:
-                result = await self.transport.execute(
-                    url, headers, payload, request.model.timeout_seconds
+                result = await self._execute_transport(
+                    url, headers, payload, request.model.timeout_seconds, request_log
                 )
             except asyncio.CancelledError:
                 if request_log is not None:
@@ -1009,6 +1087,7 @@ class LlmClient:
                     request_log.fail(
                         error=_transport_error_detail(exc),
                         status_code=result.status_code,
+                        response_text=_body_to_request_log_text(result.body),
                     )
                 raise
             log_recv(
@@ -1026,6 +1105,7 @@ class LlmClient:
                     request_log.fail(
                         error=f"HTTP {result.status_code} (auth failure): {result.body!r}",
                         status_code=result.status_code,
+                        response_text=_body_to_request_log_text(result.body),
                     )
                 pool.mark_dead(key)
                 last_error = LlmRequestError(
@@ -1039,6 +1119,7 @@ class LlmClient:
                     request_log.fail(
                         error=f"HTTP 429 (rate limited): {result.body!r}",
                         status_code=result.status_code,
+                        response_text=_body_to_request_log_text(result.body),
                     )
                 last_error = LlmRequestError(
                     f"HTTP 429 (rate limited) from {_redact_url(url)}: {result.body!r}"
@@ -1050,6 +1131,7 @@ class LlmClient:
                     request_log.fail(
                         error=f"HTTP {result.status_code}: {result.body!r}",
                         status_code=result.status_code,
+                        response_text=_body_to_request_log_text(result.body),
                     )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",

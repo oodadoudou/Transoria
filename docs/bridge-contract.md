@@ -474,9 +474,22 @@ Events are merged by `request_id`, newest first. Default reads use the recent
 tail of `request-events.jsonl`; offset/status queries may scan the full
 retained file. Events may represent provider requests or local workflow
 records, such as preserved quality-exhausted outputs or terminal failure
-details, so HTTP/token fields can be absent.
+details, so HTTP/token fields can be absent. Request events never store full
+system or user prompts. They store operational metadata, lifecycle phase,
+provider response text when available, and throttled partial response text for
+in-flight streaming requests.
 
 ```ts
+type RequestLogPhase =
+  | "sent"
+  | "headers_received"
+  | "first_token"
+  | "streaming"
+  | "validation"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 type RequestLogEvent = {
   schema_version: number;
   request_id: string;
@@ -485,6 +498,8 @@ type RequestLogEvent = {
   subtask_id: string;
   subtask_attempt: number;
   status: "running" | "completed" | "failed" | "cancelled";
+  phase?: RequestLogPhase;
+  last_activity_at?: string;
   label?: string;
   model_profile_id?: string;
   model_id?: string;
@@ -499,7 +514,9 @@ type RequestLogEvent = {
   cached_input_tokens?: number;
   total_tokens?: number;
   usage_estimated?: boolean;
+  response_chars?: number;
   response_text?: string;
+  partial_response_text?: string;
   error?: string;
 };
 ```

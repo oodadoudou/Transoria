@@ -360,15 +360,24 @@ def test_httpx_streaming_transport_accumulates_sse_chunks() -> None:
             kwargs["transport"] = httpx.MockTransport(handler)
             super().__init__(*args, **kwargs)  # type: ignore[arg-type]
 
+    @dataclass
+    class _ProgressLog:
+        events: list[dict[str, object]] = field(default_factory=list)
+
+        def progress(self, **payload: object) -> None:
+            self.events.append(dict(payload))
+
     httpx.AsyncClient = _PatchedClient  # type: ignore[misc, assignment]
     try:
         transport = HttpxChatTransport()
+        request_log = _ProgressLog()
         result = asyncio.run(
-            transport.execute(
+            transport.execute_observed(
                 "https://example/api/v1/chat/completions",
                 {"Authorization": "Bearer k", "Content-Type": "application/json"},
                 {"model": "x", "messages": [], "stream": True},
                 10.0,
+                request_log=request_log,  # type: ignore[arg-type]
             )
         )
     finally:
@@ -379,6 +388,11 @@ def test_httpx_streaming_transport_accumulates_sse_chunks() -> None:
     assert content == "hello world"
     assert result.body.get("usage", {}).get("prompt_tokens") == 3
     assert captured_payloads[0]["stream"] is True
+    phases = [event["phase"] for event in request_log.events]
+    assert phases[:2] == ["headers_received", "first_token"]
+    assert request_log.events[0]["status_code"] == 200
+    assert request_log.events[1]["response_text"] == "hello "
+    assert request_log.events[1]["response_chars"] == 6
 
 
 def test_httpx_streaming_transport_estimates_usage_when_stream_omits_usage() -> None:
