@@ -181,7 +181,7 @@ export const en: Messages = {
     rpm: "Soft cap on requests per minute. The backend pre-throttles before each call to stay under this.",
     tpm: "Soft cap on tokens per minute. 0 disables the cap (use only when the provider exposes a TPM quota).",
     maxOutputTokens:
-      "Upper bound on tokens emitted per request. Lower = cheaper, higher = more headroom for reasoning. 0 defers to the provider default; Anthropic requires a cap, so 0 is auto-substituted with 8192.",
+      "Upper bound on tokens emitted per request. New profiles default to 8192 for long translation chunks. 0 defers to the provider default; Anthropic requires a cap, so 0 is auto-substituted with 8192.",
     temperature:
       "Sampling temperature 0–2. Lower (0–0.5) is more deterministic; higher introduces variance.",
   },
@@ -1547,7 +1547,7 @@ export const en: Messages = {
       "Maximum tokens accepted per task input. 0 = unbounded. Set higher than your largest chunk to avoid truncation.",
     outputTokenLimit: "Output token limit",
     outputTokenLimitHelp:
-      "Maximum tokens the model is allowed to produce per task. 0 = automatic (the provider's default for this model).",
+      "Maximum tokens the model is allowed to produce per task. New profiles default to 8192; 0 = automatic (the provider's default for this model).",
     concurrency: "Concurrent task limit",
     concurrencyHelp:
       "How many tasks may run in parallel. Refer to the provider's documentation for safe limits. 0 = automatic.",

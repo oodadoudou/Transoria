@@ -177,7 +177,7 @@ export const zh: Messages = {
     rpm: "每分钟请求数软上限。后端在每次请求前预先节流。",
     tpm: "每分钟 token 数软上限。0 表示不限（仅当 provider 提供 TPM 配额时启用）。",
     maxOutputTokens:
-      "单次请求输出的 token 上限。值低更省，值高给推理留余地。0 表示交给 provider 默认；Anthropic 必须有上限，0 时会自动用 8192 兜底。",
+      "单次请求输出的 token 上限。新建配置默认 8192，给长分块翻译留余地。0 表示交给 provider 默认；Anthropic 必须有上限，0 时会自动用 8192 兜底。",
     temperature: "采样温度 0–2。低值（0–0.5）更确定；高值更发散。",
   },
   modelModal: {
@@ -1494,7 +1494,7 @@ export const zh: Messages = {
       "每次任务的最大输入token数。0 = 不限。建议设得高于最大分块,避免被截断。",
     outputTokenLimit: "输出token上限",
     outputTokenLimitHelp:
-      "模型每次任务可生成的最大token数。0 = 自动(沿用服务商对该模型的默认值)。",
+      "模型每次任务可生成的最大token数。新建配置默认 8192；0 = 自动(沿用服务商对该模型的默认值)。",
     concurrency: "并发任务数",
     concurrencyHelp: "可同时进行的任务数。请参考服务商文档设置。0 = 自动。",
     rpm: "每分钟请求数 (RPM)",

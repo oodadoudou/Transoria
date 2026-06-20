@@ -98,7 +98,7 @@ const EMPTY_DRAFT: Draft = {
   concurrency_limit: 0,
   rpm_limit: 60,
   tpm_limit: 0,
-  max_output_tokens: 4096,
+  max_output_tokens: 8192,
   thinking_budget_tokens: 4096,
   input_token_limit: 0,
   temperature: null,

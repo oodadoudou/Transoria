@@ -62,7 +62,7 @@ class RecommendedDefaults:
     concurrency_limit: int = 0
     rpm_limit: int = 60
     tpm_limit: int = 0
-    max_output_tokens: int = 4096
+    max_output_tokens: int = 8192
     temperature: float = 0.3
     top_p: float = 1.0
     thinking_level: ThinkingLevel = ThinkingLevel.OFF
@@ -135,7 +135,7 @@ _OPENAI_HINTS: Mapping[str, FieldHint] = {
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
-        recommended_value="4096",
+        recommended_value="8192",
     ),
     "temperature": FieldHint(
         description_key="modelHints.temperature",
@@ -225,7 +225,7 @@ _DEEPSEEK_HINTS: Mapping[str, FieldHint] = {
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
-        recommended_value="4096",
+        recommended_value="8192",
     ),
     "temperature": FieldHint(
         description_key="modelHints.temperature",
@@ -254,7 +254,7 @@ _VOLCENGINE_HINTS: Mapping[str, FieldHint] = {
     ),
     "max_output_tokens": FieldHint(
         description_key="modelHints.maxOutputTokens",
-        recommended_value="4096",
+        recommended_value="8192",
     ),
     "temperature": FieldHint(
         description_key="modelHints.temperature",
@@ -314,7 +314,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
             timeout_seconds=600.0,
             concurrency_limit=0,
             rpm_limit=60,
-            max_output_tokens=4096,
+            max_output_tokens=8192,
             temperature=0.3,
         ),
         field_hints=_OPENAI_HINTS,
@@ -371,7 +371,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
             timeout_seconds=600.0,
             concurrency_limit=0,
             rpm_limit=60,
-            max_output_tokens=4096,
+            max_output_tokens=8192,
             temperature=0.3,
         ),
         field_hints=_DEEPSEEK_HINTS,
@@ -387,7 +387,7 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
             timeout_seconds=600.0,
             concurrency_limit=0,
             rpm_limit=60,
-            max_output_tokens=4096,
+            max_output_tokens=8192,
             temperature=0.3,
         ),
         field_hints=_VOLCENGINE_HINTS,

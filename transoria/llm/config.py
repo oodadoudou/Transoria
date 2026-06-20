@@ -59,7 +59,7 @@ class ModelConfig:
     rpm_limit: int = 60
     tpm_limit: int = 0
     rotate_keys: bool = True
-    max_output_tokens: int = 4096
+    max_output_tokens: int = 8192
     # Upper bound on the provider-native reasoning token budget. Acts
     # as a ceiling when ``thinking_level`` maps to a smaller value (LOW
     # =384, MEDIUM=768, HIGH=1024). Lowering this from the historical
@@ -184,7 +184,7 @@ class ModelConfig:
             rpm_limit=int(data.get("rpm_limit", 60)),
             tpm_limit=int(data.get("tpm_limit", 0)),
             rotate_keys=bool(data.get("rotate_keys", True)),
-            max_output_tokens=int(data.get("max_output_tokens", 4096)),
+            max_output_tokens=int(data.get("max_output_tokens", 8192)),
             thinking_budget_tokens=int(data.get("thinking_budget_tokens", 4096)),
             input_token_limit=int(data.get("input_token_limit", 0)),
             top_p=_optional_float(data.get("top_p")),
