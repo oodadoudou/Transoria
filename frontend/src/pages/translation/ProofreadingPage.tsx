@@ -44,12 +44,7 @@ interface RegenerateFailedFile {
   details?: Record<string, unknown>;
 }
 
-type RetranslateStatus =
-  | "completed"
-  | "stale"
-  | "skipped"
-  | "failed"
-  | "timeout";
+type RetranslateStatus = "completed" | "stale" | "skipped" | "failed";
 
 interface RetranslateOutcome {
   status: RetranslateStatus;
@@ -112,6 +107,9 @@ const RETRANSLATE_CONCURRENCY_AUTO_MAX = 48;
 const RETRANSLATE_FRONTEND_JOB_CAP = 50;
 const RETRANSLATE_RATE_WINDOW_MS = 60_000;
 const RETRANSLATE_RATE_WINDOW_BUFFER_MS = 25;
+const RETRANSLATE_FAST_POLL_MS = 500;
+const RETRANSLATE_SLOW_AFTER_MS = 60_000;
+const RETRANSLATE_SLOW_POLL_MS = 2_000;
 const RETRANSLATE_QUEUE_STORAGE_KEY =
   "transoria:proofreading:retranslate-queue:v1";
 
@@ -1003,10 +1001,53 @@ export function ProofreadingPage() {
     }
   };
 
+  const reloadProofreadingSnapshot = async (
+    preferredSegmentId: string | null = selectedSegmentId,
+  ) => {
+    if (!activeTaskId) return null;
+    const next = await proofreadingBridge.loadSnapshot(activeTaskId);
+    const itemIds = new Set(next.items.map((item) => item.segment_id));
+    const nextSelected =
+      preferredSegmentId && itemIds.has(preferredSegmentId)
+        ? preferredSegmentId
+        : selectedSegmentId && itemIds.has(selectedSegmentId)
+          ? selectedSegmentId
+          : (next.items[0]?.segment_id ?? null);
+    setSnapshot(next);
+    setSelectedSegmentId(nextSelected);
+    setSelectionAnchorId((prev) =>
+      prev && itemIds.has(prev) ? prev : nextSelected,
+    );
+    setSelectedSegmentIds((prev) => {
+      const kept = new Set([...prev].filter((id) => itemIds.has(id)));
+      if (kept.size > 0) return kept;
+      return nextSelected ? new Set([nextSelected]) : new Set();
+    });
+    return next;
+  };
+
+  const patchCompletedRetranslateResult = (
+    segmentId: string,
+    resultDst: string,
+  ) => {
+    setSnapshot((prev) =>
+      prev
+        ? {
+            ...prev,
+            items: prev.items.map((it) =>
+              it.segment_id === segmentId ? { ...it, dst: resultDst } : it,
+            ),
+          }
+        : prev,
+    );
+    if (selectedSegmentId === segmentId) setDraftDst(resultDst);
+  };
+
   const pollRetranslate = (
     segmentId: string,
     requestId: string,
     showFeedback = true,
+    refreshOnComplete = showFeedback,
   ): Promise<RetranslateOutcome> =>
     new Promise((resolve) => {
       const startedAt = Date.now();
@@ -1014,19 +1055,15 @@ export function ProofreadingPage() {
         try {
           const status = await proofreadingBridge.retranslateStatus(requestId);
           if (status.status === "completed") {
-            setSnapshot((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    items: prev.items.map((it) =>
-                      it.segment_id === segmentId
-                        ? { ...it, dst: status.result_dst }
-                        : it,
-                    ),
-                  }
-                : prev,
-            );
-            if (selectedSegmentId === segmentId) setDraftDst(status.result_dst);
+            if (refreshOnComplete) {
+              try {
+                await reloadProofreadingSnapshot(segmentId);
+              } catch {
+                patchCompletedRetranslateResult(segmentId, status.result_dst);
+              }
+            } else {
+              patchCompletedRetranslateResult(segmentId, status.result_dst);
+            }
             finish(true);
             resolve({ status: "completed" });
             return;
@@ -1070,12 +1107,13 @@ export function ProofreadingPage() {
           resolve({ status: "failed", reason });
           return;
         }
-        if (Date.now() - startedAt > 60_000) {
-          finish(false);
-          resolve({ status: "timeout", reason: m.retranslateTimeout });
-          return;
-        }
-        setTimeout(tick, 500);
+        const elapsed = Date.now() - startedAt;
+        setTimeout(
+          tick,
+          elapsed > RETRANSLATE_SLOW_AFTER_MS
+            ? RETRANSLATE_SLOW_POLL_MS
+            : RETRANSLATE_FAST_POLL_MS,
+        );
       };
       const finish = (forgetRequest: boolean) => {
         if (forgetRequest) forgetRetranslateRequest(requestId);
@@ -1106,7 +1144,9 @@ export function ProofreadingPage() {
       );
       void proofreadingBridge
         .resumeRetranslate(entry.requestId)
-        .then(() => pollRetranslate(entry.segmentId, entry.requestId, false))
+        .then(() =>
+          pollRetranslate(entry.segmentId, entry.requestId, false, true),
+        )
         .catch(() => {
           forgetRetranslateRequest(entry.requestId);
           setInflightRetranslates((prev) => {
@@ -1120,9 +1160,10 @@ export function ProofreadingPage() {
 
   const runRetranslateSegment = async (
     segmentId: string,
-    options: { showFeedback?: boolean } = {},
+    options: { showFeedback?: boolean; refreshOnComplete?: boolean } = {},
   ): Promise<RetranslateOutcome> => {
     const showFeedback = options.showFeedback ?? true;
+    const refreshOnComplete = options.refreshOnComplete ?? showFeedback;
     if (!activeTaskId || inflightRetranslates[segmentId]) {
       return {
         status: "failed",
@@ -1144,7 +1185,12 @@ export function ProofreadingPage() {
         [segmentId]: request_id,
       }));
       rememberRetranslateRequest(activeTaskId, segmentId, request_id);
-      return await pollRetranslate(segmentId, request_id, showFeedback);
+      return await pollRetranslate(
+        segmentId,
+        request_id,
+        showFeedback,
+        refreshOnComplete,
+      );
     } catch (err) {
       const text = BridgeError.isBridgeError(err)
         ? err.code === "bridge.conflict"
@@ -1167,8 +1213,6 @@ export function ProofreadingPage() {
       setFeedback({ kind: "success", text: m.retranslateSuccess });
     } else if (result.status === "stale" || result.status === "skipped") {
       setFeedback({ kind: "info", text: m.retranslateStale });
-    } else if (result.status === "timeout") {
-      setFeedback({ kind: "error", text: m.retranslateTimeout });
     }
   };
 
@@ -1249,6 +1293,7 @@ export function ProofreadingPage() {
             await waitForRateSlot();
             const result = await runRetranslateSegment(segmentId, {
               showFeedback: false,
+              refreshOnComplete: false,
             });
             if (result.status === "completed") {
               completedCount += 1;
@@ -1267,6 +1312,13 @@ export function ProofreadingPage() {
           }
         }),
       );
+      if (completedCount > 0) {
+        try {
+          await reloadProofreadingSnapshot(selectedSegmentId);
+        } catch {
+          // Individual completed rows were already patched; keep the batch result visible.
+        }
+      }
       const baseText = format(m.retranslateSelectedDone, {
         done: completedCount,
         stale: staleCount,

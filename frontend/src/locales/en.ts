@@ -1151,7 +1151,6 @@ export const en: Messages = {
       retranslateFailed: "Retranslate failed: {reason}",
       retranslateStale:
         "You edited this segment manually; LLM result discarded.",
-      retranslateTimeout: "Retranslate timed out; try again later.",
       retranslateRejectedRunning:
         "Task is running; stop it before retranslating.",
       selectRowLabel: "Select {id}",

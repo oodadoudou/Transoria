@@ -1629,6 +1629,46 @@ def test_runner_force_accepts_target_language_low_conf_when_no_residue() -> None
     assert "source_residue" not in flagged.get("tags", [])
 
 
+def test_runner_prefers_target_language_retry_over_source_echo_when_low_confidence() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                200,
+                _ok_body(
+                    '{"0":"청년의 성기에 살모사의 머리처럼 긴 문장이 이어졌다"}\n'
+                ),
+            ),
+            TransportResult(200, _ok_body('{"0":"目录"}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        min_length_ratio=0.8,
+        low_confidence_max_retries=1,
+    )
+
+    result = asyncio.run(
+        runner.run(
+            _make_subtask(
+                sources=("청년의 성기에 살모사의 머리처럼 긴 문장이 이어졌다",)
+            )
+        )
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"]["0:0"] == "目录"
+    flagged = payload["low_confidence"][0]
+    assert flagged["segment_id"] == "0:0"
+    assert "force_accepted_after_max_retries" in flagged["reasons"]
+    assert "fell_back_to_source_after_max_retries" not in flagged["reasons"]
+    assert "source_residue" not in flagged.get("tags", [])
+
+
 def test_runner_with_max_retries_zero_falls_back_to_single_call() -> None:
     transport = FakeTransport(
         responses=[

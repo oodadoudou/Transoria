@@ -838,9 +838,15 @@ class TranslationSubtaskRunner:
                                 finalized[meta.segment_id] = retry_final
                                 finalized_reasons[meta.segment_id] = verdict.reasons
                                 continue
-                            if _residue_score(
-                                retry_final, self.source_language
-                            ) < _residue_score(current_text, self.source_language):
+                            if _should_replace_low_confidence_candidate(
+                                meta,
+                                current_text,
+                                current_reasons,
+                                retry_final,
+                                verdict.reasons,
+                                self.source_language,
+                                self.target_language,
+                            ):
                                 current_text = retry_final
                                 current_reasons = verdict.reasons
                         batched_pending.append(
@@ -990,13 +996,16 @@ class TranslationSubtaskRunner:
                         current_text = retry_final
                         current_reasons = verdict.reasons
                         break
-                    # Still low-conf: keep tracking the current best as
-                    # whatever has the *least* source-language residue.
-                    # An attempt that's mostly target-language text is
-                    # preferable to a source-language echo even if both
-                    # are low-conf.
-                    if _residue_score(retry_final, self.source_language) < (
-                        _residue_score(current_text, self.source_language)
+                    # Still low-conf: keep the best candidate seen so final
+                    # quality exhaustion preserves useful target-language text.
+                    if _should_replace_low_confidence_candidate(
+                        meta,
+                        current_text,
+                        current_reasons,
+                        retry_final,
+                        verdict.reasons,
+                        self.source_language,
+                        self.target_language,
                     ):
                         current_text = retry_final
                         current_reasons = verdict.reasons
@@ -1543,6 +1552,14 @@ _KOREAN_RESIDUE_RE = re.compile(
 _JAPANESE_RESIDUE_RE = re.compile(
     "[぀-゚ゝ-ゟ゠-ヺヽ-ヿㇰ-ㇿｦ-ﾟ]"
 )
+_CJK_TARGET_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+_JAPANESE_TARGET_RE = re.compile(
+    f"{_JAPANESE_RESIDUE_RE.pattern}|{_CJK_TARGET_RE.pattern}"
+)
+_LATIN_TARGET_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
+_ARABIC_TARGET_RE = re.compile(r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]")
+_CYRILLIC_TARGET_RE = re.compile(r"[\u0400-\u04ff]")
+_THAI_TARGET_RE = re.compile(r"[\u0e00-\u0e7f]")
 
 
 def _residue_score(text: str, source_language: Language) -> float:
@@ -1559,6 +1576,82 @@ def _residue_score(text: str, source_language: Language) -> float:
     else:
         return 0.0
     return len(pattern.findall(text)) / max(1, len(text))
+
+
+def _script_ratio(text: str, pattern: re.Pattern[str]) -> float:
+    letters = [char for char in text if char.isalpha()]
+    if not letters:
+        return 0.0
+    return len(pattern.findall("".join(letters))) / max(1, len(letters))
+
+
+def _target_language_score(text: str, target_language: Language) -> float:
+    if target_language in (
+        Language.CHINESE_SIMPLIFIED,
+        Language.CHINESE_TRADITIONAL,
+    ):
+        return _script_ratio(text, _CJK_TARGET_RE)
+    if target_language is Language.KOREAN:
+        return _script_ratio(text, _KOREAN_RESIDUE_RE)
+    if target_language is Language.JAPANESE:
+        return _script_ratio(text, _JAPANESE_TARGET_RE)
+    if target_language is Language.RUSSIAN:
+        return _script_ratio(text, _CYRILLIC_TARGET_RE)
+    if target_language is Language.ARABIC:
+        return _script_ratio(text, _ARABIC_TARGET_RE)
+    if target_language is Language.THAI:
+        return _script_ratio(text, _THAI_TARGET_RE)
+    return _script_ratio(text, _LATIN_TARGET_RE)
+
+
+def _low_confidence_candidate_rank(
+    meta: _SegmentPayload,
+    text: str,
+    reasons: Sequence[str],
+    source_language: Language,
+    target_language: Language,
+) -> tuple[float, ...]:
+    stripped = text.strip()
+    reason_text = " ".join(reasons).lower()
+    source_similarity = _text_similarity(stripped, meta.original_text)
+    return (
+        1.0 if stripped else 0.0,
+        0.0 if "model_chatter" in reason_text else 1.0,
+        0.0 if stripped == meta.original_text.strip() else 1.0,
+        0.0
+        if _is_mass_source_residue_candidate(
+            meta, stripped, reasons, source_language
+        )
+        else 1.0,
+        _target_language_score(stripped, target_language),
+        -_residue_score(stripped, source_language),
+        -source_similarity,
+        -float(len(reasons)),
+    )
+
+
+def _should_replace_low_confidence_candidate(
+    meta: _SegmentPayload,
+    current_text: str,
+    current_reasons: Sequence[str],
+    retry_text: str,
+    retry_reasons: Sequence[str],
+    source_language: Language,
+    target_language: Language,
+) -> bool:
+    return _low_confidence_candidate_rank(
+        meta,
+        retry_text,
+        retry_reasons,
+        source_language,
+        target_language,
+    ) > _low_confidence_candidate_rank(
+        meta,
+        current_text,
+        current_reasons,
+        source_language,
+        target_language,
+    )
 
 
 def _is_mass_source_residue_candidate(

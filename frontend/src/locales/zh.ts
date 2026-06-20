@@ -1116,7 +1116,6 @@ export const zh: Messages = {
         "当前选中译文有未保存修改，请先保存再批量重翻。",
       retranslateFailed: "重翻失败：{reason}",
       retranslateStale: "您已手动修改，本次重翻结果已丢弃。",
-      retranslateTimeout: "重翻超时，可稍后再试。",
       retranslateRejectedRunning: "任务正在运行中，请先停止再重翻。",
       selectRowLabel: "选择 {id}",
       subtaskHint: "来源分块：{ids}",
