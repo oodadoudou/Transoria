@@ -1,9 +1,7 @@
 # Local reference material
 references/
-docs/
 tasks/
 test/
-tests/
 scripts/
 
 # macOS
@@ -56,6 +54,18 @@ __pycache__/
 .coverage
 coverage.xml
 htmlcov/
+
+# Test suite data policy
+# Public unit tests and small synthetic fixtures are tracked. Keep real novels,
+# user cache exports, generated smoke output, and private repro assets local.
+tests/private/
+tests/fixtures/*
+!tests/fixtures/public/
+!tests/fixtures/public/**
+tests/**/*.epub
+tests/**/*.txt
+!tests/fixtures/public/**
+tests/**/smoke_out/
 
 # Python virtual environments
 .venv/
@@ -116,6 +126,4 @@ translated/
 exports/
 
 # Agent instructions
-AGENTS.md
-CLAUDE.md
 .claude/

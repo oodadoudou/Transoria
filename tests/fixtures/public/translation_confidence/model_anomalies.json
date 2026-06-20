@@ -1,0 +1,34 @@
+[
+  {
+    "name": "english_pronoun_leak_for_chinese_target",
+    "source": "그는 방에 들어오더니 그녀에게 괜찮다고 말했다.",
+    "translation": "He walked into the room and she said that it was fine.",
+    "source_language": "kr",
+    "target_language": "zh",
+    "tags": ["function_word_residue", "target_language_weak"]
+  },
+  {
+    "name": "model_wrapper_text",
+    "source": "그는 고개를 끄덕였다.",
+    "translation": "译文：他点了点头。",
+    "source_language": "kr",
+    "target_language": "zh",
+    "tags": ["model_chatter"]
+  },
+  {
+    "name": "verbatim_source_echo",
+    "source": "This should not come back unchanged.",
+    "translation": "This should not come back unchanged.",
+    "source_language": "en",
+    "target_language": "kr",
+    "tags": ["verbatim_echo"]
+  },
+  {
+    "name": "normal_chinese_translation",
+    "source": "그는 방에 들어왔다.",
+    "translation": "他走进了房间。",
+    "source_language": "kr",
+    "target_language": "zh",
+    "tags": []
+  }
+]
