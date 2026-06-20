@@ -14,7 +14,11 @@ import pytest
 from transoria.bridge import BridgeError, BridgeRouter
 from transoria.bridge.handlers.proofreading import register
 from transoria.bridge.task_registry import RunningTask, TaskRegistry
-from transoria.bridge.task_service import TaskService
+from transoria.bridge.task_service import (
+    RetranslateJob,
+    TaskService,
+    _read_segment_dst,
+)
 from transoria.domain import (
     Language,
     SubtaskStatus,
@@ -197,6 +201,33 @@ def _wait_for_status(service: TaskService, request_id: str, expected: set[str]):
         f"timed out waiting for {expected}; last status was "
         f"{service.read_retranslate_status(request_id=request_id)['status']}"
     )
+
+
+def test_read_segment_dst_matches_proofreading_latest_subtask_wins(
+    router_and_service,
+):
+    _router, service, _t = router_and_service
+    _seed_task_with_snapshot(service)
+    snapshot = service.cache.load("translation-pf-rt-1")
+    first = snapshot.subtasks[0]
+    stale_payload = json.loads(first.response_content)
+    stale_payload["translations"]["0:0"] = "旧译文"
+    latest_payload = json.loads(first.response_content)
+    latest_payload["translations"]["0:0"] = "最新译文"
+    service.cache.save_subtask(
+        replace(first, response_content=json.dumps(stale_payload, ensure_ascii=False))
+    )
+    service.cache.save_subtask(
+        replace(
+            first,
+            id="chunk-00001",
+            response_content=json.dumps(latest_payload, ensure_ascii=False),
+        )
+    )
+
+    snapshot = service.cache.load("translation-pf-rt-1")
+
+    assert _read_segment_dst(snapshot, "0:0") == "最新译文"
 
 
 def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):
@@ -524,6 +555,67 @@ def test_retranslate_status_survives_memory_gc_from_disk(router_and_service):
     assert persisted["result_dst"] == "重翻:안녕"
     assert persisted["attempts"] == 1
     assert persisted["last_translation"] == "重翻:안녕"
+
+
+def test_completed_retranslate_status_repairs_missing_cache_write(router_and_service):
+    _router, service, _t = router_and_service
+    _seed_task_with_snapshot(service)
+    request_id = "retranslate-repair001"
+    service._save_retranslate_job(  # type: ignore[attr-defined]
+        RetranslateJob(
+            request_id=request_id,
+            task_id="translation-pf-rt-1",
+            segment_id="0:0",
+            original_dst="你好",
+            status="completed",
+            result_dst="重翻:안녕",
+            last_translation="重翻:안녕",
+            created_at=time.monotonic(),
+        )
+    )
+
+    status = service.read_retranslate_status(request_id=request_id)
+
+    assert status["status"] == "completed"
+    assert status["result_dst"] == "重翻:안녕"
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "重翻:안녕"
+
+
+def test_completed_retranslate_status_does_not_overwrite_user_edit(
+    router_and_service,
+):
+    router, service, _t = router_and_service
+    _seed_task_with_snapshot(service)
+    router.call(
+        "proofreading.update_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "dst": "用户手动改的",
+        },
+    )
+    request_id = "retranslate-stale001"
+    service._save_retranslate_job(  # type: ignore[attr-defined]
+        RetranslateJob(
+            request_id=request_id,
+            task_id="translation-pf-rt-1",
+            segment_id="0:0",
+            original_dst="你好",
+            status="completed",
+            result_dst="重翻:안녕",
+            last_translation="重翻:안녕",
+            created_at=time.monotonic(),
+        )
+    )
+
+    status = service.read_retranslate_status(request_id=request_id)
+
+    assert status["status"] == "completed"
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "用户手动改的"
 
 
 def test_resume_completed_retranslate_does_not_rerun(router_and_service):

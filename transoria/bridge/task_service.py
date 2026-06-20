@@ -361,6 +361,7 @@ def _find_segment_payload(
 
 
 def _read_segment_dst(snapshot: TaskSnapshot, segment_id: str) -> str:
+    current = ""
     for subtask in snapshot.subtasks:
         if not subtask.response_content:
             continue
@@ -372,8 +373,8 @@ def _read_segment_dst(snapshot: TaskSnapshot, segment_id: str) -> str:
             continue
         translations = payload.get("translations", {})
         if isinstance(translations, Mapping) and segment_id in translations:
-            return str(translations[segment_id])
-    return ""
+            current = str(translations[segment_id])
+    return current
 
 
 def _patch_segment_dst(
@@ -1786,6 +1787,7 @@ class TaskService:
                 f"retranslate request {request_id!r} not found or expired.",
                 details={"request_id": request_id},
             )
+        self._sync_completed_retranslate_result(job)
         return self._retranslate_status_payload(job)
 
     def resume_retranslate(self, *, request_id: str) -> dict[str, object]:
@@ -1873,6 +1875,31 @@ class TaskService:
             "last_error": job.last_error,
             "last_translation": job.last_translation,
         }
+
+    def _sync_completed_retranslate_result(self, job: RetranslateJob) -> None:
+        if job.status != "completed" or not job.result_dst:
+            return
+        try:
+            snapshot = self.cache.load(job.task_id)
+        except (TaskNotFoundError, OSError, ValueError):
+            return
+        current_seg = _find_segment_payload(snapshot, job.segment_id)
+        if current_seg is None:
+            return
+        if (
+            job.source_hash
+            and _hash_text(_retranslate_source_text(current_seg)) != job.source_hash
+        ):
+            return
+        current_dst = _read_segment_dst(snapshot, job.segment_id)
+        if current_dst == job.result_dst:
+            return
+        if current_dst != job.original_dst:
+            return
+        try:
+            _patch_segment_dst(self.cache, snapshot, job.segment_id, job.result_dst)
+        except (TaskNotFoundError, OSError):
+            return
 
     def _model_snapshot_for_retranslate(
         self, model_id: str | None
