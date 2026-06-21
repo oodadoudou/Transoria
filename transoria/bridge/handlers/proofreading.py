@@ -30,11 +30,16 @@ from transoria.bridge.task_service import (
     _confidence_entry_for_segment,
     _replace_low_confidence_entry,
 )
-from transoria.domain import Language, TaskKind, TaskStatus
+from transoria.domain import Language, SubtaskStatus, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
 from transoria.workflows.translation import evaluate_segment_confidence
 from transoria.workflows.translation.glossary_report import target_term_present
 from transoria.workflows.translation.rules import Glossary, GlossaryEntry
+from transoria.workflows.translation.segment_state import (
+    accepted_override_payload,
+    collect_segment_state_from_payloads,
+    mark_accepted_override,
+)
 
 _PROOFREADABLE_TRANSLATION_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED}
@@ -115,57 +120,18 @@ def _decoded_subtask_responses(snapshot) -> list[tuple[Any, dict[str, Any]]]:
     ]
 
 
-def _low_confidence_by_segment(
-    payload: Mapping[str, Any],
-) -> dict[str, dict[str, list[str]]]:
-    entries_by_segment: dict[str, dict[str, list[str]]] = {}
-    entries = payload.get("low_confidence", [])
-    if not isinstance(entries, list):
-        return entries_by_segment
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        sid = entry.get("segment_id")
-        if not isinstance(sid, str):
-            continue
-        record = entries_by_segment.setdefault(sid, {"reasons": [], "tags": []})
-        reasons = entry.get("reasons", [])
-        if isinstance(reasons, list):
-            for reason in reasons:
-                if isinstance(reason, str) and reason not in record["reasons"]:
-                    record["reasons"].append(reason)
-        tags = entry.get("tags", [])
-        if isinstance(tags, list):
-            for tag in tags:
-                if isinstance(tag, str) and tag not in record["tags"]:
-                    record["tags"].append(tag)
-    return entries_by_segment
-
-
 def _collect_segment_state_from_responses(
     decoded_responses: list[tuple[Any, dict[str, Any]]],
 ) -> tuple[dict[str, str], dict[str, dict[str, list[str]]]]:
-    translations: dict[str, str] = {}
-    low_confidence: dict[str, dict[str, list[str]]] = {}
-    for _subtask, payload in decoded_responses:
-        records = payload.get("translations")
-        if isinstance(records, dict):
-            payload_low_confidence = _low_confidence_by_segment(payload)
-            for seg_id, text in records.items():
-                sid = str(seg_id)
-                translations[sid] = str(text)
-                if sid in payload_low_confidence:
-                    low_confidence[sid] = payload_low_confidence[sid]
-                else:
-                    low_confidence.pop(sid, None)
+    payloads: list[Mapping[str, object]] = []
+    for subtask, payload in decoded_responses:
+        if getattr(subtask, "status", None) is SubtaskStatus.COMPLETED:
+            payloads.append(payload)
             continue
-        # Legacy flat responses are authoritative for their segment ids.
-        for seg_id, text in payload.items():
-            if not isinstance(seg_id, str) or ":" not in seg_id:
-                continue
-            translations[seg_id] = str(text)
-            low_confidence.pop(seg_id, None)
-    return translations, low_confidence
+        accepted_payload = accepted_override_payload(payload)
+        if accepted_payload is not None:
+            payloads.append(accepted_payload)
+    return collect_segment_state_from_payloads(payloads)
 
 
 def _collect_translations_from_responses(
@@ -178,10 +144,12 @@ def _collect_translations_from_responses(
 
 
 def _collect_translations_from_cache(snapshot) -> dict[str, str]:
-    """Walk every subtask and union all ``translations`` maps. Later
-    subtasks (split children) override earlier ones because the
-    orchestrator's split path leaves the parent in SKIPPED with stale
-    translations and the children carry the authoritative output."""
+    """Collect accepted translations from authoritative cached subtasks.
+
+    Failed/running/skipped subtasks may retain old response payloads from
+    retries or split parents. Those payloads are diagnostic unless a segment
+    was explicitly accepted by manual proofreading or single-row retranslation.
+    """
 
     return _collect_translations_from_responses(_decoded_subtask_responses(snapshot))
 
@@ -919,6 +887,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 translations = {}
                 current["translations"] = translations
             translations[segment_id] = new_dst_raw
+            mark_accepted_override(current, segment_id)
             _replace_low_confidence_entry(current, segment_id, confidence_entry)
             service.cache.save_subtask(
                 replace(

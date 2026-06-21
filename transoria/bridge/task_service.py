@@ -131,6 +131,10 @@ from transoria.workflows.translation.orchestrator import (
     TranslationOrchestrator,
     TranslationRunResult,
 )
+from transoria.workflows.translation.segment_state import (
+    collect_segment_state_from_authoritative_subtasks,
+    mark_accepted_override,
+)
 from transoria.workflows.translation.statistics import STATISTICS_FILENAME_JSON
 from transoria.utils.paths import describe_os_error, normalize_path_key
 
@@ -361,20 +365,12 @@ def _find_segment_payload(
 
 
 def _read_segment_dst(snapshot: TaskSnapshot, segment_id: str) -> str:
-    current = ""
-    for subtask in snapshot.subtasks:
-        if not subtask.response_content:
-            continue
-        try:
-            payload = json.loads(subtask.response_content)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(payload, Mapping):
-            continue
-        translations = payload.get("translations", {})
-        if isinstance(translations, Mapping) and segment_id in translations:
-            current = str(translations[segment_id])
-    return current
+    translations, _low_confidence = collect_segment_state_from_authoritative_subtasks(
+        snapshot.subtasks
+    )
+    if segment_id in translations:
+        return translations[segment_id]
+    return ""
 
 
 def _patch_segment_dst(
@@ -405,6 +401,7 @@ def _patch_segment_dst(
             translations = {}
             payload["translations"] = translations
         translations[segment_id] = new_dst
+        mark_accepted_override(payload, segment_id)
         _replace_low_confidence_entry(payload, segment_id, confidence_entry)
         cache.save_subtask(
             replace(subtask, response_content=json.dumps(payload, ensure_ascii=False))
@@ -989,26 +986,15 @@ def _low_confidence_summary(
                 "total": int(frozen.get("total", 0)),
                 "source_residue": int(frozen.get("source_residue", 0)),
             }
-    total = 0
-    residue = 0
-    for subtask in snapshot.subtasks:
-        rc = subtask.response_content
-        if not rc:
-            continue
-        try:
-            payload = json.loads(rc)
-        except (TypeError, ValueError):
-            continue
-        entries = payload.get("low_confidence")
-        if not isinstance(entries, list):
-            continue
-        for entry in entries:
-            if not isinstance(entry, Mapping):
-                continue
-            total += 1
-            tags = entry.get("tags")
-            if isinstance(tags, list) and "source_residue" in tags:
-                residue += 1
+    _translations, low_confidence = collect_segment_state_from_authoritative_subtasks(
+        snapshot.subtasks
+    )
+    total = len(low_confidence)
+    residue = sum(
+        1
+        for entry in low_confidence.values()
+        if "source_residue" in entry.get("tags", [])
+    )
     return {"total": total, "source_residue": residue}
 
 

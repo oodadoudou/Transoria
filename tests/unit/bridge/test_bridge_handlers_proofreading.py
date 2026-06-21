@@ -316,6 +316,51 @@ def test_load_snapshot_uses_latest_response_for_low_confidence_metadata(
     assert "reasons" not in item
 
 
+def test_load_snapshot_ignores_stale_failed_response_payload(router_and_service):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-ignore-failed-response",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "你好")],
+    )
+    completed = service.cache.load_subtasks("translation-pf-ignore-failed-response")[0]
+    service.cache.save_subtask(
+        Subtask(
+            id="chunk-99999",
+            task_id="translation-pf-ignore-failed-response",
+            status=SubtaskStatus.FAILED,
+            request_payload=completed.request_payload,
+            response_content=json.dumps(
+                {
+                    "version": 2,
+                    "translations": {"0:0": "안녕"},
+                    "low_confidence": [
+                        {
+                            "segment_id": "0:0",
+                            "reasons": ["source residue remains"],
+                            "tags": ["source_residue"],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+        )
+    )
+
+    response = router.call(
+        "proofreading.load_snapshot",
+        {"task_id": "translation-pf-ignore-failed-response"},
+    )
+
+    item = response["items"][0]
+    assert item["dst"] == "你好"
+    assert item["low_confidence"] is False
+    assert "tags" not in item
+    assert "reasons" not in item
+
+
 def test_load_snapshot_reads_legacy_flat_translation_response(router_and_service):
     router, service, tmp_path = router_and_service
     _seed_translation_task(
@@ -889,6 +934,32 @@ def test_failed_task_load_snapshot_shows_missing_translation_fallback(
     assert item["tags"] == ["source_residue"]
 
 
+def test_load_snapshot_ignores_unaccepted_failed_response_payload(
+    router_and_service,
+):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-failed-stale",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "你好")],
+        status=TaskStatus.FAILED,
+    )
+    subtask = service.cache.load_subtasks("translation-pf-failed-stale")[0]
+    service.cache.save_subtask(replace(subtask, status=SubtaskStatus.FAILED))
+
+    response = router.call(
+        "proofreading.load_snapshot",
+        {"task_id": "translation-pf-failed-stale"},
+    )
+
+    item = response["items"][0]
+    assert item["dst"] == "안녕"
+    assert item["low_confidence"] is True
+    assert item["tags"] == ["source_residue"]
+
+
 # regenerate_outputs
 
 
@@ -933,6 +1004,56 @@ def test_regenerate_outputs_writes_translated_txt_with_edited_dst(
     # Edited translation is in the regenerated file.
     assert "高山" in body
     assert "你好" in body
+
+
+def test_regenerate_outputs_uses_manual_edit_from_failed_subtask(
+    router_and_service,
+):
+    router, service, tmp_path = router_and_service
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    (input_dir / "sample.txt").write_text("안녕\n", encoding="utf-8")
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-failed-edit-regen",
+        input_dir=input_dir,
+        output_dir=output_dir,
+        file_segments=[("0:0", "안녕", "안녕")],
+        status=TaskStatus.FAILED,
+    )
+    subtask = service.cache.load_subtasks("translation-pf-failed-edit-regen")[0]
+    service.cache.save_subtask(replace(subtask, status=SubtaskStatus.FAILED))
+
+    before = router.call(
+        "proofreading.load_snapshot",
+        {"task_id": "translation-pf-failed-edit-regen"},
+    )
+    assert before["items"][0]["dst"] == "안녕"
+
+    router.call(
+        "proofreading.update_segment",
+        {
+            "task_id": "translation-pf-failed-edit-regen",
+            "segment_id": "0:0",
+            "dst": "你好",
+        },
+    )
+    after = router.call(
+        "proofreading.load_snapshot",
+        {"task_id": "translation-pf-failed-edit-regen"},
+    )
+    assert after["items"][0]["dst"] == "你好"
+
+    response = router.call(
+        "proofreading.regenerate_outputs",
+        {"task_id": "translation-pf-failed-edit-regen"},
+    )
+    assert len(response["translated_files"]) == 1
+    body = Path(response["translated_files"][0]).read_text(encoding="utf-8")
+    assert "你好" in body
+    assert "안녕" not in body
 
 
 def test_regenerate_outputs_does_not_write_source_when_no_segments_match(

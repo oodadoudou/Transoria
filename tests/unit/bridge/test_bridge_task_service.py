@@ -27,12 +27,14 @@ from transoria.bridge.errors import BridgeError
 from transoria.bridge.task_registry import RunningTask, TaskRegistry
 from transoria.bridge.task_service import TaskService
 from transoria.bridge.task_service import _effective_glossary_chunk_token_limit
+from transoria.bridge.task_service import _low_confidence_summary
+from transoria.bridge.task_service import _read_segment_dst
 from transoria.domain import Language, SubtaskStatus, TaskKind, TaskStatus
 from transoria.llm.client import LlmClient
 from transoria.model_profiles import ModelProfileStore
 from transoria.runtime.cache import TaskCache
 from transoria.runtime.subtask import Subtask
-from transoria.runtime.task_record import TaskRecord
+from transoria.runtime.task_record import TaskRecord, TaskSnapshot
 from transoria.settings import SettingsStore
 
 
@@ -49,6 +51,226 @@ def test_effective_glossary_chunk_token_limit_migrates_legacy_default() -> None:
     assert _effective_glossary_chunk_token_limit(4000) == 2000
     assert _effective_glossary_chunk_token_limit(0) == 0
     assert _effective_glossary_chunk_token_limit(1200) == 1200
+
+
+def test_low_confidence_summary_clears_stale_records_after_clean_retry() -> None:
+    snapshot = TaskSnapshot(
+        record=TaskRecord(id="translation-confidence", kind=TaskKind.TRANSLATION),
+        subtasks=(
+            Subtask(
+                id="chunk-00000",
+                task_id="translation-confidence",
+                status=SubtaskStatus.COMPLETED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "안녕"},
+                        "low_confidence": [
+                            {
+                                "segment_id": "0:0",
+                                "reasons": ["source residue remains"],
+                                "tags": ["source_residue"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+            Subtask(
+                id="chunk-00000.s1",
+                task_id="translation-confidence",
+                status=SubtaskStatus.COMPLETED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "你好"},
+                        "low_confidence": [],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+
+    assert _low_confidence_summary(snapshot, {}) == {"total": 0, "source_residue": 0}
+
+
+def test_low_confidence_summary_counts_latest_updated_record() -> None:
+    snapshot = TaskSnapshot(
+        record=TaskRecord(id="translation-confidence", kind=TaskKind.TRANSLATION),
+        subtasks=(
+            Subtask(
+                id="chunk-00000",
+                task_id="translation-confidence",
+                status=SubtaskStatus.COMPLETED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "你好"},
+                        "low_confidence": [],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+            Subtask(
+                id="chunk-00000.s1",
+                task_id="translation-confidence",
+                status=SubtaskStatus.COMPLETED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "안녕"},
+                        "low_confidence": [
+                            {
+                                "segment_id": "0:0",
+                                "reasons": ["source residue remains"],
+                                "tags": ["source_residue"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+
+    assert _low_confidence_summary(snapshot, {}) == {"total": 1, "source_residue": 1}
+
+
+def test_read_segment_dst_prefers_completed_translation_over_stale_failed_payload() -> None:
+    snapshot = TaskSnapshot(
+        record=TaskRecord(id="translation-read-dst", kind=TaskKind.TRANSLATION),
+        subtasks=(
+            Subtask(
+                id="chunk-00000",
+                task_id="translation-read-dst",
+                status=SubtaskStatus.COMPLETED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "你好"},
+                        "low_confidence": [],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+            Subtask(
+                id="chunk-99999",
+                task_id="translation-read-dst",
+                status=SubtaskStatus.FAILED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "안녕"},
+                        "low_confidence": [
+                            {
+                                "segment_id": "0:0",
+                                "reasons": ["source residue remains"],
+                                "tags": ["source_residue"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+
+    assert _read_segment_dst(snapshot, "0:0") == "你好"
+
+
+def test_read_segment_dst_ignores_unaccepted_failed_payload() -> None:
+    snapshot = TaskSnapshot(
+        record=TaskRecord(id="translation-read-dst", kind=TaskKind.TRANSLATION),
+        subtasks=(
+            Subtask(
+                id="chunk-00000",
+                task_id="translation-read-dst",
+                status=SubtaskStatus.FAILED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "안녕"},
+                        "low_confidence": [
+                            {
+                                "segment_id": "0:0",
+                                "reasons": ["source residue remains"],
+                                "tags": ["source_residue"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+
+    assert _read_segment_dst(snapshot, "0:0") == ""
+
+
+def test_read_segment_dst_uses_accepted_failed_override() -> None:
+    snapshot = TaskSnapshot(
+        record=TaskRecord(id="translation-read-dst", kind=TaskKind.TRANSLATION),
+        subtasks=(
+            Subtask(
+                id="chunk-00000",
+                task_id="translation-read-dst",
+                status=SubtaskStatus.FAILED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "你好", "0:1": "산"},
+                        "accepted_overrides": ["0:0"],
+                        "low_confidence": [
+                            {
+                                "segment_id": "0:1",
+                                "reasons": ["source residue remains"],
+                                "tags": ["source_residue"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+
+    assert _read_segment_dst(snapshot, "0:0") == "你好"
+
+
+def test_low_confidence_summary_counts_accepted_failed_override() -> None:
+    snapshot = TaskSnapshot(
+        record=TaskRecord(id="translation-confidence", kind=TaskKind.TRANSLATION),
+        subtasks=(
+            Subtask(
+                id="chunk-00000",
+                task_id="translation-confidence",
+                status=SubtaskStatus.FAILED,
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "안녕", "0:1": "산"},
+                        "accepted_overrides": ["0:0"],
+                        "low_confidence": [
+                            {
+                                "segment_id": "0:0",
+                                "reasons": ["source residue remains"],
+                                "tags": ["source_residue"],
+                            },
+                            {
+                                "segment_id": "0:1",
+                                "reasons": ["source residue remains"],
+                                "tags": ["source_residue"],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+
+    assert _low_confidence_summary(snapshot, {}) == {"total": 1, "source_residue": 1}
 
 
 def _service(

@@ -6,11 +6,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
-from transoria.domain import Language, TaskStatus
+from transoria.domain import Language, SubtaskStatus, TaskStatus
 from transoria.llm import LlmClient, ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.client import TransportResult
 from transoria.prompts import PromptKind, default_preset
 from transoria.runtime import TaskCache
+from transoria.runtime.subtask import Subtask
 from transoria.workflows.translation import (
     Glossary,
     TranslationConfig,
@@ -24,9 +25,168 @@ from transoria.workflows.translation.confidence import (
     TAG_TARGET_LANGUAGE_WEAK,
     TAG_VERBATIM_ECHO,
 )
+from transoria.workflows.translation.orchestrator import _collect_translations
+from transoria.workflows.translation.segment_state import (
+    collect_segment_state_from_authoritative_subtasks,
+    mark_accepted_override,
+)
 
 
 CONFIDENCE_FIXTURE_DIR = Path("tests/fixtures/public/translation_confidence")
+
+
+def _completed_translation_subtask(
+    subtask_id: str, payload: Mapping[str, object]
+) -> Subtask:
+    return Subtask(
+        id=subtask_id,
+        task_id="task-confidence",
+        status=SubtaskStatus.COMPLETED,
+        response_content=json.dumps(payload, ensure_ascii=False),
+    )
+
+
+def _translation_subtask(
+    subtask_id: str, status: SubtaskStatus, payload: Mapping[str, object]
+) -> Subtask:
+    return Subtask(
+        id=subtask_id,
+        task_id="task-confidence",
+        status=status,
+        response_content=json.dumps(payload, ensure_ascii=False),
+    )
+
+
+def test_collect_translations_clears_stale_low_confidence_after_clean_retry() -> None:
+    first = _completed_translation_subtask(
+        "chunk-00000",
+        {
+            "version": 2,
+            "translations": {"0:0": "안녕"},
+            "low_confidence": [
+                {
+                    "segment_id": "0:0",
+                    "reasons": ["source residue remains"],
+                    "tags": ["source_residue"],
+                }
+            ],
+        },
+    )
+    retry = _completed_translation_subtask(
+        "chunk-00000.s1",
+        {"version": 2, "translations": {"0:0": "你好"}, "low_confidence": []},
+    )
+
+    translations, low_confidence = _collect_translations((first, retry))
+
+    assert translations == {"0:0": "你好"}
+    assert low_confidence == []
+
+
+def test_collect_translations_keeps_latest_low_confidence_for_updated_segment() -> None:
+    first = _completed_translation_subtask(
+        "chunk-00000",
+        {"version": 2, "translations": {"0:0": "你好"}, "low_confidence": []},
+    )
+    retry = _completed_translation_subtask(
+        "chunk-00000.s1",
+        {
+            "version": 2,
+            "translations": {"0:0": "안녕"},
+            "low_confidence": [
+                {
+                    "segment_id": "0:0",
+                    "reasons": ["source residue remains"],
+                    "tags": ["source_residue"],
+                }
+            ],
+        },
+    )
+
+    translations, low_confidence = _collect_translations((first, retry))
+
+    assert translations == {"0:0": "안녕"}
+    assert low_confidence == [
+        {"segment_id": "0:0", "reasons": ["source residue remains"]}
+    ]
+
+
+def test_collect_translations_legacy_flat_response_clears_stale_low_confidence() -> None:
+    first = _completed_translation_subtask(
+        "chunk-00000",
+        {
+            "version": 2,
+            "translations": {"0:0": "안녕"},
+            "low_confidence": [
+                {
+                    "segment_id": "0:0",
+                    "reasons": ["source residue remains"],
+                    "tags": ["source_residue"],
+                }
+            ],
+        },
+    )
+    legacy_retry = _completed_translation_subtask("chunk-00000.s1", {"0:0": "你好"})
+
+    translations, low_confidence = _collect_translations((first, legacy_retry))
+
+    assert translations == {"0:0": "你好"}
+    assert low_confidence == []
+
+
+def test_authoritative_state_ignores_unaccepted_failed_payload() -> None:
+    failed = _translation_subtask(
+        "chunk-00000",
+        SubtaskStatus.FAILED,
+        {
+            "version": 2,
+            "translations": {"0:0": "안녕"},
+            "low_confidence": [
+                {
+                    "segment_id": "0:0",
+                    "reasons": ["source residue remains"],
+                    "tags": ["source_residue"],
+                }
+            ],
+        },
+    )
+
+    translations, low_confidence = collect_segment_state_from_authoritative_subtasks(
+        (failed,)
+    )
+
+    assert translations == {}
+    assert low_confidence == {}
+
+
+def test_authoritative_state_keeps_accepted_failed_override() -> None:
+    payload: dict[str, object] = {
+        "version": 2,
+        "translations": {"0:0": "你好", "0:1": "산"},
+        "low_confidence": [
+            {
+                "segment_id": "0:0",
+                "reasons": ["manual review accepted"],
+                "tags": ["manual_review"],
+            },
+            {
+                "segment_id": "0:1",
+                "reasons": ["source residue remains"],
+                "tags": ["source_residue"],
+            },
+        ],
+    }
+    mark_accepted_override(payload, "0:0")
+    failed = _translation_subtask("chunk-00000", SubtaskStatus.FAILED, payload)
+
+    translations, low_confidence = collect_segment_state_from_authoritative_subtasks(
+        (failed,)
+    )
+
+    assert translations == {"0:0": "你好"}
+    assert low_confidence == {
+        "0:0": {"reasons": ["manual review accepted"], "tags": ["manual_review"]}
+    }
 
 
 def test_evaluate_flags_excessive_length_inflation() -> None:

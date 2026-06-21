@@ -83,6 +83,9 @@ from transoria.workflows.translation.runner import (
     TranslationSubtaskRunner,
     encode_subtask_payload,
 )
+from transoria.workflows.translation.segment_state import (
+    collect_segment_state_from_completed_subtasks,
+)
 from transoria.workflows.translation.statistics import (
     FailedFile,
     LowConfidenceSegment,
@@ -648,41 +651,16 @@ def _collect_translations(
     low-confidence record is ``{"segment_id": str, "reasons": list[str]}``.
     """
 
-    translations: dict[str, str] = {}
-    low_confidence: list[dict[str, object]] = []
-    for subtask in subtasks:
-        if subtask.status is not SubtaskStatus.COMPLETED:
-            continue
-        if not subtask.response_content:
-            continue
-        try:
-            payload = json.loads(subtask.response_content)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(payload, Mapping):
-            continue
-        if "translations" in payload and isinstance(
-            payload.get("translations"), Mapping
-        ):
-            for segment_id, text in payload["translations"].items():
-                translations[str(segment_id)] = str(text)
-            raw_low = payload.get("low_confidence", [])
-            if isinstance(raw_low, list):
-                for record in raw_low:
-                    if not isinstance(record, Mapping):
-                        continue
-                    reasons = record.get("reasons", [])
-                    if not isinstance(reasons, list):
-                        reasons = []
-                    low_confidence.append(
-                        {
-                            "segment_id": str(record.get("segment_id", "")),
-                            "reasons": [str(reason) for reason in reasons],
-                        }
-                    )
-        else:
-            for segment_id, text in payload.items():
-                translations[str(segment_id)] = str(text)
+    translations, low_confidence_by_segment = (
+        collect_segment_state_from_completed_subtasks(subtasks)
+    )
+    low_confidence = [
+        {
+            "segment_id": segment_id,
+            "reasons": list(record.get("reasons", [])),
+        }
+        for segment_id, record in low_confidence_by_segment.items()
+    ]
     return translations, low_confidence
 
 
