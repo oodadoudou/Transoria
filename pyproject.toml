@@ -1,6 +1,6 @@
 [project]
 name = "transoria"
-version = "1.3.6"
+version = "1.3.7"
 description = "Lightweight desktop workflows for novel translation, glossary extraction, and batch text replacement."
 requires-python = ">=3.11"
 dependencies = [
