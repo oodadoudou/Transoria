@@ -28,12 +28,29 @@
 }
 
 .outputPathHint {
-  min-width: 0;
-  overflow: hidden;
+  display: inline-flex;
+  min-width: 72px;
+  max-width: min(34vw, 520px);
+  align-items: baseline;
+  gap: 4px;
   color: var(--muted);
   font-size: 12px;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.outputPathLabel {
+  flex: 0 0 auto;
+}
+
+.outputPathValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copyPathButton {
+  padding-inline: 8px;
 }
 
 .inlineFeedback {

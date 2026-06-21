@@ -751,6 +751,9 @@ export interface Messages {
       subtaskHint: string;
       copyTaskId: string;
       copyTaskIdDone: string;
+      taskFolderLabel: string;
+      copyOutputPath: string;
+      copyOutputPathDone: string;
       copySubtaskIds: string;
       copySubtaskIdsDone: string;
     };

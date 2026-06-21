@@ -1646,10 +1646,31 @@ export function ProofreadingPage() {
               {m.copyTaskId}
             </button>
           ) : null}
-          {snapshot ? (
+          {snapshot?.output_dir ? (
             <span className={styles.outputPathHint}>
-              {format(m.taskFolderHint, { path: snapshot.output_dir })}
+              <span className={styles.outputPathLabel}>
+                {m.taskFolderLabel}
+              </span>
+              <span
+                className={styles.outputPathValue}
+                title={snapshot.output_dir}
+              >
+                {snapshot.output_dir}
+              </span>
             </span>
+          ) : null}
+          {snapshot?.output_dir ? (
+            <button
+              type="button"
+              className={`${styles.copyButton} ${styles.copyPathButton}`}
+              onClick={() =>
+                void copyToClipboard(snapshot.output_dir, m.copyOutputPathDone)
+              }
+              aria-label={m.copyOutputPath}
+              title={m.copyOutputPath}
+            >
+              {m.copyOutputPath}
+            </button>
           ) : null}
         </div>
         <div className={styles.taskActions}>
