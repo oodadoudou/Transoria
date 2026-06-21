@@ -268,6 +268,80 @@ def test_load_snapshot_reports_all_source_subtasks(router_and_service):
     assert response["items"][0]["subtask_ids"] == ["chunk-00000", "chunk-00000.s1"]
 
 
+def test_load_snapshot_uses_latest_response_for_low_confidence_metadata(
+    router_and_service,
+):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-latest-confidence",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "안녕")],
+    )
+    first = service.cache.load_subtasks("translation-pf-latest-confidence")[0]
+    first_payload = json.loads(first.response_content or "{}")
+    first_payload["low_confidence"] = [
+        {
+            "segment_id": "0:0",
+            "reasons": ["Korean residue remains in translation"],
+            "tags": ["source_residue"],
+        }
+    ]
+    service.cache.save_subtask(
+        replace(first, response_content=json.dumps(first_payload, ensure_ascii=False))
+    )
+    service.cache.save_subtask(
+        Subtask(
+            id="chunk-00000.s1",
+            task_id="translation-pf-latest-confidence",
+            status=SubtaskStatus.COMPLETED,
+            request_payload=first.request_payload,
+            response_content=json.dumps(
+                {"version": 2, "translations": {"0:0": "你好"}, "low_confidence": []},
+                ensure_ascii=False,
+            ),
+        )
+    )
+
+    response = router.call(
+        "proofreading.load_snapshot",
+        {"task_id": "translation-pf-latest-confidence"},
+    )
+
+    item = response["items"][0]
+    assert item["dst"] == "你好"
+    assert item["low_confidence"] is False
+    assert "tags" not in item
+    assert "reasons" not in item
+
+
+def test_load_snapshot_reads_legacy_flat_translation_response(router_and_service):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-legacy-flat",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "안녕")],
+    )
+    subtask = service.cache.load_subtasks("translation-pf-legacy-flat")[0]
+    service.cache.save_subtask(
+        replace(
+            subtask,
+            response_content=json.dumps({"0:0": "你好"}, ensure_ascii=False),
+        )
+    )
+
+    response = router.call(
+        "proofreading.load_snapshot", {"task_id": "translation-pf-legacy-flat"}
+    )
+
+    item = response["items"][0]
+    assert item["dst"] == "你好"
+    assert item["low_confidence"] is False
+
+
 def test_load_snapshot_refreshes_model_anomaly_tags_for_cached_translation(
     router_and_service,
 ):

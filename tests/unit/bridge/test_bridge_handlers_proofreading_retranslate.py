@@ -37,9 +37,10 @@ from transoria.settings import SettingsStore
 
 @dataclass
 class _StubTransport:
-    prefix: str = "重翻:"
+    prefix: str = "重翻译文"
     block_event: threading.Event | None = None
     fail: bool = False
+    scripted_translations: list[str] = field(default_factory=list)
     requests: list[dict[str, object]] = field(default_factory=list)
 
     async def execute(
@@ -50,6 +51,7 @@ class _StubTransport:
         timeout: float,
     ) -> TransportResult:
         self.requests.append(dict(payload))
+        call_index = len(self.requests) - 1
         if self.block_event is not None:
             self.block_event.wait(timeout=5.0)
         if self.fail:
@@ -66,8 +68,13 @@ class _StubTransport:
             except json.JSONDecodeError:
                 continue
             for key, value in parsed.items():
+                translated = (
+                    self.scripted_translations[call_index]
+                    if call_index < len(self.scripted_translations)
+                    else f"{self.prefix}{key}"
+                )
                 lines.append(
-                    json.dumps({key: f"{self.prefix}{value}"}, ensure_ascii=False)
+                    json.dumps({key: translated}, ensure_ascii=False)
                 )
         return TransportResult(
             200,
@@ -241,11 +248,40 @@ def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):
     request_id = response["request_id"]
     final = _wait_for_status(service, request_id, {"completed", "failed", "stale"})
     assert final["status"] == "completed", final
-    assert final["result_dst"] == "重翻:안녕"
+    assert final["result_dst"] == "重翻译文0"
 
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
-    assert payload["translations"]["0:0"] == "重翻:안녕"
+    assert payload["translations"]["0:0"] == "重翻译文0"
+
+
+def test_retranslate_uses_low_confidence_retry_to_prefer_target_language(
+    tmp_path: Path,
+):
+    transport = _StubTransport(scripted_translations=["안녕", "你好"])
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 1, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(service, segments=(("0:0", "안녕", "안녕"),))
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(
+        service, response["request_id"], {"completed", "failed", "stale"}
+    )
+
+    assert final["status"] == "completed", final
+    assert final["result_dst"] == "你好"
+    assert len(transport.requests) == 2
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "你好"
 
 
 def test_retranslate_uses_current_active_translation_model(router_and_service):
@@ -552,9 +588,9 @@ def test_retranslate_status_survives_memory_gc_from_disk(router_and_service):
     persisted = service.read_retranslate_status(request_id=request_id)
 
     assert persisted["status"] == "completed"
-    assert persisted["result_dst"] == "重翻:안녕"
+    assert persisted["result_dst"] == "重翻译文0"
     assert persisted["attempts"] == 1
-    assert persisted["last_translation"] == "重翻:안녕"
+    assert persisted["last_translation"] == "重翻译文0"
 
 
 def test_completed_retranslate_status_repairs_missing_cache_write(router_and_service):
@@ -568,8 +604,8 @@ def test_completed_retranslate_status_repairs_missing_cache_write(router_and_ser
             segment_id="0:0",
             original_dst="你好",
             status="completed",
-            result_dst="重翻:안녕",
-            last_translation="重翻:안녕",
+            result_dst="重翻译文0",
+            last_translation="重翻译文0",
             created_at=time.monotonic(),
         )
     )
@@ -577,10 +613,10 @@ def test_completed_retranslate_status_repairs_missing_cache_write(router_and_ser
     status = service.read_retranslate_status(request_id=request_id)
 
     assert status["status"] == "completed"
-    assert status["result_dst"] == "重翻:안녕"
+    assert status["result_dst"] == "重翻译文0"
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
-    assert payload["translations"]["0:0"] == "重翻:안녕"
+    assert payload["translations"]["0:0"] == "重翻译文0"
 
 
 def test_completed_retranslate_status_does_not_overwrite_user_edit(
@@ -604,8 +640,8 @@ def test_completed_retranslate_status_does_not_overwrite_user_edit(
             segment_id="0:0",
             original_dst="你好",
             status="completed",
-            result_dst="重翻:안녕",
-            last_translation="重翻:안녕",
+            result_dst="重翻译文0",
+            last_translation="重翻译文0",
             created_at=time.monotonic(),
         )
     )
@@ -737,7 +773,7 @@ def test_retranslate_skips_when_source_changes_during_flight(tmp_path: Path):
 
     assert final["status"] == "skipped", final
     assert "source segment changed" in final["error"]
-    assert final["last_translation"] == "重翻:안녕"
+    assert final["last_translation"] == "重翻译文0"
 
 
 def test_retranslate_status_returns_not_found_for_unknown_request(

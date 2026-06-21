@@ -115,15 +115,65 @@ def _decoded_subtask_responses(snapshot) -> list[tuple[Any, dict[str, Any]]]:
     ]
 
 
+def _low_confidence_by_segment(
+    payload: Mapping[str, Any],
+) -> dict[str, dict[str, list[str]]]:
+    entries_by_segment: dict[str, dict[str, list[str]]] = {}
+    entries = payload.get("low_confidence", [])
+    if not isinstance(entries, list):
+        return entries_by_segment
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        sid = entry.get("segment_id")
+        if not isinstance(sid, str):
+            continue
+        record = entries_by_segment.setdefault(sid, {"reasons": [], "tags": []})
+        reasons = entry.get("reasons", [])
+        if isinstance(reasons, list):
+            for reason in reasons:
+                if isinstance(reason, str) and reason not in record["reasons"]:
+                    record["reasons"].append(reason)
+        tags = entry.get("tags", [])
+        if isinstance(tags, list):
+            for tag in tags:
+                if isinstance(tag, str) and tag not in record["tags"]:
+                    record["tags"].append(tag)
+    return entries_by_segment
+
+
+def _collect_segment_state_from_responses(
+    decoded_responses: list[tuple[Any, dict[str, Any]]],
+) -> tuple[dict[str, str], dict[str, dict[str, list[str]]]]:
+    translations: dict[str, str] = {}
+    low_confidence: dict[str, dict[str, list[str]]] = {}
+    for _subtask, payload in decoded_responses:
+        records = payload.get("translations")
+        if isinstance(records, dict):
+            payload_low_confidence = _low_confidence_by_segment(payload)
+            for seg_id, text in records.items():
+                sid = str(seg_id)
+                translations[sid] = str(text)
+                if sid in payload_low_confidence:
+                    low_confidence[sid] = payload_low_confidence[sid]
+                else:
+                    low_confidence.pop(sid, None)
+            continue
+        # Legacy flat responses are authoritative for their segment ids.
+        for seg_id, text in payload.items():
+            if not isinstance(seg_id, str) or ":" not in seg_id:
+                continue
+            translations[seg_id] = str(text)
+            low_confidence.pop(seg_id, None)
+    return translations, low_confidence
+
+
 def _collect_translations_from_responses(
     decoded_responses: list[tuple[Any, dict[str, Any]]],
 ) -> dict[str, str]:
-    translations: dict[str, str] = {}
-    for _subtask, payload in decoded_responses:
-        records = payload.get("translations", {})
-        if isinstance(records, dict):
-            for seg_id, text in records.items():
-                translations[str(seg_id)] = str(text)
+    translations, _low_confidence = _collect_segment_state_from_responses(
+        decoded_responses
+    )
     return translations
 
 
@@ -702,33 +752,20 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         # (split children override the parent) so edits via update_segment
         # always read back consistently.
         decoded_responses = _decoded_subtask_responses(snapshot)
-        translations = _collect_translations_from_responses(decoded_responses)
-        low_conf_ids: set[str] = set()
-        seg_tags: dict[str, list[str]] = {}
-        seg_reasons: dict[str, list[str]] = {}
-        for _subtask, resp in decoded_responses:
-            entries = resp.get("low_confidence", [])
-            if isinstance(entries, list):
-                for entry in entries:
-                    if isinstance(entry, dict):
-                        sid = entry.get("segment_id")
-                        if isinstance(sid, str):
-                            low_conf_ids.add(sid)
-                            reasons = entry.get("reasons", [])
-                            if isinstance(reasons, list):
-                                merged_reasons = seg_reasons.setdefault(sid, [])
-                                for reason in reasons:
-                                    if (
-                                        isinstance(reason, str)
-                                        and reason not in merged_reasons
-                                    ):
-                                        merged_reasons.append(reason)
-                            tags = entry.get("tags", [])
-                            if isinstance(tags, list):
-                                merged = seg_tags.setdefault(sid, [])
-                                for t in tags:
-                                    if isinstance(t, str) and t not in merged:
-                                        merged.append(t)
+        translations, response_low_confidence = _collect_segment_state_from_responses(
+            decoded_responses
+        )
+        low_conf_ids: set[str] = set(response_low_confidence)
+        seg_tags: dict[str, list[str]] = {
+            sid: list(record["tags"])
+            for sid, record in response_low_confidence.items()
+            if record["tags"]
+        }
+        seg_reasons: dict[str, list[str]] = {
+            sid: list(record["reasons"])
+            for sid, record in response_low_confidence.items()
+            if record["reasons"]
+        }
 
         metadata = snapshot.record.metadata
         glossary = _glossary_from_metadata(metadata.get("glossary"))

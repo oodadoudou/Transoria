@@ -2214,6 +2214,10 @@ class TaskService:
             source_language=source_language,
             target_language=target_language,
             post_replacements=post_replacements,
+            enable_confidence_check=True,
+            low_confidence_max_retries=max(
+                0, int(settings.translation.low_confidence_max_retries)
+            ),
             transport_retry_attempts=max(
                 0, int(settings.translation.request_retry_attempts)
             ),
