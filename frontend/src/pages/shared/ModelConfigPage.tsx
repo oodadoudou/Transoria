@@ -192,12 +192,15 @@ function ConfiguredModelRow({
   onEdit,
   onDelete,
 }: ConfiguredModelRowProps) {
+  const profileMeta = `${profile.provider_format} · ${profile.model_id}`;
   return (
     <div className={styles.configuredRow} onDoubleClick={onEdit}>
       <div className={styles.configuredText}>
-        <span className={styles.configuredName}>{profile.display_name}</span>
-        <span className={styles.configuredMeta}>
-          {profile.provider_format} · {profile.model_id}
+        <span className={styles.configuredName} title={profile.display_name}>
+          {profile.display_name}
+        </span>
+        <span className={styles.configuredMeta} title={profileMeta}>
+          {profileMeta}
         </span>
       </div>
       <div className={styles.configuredActions}>

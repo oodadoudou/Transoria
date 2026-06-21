@@ -271,6 +271,7 @@ export function RequestLogPanel({
                       <tbody>
                         {events.map((event) => {
                           const isExpanded = Boolean(expanded[event.request_id]);
+                          const requestTitle = event.label || event.subtask_id;
                           const response =
                             event.response_text ||
                             event.partial_response_text ||
@@ -301,10 +302,16 @@ export function RequestLogPanel({
                                   ) : null}
                                 </td>
                                 <td>
-                                  <div className={styles.requestLabel}>
-                                    {event.label || event.subtask_id}
+                                  <div
+                                    className={styles.requestLabel}
+                                    title={requestTitle}
+                                  >
+                                    {requestTitle}
                                   </div>
-                                  <div className={styles.requestMeta}>
+                                  <div
+                                    className={styles.requestMeta}
+                                    title={event.subtask_id}
+                                  >
                                     {event.subtask_id} · {copy.attempt.replace(
                                       "{n}",
                                       String(event.subtask_attempt || 1),
@@ -317,7 +324,10 @@ export function RequestLogPanel({
                                   ) : null}
                                 </td>
                                 <td>
-                                  <div className={styles.model}>
+                                  <div
+                                    className={styles.model}
+                                    title={event.model_id || undefined}
+                                  >
                                     {event.model_id || "-"}
                                   </div>
                                   <div className={styles.provider}>

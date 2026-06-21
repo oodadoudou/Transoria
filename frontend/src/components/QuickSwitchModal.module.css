@@ -95,18 +95,25 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .rowName {
   font-size: 13px;
   font-weight: 500;
   color: var(--ink, #2c2620);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rowMeta {
   font-size: 11.5px;
   color: var(--muted, #7a7166);
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rowBadge {

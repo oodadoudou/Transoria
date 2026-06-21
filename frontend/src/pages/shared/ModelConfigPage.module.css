@@ -384,6 +384,9 @@
   font-size: 13.5px;
   font-weight: 600;
   color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .configuredMeta {

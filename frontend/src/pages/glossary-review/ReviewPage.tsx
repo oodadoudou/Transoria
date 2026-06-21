@@ -416,7 +416,7 @@ export function ReviewPage() {
             </option>
           ))}
         </select>
-        <span className={styles.hint}>
+        <span className={styles.hint} title={sheet?.path ?? undefined}>
           {sheet ? format(labels.pathHint, { path: sheet.path }) : null}
         </span>
         <Pill

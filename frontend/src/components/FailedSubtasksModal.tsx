@@ -156,7 +156,10 @@ export function FailedSubtasksModal({
                         <span className={styles.groupType}>
                           {messages.failureTypes[group.type]}
                         </span>
-                        <span className={styles.groupMessage}>
+                        <span
+                          className={styles.groupMessage}
+                          title={group.message || messages.noMessage}
+                        >
                           {group.message || messages.noMessage}
                         </span>
                         <span className={styles.groupCount}>
@@ -174,7 +177,11 @@ export function FailedSubtasksModal({
                                 {messages.fileLabel}
                               </span>
                               {group.sourceFiles.map((path) => (
-                                <code key={path} className={styles.filePath}>
+                                <code
+                                  key={path}
+                                  className={styles.filePath}
+                                  title={path}
+                                >
                                   {path}
                                 </code>
                               ))}
@@ -184,7 +191,12 @@ export function FailedSubtasksModal({
                             <span className={styles.affectedLabel}>
                               {messages.affectedLabel}
                             </span>
-                            <span className={styles.chunkIds}>
+                            <span
+                              className={styles.chunkIds}
+                              title={group.failures
+                                .map((failure) => failure.subtask_id)
+                                .join(", ")}
+                            >
                               {group.failures
                                 .map((failure) => failure.subtask_id)
                                 .join(", ")}

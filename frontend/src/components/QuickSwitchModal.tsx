@@ -72,9 +72,16 @@ export function QuickSwitchModal({
                   onClick={() => handlePick(item.id)}
                 >
                   <span className={styles.rowText}>
-                    <span className={styles.rowName}>{item.name}</span>
+                    <span className={styles.rowName} title={item.name}>
+                      {item.name}
+                    </span>
                     {item.description ? (
-                      <span className={styles.rowMeta}>{item.description}</span>
+                      <span
+                        className={styles.rowMeta}
+                        title={item.description}
+                      >
+                        {item.description}
+                      </span>
                     ) : null}
                   </span>
                   {item.id === activeId ? (

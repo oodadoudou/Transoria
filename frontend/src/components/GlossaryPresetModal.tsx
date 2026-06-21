@@ -108,7 +108,9 @@ export function GlossaryPresetModal({
                   }}
                 >
                   <span className={styles.rowText}>
-                    <span className={styles.rowName}>{preset.name}</span>
+                    <span className={styles.rowName} title={preset.name}>
+                      {preset.name}
+                    </span>
                     <span className={styles.rowMeta}>
                       {preset.entry_count} entries
                     </span>
