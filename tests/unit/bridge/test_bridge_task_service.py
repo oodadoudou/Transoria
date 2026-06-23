@@ -1666,6 +1666,55 @@ def test_continue_self_heals_orphan_running_translation_task(
     assert persisted.subtasks[0].status is SubtaskStatus.PENDING
 
 
+def test_continue_resets_stale_running_subtasks_on_stopped_translation_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    task_id = "translation-stopped-stale-running"
+    created_at = "2026-05-01T00:00:00+00:00"
+    service._cache_for_kind("translation").write_seed(
+        TaskRecord(
+            id=task_id,
+            kind=TaskKind.TRANSLATION,
+            status=TaskStatus.STOPPED,
+            created_at=created_at,
+            updated_at=created_at,
+        ),
+        (
+            Subtask(
+                id="chunk-00084",
+                task_id=task_id,
+                status=SubtaskStatus.RUNNING,
+                started_at=created_at,
+            ),
+            Subtask(
+                id="chunk-00085",
+                task_id=task_id,
+                status=SubtaskStatus.PENDING,
+            ),
+        ),
+    )
+    continued: list[str] = []
+
+    def fake_continue(task_id: str) -> dict[str, object]:
+        continued.append(task_id)
+        return {"task_id": task_id, "started_at": created_at}
+
+    monkeypatch.setattr(service, "_continue_translation", fake_continue)
+
+    response = service.continue_task(kind="translation", task_id=task_id)
+
+    assert response["task_id"] == task_id
+    assert continued == [task_id]
+    persisted = service._cache_for_kind("translation").load(task_id)
+    statuses = {subtask.id: subtask.status for subtask in persisted.subtasks}
+    assert statuses == {
+        "chunk-00084": SubtaskStatus.PENDING,
+        "chunk-00085": SubtaskStatus.PENDING,
+    }
+    assert persisted.subtasks[0].started_at == ""
+
+
 def test_continue_self_heals_done_registry_running_glossary_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

@@ -187,6 +187,13 @@ _TERMINAL_TASK_STATES: frozenset[TaskStatus] = frozenset(
         TaskStatus.STOPPED,
     }
 )
+_STALE_RUNNING_SUBTASK_TASK_STATES: frozenset[TaskStatus] = frozenset(
+    {
+        TaskStatus.STOPPED,
+        TaskStatus.PAUSED,
+        TaskStatus.FAILED,
+    }
+)
 _LIVE_TASK_STALL_SECONDS = 900.0
 _STOP_REQUEST_STALL_SECONDS = 900.0
 _LIVE_TASK_STALL_TIMEOUT_HEADROOM_SECONDS = 120.0
@@ -4514,6 +4521,29 @@ class TaskService:
             )
         )
 
+    def _reconcile_stale_running_subtasks(
+        self, snapshot: TaskSnapshot, cache: TaskCache
+    ) -> TaskSnapshot:
+        if snapshot.record.status not in _STALE_RUNNING_SUBTASK_TASK_STATES:
+            return snapshot
+        healed_subtasks: list[Subtask] = []
+        changed = False
+        for subtask in snapshot.subtasks:
+            if subtask.status is SubtaskStatus.RUNNING:
+                pending = replace(
+                    subtask,
+                    status=SubtaskStatus.PENDING,
+                    started_at="",
+                )
+                cache.save_subtask(pending)
+                healed_subtasks.append(pending)
+                changed = True
+            else:
+                healed_subtasks.append(subtask)
+        if not changed:
+            return snapshot
+        return TaskSnapshot(record=snapshot.record, subtasks=tuple(healed_subtasks))
+
     def _reconcile_zombie(
         self, snapshot: TaskSnapshot, cache: TaskCache
     ) -> TaskSnapshot:
@@ -4524,7 +4554,7 @@ class TaskService:
         # zombie.
         record = snapshot.record
         if record.status not in _ZOMBIE_TASK_STATES:
-            return snapshot
+            return self._reconcile_stale_running_subtasks(snapshot, cache)
         live = self.registry.get(record.id)
         if live is not None and not live.is_done:
             stall_seconds = self._live_task_stall_seconds_for_snapshot(snapshot)
@@ -4544,7 +4574,11 @@ class TaskService:
         healed_subtasks: list[Subtask] = []
         for subtask in snapshot.subtasks:
             if subtask.status is SubtaskStatus.RUNNING:
-                pending = replace(subtask, status=SubtaskStatus.PENDING)
+                pending = replace(
+                    subtask,
+                    status=SubtaskStatus.PENDING,
+                    started_at="",
+                )
                 cache.save_subtask(pending)
                 healed_subtasks.append(pending)
             else:
