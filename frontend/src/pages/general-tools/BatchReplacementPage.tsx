@@ -21,6 +21,7 @@ import {
 import { useToastStore } from "@/store/useToastStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { CompactPath } from "@/components/CompactPath";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import {
@@ -276,6 +277,14 @@ export function BatchReplacementPage() {
     }
   };
 
+  const copyArtifactPath = (path: string): void => {
+    void copyOutputPaths(
+      [path],
+      messages.common.copyPathDone,
+      setArtifactFeedback,
+    );
+  };
+
   // ``snapshot.status`` falls back to ``"pending"`` when no task has
   // ever run for this kind (the snapshot store has no record yet).
   // Treating that as in-flight would lock the Execute button on cold
@@ -494,7 +503,12 @@ export function BatchReplacementPage() {
             <ul className={styles.artifactList}>
               {artifacts.output_files.map((path) => (
                 <li key={path}>
-                  <code>{path}</code>
+                  <CompactPath
+                    value={path}
+                    asCode
+                    copyLabel={messages.common.copyPath}
+                    onCopy={copyArtifactPath}
+                  />
                 </li>
               ))}
             </ul>
@@ -505,8 +519,13 @@ export function BatchReplacementPage() {
           )}
           {artifacts.statistics_json_path ? (
             <div className={styles.statsLine}>
-              <span>{messages.batchReplacement.statisticsFile}:</span>{" "}
-              <code>{artifacts.statistics_json_path}</code>
+              <span>{messages.batchReplacement.statisticsFile}:</span>
+              <CompactPath
+                value={artifacts.statistics_json_path}
+                asCode
+                copyLabel={messages.common.copyPath}
+                onCopy={copyArtifactPath}
+              />
             </div>
           ) : null}
           {report ? (

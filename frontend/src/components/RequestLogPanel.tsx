@@ -74,7 +74,12 @@ export function RequestLogPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [copyFeedback, setCopyFeedback] = useState<{
+    requestId: string;
+    message: string;
+  } | null>(null);
   const eventCountRef = useRef(0);
+  const copyFeedbackTimerRef = useRef<number | null>(null);
 
   const statusLabels = useMemo(
     () => ({
@@ -140,6 +145,15 @@ export function RequestLogPanel({
     eventCountRef.current = events.length;
   }, [events.length]);
 
+  useEffect(
+    () => () => {
+      if (copyFeedbackTimerRef.current !== null) {
+        window.clearTimeout(copyFeedbackTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (visible) void loadEvents();
   }, [loadEvents, taskStatus, visible]);
@@ -165,6 +179,25 @@ export function RequestLogPanel({
     setStatusFilter(next);
     setExpanded({});
   };
+
+  const copyText = useCallback(
+    async (requestId: string, text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopyFeedback({ requestId, message: copy.copyDone });
+      } catch {
+        setCopyFeedback({ requestId, message: copy.copyFailed });
+      }
+      if (copyFeedbackTimerRef.current !== null) {
+        window.clearTimeout(copyFeedbackTimerRef.current);
+      }
+      copyFeedbackTimerRef.current = window.setTimeout(() => {
+        setCopyFeedback(null);
+        copyFeedbackTimerRef.current = null;
+      }, 1400);
+    },
+    [copy.copyDone, copy.copyFailed],
+  );
 
   return (
     <>
@@ -272,11 +305,16 @@ export function RequestLogPanel({
                         {events.map((event) => {
                           const isExpanded = Boolean(expanded[event.request_id]);
                           const requestTitle = event.label || event.subtask_id;
+                          const responseText =
+                            event.response_text || event.partial_response_text || "";
+                          const errorText = event.error || "";
                           const response =
-                            event.response_text ||
-                            event.partial_response_text ||
-                            event.error ||
-                            "";
+                            responseText || errorText;
+                          const expandedText = event.response_text
+                            ? event.response_text
+                            : event.partial_response_text
+                              ? `${copy.partialResponse}\n\n${event.partial_response_text}`
+                              : errorText || copy.noResponse;
                           const statusClass = statusClasses[event.status] ?? "";
                           const phaseLabel = event.phase
                             ? phaseLabels[event.phase] ?? event.phase
@@ -397,13 +435,57 @@ export function RequestLogPanel({
                               {isExpanded ? (
                                 <tr className={styles.responseRow}>
                                   <td colSpan={7}>
-                                    <pre>
-                                      {event.response_text
-                                        ? response
-                                        : event.partial_response_text
-                                          ? `${copy.partialResponse}\n\n${response}`
-                                          : response || copy.noResponse}
-                                    </pre>
+                                    <div className={styles.responseTools}>
+                                      {event.subtask_id ? (
+                                        <button
+                                          type="button"
+                                          className={styles.copyButton}
+                                          onClick={() =>
+                                            void copyText(
+                                              event.request_id,
+                                              event.subtask_id,
+                                            )
+                                          }
+                                        >
+                                          {copy.copySubtaskId}
+                                        </button>
+                                      ) : null}
+                                      {responseText ? (
+                                        <button
+                                          type="button"
+                                          className={styles.copyButton}
+                                          onClick={() =>
+                                            void copyText(
+                                              event.request_id,
+                                              responseText,
+                                            )
+                                          }
+                                        >
+                                          {copy.copyResponse}
+                                        </button>
+                                      ) : null}
+                                      {errorText ? (
+                                        <button
+                                          type="button"
+                                          className={styles.copyButton}
+                                          onClick={() =>
+                                            void copyText(
+                                              event.request_id,
+                                              errorText,
+                                            )
+                                          }
+                                        >
+                                          {copy.copyError}
+                                        </button>
+                                      ) : null}
+                                      {copyFeedback?.requestId ===
+                                      event.request_id ? (
+                                        <span className={styles.copyFeedback}>
+                                          {copyFeedback.message}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <pre>{expandedText}</pre>
                                   </td>
                                 </tr>
                               ) : null}

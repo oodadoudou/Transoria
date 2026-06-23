@@ -171,6 +171,13 @@
   font-size: 12px;
 }
 
+.artifactList {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  max-width: 100%;
+}
+
 @media (max-width: 640px) {
   .fileRow {
     width: 100%;

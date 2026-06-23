@@ -289,6 +289,36 @@
   background: var(--panel-soft);
 }
 
+.responseTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.copyButton {
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 3px 8px;
+}
+
+.copyButton:hover {
+  border-color: var(--action);
+  color: var(--action);
+}
+
+.copyFeedback {
+  color: var(--success);
+  font-size: 11.5px;
+}
+
 .responseRow pre {
   margin: 0;
   white-space: pre-wrap;

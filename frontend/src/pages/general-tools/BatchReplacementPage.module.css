@@ -128,6 +128,7 @@
 }
 
 .artifactList li {
+  min-width: 0;
   font-size: 12.5px;
   padding: 4px 0;
   border-bottom: 1px solid var(--hairline, #ece8e2);
@@ -137,25 +138,14 @@
   border-bottom: 0;
 }
 
-.artifactList code {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-  background: rgba(0, 0, 0, 0.04);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
 .statsLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   margin-top: 10px;
   font-size: 12.5px;
   color: var(--muted, #7a7166);
-}
-
-.statsLine code {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-  background: rgba(0, 0, 0, 0.04);
-  padding: 1px 4px;
-  border-radius: 3px;
-  color: var(--ink, #2a2620);
 }
 
 @media (max-width: 860px) {

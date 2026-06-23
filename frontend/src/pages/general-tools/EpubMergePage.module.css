@@ -227,6 +227,12 @@
   font-size: 12px;
 }
 
+.artifactList {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 @media (max-width: 900px) {
   .folderGrid {
     grid-template-columns: minmax(0, 1fr);

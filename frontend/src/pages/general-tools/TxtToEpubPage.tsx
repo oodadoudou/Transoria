@@ -12,6 +12,7 @@ import {
   type TxtToEpubStyle,
   type TxtToEpubTocEntry,
 } from "@/bridge";
+import { CompactPath } from "@/components/CompactPath";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
@@ -999,7 +1000,19 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
         {artifacts ? (
           <div className={styles.artifacts}>
             <strong>{text.output}</strong>
-            <span>{artifacts.output_files.join("\n") || text.noOutput}</span>
+            {artifacts.output_files.length > 0 ? (
+              <div className={styles.artifactList}>
+                {artifacts.output_files.map((path) => (
+                  <CompactPath
+                    key={path}
+                    value={path}
+                    copyLabel={messages.common.copyPath}
+                  />
+                ))}
+              </div>
+            ) : (
+              <span className={styles.hint}>{text.noOutput}</span>
+            )}
             <div className={styles.actionRow}>
               <Pill
                 variant="ghost"

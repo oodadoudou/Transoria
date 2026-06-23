@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import {
   BridgeError,
@@ -9,6 +9,7 @@ import {
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { CompactPath } from "@/components/CompactPath";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import { useLocalState } from "@/utils/localState";
@@ -60,7 +61,8 @@ function joinPath(dir: string, name: string): string {
 }
 
 export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const text = useMessages().epubMetadataTool;
+  const messages = useMessages();
+  const text = messages.epubMetadataTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
   const [outputFolderPath, setOutputFolderPath] = useLocalState(
     OUTPUT_FOLDER_LOCAL_KEY,
@@ -268,7 +270,13 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
             />
             <Stat
               label={text.currentOutput}
-              value={result?.output_path || resolvedOutputPath || "-"}
+              value={
+                <CompactPath
+                  value={result?.output_path || resolvedOutputPath}
+                  copyLabel={messages.common.copyPath}
+                  emptyLabel="-"
+                />
+              }
             />
           </div>
         ) : (
@@ -307,7 +315,12 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
                   ) : (
                     <span>{info?.has_cover ? text.coverPresent : text.coverMissing}</span>
                   )}
-                  {info?.cover_archive_path ? <code>{info.cover_archive_path}</code> : null}
+                  {info?.cover_archive_path ? (
+                    <CompactPath
+                      value={info.cover_archive_path}
+                      copyLabel={messages.common.copyPath}
+                    />
+                  ) : null}
                 </div>
                 <label className={styles.field}>
                   <span>{text.coverFile}</span>
@@ -419,7 +432,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
 
 interface StatProps {
   label: string;
-  value: string;
+  value: ReactNode;
 }
 
 function Stat({ label, value }: StatProps) {

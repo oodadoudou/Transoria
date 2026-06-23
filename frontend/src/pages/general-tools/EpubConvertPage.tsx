@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import {
   BridgeError,
@@ -11,6 +11,7 @@ import {
   type EpubConvertReport,
 } from "@/bridge";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
+import { CompactPath } from "@/components/CompactPath";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { useMessages } from "@/locales";
@@ -364,8 +365,18 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
                               }
                             />
                           </td>
-                          <td>{action.source_path}</td>
-                          <td>{action.output_path}</td>
+                          <td>
+                            <CompactPath
+                              value={action.source_path}
+                              copyLabel={messages.common.copyPath}
+                            />
+                          </td>
+                          <td>
+                            <CompactPath
+                              value={action.output_path}
+                              copyLabel={messages.common.copyPath}
+                            />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -439,6 +450,17 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               <span className={styles.artifactFeedback}>{artifactFeedback}</span>
             ) : null}
           </div>
+          {artifacts.output_files.length > 0 ? (
+            <div className={styles.artifactList}>
+              {artifacts.output_files.map((path) => (
+                <CompactPath
+                  key={path}
+                  value={path}
+                  copyLabel={messages.common.copyPath}
+                />
+              ))}
+            </div>
+          ) : null}
           {report ? (
             <div className={styles.reportToggle}>
               <Pill variant="ghost" onClick={() => setShowReport((v) => !v)}>
@@ -462,8 +484,18 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
                 <tbody>
                   {report.results.map((row) => (
                     <tr key={row.action_id}>
-                      <td>{row.source_path}</td>
-                      <td>{row.output_path}</td>
+                      <td>
+                        <CompactPath
+                          value={row.source_path}
+                          copyLabel={messages.common.copyPath}
+                        />
+                      </td>
+                      <td>
+                        <CompactPath
+                          value={row.output_path}
+                          copyLabel={messages.common.copyPath}
+                        />
+                      </td>
                       <td>{NUM.format(row.segments_written)}</td>
                       <td>{NUM.format(row.characters_written)}</td>
                       <td>{NUM.format(row.spine_documents)}</td>
@@ -517,7 +549,7 @@ async function copyOutputPaths(
 
 interface StatProps {
   label: string;
-  value: string;
+  value: ReactNode;
 }
 
 function Stat({ label, value }: StatProps) {

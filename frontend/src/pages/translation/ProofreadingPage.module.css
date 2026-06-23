@@ -256,11 +256,25 @@
   white-space: nowrap;
 }
 
+.filterPanelActions {
+  display: inline-flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
 .filterPresetRow {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  min-width: 0;
+}
+
+.filterActionChip {
+  flex: 0 0 auto;
 }
 
 .filterChip {
@@ -273,6 +287,7 @@
   color: var(--muted);
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
 }
 
 .filterChip:hover {
@@ -832,6 +847,10 @@
   .reviewOverview,
   .reviewMetricList {
     flex-wrap: wrap;
+  }
+
+  .filterPresetRow {
+    justify-content: flex-start;
   }
 
   .replacementPanel {

@@ -318,7 +318,11 @@
   display: grid;
   gap: 6px;
   margin-top: 12px;
-  white-space: pre-wrap;
+}
+
+.artifactList {
+  display: grid;
+  gap: 6px;
 }
 
 .report {

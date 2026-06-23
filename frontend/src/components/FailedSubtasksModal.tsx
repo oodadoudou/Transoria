@@ -67,6 +67,7 @@ export function FailedSubtasksModal({
     [groups, runtimeConfig],
   );
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [copyFeedback, setCopyFeedback] = useState("");
   useEscapeKey(onClose);
 
   const toggle = (key: string): void => {
@@ -76,6 +77,17 @@ export function FailedSubtasksModal({
       else next.add(key);
       return next;
     });
+  };
+
+  const handleCopySummary = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(
+        buildFailureSummary(groups, failures.length, messages),
+      );
+      setCopyFeedback(messages.copySummaryDone);
+    } catch {
+      setCopyFeedback(messages.copySummaryFailed);
+    }
   };
 
   return (
@@ -91,7 +103,20 @@ export function FailedSubtasksModal({
           <h2 className={styles.title} id="failed-subtasks-title">
             {messages.title}
           </h2>
-          <span className={styles.countBadge}>{failures.length}</span>
+          <div className={styles.headerActions}>
+            {copyFeedback ? (
+              <span className={styles.copyFeedback}>{copyFeedback}</span>
+            ) : null}
+            <button
+              type="button"
+              className={styles.copyButton}
+              onClick={() => void handleCopySummary()}
+              disabled={failures.length === 0}
+            >
+              {messages.copySummary}
+            </button>
+            <span className={styles.countBadge}>{failures.length}</span>
+          </div>
         </div>
         <div className={styles.body}>
           {groups.length === 0 ? (
@@ -219,6 +244,30 @@ export function FailedSubtasksModal({
       </div>
     </div>
   );
+}
+
+function buildFailureSummary(
+  groups: FailureGroup[],
+  total: number,
+  messages: ReturnType<typeof useMessages>["failedSubtasksModal"],
+): string {
+  const lines = [`${messages.title}: ${total}`];
+  for (const group of groups) {
+    lines.push("");
+    lines.push(
+      `[${group.code}] ${messages.failureTypes[group.type]} x${group.failures.length}`,
+    );
+    lines.push(group.message || messages.noMessage);
+    if (group.sourceFiles.length > 0) {
+      lines.push(`${messages.fileLabel}: ${group.sourceFiles.join(", ")}`);
+    }
+    lines.push(
+      `${messages.affectedLabel}: ${group.failures
+        .map((failure) => failure.subtask_id)
+        .join(", ")}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 function buildDiagnosis(

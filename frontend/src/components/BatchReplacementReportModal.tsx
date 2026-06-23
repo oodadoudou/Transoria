@@ -21,6 +21,7 @@ export function BatchReplacementReportModal({
   const messages = useMessages();
   const labels = messages.batchReplacementReport;
   const [query, setQuery] = useState("");
+  const [copyFeedback, setCopyFeedback] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(() => {
     // Auto-expand the first few rules with matches so the modal feels
     // populated even before the user clicks anything. Beyond that we
@@ -62,6 +63,15 @@ export function BatchReplacementReportModal({
       else next.add(ruleIndex);
       return next;
     });
+  };
+
+  const handleCopyPath = async (path: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopyFeedback(labels.copyPathDone);
+    } catch {
+      setCopyFeedback(labels.copyPathFailed);
+    }
   };
 
   return (
@@ -120,6 +130,9 @@ export function BatchReplacementReportModal({
           >
             {allExpanded ? labels.collapseAll : labels.expandAll}
           </button>
+          {copyFeedback ? (
+            <span className={styles.copyFeedback}>{copyFeedback}</span>
+          ) : null}
         </div>
 
         <div className={styles.body}>
@@ -138,6 +151,7 @@ export function BatchReplacementReportModal({
                 onToggle={() => toggleOne(rule.rule_index)}
                 query={query.trim()}
                 labels={labels}
+                onCopyPath={handleCopyPath}
               />
             ))
           )}
@@ -167,6 +181,7 @@ interface RuleGroupProps {
   onToggle: () => void;
   query: string;
   labels: ReturnType<typeof useMessages>["batchReplacementReport"];
+  onCopyPath: (path: string) => void;
 }
 
 function RuleGroup({
@@ -175,6 +190,7 @@ function RuleGroup({
   onToggle,
   query,
   labels,
+  onCopyPath,
 }: RuleGroupProps) {
   const matchingOccurrences = useMemo(() => {
     if (!query) return rule.occurrences;
@@ -229,7 +245,12 @@ function RuleGroup({
           ) : (
             <>
               {matchingOccurrences.map((occ, i) => (
-                <Snippet key={i} occurrence={occ} labels={labels} />
+                <Snippet
+                  key={i}
+                  occurrence={occ}
+                  labels={labels}
+                  onCopyPath={onCopyPath}
+                />
               ))}
               {rule.occurrences_truncated ? (
                 <div className={styles.snippetTruncated}>
@@ -250,13 +271,23 @@ function RuleGroup({
 interface SnippetProps {
   occurrence: import("@/bridge").ReplacementReportOccurrence;
   labels: ReturnType<typeof useMessages>["batchReplacementReport"];
+  onCopyPath: (path: string) => void;
 }
 
-function Snippet({ occurrence, labels }: SnippetProps) {
+function Snippet({ occurrence, labels, onCopyPath }: SnippetProps) {
   return (
     <div className={styles.snippet}>
       <div className={styles.snippetMeta}>
-        {labels.fileLabel}: {basename(occurrence.file_path)}
+        <span className={styles.snippetPath} title={occurrence.file_path}>
+          {labels.fileLabel}: {basename(occurrence.file_path)}
+        </span>
+        <button
+          type="button"
+          className={styles.snippetCopy}
+          onClick={() => onCopyPath(occurrence.file_path)}
+        >
+          {labels.copyPath}
+        </button>
       </div>
       <div className={styles.snippetLine}>
         <span>{occurrence.before_context}</span>

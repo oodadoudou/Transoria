@@ -98,6 +98,11 @@ export const zh: Messages = {
     hideResponse: "收起",
     partialResponse: "已收到的部分回复",
     noResponse: "没有记录到模型回复。",
+    copySubtaskId: "复制分块",
+    copyResponse: "复制回复",
+    copyError: "复制错误",
+    copyDone: "已复制",
+    copyFailed: "复制失败",
   },
   allKeysFailed: {
     title: "所有 API key 都已失效",
@@ -165,7 +170,12 @@ export const zh: Messages = {
     confirmStartConfirm: "重新开始",
     confirmStartCancel: "取消",
     restartHint: "再点 {count} 次以重跑",
+    startInactiveHint: "当前任务正在运行。连续点击 3 次可强制重跑。",
     continueHint: "继续只会重跑失败 {failed} 个 / 未完成 {pending} 个分块。",
+    continueDisabledNoTask: "当前没有可继续的已停止或失败任务。",
+    continueDisabledNoPending: "当前任务没有失败或未完成的分块可继续。",
+    continueDisabledRunning: "请等待当前任务操作完成后再继续。",
+    stopDisabledIdle: "只有运行中的任务可以停止。",
     taskControls: "任务控制",
   },
   bilingual: {
@@ -697,6 +707,9 @@ export const zh: Messages = {
     truncated: "已显示前 {shown} 处，共 {total} 处。",
     disabledBadge: "已禁用",
     fileLabel: "文件",
+    copyPath: "复制路径",
+    copyPathDone: "已复制路径",
+    copyPathFailed: "复制失败",
     summary: {
       totalReplacements: "总替换数",
       rulesWithMatches: "命中规则 / 启用规则",
@@ -984,6 +997,7 @@ export const zh: Messages = {
         noItemsTitle: "当前视图没有匹配条目",
         noItemsBody:
           "当前任务在这些筛选或搜索条件下没有可校对行。可以清空筛选，或等翻译产生缓存条目后再回来。",
+        noItemsAction: "清空筛选",
       },
       taskPicker: "选择任务",
       loading: "加载中…",
@@ -1056,6 +1070,7 @@ export const zh: Messages = {
       filterPresetCompletion: "完成度",
       filterPresetAll: "全部风险",
       filterClear: "清空筛选",
+      filterClearDisabled: "当前没有筛选条件可清空。",
       riskReasonPrefix: "原因：",
       riskTagsPrefix: "标签：",
       filterPlaceholder: "搜索原文 / 译文…",
@@ -1079,6 +1094,7 @@ export const zh: Messages = {
       termAuditCollapse: "收起",
       filterAll: "全部",
       nextRiskAction: "下一条风险",
+      nextRiskDisabled: "当前列表没有下一条风险。",
       replacementToggle: "批量替换",
       replacementFindPlaceholder: "查找译文…",
       replacementValuePlaceholder: "替换为…",
@@ -1100,6 +1116,7 @@ export const zh: Messages = {
       retranslateAction: "重翻此条",
       retranslateSelectedAction: "重翻选中 {n} 条",
       retranslateFilteredAction: "重翻当前列表 {n} 条",
+      retranslateFilteredDisabled: "当前列表没有可重翻条目。",
       retranslating: "重翻中…",
       retranslateSuccess: "已重翻并写入缓存。",
       retranslateSelectedDone:
@@ -1657,6 +1674,9 @@ export const zh: Messages = {
     },
     noMessage: "（未提供错误描述）",
     empty: "暂无失败分块。",
+    copySummary: "复制摘要",
+    copySummaryDone: "已复制摘要",
+    copySummaryFailed: "复制失败",
     close: "关闭",
   },
   completionWithFailures: {
@@ -1677,5 +1697,8 @@ export const zh: Messages = {
   common: {
     placeholder:
       "该页面是第二阶段前端脚手架的一部分,后续阶段将与后端接口对接。",
+    copyPath: "复制路径",
+    copyPathDone: "已复制路径",
+    copyPathFailed: "复制失败",
   },
 };

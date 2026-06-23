@@ -276,6 +276,15 @@ export function RunControls({ kind, children }: RunControlsProps) {
       ? labels.running
       : labels.starting
     : labels.start;
+  const continueTitle = canContinue
+    ? undefined
+    : isInFlight
+      ? labels.continueDisabledRunning
+      : probe.task_id
+        ? labels.continueDisabledNoPending
+        : labels.continueDisabledNoTask;
+  const startTitle = startActive ? labels.startInactiveHint : undefined;
+  const stopTitle = canStop ? undefined : labels.stopDisabledIdle;
 
   return (
     <>
@@ -287,6 +296,7 @@ export function RunControls({ kind, children }: RunControlsProps) {
             label={startLabel}
             disabled={false}
             inactive={startActive}
+            title={startTitle}
             onClick={handleStartClick}
           />
           <Button
@@ -294,6 +304,7 @@ export function RunControls({ kind, children }: RunControlsProps) {
             icon={ICON_CONTINUE}
             label={labels.continue}
             disabled={!canContinue}
+            title={continueTitle}
             onClick={handleContinue}
           />
           <Button
@@ -301,6 +312,7 @@ export function RunControls({ kind, children }: RunControlsProps) {
             icon={ICON_STOP}
             label={stopLabel}
             disabled={!canStop}
+            title={stopTitle}
             onClick={handleStop}
           />
         </div>
@@ -337,6 +349,7 @@ interface ButtonProps {
   icon: string;
   label: string;
   disabled: boolean;
+  title?: string;
   inactive?: boolean;
   onClick: () => void;
 }
@@ -346,6 +359,7 @@ function Button({
   icon,
   label,
   disabled,
+  title,
   inactive,
   onClick,
 }: ButtonProps) {
@@ -361,6 +375,7 @@ function Button({
       type="button"
       className={className}
       disabled={disabled}
+      title={title}
       onClick={onClick}
     >
       <span className={styles.icon} aria-hidden>

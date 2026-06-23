@@ -99,6 +99,11 @@ export const en: Messages = {
     hideResponse: "Hide",
     partialResponse: "Partial response received",
     noResponse: "No model response captured.",
+    copySubtaskId: "Copy subtask",
+    copyResponse: "Copy response",
+    copyError: "Copy error",
+    copyDone: "Copied",
+    copyFailed: "Copy failed",
   },
   errors: {
     notifications: "Notifications",
@@ -166,8 +171,15 @@ export const en: Messages = {
     confirmStartConfirm: "Start fresh",
     confirmStartCancel: "Cancel",
     restartHint: "Click {count} more time(s) to re-run",
+    startInactiveHint:
+      "A task is running. Click 3 times in a row to force a fresh run.",
     continueHint:
       "Continue only reruns {failed} failed / {pending} unfinished chunks.",
+    continueDisabledNoTask: "No stopped or failed task is ready to continue.",
+    continueDisabledNoPending:
+      "This task has no failed or unfinished chunks to continue.",
+    continueDisabledRunning: "Wait for the current task action to finish first.",
+    stopDisabledIdle: "Only a running task can be stopped.",
     taskControls: "Task controls",
   },
   bilingual: {
@@ -717,6 +729,9 @@ export const en: Messages = {
     truncated: "Showing first {shown} of {total} occurrences.",
     disabledBadge: "Disabled",
     fileLabel: "File",
+    copyPath: "Copy path",
+    copyPathDone: "Path copied",
+    copyPathFailed: "Copy failed",
     summary: {
       totalReplacements: "Total replacements",
       rulesWithMatches: "Rules with matches / active",
@@ -1068,6 +1083,7 @@ export const en: Messages = {
         noItemsTitle: "No rows match the current view",
         noItemsBody:
           "This task has no proofreadable rows for the active filters or search. Clear filters, or return after a translation has produced cache entries.",
+        noItemsAction: "Clear filters",
       },
       stats: {
         total: "{n} items",
@@ -1088,6 +1104,7 @@ export const en: Messages = {
       filterPresetCompletion: "Completion",
       filterPresetAll: "All risks",
       filterClear: "Clear filters",
+      filterClearDisabled: "There are no active filters to clear.",
       riskReasonPrefix: "Reasons: ",
       riskTagsPrefix: "Tags: ",
       filterPlaceholder: "Search source / target…",
@@ -1112,6 +1129,7 @@ export const en: Messages = {
       termAuditCollapse: "Collapse",
       filterAll: "All",
       nextRiskAction: "Next risk",
+      nextRiskDisabled: "There is no next risk in the current list.",
       replacementToggle: "Batch replacement",
       replacementFindPlaceholder: "Find in translations…",
       replacementValuePlaceholder: "Replace with…",
@@ -1133,6 +1151,8 @@ export const en: Messages = {
       retranslateAction: "Retranslate",
       retranslateSelectedAction: "Retranslate {n} selected",
       retranslateFilteredAction: "Retranslate current list ({n})",
+      retranslateFilteredDisabled:
+        "There are no rows in the current list to retranslate.",
       retranslating: "Retranslating…",
       retranslateSuccess: "Retranslated and saved to cache.",
       retranslateSelectedDone:
@@ -1715,6 +1735,9 @@ export const en: Messages = {
     },
     noMessage: "(no error description)",
     empty: "No failed subtasks.",
+    copySummary: "Copy summary",
+    copySummaryDone: "Summary copied",
+    copySummaryFailed: "Copy failed",
     close: "Close",
   },
   completionWithFailures: {
@@ -1735,6 +1758,9 @@ export const en: Messages = {
   common: {
     placeholder:
       "This page is part of the Phase 2 frontend scaffold and is wired to backend endpoints in a later phase.",
+    copyPath: "Copy path",
+    copyPathDone: "Path copied",
+    copyPathFailed: "Copy failed",
   },
 };
 

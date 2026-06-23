@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import {
   BridgeError,
@@ -8,6 +8,7 @@ import {
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
+import { CompactPath } from "@/components/CompactPath";
 import { useMessages } from "@/locales";
 import { useLocalState } from "@/utils/localState";
 import styles from "./EpubMetadataPage.module.css";
@@ -38,7 +39,8 @@ function repairedFilename(inputPath: string): string {
 }
 
 export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const text = useMessages().epubRepairTool;
+  const messages = useMessages();
+  const text = messages.epubRepairTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
   const [outputFolderPath, setOutputFolderPath] = useLocalState(
     OUTPUT_FOLDER_LOCAL_KEY,
@@ -158,7 +160,12 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
 
         <div className={styles.generatedOutput}>
           <span>{text.generatedOutput}</span>
-          <code>{resolvedOutputPath || "-"}</code>
+          <CompactPath
+            value={resolvedOutputPath}
+            copyLabel={messages.common.copyPath}
+            className={styles.generatedPath}
+            emptyLabel="-"
+          />
         </div>
 
         <div className={styles.actionRow}>
@@ -196,7 +203,15 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
               label={text.wrappersAdded}
               value={String(result.document_wrappers_added)}
             />
-            <Stat label={text.currentOutput} value={result.output_path} />
+            <Stat
+              label={text.currentOutput}
+              value={
+                <CompactPath
+                  value={result.output_path}
+                  copyLabel={messages.common.copyPath}
+                />
+              }
+            />
           </div>
         ) : (
           <div className={styles.empty}>{text.noResult}</div>
@@ -208,7 +223,7 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
 
 interface StatProps {
   label: string;
-  value: string;
+  value: ReactNode;
 }
 
 function Stat({ label, value }: StatProps) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import {
   BridgeError,
@@ -11,6 +11,7 @@ import {
   type EpubMergeReport,
 } from "@/bridge";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
+import { CompactPath } from "@/components/CompactPath";
 import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
@@ -408,8 +409,14 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
               <Stat
                 label={text.outputFile}
                 value={
-                  composeOutputPath(outputDir, outputFilename, inputDir) ||
-                  plan.output_path
+                  <CompactPath
+                    value={
+                      composeOutputPath(outputDir, outputFilename, inputDir) ||
+                      plan.output_path
+                    }
+                    copyLabel={messages.common.copyPath}
+                    emptyLabel="-"
+                  />
                 }
               />
             </div>
@@ -501,7 +508,12 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                             />
                           </div>
                         </td>
-                        <td>{action.source_path}</td>
+                        <td>
+                          <CompactPath
+                            value={action.source_path}
+                            copyLabel={messages.common.copyPath}
+                          />
+                        </td>
                         <td>{formatBytes(action.size_bytes)}</td>
                       </tr>
                     ))}
@@ -532,7 +544,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
               <Stat label={text.mergedCount} value={NUM.format(artifacts.merged_count)} />
               <Stat
                 label={text.outputFiles}
-                value={artifacts.output_files.join("\n") || "-"}
+                value={NUM.format(artifacts.output_files.length)}
               />
             </div>
             <div className={styles.artifactActions}>
@@ -561,6 +573,17 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                 <span className={styles.artifactFeedback}>{artifactFeedback}</span>
               ) : null}
             </div>
+            {artifacts.output_files.length > 0 ? (
+              <div className={styles.artifactList}>
+                {artifacts.output_files.map((path) => (
+                  <CompactPath
+                    key={path}
+                    value={path}
+                    copyLabel={messages.common.copyPath}
+                  />
+                ))}
+              </div>
+            ) : null}
             {report ? (
               <div className={styles.reportToggle}>
                 <Pill variant="ghost" onClick={() => setShowReport((prev) => !prev)}>
@@ -584,7 +607,12 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                   <tbody>
                     {report.result.processed_files.map((row) => (
                       <tr key={row.source_path}>
-                        <td>{row.source_path}</td>
+                        <td>
+                          <CompactPath
+                            value={row.source_path}
+                            copyLabel={messages.common.copyPath}
+                          />
+                        </td>
                         <td>{row.status}</td>
                         <td>{NUM.format(row.chapters)}</td>
                         <td>{NUM.format(row.resources)}</td>
@@ -638,7 +666,7 @@ async function copyOutputPaths(
   }
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className={styles.stat}>
       <span className={styles.statLabel}>{label}</span>

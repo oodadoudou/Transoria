@@ -94,6 +94,11 @@ export interface Messages {
     hideResponse: string;
     partialResponse: string;
     noResponse: string;
+    copySubtaskId: string;
+    copyResponse: string;
+    copyError: string;
+    copyDone: string;
+    copyFailed: string;
   };
   errors: {
     notifications: string;
@@ -157,7 +162,12 @@ export interface Messages {
     confirmStartConfirm: string;
     confirmStartCancel: string;
     restartHint: string;
+    startInactiveHint: string;
     continueHint: string;
+    continueDisabledNoTask: string;
+    continueDisabledNoPending: string;
+    continueDisabledRunning: string;
+    stopDisabledIdle: string;
     taskControls: string;
   };
   bilingual: {
@@ -671,6 +681,7 @@ export interface Messages {
         noTasksAction: string;
         noItemsTitle: string;
         noItemsBody: string;
+        noItemsAction: string;
       };
       stats: {
         total: string;
@@ -690,6 +701,7 @@ export interface Messages {
       filterPresetCompletion: string;
       filterPresetAll: string;
       filterClear: string;
+      filterClearDisabled: string;
       riskReasonPrefix: string;
       riskTagsPrefix: string;
       filterPlaceholder: string;
@@ -713,6 +725,7 @@ export interface Messages {
       termAuditCollapse: string;
       filterAll: string;
       nextRiskAction: string;
+      nextRiskDisabled: string;
       replacementToggle: string;
       replacementFindPlaceholder: string;
       replacementValuePlaceholder: string;
@@ -734,6 +747,7 @@ export interface Messages {
       retranslateAction: string;
       retranslateSelectedAction: string;
       retranslateFilteredAction: string;
+      retranslateFilteredDisabled: string;
       retranslating: string;
       retranslateSuccess: string;
       retranslateSelectedDone: string;
@@ -1302,6 +1316,9 @@ export interface Messages {
     truncated: string;
     disabledBadge: string;
     fileLabel: string;
+    copyPath: string;
+    copyPathDone: string;
+    copyPathFailed: string;
     summary: {
       totalReplacements: string;
       rulesWithMatches: string;
@@ -1517,6 +1534,9 @@ export interface Messages {
     };
     noMessage: string;
     empty: string;
+    copySummary: string;
+    copySummaryDone: string;
+    copySummaryFailed: string;
     close: string;
   };
   completionWithFailures: {
@@ -1533,5 +1553,10 @@ export interface Messages {
     totalLine: string;
     residueLine: string;
   };
-  common: { placeholder: string };
+  common: {
+    placeholder: string;
+    copyPath: string;
+    copyPathDone: string;
+    copyPathFailed: string;
+  };
 }

@@ -213,6 +213,15 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.presetActions span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actionRow {
@@ -356,6 +365,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
   padding: 10px 14px;
   border-radius: 12px;
   background: var(--panel-soft);
@@ -413,4 +423,20 @@
   border-radius: 999px;
   background: var(--action);
   color: #fff;
+}
+
+@media (max-width: 720px) {
+  .presetActions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .presetActions span {
+    white-space: normal;
+  }
+
+  .chip {
+    min-width: min(130px, 100%);
+  }
 }

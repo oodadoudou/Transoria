@@ -236,15 +236,19 @@
   text-transform: uppercase;
 }
 
+.generatedPath,
 .generatedOutput code {
-  display: block;
-  overflow-wrap: anywhere;
   border: 1px solid var(--hairline, #e8dfd4);
   border-radius: 8px;
   background: var(--panel-soft, #f5f0e9);
   color: var(--ink, #2a2620);
   font-size: 12px;
   padding: 8px 10px;
+}
+
+.generatedOutput code {
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .checkboxRow {

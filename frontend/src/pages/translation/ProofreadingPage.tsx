@@ -1437,6 +1437,11 @@ export function ProofreadingPage() {
     if (visibleIndex >= 0) virtual.scrollToIndex(visibleIndex);
   };
 
+  const handleClearProofreadingView = () => {
+    setSearch("");
+    setFilters(new Set());
+  };
+
   const handleSelectNextRisk = () => {
     if (filteredItems.length === 0) return;
     const currentIndex = filteredItems.findIndex(
@@ -1800,28 +1805,31 @@ export function ProofreadingPage() {
               ) : null}
             </div>
           ) : null}
-          <span className={styles.filterPresetRow}>
-            {filterPresets.map((preset) => {
-              const active = isPresetActive(preset.keys);
-              return (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className={`${styles.filterChip} ${
-                    active ? styles.filterChipActive : ""
-                  }`.trim()}
-                  aria-pressed={active}
-                  onClick={() => setFilterPreset(preset.keys)}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
+          <span className={styles.filterPanelActions}>
+            <span className={styles.filterPresetRow}>
+              {filterPresets.map((preset) => {
+                const active = isPresetActive(preset.keys);
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    className={`${styles.filterChip} ${
+                      active ? styles.filterChipActive : ""
+                    }`.trim()}
+                    aria-pressed={active}
+                    onClick={() => setFilterPreset(preset.keys)}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </span>
             <button
               type="button"
-              className={styles.filterChip}
+              className={`${styles.filterChip} ${styles.filterActionChip}`.trim()}
               onClick={() => setFilters(new Set())}
               disabled={filters.size === 0}
+              title={filters.size === 0 ? m.filterClearDisabled : undefined}
             >
               {m.filterClear}
             </button>
@@ -1897,6 +1905,7 @@ export function ProofreadingPage() {
             className={styles.filterChip}
             onClick={handleSelectNextRisk}
             disabled={!filteredHasRisk}
+            title={!filteredHasRisk ? m.nextRiskDisabled : undefined}
           >
             {m.nextRiskAction}
           </button>
@@ -1905,6 +1914,11 @@ export function ProofreadingPage() {
             className={styles.filterChip}
             onClick={() => void handleRetranslateFiltered()}
             disabled={batchRetranslating || filteredItems.length === 0}
+            title={
+              !batchRetranslating && filteredItems.length === 0
+                ? m.retranslateFilteredDisabled
+                : undefined
+            }
           >
             {batchRetranslating
               ? m.retranslating
@@ -2125,6 +2139,16 @@ export function ProofreadingPage() {
                 label={m.emptyState.label}
                 title={m.emptyState.noItemsTitle}
                 body={m.emptyState.noItemsBody}
+                actionLabel={
+                  filters.size > 0 || search.trim()
+                    ? m.emptyState.noItemsAction
+                    : undefined
+                }
+                onAction={
+                  filters.size > 0 || search.trim()
+                    ? handleClearProofreadingView
+                    : undefined
+                }
               />
             ) : (
               <div

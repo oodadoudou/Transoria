@@ -98,6 +98,7 @@
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
@@ -136,6 +137,11 @@
 
 .expandToggle:hover {
   background: var(--panel-soft);
+}
+
+.copyFeedback {
+  color: var(--success);
+  font-size: 11.5px;
 }
 
 .body {
@@ -255,11 +261,43 @@
 }
 
 .snippetMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   font-size: 10.5px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-family: var(--font-ui);
+}
+
+.snippetPath {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snippetCopy {
+  flex-shrink: 0;
+  margin-left: auto;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  padding: 2px 7px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.snippetCopy:hover {
+  border-color: var(--action);
+  color: var(--action);
 }
 
 .snippetLine {
