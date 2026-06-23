@@ -124,6 +124,35 @@ def test_request_log_records_status_usage_and_response(tmp_path) -> None:
     assert events[1]["response_text"] == "model response text"
 
 
+def test_request_log_marks_empty_model_response_failed(tmp_path) -> None:
+    cache = TaskCache(root=tmp_path)
+    cache.save_task(TaskRecord(id="task-1", kind=TaskKind.TRANSLATION))
+    transport = RecordingTransport(queue=[_ok("")])
+    client = LlmClient(transport=transport)
+    request = ChatRequest(
+        model=_model("ka"),
+        system_prompt="stable system",
+        user_prompt="chunk text",
+        log_label="translation chunk-empty",
+    )
+
+    with request_log_scope(
+        cache,
+        task_id="task-1",
+        subtask_id="chunk-empty",
+        subtask_attempt=1,
+    ):
+        response = asyncio.run(client.chat(request))
+
+    assert response.content == ""
+    events = cache.load_request_events("task-1")
+    assert [event["status"] for event in events] == ["running", "failed"]
+    assert events[1]["phase"] == "failed"
+    assert events[1]["http_status"] == 200
+    assert events[1]["response_chars"] == 0
+    assert events[1]["error"] == "Empty model response."
+
+
 def test_request_log_records_http_failure_body(tmp_path) -> None:
     cache = TaskCache(root=tmp_path)
     cache.save_task(TaskRecord(id="task-1", kind=TaskKind.TRANSLATION))

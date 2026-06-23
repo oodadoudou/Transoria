@@ -27,7 +27,7 @@ from transoria.llm.usage import estimate_tokens_from_text
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
-from transoria.runtime.executor import SubtaskResult
+from transoria.runtime.executor import SubtaskFailedWithResult, SubtaskResult
 from transoria.runtime.request_log import append_local_failure
 from transoria.runtime.subtask import Subtask
 from transoria.workflows.debug_log import write_subtask_debug_log
@@ -86,6 +86,7 @@ _MASS_SOURCE_RESIDUE_RATIO = 0.5
 _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 360.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
+_LINE_COUNT_FALLBACK_REASON = "line_count_mismatch_after_max_retries"
 
 
 # When the first attempt produces non-JSONL output (prose, mixed text,
@@ -151,6 +152,30 @@ def _looks_truncated_jsonl_response(raw_content: str) -> bool:
     if not lines:
         return False
     return not lines[-1].endswith("}")
+
+
+def _all_segments_fell_back_after_line_count_mismatch(
+    metadata: Sequence["_SegmentPayload"],
+    finalized: Mapping[str, str],
+    low_confidence: Sequence[Mapping[str, object]],
+) -> bool:
+    expected = {meta.segment_id for meta in metadata}
+    if not expected:
+        return False
+    failed = set()
+    for entry in low_confidence:
+        segment_id = entry.get("segment_id")
+        reasons = entry.get("reasons")
+        if not isinstance(segment_id, str) or not isinstance(reasons, list):
+            continue
+        if _LINE_COUNT_FALLBACK_REASON in set(reasons):
+            failed.add(segment_id)
+    if not expected.issubset(failed):
+        return False
+    return all(
+        finalized.get(meta.segment_id, "").strip() == meta.original_text.strip()
+        for meta in metadata
+    )
 
 
 _JSONL_KEYWORD_PATTERN = re.compile(
@@ -1141,12 +1166,22 @@ class TranslationSubtaskRunner:
                 "translations": finalized,
                 "low_confidence": low_confidence,
             }
-            return SubtaskResult(
+            result = SubtaskResult(
                 response_content=json.dumps(payload, ensure_ascii=False),
                 input_tokens=total_input,
                 output_tokens=total_output,
                 cached_input_tokens=total_cached_input,
             )
+            if _all_segments_fell_back_after_line_count_mismatch(
+                metadata, finalized, low_confidence
+            ):
+                raise SubtaskFailedWithResult(
+                    "All translation lines fell back to source after model "
+                    "responses could not be decoded into the required line count.",
+                    result=result,
+                    code="llm.line_count_mismatch",
+                )
+            return result
         except BaseException as exc:
             terminal_error = exc
             if isinstance(exc, TranslationQualityFailureError):

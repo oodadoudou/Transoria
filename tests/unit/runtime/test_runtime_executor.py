@@ -11,6 +11,7 @@ from transoria.domain import SubtaskStatus, TaskKind, TaskStatus
 from transoria.runtime import (
     ProgressEvent,
     Subtask,
+    SubtaskFailedWithResult,
     SubtaskResult,
     TaskCache,
     TaskExecutor,
@@ -207,6 +208,37 @@ def test_failed_subtasks_remain_failed_and_task_finalizes_failed(tmp_path: Path)
     assert by_id["s1"].status is SubtaskStatus.FAILED
     assert "RuntimeError" in by_id["s1"].last_error
     assert by_id["s2"].status is SubtaskStatus.COMPLETED
+
+
+def test_failed_subtask_can_preserve_runner_result(tmp_path: Path) -> None:
+    cache = TaskCache(root=tmp_path)
+    _seed(cache, "t1", count=1)
+
+    def raise_with_result(subtask: Subtask) -> Exception:
+        return SubtaskFailedWithResult(
+            "kept fallback payload",
+            result=SubtaskResult(
+                response_content='{"fallback": true}',
+                input_tokens=7,
+                output_tokens=0,
+                cached_input_tokens=3,
+            ),
+            code="llm.line_count_mismatch",
+        )
+
+    runner = _FakeRunner(raise_exception=raise_with_result)
+    executor = TaskExecutor(cache=cache, runner=runner, concurrency_limit=1, rpm_limit=0)
+
+    snapshot = asyncio.run(executor.run("t1"))
+
+    subtask = snapshot.subtasks[0]
+    assert snapshot.record.status is TaskStatus.FAILED
+    assert subtask.status is SubtaskStatus.FAILED
+    assert subtask.response_content == '{"fallback": true}'
+    assert subtask.input_tokens == 7
+    assert subtask.output_tokens == 0
+    assert subtask.cached_input_tokens == 3
+    assert "[llm.line_count_mismatch]" in subtask.last_error
 
 
 def test_running_subtask_timeout_fails_instead_of_hanging(tmp_path: Path) -> None:

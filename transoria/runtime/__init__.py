@@ -4,6 +4,7 @@ from transoria.runtime.cache import TaskCache, TaskNotFoundError
 from transoria.runtime.executor import (
     ProgressEvent,
     ProgressListener,
+    SubtaskFailedWithResult,
     SubtaskResult,
     SubtaskRunner,
     TaskExecutor,
@@ -21,6 +22,7 @@ __all__ = [
     "ProgressStats",
     "RpmLimiter",
     "Subtask",
+    "SubtaskFailedWithResult",
     "SubtaskResult",
     "SubtaskRunner",
     "TaskCache",

@@ -34,6 +34,24 @@ class SubtaskResult:
     cached_input_tokens: int = 0
 
 
+class SubtaskFailedWithResult(RuntimeError):
+    """Raised when a runner must fail while preserving a partial result."""
+
+    code: str = "runtime.subtask_failed"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        result: SubtaskResult,
+        code: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.result = result
+        if code is not None:
+            self.code = code
+
+
 class SubtaskRunner(Protocol):
     """Workflow-level adapter that knows how to execute one subtask payload."""
 
@@ -364,6 +382,9 @@ class TaskExecutor:
                 # LlmRequestError and subclasses) when present so the
                 # frontend can localise without parsing the
                 # human-readable message.
+                failed_result = (
+                    exc.result if isinstance(exc, SubtaskFailedWithResult) else None
+                )
                 code_prefix = ""
                 code = getattr(exc, "code", None)
                 if isinstance(code, str) and code:
@@ -371,6 +392,26 @@ class TaskExecutor:
                 failed = replace(
                     running,
                     status=SubtaskStatus.FAILED,
+                    response_content=(
+                        failed_result.response_content
+                        if failed_result is not None
+                        else running.response_content
+                    ),
+                    input_tokens=(
+                        failed_result.input_tokens
+                        if failed_result is not None
+                        else running.input_tokens
+                    ),
+                    output_tokens=(
+                        failed_result.output_tokens
+                        if failed_result is not None
+                        else running.output_tokens
+                    ),
+                    cached_input_tokens=(
+                        failed_result.cached_input_tokens
+                        if failed_result is not None
+                        else running.cached_input_tokens
+                    ),
                     last_error=f"{code_prefix}{type(exc).__name__}: {exc}",
                     last_error_at=self.clock(),
                     started_at="",

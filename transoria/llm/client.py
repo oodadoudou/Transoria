@@ -389,6 +389,29 @@ def _body_to_request_log_text(body: Mapping[str, object]) -> str:
     return json.dumps(body, ensure_ascii=False, default=str)
 
 
+def _record_request_response(
+    request_log: RequestLogHandle | None,
+    *,
+    status_code: int,
+    response: ChatResponse,
+) -> None:
+    if request_log is None:
+        return
+    if not response.content.strip():
+        request_log.fail(
+            error="Empty model response.",
+            status_code=status_code,
+            response_text=response.content,
+            response_chars=len(response.content),
+        )
+        return
+    request_log.complete(
+        status_code=status_code,
+        usage=response.usage,
+        response_text=response.content,
+    )
+
+
 def _anthropic_max_tokens(configured: int) -> int:
     """Convert a possibly-zero ``max_output_tokens`` into a value
     Anthropic will accept. Zero or negative means the user wants the
@@ -946,12 +969,11 @@ class LlmClient:
                     code="llm.http_error",
                 )
 
-            if request_log is not None:
-                request_log.complete(
-                    status_code=result.status_code,
-                    usage=response.usage,  # type: ignore[union-attr]
-                    response_text=response.content,  # type: ignore[union-attr]
-                )
+            _record_request_response(
+                request_log,
+                status_code=result.status_code,
+                response=response,  # type: ignore[arg-type]
+            )
             return response  # type: ignore[return-value]
 
         raise LlmRequestError(
@@ -1138,12 +1160,11 @@ class LlmClient:
                     code="llm.http_error",
                 )
 
-            if request_log is not None:
-                request_log.complete(
-                    status_code=result.status_code,
-                    usage=response.usage,  # type: ignore[union-attr]
-                    response_text=response.content,  # type: ignore[union-attr]
-                )
+            _record_request_response(
+                request_log,
+                status_code=result.status_code,
+                response=response,  # type: ignore[arg-type]
+            )
             return response  # type: ignore[return-value]
 
 

@@ -16,7 +16,7 @@ from transoria.llm import (
 )
 from transoria.llm.client import TransportResult
 from transoria.prompts import PromptKind, PromptPreset, default_preset
-from transoria.runtime import Subtask
+from transoria.runtime import Subtask, SubtaskFailedWithResult
 from transoria.workflows.translation import (
     Glossary,
     GlossaryEntry,
@@ -1817,7 +1817,7 @@ def test_runner_recovers_json_array_positionally() -> None:
     assert len(payload["translations"]) == 8
 
 
-def test_runner_pure_prose_response_with_count_match_falls_back_to_review() -> None:
+def test_runner_pure_prose_response_with_count_match_fails_with_fallback_result() -> None:
     """Plain prose has no stable segment keys, even when its line count
     happens to match. It must fall back to proofreading instead of being
     silently aligned by position."""
@@ -1838,9 +1838,10 @@ def test_runner_pure_prose_response_with_count_match_falls_back_to_review() -> N
         target_language=Language.CHINESE_SIMPLIFIED,
     )
 
-    result = asyncio.run(runner.run(_eight_line_subtask()))
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_eight_line_subtask()))
 
-    payload = json.loads(result.response_content)
+    payload = json.loads(exc_info.value.result.response_content)
     assert payload["translations"] == {
         f"0:{i}": f"原文 {i}" for i in range(8)
     }
@@ -1852,9 +1853,9 @@ def test_runner_pure_prose_response_with_count_match_falls_back_to_review() -> N
     assert len(transport.requests) == 3
 
 
-def test_runner_pure_prose_response_with_count_mismatch_falls_back_to_review() -> None:
-    """Plain prose with the wrong line count is pushed to proofreading
-    as source fallback instead of failing the whole chunk."""
+def test_runner_pure_prose_response_with_count_mismatch_fails_with_fallback_result() -> None:
+    """Plain prose with the wrong line count preserves source fallback
+    for review, but the chunk itself must be marked failed."""
 
     short_prose = "\n".join(f"译文行 {i}" for i in range(5)) + "\n"
     transport = FakeTransport(
@@ -1872,9 +1873,10 @@ def test_runner_pure_prose_response_with_count_mismatch_falls_back_to_review() -
         target_language=Language.CHINESE_SIMPLIFIED,
     )
 
-    result = asyncio.run(runner.run(_eight_line_subtask()))
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_eight_line_subtask()))
 
-    payload = json.loads(result.response_content)
+    payload = json.loads(exc_info.value.result.response_content)
     assert payload["translations"] == {
         f"0:{i}": f"原文 {i}" for i in range(8)
     }
@@ -1971,7 +1973,7 @@ def test_runner_does_not_inject_format_hint_into_system_preset() -> None:
     assert "[Output transport — runtime protocol]" not in system_message
 
 
-def test_runner_broken_json_lines_fall_back_to_review() -> None:
+def test_runner_broken_json_lines_fail_with_fallback_result() -> None:
     """If lines look like JSON fragments (start with ``{`` or ``[``)
     but don't decode, silently aligning them to source positions would
     corrupt output."""
@@ -1992,9 +1994,10 @@ def test_runner_broken_json_lines_fall_back_to_review() -> None:
         target_language=Language.CHINESE_SIMPLIFIED,
     )
 
-    result = asyncio.run(runner.run(_eight_line_subtask()))
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_eight_line_subtask()))
 
-    payload = json.loads(result.response_content)
+    payload = json.loads(exc_info.value.result.response_content)
     assert payload["translations"] == {
         f"0:{i}": f"原文 {i}" for i in range(8)
     }
@@ -2003,7 +2006,7 @@ def test_runner_broken_json_lines_fall_back_to_review() -> None:
     } == {f"0:{i}" for i in range(8)}
 
 
-def test_runner_thinking_wrapped_plain_prose_falls_back_to_review() -> None:
+def test_runner_thinking_wrapped_plain_prose_fails_with_fallback_result() -> None:
     """Thinking-wrapped plain prose is still unkeyed prose, so it must
     fall back instead of being accepted by count."""
 
@@ -2027,9 +2030,10 @@ def test_runner_thinking_wrapped_plain_prose_falls_back_to_review() -> None:
         target_language=Language.CHINESE_SIMPLIFIED,
     )
 
-    result = asyncio.run(runner.run(_eight_line_subtask()))
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_eight_line_subtask()))
 
-    payload = json.loads(result.response_content)
+    payload = json.loads(exc_info.value.result.response_content)
     assert payload["translations"] == {
         f"0:{i}": f"原文 {i}" for i in range(8)
     }
