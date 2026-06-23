@@ -127,3 +127,5 @@ exports/
 
 # Agent instructions
 .claude/
+AGENTS.md
+CLAUDE.md
