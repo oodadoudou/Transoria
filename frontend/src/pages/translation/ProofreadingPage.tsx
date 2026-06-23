@@ -461,14 +461,35 @@ export function ProofreadingPage() {
     translationPromptSlice.activeId ??
     null;
   const localeDefaultPromptId = `default-translation-${locale}`;
+  const visiblePromptPresets = useMemo(
+    () =>
+      translationPromptSlice.presets.filter(
+        (preset) =>
+          preset.enabled &&
+          (!preset.is_system || preset.id === localeDefaultPromptId),
+      ),
+    [localeDefaultPromptId, translationPromptSlice.presets],
+  );
+  const activeTranslationPrompt = activeTranslationPromptId
+    ? translationPromptSlice.presets.find(
+        (preset) => preset.id === activeTranslationPromptId,
+      )
+    : undefined;
   const fallbackPromptId =
-    activeTranslationPromptId ??
-    (translationPromptSlice.presets.some(
-      (preset) => preset.id === localeDefaultPromptId,
-    )
-      ? localeDefaultPromptId
-      : (translationPromptSlice.presets.find((preset) => preset.enabled)?.id ??
-        null));
+    activeTranslationPrompt &&
+    (!activeTranslationPrompt.is_system ||
+      activeTranslationPrompt.id === localeDefaultPromptId)
+      ? activeTranslationPrompt.id
+      : (visiblePromptPresets.find(
+          (preset) => preset.id === localeDefaultPromptId,
+        )?.id ??
+        visiblePromptPresets[0]?.id ??
+        null);
+  const effectiveProofreadingPromptId =
+    proofreadingPromptId &&
+    visiblePromptPresets.some((preset) => preset.id === proofreadingPromptId)
+      ? proofreadingPromptId
+      : fallbackPromptId;
   const modelItems = useMemo<QuickSwitchItem[]>(
     () =>
       profiles.profiles
@@ -482,20 +503,18 @@ export function ProofreadingPage() {
   );
   const promptItems = useMemo<QuickSwitchItem[]>(
     () =>
-      translationPromptSlice.presets
-        .filter((preset) => preset.enabled)
-        .map((preset) => ({
-          id: preset.id,
-          name: preset.name,
-          description: preset.description || preset.system_prompt.slice(0, 80),
-        })),
-    [translationPromptSlice.presets],
+      visiblePromptPresets.map((preset) => ({
+        id: preset.id,
+        name: preset.name,
+        description: preset.description || preset.system_prompt.slice(0, 80),
+      })),
+    [visiblePromptPresets],
   );
   const selectedProofreadingModel = profiles.profiles.find(
     (profile) => profile.id === proofreadingModelId,
   );
-  const selectedProofreadingPrompt = translationPromptSlice.presets.find(
-    (preset) => preset.id === proofreadingPromptId,
+  const selectedProofreadingPrompt = visiblePromptPresets.find(
+    (preset) => preset.id === effectiveProofreadingPromptId,
   );
 
   useEffect(() => {
@@ -509,6 +528,20 @@ export function ProofreadingPage() {
     if (proofreadingPromptOverridden) return;
     setProofreadingPromptId(fallbackPromptId ?? null);
   }, [fallbackPromptId, proofreadingPromptOverridden]);
+
+  useEffect(() => {
+    if (!proofreadingPromptOverridden || !proofreadingPromptId) return;
+    if (visiblePromptPresets.some((preset) => preset.id === proofreadingPromptId)) {
+      return;
+    }
+    setProofreadingPromptOverridden(false);
+    setProofreadingPromptId(fallbackPromptId ?? null);
+  }, [
+    fallbackPromptId,
+    proofreadingPromptId,
+    proofreadingPromptOverridden,
+    visiblePromptPresets,
+  ]);
 
   // Initial: load task list.
   useEffect(() => {
@@ -1177,7 +1210,7 @@ export function ProofreadingPage() {
         segmentId,
         {
           modelId: proofreadingModelId,
-          promptPresetId: proofreadingPromptId,
+          promptPresetId: effectiveProofreadingPromptId,
         },
       );
       setInflightRetranslates((prev) => ({
@@ -1762,7 +1795,7 @@ export function ProofreadingPage() {
         <QuickSwitchModal
           title={m.retranslatePromptPickerTitle}
           items={promptItems}
-          activeId={proofreadingPromptId}
+          activeId={effectiveProofreadingPromptId}
           emptyMessage={messages.quickSwitch.emptyPrompt}
           onSelect={(id) => {
             setProofreadingPromptOverridden(true);
