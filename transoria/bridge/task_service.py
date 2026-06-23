@@ -679,6 +679,8 @@ def _format_request_events(
     limit: int | None,
     offset: int = 0,
     status: str = "",
+    task_status: TaskStatus | None = None,
+    subtask_statuses: Mapping[str, SubtaskStatus] | None = None,
 ) -> tuple[list[dict[str, object]], int]:
     latest_by_request: dict[str, dict[str, object]] = {}
     order: dict[str, int] = {}
@@ -695,6 +697,14 @@ def _format_request_events(
         key=lambda row: order.get(str(row.get("request_id", "")), 0),
         reverse=True,
     )
+    rows = [
+        _cancel_stale_running_request_event(
+            row,
+            task_status=task_status,
+            subtask_statuses=subtask_statuses or {},
+        )
+        for row in rows
+    ]
     if status:
         rows = [row for row in rows if str(row.get("status", "")) == status]
     total = len(rows)
@@ -703,6 +713,27 @@ def _format_request_events(
     if limit is not None:
         rows = rows[:limit]
     return rows, total
+
+
+def _cancel_stale_running_request_event(
+    row: Mapping[str, object],
+    *,
+    task_status: TaskStatus | None,
+    subtask_statuses: Mapping[str, SubtaskStatus],
+) -> dict[str, object]:
+    current = dict(row)
+    if current.get("status") != "running":
+        return current
+    subtask_id = str(current.get("subtask_id", ""))
+    subtask_status = subtask_statuses.get(subtask_id)
+    if subtask_status is SubtaskStatus.RUNNING:
+        return current
+    if subtask_status is None and task_status in _ZOMBIE_TASK_STATES:
+        return current
+    current["status"] = "cancelled"
+    current["phase"] = "cancelled"
+    current.setdefault("error", "Request was cancelled by a previous app session.")
+    return current
 
 
 def _truncate_request_log_text(value: str, limit: int) -> str:
@@ -4203,6 +4234,7 @@ class TaskService:
         except TaskNotFoundError:
             snapshot = None
         if snapshot is not None:
+            snapshot = self._reconcile_zombie(snapshot, cache)
             events = (
                 *events,
                 *_failed_subtask_request_events(
@@ -4217,6 +4249,12 @@ class TaskService:
             limit=limit,
             offset=offset,
             status=status,
+            task_status=snapshot.record.status if snapshot is not None else record.status,
+            subtask_statuses={
+                subtask.id: subtask.status for subtask in snapshot.subtasks
+            }
+            if snapshot is not None
+            else {},
         )
         return {
             "events": formatted,

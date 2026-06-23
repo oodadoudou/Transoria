@@ -383,6 +383,70 @@ def test_read_request_events_filters_and_offsets(tmp_path: Path) -> None:
     assert paged["total"] == 3
 
 
+def test_read_request_events_marks_orphan_running_request_cancelled(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path, transport=QueuedTransport())
+    service.cache.write_seed(
+        TaskRecord(
+            id="task-1",
+            kind=TaskKind.TRANSLATION,
+            status=TaskStatus.RUNNING,
+        ),
+        (
+            Subtask(
+                id="chunk-00001",
+                task_id="task-1",
+                status=SubtaskStatus.RUNNING,
+            ),
+        ),
+    )
+    for phase in ("sent", "headers_received"):
+        service.cache.append_request_event(
+            "task-1",
+            {
+                "request_id": "r1",
+                "status": "running",
+                "phase": phase,
+                "timestamp": "2026-06-18T00:00:00+00:00",
+                "task_id": "task-1",
+                "subtask_id": "chunk-00001",
+                "subtask_attempt": 2,
+            },
+        )
+
+    all_events = service.read_request_events(
+        kind="translation",
+        task_id="task-1",
+        limit=10,
+    )
+
+    assert all_events["events"][0]["status"] == "cancelled"
+    assert all_events["events"][0]["phase"] == "cancelled"
+    assert all_events["events"][0]["error"] == (
+        "Request was cancelled by a previous app session."
+    )
+    reconciled = service.cache.load("task-1")
+    assert reconciled.record.status is TaskStatus.STOPPED
+    assert reconciled.subtasks[0].status is SubtaskStatus.PENDING
+
+    cancelled = service.read_request_events(
+        kind="translation",
+        task_id="task-1",
+        limit=10,
+        status="cancelled",
+    )
+    assert [event["request_id"] for event in cancelled["events"]] == ["r1"]
+
+    running = service.read_request_events(
+        kind="translation",
+        task_id="task-1",
+        limit=10,
+        status="running",
+    )
+    assert running["events"] == []
+
+
 def test_read_request_events_includes_local_failed_subtask_debug(
     tmp_path: Path,
 ) -> None:
