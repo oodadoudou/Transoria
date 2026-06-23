@@ -18,6 +18,12 @@ import app
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+def test_dev_bridge_port_does_not_overlap_packaged_app_default():
+    assert app.PACKAGED_BRIDGE_PORT == 5018
+    assert app.DEV_BRIDGE_PORT == 5019
+    assert app.DEFAULT_BRIDGE_PORT == app.DEV_BRIDGE_PORT
+
+
 def _origin_url() -> str | None:
     try:
         result = subprocess.run(

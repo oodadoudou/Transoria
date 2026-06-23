@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-const bridgePort = process.env.TRANSORIA_BRIDGE_PORT ?? "5018";
+const bridgePort = process.env.TRANSORIA_BRIDGE_PORT ?? "5019";
 
 export default defineConfig({
   plugins: [react()],

@@ -97,7 +97,11 @@ FRONTEND_DIR = ROOT / "frontend"
 DIST_DIR = FRONTEND_DIR / "dist"
 NODE_MODULES = FRONTEND_DIR / "node_modules"
 DEFAULT_VITE_PORT = 5173
-DEFAULT_BRIDGE_PORT = 5018
+PACKAGED_BRIDGE_PORT = 5018
+DEV_BRIDGE_PORT = 5019
+DEFAULT_BRIDGE_PORT = (
+    PACKAGED_BRIDGE_PORT if getattr(sys, "frozen", False) else DEV_BRIDGE_PORT
+)
 NPM_CMD = "npm.cmd" if sys.platform == "win32" else "npm"
 DEFAULT_UPDATE_REPOSITORY = "oodadoudou/Transoria"
 
