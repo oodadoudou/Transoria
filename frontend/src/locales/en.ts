@@ -412,7 +412,10 @@ export const en: Messages = {
     inputFolder: "Input folder",
     outputFolder: "Output folder (optional)",
     rulesLabel: "Rules",
-    importRules: "Import TXT / RED rules",
+    ruleFile: "Rule file",
+    ruleFilePlaceholder: "Paste a .txt or .red rule file path",
+    chooseRuleFile: "Choose file",
+    importRules: "Import rules",
     noRules:
       "No rules imported. Import a TXT file with `source->target` lines, or a Reeden reader .red replacement-rule file.",
     execute: "Execute",

@@ -400,7 +400,10 @@ export const zh: Messages = {
     inputFolder: "源文件夹",
     outputFolder: "输出文件夹（可留空）",
     rulesLabel: "规则",
-    importRules: "导入 TXT / RED 规则",
+    ruleFile: "规则文件",
+    ruleFilePlaceholder: "粘贴 .txt 或 .red 规则文件路径",
+    chooseRuleFile: "选择文件",
+    importRules: "导入规则",
     noRules:
       "尚未导入规则。请导入包含 `原文->新文` 条目的 TXT 文件，或 Reeden 阅读器 .red 替换规则文件。",
     execute: "执行",

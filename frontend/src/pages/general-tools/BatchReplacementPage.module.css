@@ -5,6 +5,14 @@
   align-items: end;
 }
 
+.ruleImportRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
 .empty {
   color: var(--muted, #7a7166);
   font-size: 12.5px;
@@ -150,6 +158,10 @@
 
 @media (max-width: 860px) {
   .pickerStack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ruleImportRow {
     grid-template-columns: minmax(0, 1fr);
   }
 }

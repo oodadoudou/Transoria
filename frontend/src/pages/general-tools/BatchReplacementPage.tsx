@@ -24,6 +24,7 @@ import { Pill } from "@/components/Pill";
 import { CompactPath } from "@/components/CompactPath";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
+import { TextField } from "@/components/TextField";
 import {
   EMPTY_SELECTION,
   RuleTable,
@@ -39,6 +40,7 @@ import styles from "./BatchReplacementPage.module.css";
 const NUM = new Intl.NumberFormat("en");
 const INPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.inputFolder";
 const OUTPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.outputFolder";
+const RULE_FILE_LOCAL_KEY = "transoria.generalTools.batchReplacement.ruleFile";
 const RULES_LOCAL_KEY = "transoria.generalTools.batchReplacement.rules";
 
 const TERMINAL: ReadonlySet<string> = new Set([
@@ -57,12 +59,22 @@ function replacementRuleKey(rule: ReplacementRule): string {
   ]);
 }
 
+function normalizeRuleFilePath(path: string): string {
+  const cleaned = path.trim().replace(/^["']|["']$/g, "").replace(/^file:\/\//, "");
+  try {
+    return decodeURI(cleaned);
+  } catch {
+    return cleaned;
+  }
+}
+
 export function BatchReplacementPage() {
   const messages = useMessages();
   const moduleSettings = useModuleSettings("replacement");
   const draft = moduleSettings.draft;
   const [inputFolder, setInputFolder] = useSessionState(INPUT_LOCAL_KEY, "");
   const [outputFolder, setOutputFolder] = useSessionState(OUTPUT_LOCAL_KEY, "");
+  const [ruleFilePath, setRuleFilePath] = useSessionState(RULE_FILE_LOCAL_KEY, "");
   const [pathsHydrated, setPathsHydrated] = useState(false);
   const [rules, setRules] = useLocalState<ReplacementRule[]>(
     RULES_LOCAL_KEY,
@@ -217,17 +229,35 @@ export function BatchReplacementPage() {
     );
   }
 
-  const handleImport = async () => {
+  const importRulesFromPath = async (rawPath: string) => {
+    const path = normalizeRuleFilePath(rawPath);
+    if (!path) return;
     setActionError(null);
     try {
-      const dialogResult = await dialogsBridge.chooseReplacementRulesFile();
-      if (!dialogResult.path) return;
-      const parsed = await replacementBridge.importRules(dialogResult.path);
+      setRuleFilePath(path);
+      const parsed = await replacementBridge.importRules(path);
       const unique = uniqueRows(parsed.rules, replacementRuleKey);
       setRules(unique);
       setWarnings(parsed.parse_warnings);
       const validation = await replacementBridge.validateRules(unique);
       setIssues(validation.issues);
+    } catch (error) {
+      if (BridgeError.isBridgeError(error)) {
+        setActionError(error);
+      } else {
+        throw error;
+      }
+    }
+  };
+
+  const handleChooseRuleFile = async () => {
+    setActionError(null);
+    try {
+      const dialogResult = await dialogsBridge.chooseReplacementRulesFile(
+        ruleFilePath || undefined,
+      );
+      if (!dialogResult.path) return;
+      await importRulesFromPath(dialogResult.path);
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {
         setActionError(error);
@@ -331,12 +361,25 @@ export function BatchReplacementPage() {
 
       <Panel
         label={messages.batchReplacement.rulesLabel}
-        labelExtra={
-          <Pill variant="ghost" onClick={handleImport}>
+      >
+        <div className={styles.ruleImportRow}>
+          <TextField
+            label={messages.batchReplacement.ruleFile}
+            value={ruleFilePath}
+            onChange={setRuleFilePath}
+            placeholder={messages.batchReplacement.ruleFilePlaceholder}
+            mono
+          />
+          <Pill variant="ghost" onClick={handleChooseRuleFile}>
+            {messages.batchReplacement.chooseRuleFile}
+          </Pill>
+          <Pill
+            onClick={() => void importRulesFromPath(ruleFilePath)}
+            disabled={!normalizeRuleFilePath(ruleFilePath)}
+          >
             {messages.batchReplacement.importRules}
           </Pill>
-        }
-      >
+        </div>
         {rules.length === 0 ? (
           <div className={styles.empty}>
             {messages.batchReplacement.noRules}
@@ -406,8 +449,7 @@ export function BatchReplacementPage() {
             disabled={
               isRunning ||
               rules.length === 0 ||
-              !inputFolder ||
-              !outputFolder
+              !inputFolder
             }
           >
             {messages.batchReplacement.execute}

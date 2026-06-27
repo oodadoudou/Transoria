@@ -1015,6 +1015,9 @@ export interface Messages {
     inputFolder: string;
     outputFolder: string;
     rulesLabel: string;
+    ruleFile: string;
+    ruleFilePlaceholder: string;
+    chooseRuleFile: string;
     importRules: string;
     noRules: string;
     execute: string;
