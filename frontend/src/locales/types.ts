@@ -1137,6 +1137,7 @@ export interface Messages {
     filePlaceholder: string;
     chooseFile: string;
     recursive: string;
+    outputFolder: string;
     outputHint: string;
     scan: string;
     execute: string;

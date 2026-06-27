@@ -173,7 +173,6 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
     try {
       const next = await epubConvertBridge.preview(inputPath, mode, {
         ...options,
-        output_dir: "",
       });
       setPlan(next);
       setActions(next.actions);
@@ -197,7 +196,6 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
       if (mode === "file") {
         const next = await epubConvertBridge.preview(inputPath, mode, {
           ...options,
-          output_dir: "",
         });
         executionActions = next.actions;
         setPlan(next);
@@ -208,7 +206,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
         requestId,
         inputPath,
         mode,
-        { ...options, output_dir: "" },
+        { ...options },
         executionActions,
       );
       setActiveTaskId("epub_convert", task_id);
@@ -288,6 +286,19 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               </Pill>
             </div>
           )}
+        </div>
+        <div className={styles.optionsGrid}>
+          <FolderPickerRow
+            label={text.outputFolder}
+            value={options.output_dir}
+            variant="output"
+            onChange={(path) =>
+              setOptions((prev) => ({ ...prev, output_dir: path }))
+            }
+            historyKey="general_tools:epub_convert:output_folder"
+            compact
+          />
+          <span className={styles.hint}>{text.outputHint}</span>
         </div>
         {mode === "folder" ? (
           <div className={styles.optionsGrid}>

@@ -132,7 +132,7 @@ export const dialogsBridge = {
     return nativeDialogs.chooseGlossaryFile(opts.initialPath, extensions);
   },
   chooseReplacementRulesFile(initialPath?: string): Promise<DialogPathResult> {
-    return nativeDialogs.chooseFile(initialPath, ["txt", "red"]);
+    return nativeDialogs.chooseFile(initialPath, []);
   },
   chooseEpubFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, ["epub"]);

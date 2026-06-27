@@ -538,8 +538,9 @@ export const en: Messages = {
     filePlaceholder: "Choose or paste an .epub file path",
     chooseFile: "Choose EPUB",
     recursive: "Scan subfolders",
+    outputFolder: "Output folder (optional)",
     outputHint:
-      "TXT files are written beside the source EPUB. Existing names get a numeric suffix.",
+      "If blank, TXT files are written beside the source EPUB. Existing names get a numeric suffix.",
     scan: "Scan preview",
     execute: "Convert",
     stop: "Stop",

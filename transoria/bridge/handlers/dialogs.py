@@ -213,7 +213,7 @@ def _build_handlers(
     ) -> dict[str, object]:
         path = provider.choose_file(
             initial_path=_optional_string(payload, "initial_path"),
-            extensions=("txt",),
+            extensions=(),
         )
         return {"path": path}
 

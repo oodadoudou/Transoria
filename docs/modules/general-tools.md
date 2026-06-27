@@ -308,6 +308,8 @@ unique output paths.
 
 - preview lists detected EPUB files and proposed TXT output paths
 - conversion follows the EPUB spine order
+- output folder is optional; when blank, TXT files are written beside the
+  source EPUB and output-name collisions are given a numeric suffix
 - source archive structure is inspected through the shared EPUB format layer
 - output text is UTF-8
 - reports include converted/failed counts plus segment, character, and spine

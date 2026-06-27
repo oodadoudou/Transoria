@@ -144,14 +144,14 @@ def test_choose_glossary_file_null_when_cancelled(router_and_stub):
     assert response == {"path": None, "format": None}
 
 
-def test_choose_replacement_rules_file_uses_txt(router_and_stub):
+def test_choose_replacement_rules_file_does_not_restrict_extensions(router_and_stub):
     router, provider = router_and_stub
-    provider.file_path = "/tmp/rules.txt"
+    provider.file_path = "/tmp/rules.red"
 
     response = router.call("dialogs.choose_replacement_rules_file", {})
 
-    assert response["path"] == "/tmp/rules.txt"
-    assert provider.captured["file_extensions"] == ("txt",)
+    assert response["path"] == "/tmp/rules.red"
+    assert provider.captured["file_extensions"] == ()
 
 
 def test_open_directory_validates_existence(router_and_stub, tmp_path: Path):

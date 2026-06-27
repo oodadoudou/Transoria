@@ -63,6 +63,7 @@ export function BatchReplacementPage() {
   const draft = moduleSettings.draft;
   const [inputFolder, setInputFolder] = useSessionState(INPUT_LOCAL_KEY, "");
   const [outputFolder, setOutputFolder] = useSessionState(OUTPUT_LOCAL_KEY, "");
+  const [pathsHydrated, setPathsHydrated] = useState(false);
   const [rules, setRules] = useLocalState<ReplacementRule[]>(
     RULES_LOCAL_KEY,
     [],
@@ -117,10 +118,11 @@ export function BatchReplacementPage() {
   const failedModalMessages = messages.failedSubtasksModal;
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.removeItem(INPUT_LOCAL_KEY);
-    window.localStorage.removeItem(OUTPUT_LOCAL_KEY);
-  }, []);
+    if (!draft || pathsHydrated) return;
+    setInputFolder((current) => current || draft.input_folder);
+    setOutputFolder((current) => current || draft.output_folder);
+    setPathsHydrated(true);
+  }, [draft, pathsHydrated, setInputFolder, setOutputFolder]);
 
   // Celebratory toast on truly clean completion. Replacement is
   // single-pass (no continue/rerun), so the failure dialog isn't

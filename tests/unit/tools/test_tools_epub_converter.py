@@ -94,6 +94,31 @@ def test_build_epub_convert_folder_plan_defaults_to_input_folder(tmp_path: Path)
     ]
 
 
+def test_build_epub_convert_folder_plan_uses_custom_output_folder(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "input"
+    nested = source / "nested"
+    output_dir = tmp_path / "out"
+    nested.mkdir(parents=True)
+    _write_epub(source / "a.epub", "<p>A</p>")
+    _write_epub(nested / "b.epub", "<p>B</p>")
+
+    plan = build_epub_convert_plan(
+        source,
+        mode="folder",
+        options=EpubConvertOptions(output_dir=str(output_dir), recursive=True),
+    )
+
+    relative_outputs = [
+        Path(action.output_path).relative_to(output_dir) for action in plan.actions
+    ]
+    assert relative_outputs == [
+        Path("a.txt"),
+        Path("nested/b.txt"),
+    ]
+
+
 def test_build_epub_convert_file_plan_returns_single_action(tmp_path: Path) -> None:
     epub_path = _write_epub(tmp_path / "novel.epub", "<p>본문</p>")
 
@@ -106,6 +131,25 @@ def test_build_epub_convert_file_plan_returns_single_action(tmp_path: Path) -> N
     assert len(plan.actions) == 1
     assert plan.actions[0].source_path == str(epub_path.resolve())
     assert Path(plan.actions[0].output_path) == (tmp_path / "novel.txt").resolve()
+
+
+def test_build_epub_convert_file_plan_uses_custom_output_folder(
+    tmp_path: Path,
+) -> None:
+    epub_path = _write_epub(tmp_path / "novel.epub", "<p>본문</p>")
+    output_dir = tmp_path / "out"
+
+    plan = build_epub_convert_plan(
+        epub_path,
+        mode="file",
+        options=EpubConvertOptions(output_dir=str(output_dir), recursive=True),
+    )
+
+    assert len(plan.actions) == 1
+    assert plan.actions[0].source_path == str(epub_path.resolve())
+    assert Path(plan.actions[0].output_path) == (
+        output_dir / "novel.txt"
+    ).resolve()
 
 
 def test_convert_epub_to_txt_reports_invalid_archive(tmp_path: Path) -> None:
