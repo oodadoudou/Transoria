@@ -995,16 +995,10 @@ def _chapter_xhtml(chapter: _Chapter) -> str:
 
 
 def _paragraphs(lines: Sequence[str]) -> Iterable[str]:
-    buffer: list[str] = []
     for line in lines:
-        if line.strip():
-            buffer.append(html.escape(line.strip(), quote=False))
-            continue
-        if buffer:
-            yield f"<p>{'<br/>'.join(buffer)}</p>"
-            buffer = []
-    if buffer:
-        yield f"<p>{'<br/>'.join(buffer)}</p>"
+        text = line.strip()
+        if text:
+            yield f"<p>{html.escape(text, quote=False)}</p>"
 
 
 def _nav_xhtml(*, title: str, chapters: Sequence[_Chapter]) -> str:

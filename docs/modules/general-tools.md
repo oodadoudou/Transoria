@@ -345,6 +345,8 @@ presets.
   numeric-title fallback matching
 - numeric/chapter presets can match full-line chapter titles and numeric lines
   according to their preset rules
+- non-empty body lines are written as separate XHTML `<p>` elements instead of
+  being joined with `<br/>`
 - optional cover images are embedded when valid
 - custom CSS is validated by the backend; remote or absolute resource URLs are
   rejected

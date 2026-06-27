@@ -3,6 +3,7 @@ import zipfile
 
 import pytest
 
+from transoria.formats.epub_parser import EpubTextKind, parse_epub_file
 from transoria.tools.txt_to_epub import (
     TxtToEpubOptions,
     TxtToEpubTocEntry,
@@ -294,6 +295,34 @@ def test_txt_to_epub_without_toc_promotes_source_title_not_placeholder(
         chapter = archive.read("OEBPS/Text/chapter_0001.xhtml").decode("utf-8")
     assert "던전 보스에게 고백받은 썰 푼다" in chapter
     assert ">正文<" not in chapter
+
+
+def test_txt_to_epub_writes_each_body_line_as_separate_paragraph(tmp_path: Path) -> None:
+    source = tmp_path / "novel.txt"
+    output_dir = tmp_path / "out"
+    source.write_text("제1화 시작\n첫 문장입니다.\n둘째 문장입니다.\n셋째 문장입니다.\n", encoding="utf-8")
+    plan = build_txt_to_epub_plan(
+        TxtToEpubOptions(
+            source_path=str(source),
+            output_dir=str(output_dir),
+            title="Novel",
+            overwrite=True,
+        )
+    )
+
+    result = convert_txt_to_epub(plan.action)
+
+    assert result.status == "converted"
+    with zipfile.ZipFile(plan.output_path) as archive:
+        chapter = archive.read("OEBPS/Text/chapter_0001.xhtml").decode("utf-8")
+    assert chapter.count("<p>") == 3
+    assert "<br" not in chapter
+
+    document = parse_epub_file(Path(plan.output_path))
+    body_segments = [segment.text for segment in document.segments if segment.kind == EpubTextKind.BODY]
+    assert "첫 문장입니다." in body_segments
+    assert "둘째 문장입니다." in body_segments
+    assert "셋째 문장입니다." in body_segments
 
 
 def test_txt_to_epub_keeps_prefix_text_out_of_toc_when_chapters_are_scanned(
