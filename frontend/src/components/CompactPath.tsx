@@ -4,6 +4,7 @@ interface CompactPathProps {
   value: string;
   copyLabel: string;
   displayValue?: string;
+  displayMode?: "path" | "filename";
   onCopy?: (value: string) => void;
   className?: string;
   valueClassName?: string;
@@ -11,17 +12,26 @@ interface CompactPathProps {
   emptyLabel?: string;
 }
 
+function fileNameFromPath(value: string): string {
+  const parts = value.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || value;
+}
+
 export function CompactPath({
   value,
   copyLabel,
   displayValue,
+  displayMode = "path",
   onCopy,
   className = "",
   valueClassName = "",
   asCode = false,
   emptyLabel = "-",
 }: CompactPathProps) {
-  const display = displayValue || value || emptyLabel;
+  const resolvedDisplay =
+    displayValue ??
+    (displayMode === "filename" && value ? fileNameFromPath(value) : value);
+  const display = resolvedDisplay || emptyLabel;
   const valueClass = `${styles.value} ${asCode ? styles.code : ""} ${valueClassName}`.trim();
   const handleCopy = () => {
     if (onCopy) {

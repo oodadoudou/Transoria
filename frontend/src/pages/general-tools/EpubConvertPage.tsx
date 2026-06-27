@@ -379,12 +379,14 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
                           <td>
                             <CompactPath
                               value={action.source_path}
+                              displayMode="filename"
                               copyLabel={messages.common.copyPath}
                             />
                           </td>
                           <td>
                             <CompactPath
                               value={action.output_path}
+                              displayMode="filename"
                               copyLabel={messages.common.copyPath}
                             />
                           </td>
@@ -498,12 +500,14 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
                       <td>
                         <CompactPath
                           value={row.source_path}
+                          displayMode="filename"
                           copyLabel={messages.common.copyPath}
                         />
                       </td>
                       <td>
                         <CompactPath
                           value={row.output_path}
+                          displayMode="filename"
                           copyLabel={messages.common.copyPath}
                         />
                       </td>
