@@ -3,6 +3,7 @@ import styles from "./CompactPath.module.css";
 interface CompactPathProps {
   value: string;
   copyLabel: string;
+  displayValue?: string;
   onCopy?: (value: string) => void;
   className?: string;
   valueClassName?: string;
@@ -13,13 +14,14 @@ interface CompactPathProps {
 export function CompactPath({
   value,
   copyLabel,
+  displayValue,
   onCopy,
   className = "",
   valueClassName = "",
   asCode = false,
   emptyLabel = "-",
 }: CompactPathProps) {
-  const display = value || emptyLabel;
+  const display = displayValue || value || emptyLabel;
   const valueClass = `${styles.value} ${asCode ? styles.code : ""} ${valueClassName}`.trim();
   const handleCopy = () => {
     if (onCopy) {

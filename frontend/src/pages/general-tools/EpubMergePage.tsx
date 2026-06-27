@@ -52,6 +52,11 @@ function defaultOptions(): EpubMergeOptions {
   };
 }
 
+function fileNameFromPath(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || path;
+}
+
 export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {}) {
   const messages = useMessages();
   const text = messages.epubMergeTool;
@@ -511,6 +516,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                         <td>
                           <CompactPath
                             value={action.source_path}
+                            displayValue={fileNameFromPath(action.source_path)}
                             copyLabel={messages.common.copyPath}
                           />
                         </td>
@@ -610,6 +616,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                         <td>
                           <CompactPath
                             value={row.source_path}
+                            displayValue={fileNameFromPath(row.source_path)}
                             copyLabel={messages.common.copyPath}
                           />
                         </td>
