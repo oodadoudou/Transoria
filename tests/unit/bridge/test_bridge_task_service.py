@@ -1584,6 +1584,40 @@ def test_replacement_allows_same_input_output(tmp_path: Path):
     assert (same_dir / "x.txt").read_text(encoding="utf-8") == "hello"
 
 
+def test_replacement_defaults_blank_output_folder_to_input(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "x.txt").write_text("hello", encoding="utf-8")
+    service.settings_store.save_partial(
+        "replacement",
+        {
+            "input_folder": str(input_dir),
+            "output_folder": "",
+        },
+    )
+
+    from transoria.tools.replacement import ReplacementRule
+
+    response = service.start_replacement(
+        request_id="req-1",
+        rules=(ReplacementRule(src="hello", dst="hi"),),
+    )
+    task_id = response["task_id"]
+
+    _wait_until(
+        lambda: service.read_snapshot(kind="replacement", task_id=task_id)[
+            "snapshot"
+        ]["header"]["status"]
+        == "completed",
+    )
+
+    artifacts = service.read_artifacts(kind="replacement", task_id=task_id)
+    assert artifacts["output_folder"] == str(input_dir)
+    assert (input_dir / "x-Replaced.txt").read_text(encoding="utf-8") == "hi"
+    assert (input_dir / "x.txt").read_text(encoding="utf-8") == "hello"
+
+
 def test_replacement_pause_rejects_with_single_pass(tmp_path: Path):
     """Replacement is single-pass; pause/continue are not supported.
     Translation/Glossary now have real pause/continue semantics — see

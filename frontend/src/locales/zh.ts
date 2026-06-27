@@ -398,7 +398,7 @@ export const zh: Messages = {
     title: "批量替换",
     sub: "使用导入的 TXT 箭头规则或 Reeden 阅读器 .red 替换规则，批量替换 TXT 和 EPUB 文件。",
     inputFolder: "源文件夹",
-    outputFolder: "输出文件夹",
+    outputFolder: "输出文件夹（可留空）",
     rulesLabel: "规则",
     importRules: "导入 TXT / RED 规则",
     noRules:

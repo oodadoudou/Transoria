@@ -2768,8 +2768,11 @@ class TaskService:
         input_dir = _require_directory(
             input_folder or replacement.input_folder, field="input_folder"
         )
+        resolved_output_folder = (
+            output_folder or replacement.output_folder or str(input_dir)
+        )
         output_dir = _ensure_output_dir(
-            output_folder or replacement.output_folder, field="output_folder"
+            resolved_output_folder, field="output_folder"
         )
 
         if not rules:

@@ -410,7 +410,7 @@ export const en: Messages = {
     title: "Batch Replacement",
     sub: "Apply imported TXT arrow rules or Reeden reader .red replacement rules to TXT and EPUB files.",
     inputFolder: "Input folder",
-    outputFolder: "Output folder",
+    outputFolder: "Output folder (optional)",
     rulesLabel: "Rules",
     importRules: "Import TXT / RED rules",
     noRules:

@@ -86,7 +86,9 @@ case-sensitive behavior.
 - invalid regex
 - duplicate source text
 
-The Execute button requires input folder, output folder, and at least one rule.
+The Execute button requires input folder and at least one rule. If output
+folder is blank, outputs are written next to the source files in the input
+folder.
 
 ## Task Lifecycle
 
@@ -114,7 +116,8 @@ Replacement is single-pass:
 1. Scan the input folder for supported `.epub` and `.txt` files.
 2. Seed one subtask per source file.
 3. Apply enabled rules in table order.
-4. Write replacement outputs under the configured output folder.
+4. Write replacement outputs under the configured output folder, or under the
+   input folder when output folder is blank.
 5. Record per-file replacement counts.
 6. Collect per-rule occurrence samples with context.
 7. Write `replacement-report.json`.

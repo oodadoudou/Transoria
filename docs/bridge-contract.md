@@ -547,9 +547,12 @@ containers. The TXT parser supports:
 
 The delimiter-adjacent `#` pair is removed only when both sides have it.
 
-`replacement.start_task` takes `{ request_id, rules }`; rules are the current
-UI table state, not persisted settings. `pause_task` and `continue_task` return
-`task.invalid_transition` because replacement is single-pass.
+`replacement.start_task` takes `{ request_id, rules }` plus optional
+`input_folder` / `output_folder` overrides; rules are the current UI table
+state, not persisted settings. If the resolved output folder is blank,
+replacement writes outputs into the input folder. `pause_task` and
+`continue_task` return `task.invalid_transition` because replacement is
+single-pass.
 
 ## EPUB Compressor
 
