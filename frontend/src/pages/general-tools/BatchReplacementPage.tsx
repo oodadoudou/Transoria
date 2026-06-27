@@ -411,8 +411,6 @@ export function BatchReplacementPage() {
               isEnabled={() => true}
               columns={replacementColumns(messages, updateRule)}
               emptyMessage={messages.batchReplacement.noRules}
-              editor={null}
-              toolbar={[]}
               onBulkDelete={deleteRules}
               contextMenuLabels={{
                 deleteSelected: (n) =>

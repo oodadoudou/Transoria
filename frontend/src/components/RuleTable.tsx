@@ -297,7 +297,7 @@ export function RuleTable<T>({
     );
   };
 
-  const hasSidebar = toolbar.length > 0 || editor !== undefined;
+  const hasSidebar = toolbar.length > 0 || editor != null;
 
   return (
     <div className={styles.editorGrid}>
