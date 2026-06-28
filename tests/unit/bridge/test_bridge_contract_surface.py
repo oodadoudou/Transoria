@@ -68,6 +68,13 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "prompts.select_active",
     "prompts.preview",
     "prompts.reset_to_default",
+    # workflow presets
+    "workflow_presets.list",
+    "workflow_presets.create",
+    "workflow_presets.update",
+    "workflow_presets.duplicate",
+    "workflow_presets.delete",
+    "workflow_presets.apply",
     # translation
     "translation.start_task",
     "translation.pause_task",
@@ -230,9 +237,10 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-05-04 (glossary_review input discovery) +
     # 1 added 2026-05-04 (glossary_review final XLSX bulk delete) +
     # 1 added 2026-05-04 (restore deleted glossary-review report row) +
-    # 3 added 2026-06-18 (LLM request logs for LLM workflows).
+    # 3 added 2026-06-18 (LLM request logs for LLM workflows) +
+    # 6 added 2026-06-28 (workflow presets).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 146
+    assert len(actual) == 152
 # Test 2 — frontend bridge wraps every backend method
 
 
@@ -299,6 +307,20 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
         "context": {"source_language": "Korean", "target_language": "Chinese"},
     },
     "prompts.reset_to_default": {"id": "missing-id"},
+    "workflow_presets.list": {"kind": "translation"},
+    "workflow_presets.create": {
+        "kind": "translation",
+        "preset": {
+            "name": "x",
+            "model_profile_id": "missing-id",
+            "prompt_preset_id": "default-translation-en",
+            "source_language": "kr",
+        },
+    },
+    "workflow_presets.update": {"id": "missing-id", "patch": {}},
+    "workflow_presets.duplicate": {"id": "missing-id"},
+    "workflow_presets.delete": {"id": "missing-id"},
+    "workflow_presets.apply": {"kind": "translation", "id": "missing-id"},
     "translation.start_task": {"request_id": "rid"},
     "translation.pause_task": {"task_id": "missing"},
     "translation.stop_task": {"task_id": "missing"},

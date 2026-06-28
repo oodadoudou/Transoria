@@ -8,7 +8,7 @@ from openpyxl import Workbook, load_workbook
 
 from transoria.llm.config import ModelConfig
 from transoria.prompts import PromptPreset
-from transoria.domain import SubtaskStatus, TaskKind, TaskStatus
+from transoria.domain import Language, SubtaskStatus, TaskKind, TaskStatus
 from transoria.runtime import Subtask, SubtaskResult, TaskCache
 from transoria.runtime.task_record import TaskRecord
 from transoria.workflows.glossary_review.config import GlossaryReviewConfig
@@ -428,6 +428,8 @@ def _config(tmp_path, *, novel_background: str = "") -> GlossaryReviewConfig:
         input_dir=tmp_path,
         selected_xlsx_path=None,
         selected_reference_paths=(),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
         output_filename="reviewed.xlsx",
         novel_background=novel_background,
         review_rounds=3,

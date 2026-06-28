@@ -212,11 +212,24 @@ export interface Messages {
   quickSwitch: {
     titleModel: string;
     titlePrompt: string;
+    titlePreset: string;
     closeAction: string;
     activeBadge: string;
     emptyModel: string;
     emptyPrompt: string;
+    emptyPreset: string;
     manageLink: string;
+  };
+  runConfig: {
+    preset: string;
+    model: string;
+    prompt: string;
+    switchAction: string;
+    noPreset: string;
+    noPresetHint: string;
+    customPreset: string;
+    missingModel: string;
+    missingPrompt: string;
   };
   promptModal: {
     titleAdd: string;
@@ -389,17 +402,20 @@ export interface Messages {
       preReplacement: string;
       postReplacement: string;
       prompt: string;
+      presets: string;
     };
     glossary: {
       run: string;
       settings: string;
       prompt: string;
+      presets: string;
     };
     glossaryReview: {
       run: string;
       review: string;
       settings: string;
       prompt: string;
+      presets: string;
     };
     generalTools: {
       batchReplacement: string;
@@ -739,8 +755,10 @@ export interface Messages {
       replacementNoMatch: string;
       replacementDone: string;
       taskFolderHint: string;
+      retranslatePreset: string;
       retranslateModel: string;
       retranslatePrompt: string;
+      retranslatePresetPickerTitle: string;
       retranslateModelPickerTitle: string;
       retranslatePromptPickerTitle: string;
       switchModelPrompt: string;
@@ -1344,6 +1362,37 @@ export interface Messages {
     badgeCustom: string;
     actions: { add: string; edit: string; duplicate: string; delete: string };
     noThinkingPrompt: string;
+  };
+  workflowPresets: {
+    pageTitle: string;
+    pageSub: string;
+    currentConfig: string;
+    currentHint: string;
+    available: string;
+    availableHint: string;
+    emptyTitle: string;
+    emptyBody: string;
+    addAction: string;
+    createFromCurrent: string;
+    formTitleCreate: string;
+    formTitleEdit: string;
+    defaultName: string;
+    nameLabel: string;
+    namePlaceholder: string;
+    modelLabel: string;
+    promptLabel: string;
+    sourceLanguageLabel: string;
+    targetLanguageLabel: string;
+    saveAction: string;
+    cancelAction: string;
+    useAction: string;
+    editAction: string;
+    duplicateAction: string;
+    deleteAction: string;
+    activeBadge: string;
+    badgeCustom: string;
+    customConfig: string;
+    missingSelection: string;
   };
   model: {
     crumb: string;

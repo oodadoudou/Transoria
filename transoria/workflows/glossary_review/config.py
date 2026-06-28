@@ -7,6 +7,7 @@ from pathlib import Path
 
 from transoria.llm.config import ModelConfig
 from transoria.prompts import PromptPreset
+from transoria.domain import Language
 
 DEFAULT_OUTPUT_FILENAME = "glossary-review-final.xlsx"
 
@@ -16,6 +17,8 @@ class GlossaryReviewConfig:
     input_dir: Path
     selected_xlsx_path: Path | None
     selected_reference_paths: tuple[Path, ...]
+    source_language: Language
+    target_language: Language
     output_filename: str
     novel_background: str
     review_rounds: int

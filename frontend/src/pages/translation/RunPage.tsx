@@ -22,6 +22,10 @@ import {
 } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
+import {
+  useWorkflowPresets,
+  useWorkflowPresetsStore,
+} from "@/store/useWorkflowPresetsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { ProgressRing } from "@/components/ProgressRing";
@@ -33,6 +37,7 @@ import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailure
 import { RunControls } from "@/components/RunControls";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import { RequestLogPanel } from "@/components/RequestLogPanel";
+import { RunConfigBar } from "@/components/RunConfigBar";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -75,6 +80,8 @@ export function RunPage() {
   const openProofreadingTask = useTaskStore((state) => state.openProofreadingTask);
   const profiles = useModelProfiles();
   const prompts = usePromptPresets("translation");
+  const workflow = useWorkflowPresets("translation");
+  const workflowSlice = workflow.translation;
   const promptSlice = prompts.translation;
   const appSettings = useModuleSettings("app");
   const translationSettings = useModuleSettings("translation");
@@ -204,7 +211,7 @@ export function RunPage() {
     ? promptSlice.presets.find((p) => p.id === displayedPromptId)
     : undefined;
 
-  const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
+  const [switchOpen, setSwitchOpen] = useState<"preset" | "model" | "prompt" | null>(null);
 
   const modelItems: QuickSwitchItem[] = profiles.profiles
     .filter((p) => p.api_key_status !== "missing")
@@ -222,12 +229,37 @@ export function RunPage() {
       name: preset.name,
       description: preset.description,
     }));
+  const activePreset = workflowSlice.matchedId
+    ? workflowSlice.presets.find((preset) => preset.id === workflowSlice.matchedId)
+    : undefined;
+  const sourceLanguage = translationSettings.draft?.source_language ?? "kr";
+  const targetLanguage = translationSettings.draft?.target_language ?? "zh";
+  const presetItems: QuickSwitchItem[] = workflowSlice.presets.map((preset) => {
+    const model = profiles.profiles.find((item) => item.id === preset.model_profile_id);
+    const prompt = promptSlice.presets.find((item) => item.id === preset.prompt_preset_id);
+    return {
+      id: preset.id,
+      name: preset.name,
+      description: [
+        `${messages.language.options[preset.source_language]} → ${
+          messages.language.options[preset.target_language]
+        }`,
+        model?.display_name ?? preset.model_profile_id,
+        prompt?.name ?? preset.prompt_preset_id,
+      ].join(" · "),
+    };
+  });
 
   const handleSelectModel = async (id: string) => {
     await useModelProfilesStore.getState().selectActive("translation", id);
+    await useWorkflowPresetsStore.getState().refresh("translation");
   };
   const handleSelectPrompt = async (id: string) => {
     await prompts.selectActive("translation", id);
+    await useWorkflowPresetsStore.getState().refresh("translation");
+  };
+  const handleSelectPreset = async (id: string) => {
+    await workflow.applyPreset("translation", id);
   };
   const persistNextStepDismissed = () => {
     saveNextStepDismissed();
@@ -324,23 +356,55 @@ export function RunPage() {
       ) : null}
 
       <Panel label={run.activeConfig}>
-        <div className={styles.activeStrip}>
-          <ActiveCard
-            label={run.activeModel}
-            primary={activeModel?.display_name ?? "—"}
-            secondary={activeModel?.model_id ?? ""}
-            onSwitch={() => setSwitchOpen("model")}
-            switchLabel={run.switch}
-          />
-          <ActiveCard
-            label={run.activePrompt}
-            primary={activePrompt?.name ?? "—"}
-            secondary={activePrompt?.description ?? ""}
-            onSwitch={() => setSwitchOpen("prompt")}
-            switchLabel={run.switch}
-          />
-        </div>
+        <RunConfigBar
+          items={[
+            {
+              id: "preset",
+              label: messages.runConfig.preset,
+              primary:
+                workflowSlice.presets.length === 0
+                  ? messages.runConfig.noPreset
+                  : activePreset?.name ?? messages.runConfig.customPreset,
+              secondary:
+                workflowSlice.presets.length === 0
+                  ? messages.runConfig.noPresetHint
+                  : `${messages.language.options[sourceLanguage]} → ${
+                      messages.language.options[targetLanguage]
+                    }`,
+              actionLabel: messages.runConfig.switchAction,
+              onClick: () => setSwitchOpen("preset"),
+            },
+            {
+              id: "model",
+              label: messages.runConfig.model,
+              primary: activeModel?.display_name ?? messages.runConfig.missingModel,
+              secondary: activeModel?.model_id ?? "",
+              actionLabel: messages.runConfig.switchAction,
+              onClick: () => setSwitchOpen("model"),
+            },
+            {
+              id: "prompt",
+              label: messages.runConfig.prompt,
+              primary: activePrompt?.name ?? messages.runConfig.missingPrompt,
+              secondary: activePrompt?.description ?? "",
+              actionLabel: messages.runConfig.switchAction,
+              onClick: () => setSwitchOpen("prompt"),
+            },
+          ]}
+        />
       </Panel>
+
+      {switchOpen === "preset" ? (
+        <QuickSwitchModal
+          title={messages.quickSwitch.titlePreset}
+          items={presetItems}
+          activeId={workflowSlice.matchedId}
+          emptyMessage={messages.quickSwitch.emptyPreset}
+          onSelect={handleSelectPreset}
+          onClose={() => setSwitchOpen(null)}
+          onManage={() => navigate({ module: "translation", page: "presets" })}
+        />
+      ) : null}
 
       {switchOpen === "model" ? (
         <QuickSwitchModal
@@ -491,37 +555,6 @@ export function RunPage() {
         />
       </RunControls>
     </>
-  );
-}
-
-interface ActiveCardProps {
-  label: string;
-  primary: string;
-  secondary: string;
-  onSwitch: () => void;
-  switchLabel: string;
-}
-
-function ActiveCard({
-  label,
-  primary,
-  secondary,
-  onSwitch,
-  switchLabel,
-}: ActiveCardProps) {
-  return (
-    <div className={styles.activeCard}>
-      <div className={styles.activeMeta}>
-        <span className={styles.activeLabel}>{label}</span>
-        <span className={styles.activePrimary}>{primary}</span>
-        {secondary ? (
-          <span className={styles.activeSecondary}>{secondary}</span>
-        ) : null}
-      </div>
-      <button type="button" className={styles.activeSwitch} onClick={onSwitch}>
-        {switchLabel}
-      </button>
-    </div>
   );
 }
 

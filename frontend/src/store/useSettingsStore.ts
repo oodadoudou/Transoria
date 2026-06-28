@@ -59,6 +59,10 @@ interface SettingsState extends Slices {
   loadError: BridgeError | null;
   hydrate: () => Promise<void>;
   applyAppFromBridge: (app: AppSettings) => void;
+  applyModuleFromBridge: <TModule extends SettingsModule>(
+    module: TModule,
+    settings: ModuleSettingsMap[TModule],
+  ) => void;
   updateField: <
     TModule extends SettingsModule,
     TKey extends keyof ModuleSettingsMap[TModule],
@@ -235,6 +239,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           baseline: app,
         } as ModuleSlice<"app">,
       }));
+    },
+
+    applyModuleFromBridge: (module, settings) => {
+      set((state) =>
+        patchSlice(state, module, {
+          draft: settings,
+          baseline: settings,
+          pendingPatch: {},
+          saveState: "saved",
+          lastSavedAt: new Date().toISOString(),
+          lastError: null,
+          lastRejectedFields: [],
+        }),
+      );
     },
 
     updateField: (module, key, value) => {

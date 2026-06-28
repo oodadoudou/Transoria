@@ -15,6 +15,7 @@ from transoria.llm.config import ModelConfig
 from transoria.llm.retry import is_transient_llm_error, retry_async
 from transoria.llm.usage import estimate_tokens_from_text
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
+from transoria.domain import Language, language_prompt_label
 from transoria.runtime.executor import SubtaskResult
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
@@ -109,6 +110,8 @@ class GlossaryReviewSubtaskRunner:
     client: LlmClient
     model: ModelConfig
     prompt_preset: PromptPreset
+    source_language: Language = Language.KOREAN
+    target_language: Language = Language.CHINESE_SIMPLIFIED
     tpm_limiter: TpmLimiter | None = None
     key_pool: KeyPool | None = None
     stream: bool = False
@@ -133,7 +136,10 @@ class GlossaryReviewSubtaskRunner:
 
         instruction_prompt = build_prompt(
             self.prompt_preset,
-            PromptContext(),
+            PromptContext(
+                source_language=language_prompt_label(self.source_language),
+                target_language=language_prompt_label(self.target_language),
+            ),
             thinking=self.model.thinking_prompt_enabled,
         )
         payload_rows = tuple(item for item in rows if isinstance(item, Mapping))

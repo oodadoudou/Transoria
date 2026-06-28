@@ -112,6 +112,8 @@ class GlossaryReviewSettings:
     input_folder: str = ""
     selected_xlsx_path: str = ""
     selected_reference_paths: tuple[str, ...] = ()
+    source_language: str = Language.KOREAN.value
+    target_language: str = Language.CHINESE_SIMPLIFIED.value
     output_filename: str = "glossary-review-final.xlsx"
     novel_background: str = ""
     review_rounds: int = 1

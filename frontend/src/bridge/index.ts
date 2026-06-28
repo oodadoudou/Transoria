@@ -7,6 +7,7 @@ export {
   modelProfilesBridge,
   modelTemplatesBridge,
   promptsBridge,
+  workflowPresetsBridge,
   translationBridge,
   glossaryBridge,
   glossaryReviewBridge,

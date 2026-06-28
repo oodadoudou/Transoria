@@ -23,6 +23,10 @@ import {
 } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
+import {
+  useWorkflowPresets,
+  useWorkflowPresetsStore,
+} from "@/store/useWorkflowPresetsStore";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -34,6 +38,7 @@ import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailuresDialog";
 import { RunControls } from "@/components/RunControls";
 import { RequestLogPanel } from "@/components/RequestLogPanel";
+import { RunConfigBar } from "@/components/RunConfigBar";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -61,6 +66,8 @@ export function RunPage() {
   const navigate = useTaskStore((state) => state.navigate);
   const profiles = useModelProfiles();
   const prompts = usePromptPresets("glossary_review");
+  const workflow = useWorkflowPresets("glossary_review");
+  const workflowSlice = workflow.glossary_review;
   const promptSlice = prompts.glossary_review;
   const appSettings = useModuleSettings("app");
   const glossaryReviewSettings = useModuleSettings("glossary_review");
@@ -127,7 +134,7 @@ export function RunPage() {
     ? promptSlice.presets.find((p) => p.id === displayedPromptId)
     : undefined;
 
-  const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
+  const [switchOpen, setSwitchOpen] = useState<"preset" | "model" | "prompt" | null>(null);
 
   const modelItems: QuickSwitchItem[] = profiles.profiles
     .filter((p) => p.api_key_status !== "missing")
@@ -143,12 +150,37 @@ export function RunPage() {
       name: preset.name,
       description: preset.description,
     }));
+  const activePreset = workflowSlice.matchedId
+    ? workflowSlice.presets.find((preset) => preset.id === workflowSlice.matchedId)
+    : undefined;
+  const sourceLanguage = glossaryReviewSettings.draft?.source_language ?? "kr";
+  const targetLanguage = glossaryReviewSettings.draft?.target_language ?? "zh";
+  const presetItems: QuickSwitchItem[] = workflowSlice.presets.map((preset) => {
+    const model = profiles.profiles.find((item) => item.id === preset.model_profile_id);
+    const prompt = promptSlice.presets.find((item) => item.id === preset.prompt_preset_id);
+    return {
+      id: preset.id,
+      name: preset.name,
+      description: [
+        `${messages.language.options[preset.source_language]} → ${
+          messages.language.options[preset.target_language]
+        }`,
+        model?.display_name ?? preset.model_profile_id,
+        prompt?.name ?? preset.prompt_preset_id,
+      ].join(" · "),
+    };
+  });
 
   const handleSelectModel = async (id: string) => {
     await useModelProfilesStore.getState().selectActive("glossary_review", id);
+    await useWorkflowPresetsStore.getState().refresh("glossary_review");
   };
   const handleSelectPrompt = async (id: string) => {
     await prompts.selectActive("glossary_review", id);
+    await useWorkflowPresetsStore.getState().refresh("glossary_review");
+  };
+  const handleSelectPreset = async (id: string) => {
+    await workflow.applyPreset("glossary_review", id);
   };
 
   const handleAcceptCompletion = () => {
@@ -307,23 +339,57 @@ export function RunPage() {
       <RunErrorBanner kind="glossary_review" />
 
       <Panel label={run.activeConfig}>
-        <div className={styles.activeStrip}>
-          <ActiveCard
-            label={run.activeModel}
-            primary={activeModel?.display_name ?? "—"}
-            secondary={activeModel?.model_id ?? ""}
-            onSwitch={() => setSwitchOpen("model")}
-            switchLabel={run.switch}
-          />
-          <ActiveCard
-            label={run.activePrompt}
-            primary={activePrompt?.name ?? "—"}
-            secondary={activePrompt?.description ?? ""}
-            onSwitch={() => setSwitchOpen("prompt")}
-            switchLabel={run.switch}
-          />
-        </div>
+        <RunConfigBar
+          items={[
+            {
+              id: "preset",
+              label: messages.runConfig.preset,
+              primary:
+                workflowSlice.presets.length === 0
+                  ? messages.runConfig.noPreset
+                  : activePreset?.name ?? messages.runConfig.customPreset,
+              secondary:
+                workflowSlice.presets.length === 0
+                  ? messages.runConfig.noPresetHint
+                  : `${messages.language.options[sourceLanguage]} → ${
+                      messages.language.options[targetLanguage]
+                    }`,
+              actionLabel: messages.runConfig.switchAction,
+              onClick: () => setSwitchOpen("preset"),
+            },
+            {
+              id: "model",
+              label: messages.runConfig.model,
+              primary: activeModel?.display_name ?? messages.runConfig.missingModel,
+              secondary: activeModel?.model_id ?? "",
+              actionLabel: messages.runConfig.switchAction,
+              onClick: () => setSwitchOpen("model"),
+            },
+            {
+              id: "prompt",
+              label: messages.runConfig.prompt,
+              primary: activePrompt?.name ?? messages.runConfig.missingPrompt,
+              secondary: activePrompt?.description ?? "",
+              actionLabel: messages.runConfig.switchAction,
+              onClick: () => setSwitchOpen("prompt"),
+            },
+          ]}
+        />
       </Panel>
+
+      {switchOpen === "preset" ? (
+        <QuickSwitchModal
+          title={messages.quickSwitch.titlePreset}
+          items={presetItems}
+          activeId={workflowSlice.matchedId}
+          emptyMessage={messages.quickSwitch.emptyPreset}
+          onSelect={handleSelectPreset}
+          onClose={() => setSwitchOpen(null)}
+          onManage={() =>
+            navigate({ module: "glossary-review", page: "presets" })
+          }
+        />
+      ) : null}
 
       {switchOpen === "model" ? (
         <QuickSwitchModal
@@ -500,37 +566,6 @@ export function RunPage() {
         />
       ) : null}
     </>
-  );
-}
-
-interface ActiveCardProps {
-  label: string;
-  primary: string;
-  secondary: string;
-  onSwitch: () => void;
-  switchLabel: string;
-}
-
-function ActiveCard({
-  label,
-  primary,
-  secondary,
-  onSwitch,
-  switchLabel,
-}: ActiveCardProps) {
-  return (
-    <div className={styles.activeCard}>
-      <div className={styles.activeMeta}>
-        <span className={styles.activeLabel}>{label}</span>
-        <span className={styles.activePrimary}>{primary}</span>
-        {secondary ? (
-          <span className={styles.activeSecondary}>{secondary}</span>
-        ) : null}
-      </div>
-      <button type="button" className={styles.activeSwitch} onClick={onSwitch}>
-        {switchLabel}
-      </button>
-    </div>
   );
 }
 

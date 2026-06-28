@@ -2610,6 +2610,12 @@ class TaskService:
             field="active_glossary_review_model_id",
         )
         model = replace(model, timeout_seconds=float(review.timeout_seconds))
+        source_lang = _coerce_language(
+            review.source_language, field="source_language"
+        )
+        target_lang = _coerce_language(
+            review.target_language, field="target_language"
+        )
         preset = self._resolve_prompt_preset(
             app.active_glossary_review_prompt_id,
             kind=PromptKind.GLOSSARY_REVIEW,
@@ -2622,6 +2628,8 @@ class TaskService:
             selected_reference_paths=tuple(
                 Path(path) for path in review.selected_reference_paths
             ),
+            source_language=source_lang,
+            target_language=target_lang,
             output_filename=output_filename,
             novel_background=review.novel_background,
             review_rounds=max(1, int(review.review_rounds)),
@@ -2676,6 +2684,8 @@ class TaskService:
                 "input_dir": str(config.input_dir),
                 "output_dir": str(config.input_dir),
                 "output_filename": config.output_filename,
+                "source_language": config.source_language.value,
+                "target_language": config.target_language.value,
                 "review_rounds_total": config.review_rounds,
                 "review_round_current": 0,
                 "review_round_completed": 0,

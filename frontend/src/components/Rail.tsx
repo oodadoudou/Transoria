@@ -54,6 +54,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
           { page: "run", label: t.run },
           { page: "glossary", label: t.glossary },
           { page: "proofreading", label: t.proofreading },
+          { page: "presets", label: t.presets },
           { page: "prompt", label: t.prompt },
           { page: "settings", label: t.settings },
           {
@@ -73,6 +74,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         label: messages.rail.glossary,
         children: [
           { page: "run", label: g.run },
+          { page: "presets", label: g.presets },
           { page: "prompt", label: g.prompt },
           { page: "settings", label: g.settings },
         ],
@@ -83,6 +85,7 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         children: [
           { page: "run", label: gr.run },
           { page: "review", label: gr.review },
+          { page: "presets", label: gr.presets },
           { page: "prompt", label: gr.prompt },
           { page: "settings", label: gr.settings },
         ],

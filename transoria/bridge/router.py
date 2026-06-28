@@ -121,6 +121,9 @@ def build_default_router(
     from transoria.bridge.handlers.prompts import (  # noqa: PLC0415
         register as register_prompts,
     )
+    from transoria.bridge.handlers.workflow_presets import (  # noqa: PLC0415
+        register as register_workflow_presets,
+    )
     from transoria.bridge.handlers.glossary_imports import (  # noqa: PLC0415
         register as register_glossary_imports,
     )
@@ -208,6 +211,12 @@ def build_default_router(
     )
     register_model_templates(router)
     register_prompts(
+        router,
+        cache_root=cache_root,
+        settings_store=settings_store,
+        profile_store=profile_store,
+    )
+    register_workflow_presets(
         router,
         cache_root=cache_root,
         settings_store=settings_store,

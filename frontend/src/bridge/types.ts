@@ -159,6 +159,8 @@ export interface GlossaryReviewSettings {
   input_folder: string;
   selected_xlsx_path: string;
   selected_reference_paths: string[];
+  source_language: Language;
+  target_language: Language;
   output_filename: string;
   novel_background: string;
   review_rounds: number;
@@ -301,6 +303,26 @@ export interface PromptPreviewResult {
   /** The active model profile's thinking_level for the preset's kind,
    * or null when no model is selected / the saved profile is gone. */
   active_thinking_level: "off" | "low" | "medium" | "high" | null;
+}
+
+export interface WorkflowPreset {
+  id: string;
+  name: string;
+  kind: PromptKind;
+  model_profile_id: string;
+  prompt_preset_id: string;
+  source_language: Language;
+  target_language: Language;
+  enabled: boolean;
+}
+
+export type WorkflowPresetDraft = Omit<WorkflowPreset, "id" | "kind"> & {
+  id?: string;
+};
+
+export interface WorkflowPresetListResult {
+  presets: WorkflowPreset[];
+  matched_id: string | null;
 }
 
 export type TaskKind =

@@ -25,6 +25,7 @@ import { useVirtualWindow } from "@/hooks/useVirtualWindow";
 import { useModelProfiles } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
+import { useWorkflowPresets } from "@/store/useWorkflowPresetsStore";
 import styles from "./ProofreadingPage.module.css";
 
 type FeedbackKind = "info" | "error" | "success";
@@ -442,6 +443,8 @@ export function ProofreadingPage() {
   const profiles = useModelProfiles();
   const promptPresets = usePromptPresets("translation");
   const translationPromptSlice = promptPresets.translation;
+  const workflow = useWorkflowPresets("translation");
+  const workflowSlice = workflow.translation;
   const locale = useI18n((state) => state.locale);
   const [proofreadingModelId, setProofreadingModelId] = useState<string | null>(
     null,
@@ -453,7 +456,9 @@ export function ProofreadingPage() {
     useState(false);
   const [proofreadingPromptOverridden, setProofreadingPromptOverridden] =
     useState(false);
-  const [switchOpen, setSwitchOpen] = useState<"model" | "prompt" | null>(null);
+  const [switchOpen, setSwitchOpen] = useState<
+    "preset" | "model" | "prompt" | null
+  >(null);
   const activeTranslationModelId =
     appSettings.draft?.active_translation_model_id ?? null;
   const activeTranslationPromptId =
@@ -510,6 +515,46 @@ export function ProofreadingPage() {
       })),
     [visiblePromptPresets],
   );
+  const presetItems = useMemo<QuickSwitchItem[]>(
+    () =>
+      workflowSlice.presets.map((preset) => {
+        const model = profiles.profiles.find(
+          (profile) => profile.id === preset.model_profile_id,
+        );
+        const prompt = translationPromptSlice.presets.find(
+          (item) => item.id === preset.prompt_preset_id,
+        );
+        const languagePair = `${messages.language.options[preset.source_language]} → ${
+          messages.language.options[preset.target_language]
+        }`;
+        return {
+          id: preset.id,
+          name: preset.name,
+          description: [
+            languagePair,
+            model?.display_name ?? preset.model_profile_id,
+            prompt?.name ?? preset.prompt_preset_id,
+          ].join(" · "),
+        };
+      }),
+    [
+      messages.language.options,
+      profiles.profiles,
+      translationPromptSlice.presets,
+      workflowSlice.presets,
+    ],
+  );
+  const activeProofreadingPresetId =
+    workflowSlice.presets.find(
+      (preset) =>
+        preset.model_profile_id === proofreadingModelId &&
+        preset.prompt_preset_id === effectiveProofreadingPromptId,
+    )?.id ?? null;
+  const activeProofreadingPreset = activeProofreadingPresetId
+    ? workflowSlice.presets.find(
+        (preset) => preset.id === activeProofreadingPresetId,
+      )
+    : null;
   const selectedProofreadingModel = profiles.profiles.find(
     (profile) => profile.id === proofreadingModelId,
   );
@@ -1776,8 +1821,42 @@ export function ProofreadingPage() {
             {m.switchModelPrompt}
           </span>
         </button>
+        <button
+          type="button"
+          className={styles.retranslateConfigButton}
+          onClick={() => setSwitchOpen("preset")}
+        >
+          <span className={styles.retranslateConfigLabel}>
+            {m.retranslatePreset}
+          </span>
+          <span className={styles.retranslateConfigName}>
+            {activeProofreadingPreset?.name ?? messages.runConfig.customPreset}
+          </span>
+          <span className={styles.retranslateConfigSwitch}>
+            {m.switchModelPrompt}
+          </span>
+        </button>
       </div>
 
+      {switchOpen === "preset" ? (
+        <QuickSwitchModal
+          title={m.retranslatePresetPickerTitle}
+          items={presetItems}
+          activeId={activeProofreadingPresetId}
+          emptyMessage={messages.quickSwitch.emptyPreset}
+          onSelect={(id) => {
+            const preset = workflowSlice.presets.find((item) => item.id === id);
+            if (!preset) return;
+            setProofreadingModelOverridden(true);
+            setProofreadingPromptOverridden(true);
+            setProofreadingModelId(preset.model_profile_id);
+            setProofreadingPromptId(preset.prompt_preset_id);
+          }}
+          onClose={() => setSwitchOpen(null)}
+          onManage={() => navigate({ module: "translation", page: "presets" })}
+          allowReselect
+        />
+      ) : null}
       {switchOpen === "model" ? (
         <QuickSwitchModal
           title={m.retranslateModelPickerTitle}

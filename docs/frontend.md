@@ -1,7 +1,7 @@
 # Frontend Implementation Guide
 
 Status: Active
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 ## Stack
 
@@ -39,6 +39,7 @@ Translation pages:
 - Run
 - Glossary
 - Proofreading
+- Presets
 - Prompt
 - Settings
 - Rules
@@ -49,6 +50,7 @@ Translation pages:
 Glossary pages:
 
 - Run
+- Presets
 - Prompt
 - Settings
 
@@ -56,6 +58,7 @@ Glossary Review pages:
 
 - Run
 - Review
+- Presets
 - Prompt
 - Settings
 
@@ -83,6 +86,8 @@ Important stores:
 - `useRuntimeStore`: active task id, snapshots, failures, polling, auto-open
 - `useModelProfilesStore`: API profile list and active selection
 - `usePromptPresetsStore`: prompt preset list, body reads, active selection
+- `useWorkflowPresetsStore`: per-module bundles of model, prompt, source
+  language, and target language
 - `useToastStore`: user-visible toasts
 
 ## Bridge
@@ -159,14 +164,31 @@ Current behavior:
 - modal exposes name, description, and system prompt only
 - thinking guidance is not editable prompt preset content
 
+## Preset Pages
+
+`WorkflowPresetsPage` is shared by Translation, Glossary Extraction, and
+Glossary Review.
+
+Current behavior:
+
+- each preset belongs to one module
+- a preset stores name, model profile id, prompt preset id, source language,
+  and target language
+- users can create presets in a modal, edit, duplicate, delete, or apply
+  presets
+- applying a preset updates active model, active prompt, source language, and
+  target language together
+- the preset list contains only user-created presets; defaults are used only
+  as initial values in the create dialog
+- empty states say there are no presets and point the user toward creating one
+
 ## Run Pages
 
 Translation, Glossary Extraction, and Glossary Review Run pages are
 execution/status surfaces:
 
-- active model card
-- active prompt card
-- quick-switch modals for model and prompt
+- compact active configuration bar with preset, model, and prompt selectors
+- quick-switch modals for preset, model, and prompt
 - progress ring
 - completed/failed/remaining/elapsed/speed stats
 - processed/running subtask counter with the longest running subtask age
@@ -225,6 +247,9 @@ average. The panel is read-only and auto-closes on outside click.
 - read-only original text in a `<textarea>` with full-text select on focus
 - inline editable translation
 - per-segment retranslate (isolated chunk_index=0 call)
+- local retranslate preset/model/prompt switches; choosing a preset fills the
+  proofreading retranslate model and prompt without changing the cached task
+  language metadata
 - batch retranslate for the current filtered list, with progress and
   success/failure counts
 - next-risk navigation

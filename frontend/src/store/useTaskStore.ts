@@ -16,11 +16,17 @@ export type TranslationPage =
   | "textPreserve"
   | "preReplacement"
   | "postReplacement"
-  | "prompt";
+  | "prompt"
+  | "presets";
 
-export type GlossaryPage = "run" | "settings" | "prompt";
+export type GlossaryPage = "run" | "settings" | "prompt" | "presets";
 
-export type GlossaryReviewPage = "run" | "review" | "settings" | "prompt";
+export type GlossaryReviewPage =
+  | "run"
+  | "review"
+  | "settings"
+  | "prompt"
+  | "presets";
 
 export type GeneralToolsPage =
   | "batchReplacement"
@@ -119,6 +125,7 @@ function coerceRoute(value: unknown): Route {
           "preReplacement",
           "postReplacement",
           "prompt",
+          "presets",
         ].includes(String(candidate.page))
       ) {
         return {
@@ -128,12 +135,16 @@ function coerceRoute(value: unknown): Route {
       }
       return { module: "translation", page: "run" };
     case "glossary":
-      if (["run", "settings", "prompt"].includes(String(candidate.page))) {
+      if (["run", "settings", "prompt", "presets"].includes(String(candidate.page))) {
         return { module: "glossary", page: candidate.page as GlossaryPage };
       }
       return { module: "glossary", page: "run" };
     case "glossary-review":
-      if (["run", "review", "settings", "prompt"].includes(String(candidate.page))) {
+      if (
+        ["run", "review", "settings", "prompt", "presets"].includes(
+          String(candidate.page),
+        )
+      ) {
         return {
           module: "glossary-review",
           page: candidate.page as GlossaryReviewPage,

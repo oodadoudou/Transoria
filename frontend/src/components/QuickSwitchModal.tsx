@@ -17,6 +17,7 @@ interface QuickSwitchModalProps {
   onSelect: (itemId: string) => Promise<void> | void;
   onClose: () => void;
   onManage?: () => void;
+  allowReselect?: boolean;
 }
 
 export function QuickSwitchModal({
@@ -27,13 +28,14 @@ export function QuickSwitchModal({
   onSelect,
   onClose,
   onManage,
+  allowReselect = false,
 }: QuickSwitchModalProps) {
   const messages = useMessages();
   const labels = messages.quickSwitch;
   useEscapeKey(onClose);
 
   const handlePick = (id: string) => {
-    if (id === activeId) {
+    if (id === activeId && !allowReselect) {
       onClose();
       return;
     }

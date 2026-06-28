@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
-import { BridgeError, glossaryReviewBridge, type GlossaryReviewInputCandidates } from "@/bridge";
+import {
+  BridgeError,
+  glossaryReviewBridge,
+  type GlossaryReviewInputCandidates,
+  type Language,
+} from "@/bridge";
 import { format, useMessages } from "@/locales";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { NumberField } from "@/components/NumberField";
 import { Segmented } from "@/components/Segmented";
+import { LanguageSelect } from "@/components/LanguageSelect";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { TextField } from "@/components/TextField";
@@ -157,6 +163,20 @@ export function SettingsPage() {
 
       <Panel>
         <SettingsFieldStack>
+          <SettingsField label={messages.language.sourceLabel}>
+            <LanguageSelect
+              ariaLabel={messages.language.sourceLabel}
+              value={draft.source_language as Language}
+              onChange={(v) => moduleSettings.update("source_language", v)}
+            />
+          </SettingsField>
+          <SettingsField label={messages.language.targetLabel}>
+            <LanguageSelect
+              ariaLabel={messages.language.targetLabel}
+              value={draft.target_language as Language}
+              onChange={(v) => moduleSettings.update("target_language", v)}
+            />
+          </SettingsField>
           <SettingsFieldFrame>
             <TextField
               label={settings.novelBackground}

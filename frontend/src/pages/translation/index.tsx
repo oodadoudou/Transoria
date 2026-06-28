@@ -2,6 +2,7 @@ import { useMessages } from "@/locales";
 import type { TranslationPage } from "@/store/useTaskStore";
 import { PlaceholderPage } from "../PlaceholderPage";
 import { PromptConfigPage } from "../shared/PromptConfigPage";
+import { WorkflowPresetsPage } from "../shared/WorkflowPresetsPage";
 import { GlossaryPage } from "./GlossaryPage";
 import { ProofreadingPage } from "./ProofreadingPage";
 import { RunPage } from "./RunPage";
@@ -18,6 +19,7 @@ export function TranslationModule({ page }: TranslationModuleProps) {
   if (page === "run") return <RunPage />;
   if (page === "settings") return <SettingsPage />;
   if (page === "prompt") return <PromptConfigPage owner="translation" />;
+  if (page === "presets") return <WorkflowPresetsPage owner="translation" />;
   if (page === "glossary") return <GlossaryPage />;
   if (page === "proofreading") return <ProofreadingPage />;
   if (page === "textPreserve") return <TextPreservePage />;

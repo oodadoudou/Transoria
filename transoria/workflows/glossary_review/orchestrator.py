@@ -100,6 +100,8 @@ def _default_runner_factory(
         client=client,
         model=config.model,
         prompt_preset=config.prompt_preset,
+        source_language=config.source_language,
+        target_language=config.target_language,
         tpm_limiter=tpm_limiter,
         key_pool=key_pool,
         stream=config.stream,

@@ -1,7 +1,7 @@
 # Frontend ↔ Backend Bridge Contract
 
 Status: Active
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 The React frontend calls the Python backend through a local HTTP bridge:
 
@@ -165,11 +165,11 @@ bilingual options, `context_lines`, `request_retry_attempts`,
 `timeout_seconds`, and `auto_open_output_folder`.
 
 `GlossaryReviewSettings` includes `input_folder`, `selected_xlsx_path`,
-`selected_reference_paths`, `output_filename`, `novel_background`,
+`selected_reference_paths`, `source_language`, `target_language`, `output_filename`,
+`novel_background`,
 `review_rounds`, `batch_size`, `retry_attempts`, `timeout_seconds`, and
 `auto_open_output_folder`. Review output is written under `input_folder` using
-`output_filename`; there is no separate review output folder or language
-setting.
+`output_filename`; there is no separate review output folder.
 
 `ReplacementSettings` includes folders, `allow_same_folder`,
 `output_naming_suffix`, `overwrite_existing`, `apply_to_epub_titles`, and
@@ -288,6 +288,54 @@ Prompt body fields exposed to the frontend:
   active_thinking_level: "off" | "low" | "medium" | "high" | null;
 }
 ```
+
+## Workflow Presets
+
+Registered methods:
+
+- `workflow_presets.list`
+- `workflow_presets.create`
+- `workflow_presets.update`
+- `workflow_presets.duplicate`
+- `workflow_presets.delete`
+- `workflow_presets.apply`
+
+Workflow presets are module-scoped bundles of model profile, prompt preset,
+source language, and target language. Preset kind is `"translation"`, `"glossary"`, or
+`"glossary_review"`.
+
+Preset shape:
+
+```ts
+{
+  id: string;
+  name: string;
+  kind: "translation" | "glossary" | "glossary_review";
+  model_profile_id: string;
+  prompt_preset_id: string;
+  source_language: Language;
+  target_language: Language;
+  enabled: boolean;
+}
+```
+
+`workflow_presets.list` takes `{ kind }` and returns:
+
+```ts
+{
+  presets: WorkflowPreset[];
+  matched_id: string | null;
+}
+```
+
+`matched_id` is the enabled preset whose model, prompt, source language, and
+target language all match current settings. It is `null` when the user is on a
+custom combination or has no presets.
+
+`workflow_presets.apply` takes `{ kind, id }`, validates referenced model and
+prompt ids still exist, then updates active model id, active prompt id, and the
+module source/target language settings. It returns the updated app settings and
+updated module settings so the frontend can refresh immediately.
 
 ## Task Snapshot Types
 

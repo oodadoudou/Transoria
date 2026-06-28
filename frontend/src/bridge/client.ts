@@ -43,6 +43,9 @@ import type {
   PromptPresetSummary,
   PromptPreviewContext,
   PromptPreviewResult,
+  WorkflowPreset,
+  WorkflowPresetDraft,
+  WorkflowPresetListResult,
   ReplacementArtifacts,
   ReplacementReport,
   ReplacementRule,
@@ -277,6 +280,36 @@ export const promptsBridge = {
   },
   resetToDefault(id: string): Promise<{ preset: PromptPresetBody }> {
     return call("prompts.reset_to_default", { id });
+  },
+};
+
+export const workflowPresetsBridge = {
+  list(kind: PromptKind): Promise<WorkflowPresetListResult> {
+    return call("workflow_presets.list", { kind });
+  },
+  create(
+    kind: PromptKind,
+    preset: WorkflowPresetDraft,
+  ): Promise<{ preset: WorkflowPreset }> {
+    return call("workflow_presets.create", { kind, preset });
+  },
+  update(
+    id: string,
+    patch: Partial<WorkflowPresetDraft>,
+  ): Promise<{ preset: WorkflowPreset }> {
+    return call("workflow_presets.update", { id, patch });
+  },
+  duplicate(id: string, newName?: string): Promise<{ preset: WorkflowPreset }> {
+    return call("workflow_presets.duplicate", { id, new_name: newName });
+  },
+  delete(id: string): Promise<Record<string, never>> {
+    return call("workflow_presets.delete", { id });
+  },
+  apply(
+    kind: PromptKind,
+    id: string,
+  ): Promise<{ app: AppSettings; settings: ModuleSettings }> {
+    return call("workflow_presets.apply", { kind, id });
   },
 };
 
