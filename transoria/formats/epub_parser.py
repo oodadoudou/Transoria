@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Iterator
 import unicodedata
+import urllib.parse
 import zipfile
 
 from lxml import etree
@@ -786,7 +787,8 @@ def normalize_epub_path(path: str) -> str:
 
 
 def resolve_href(base_dir: str, href: str) -> str:
-    joined = posixpath.normpath(posixpath.join(base_dir, normalize_epub_path(href)))
+    decoded = normalize_epub_path(urllib.parse.unquote(href))
+    joined = posixpath.normpath(posixpath.join(base_dir, decoded))
     return joined.lstrip("./")
 
 

@@ -136,6 +136,23 @@ class EpubDocumentTests(TestCase):
         self.assertIn("Prologue", body_segments)
         self.assertIn("쉴 새 없이 뿜어대는 기계음이 내부 곳곳에 퍼졌다.", body_segments)
 
+    def test_parse_epub_file_decodes_percent_encoded_spine_href(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            epub_path = _write_minimal_epub(
+                Path(temp_dir) / "book.epub",
+                chapter_href="Text/Section%20001.xhtml",
+                archive_chapter_href="Text/Section 001.xhtml",
+            )
+
+            document = parse_epub_file(epub_path)
+
+        self.assertEqual(
+            document.package.spine_paths,
+            ["OEBPS/Text/Section 001.xhtml"],
+        )
+        body_segments = [segment for segment in document.segments if segment.kind == EpubTextKind.BODY]
+        self.assertTrue(body_segments)
+
     def test_parse_epub_file_skips_opf_title_and_extracts_ncx_text(self) -> None:
         """OPF metadata <dc:title> is intentionally NOT extracted —
         the book title is part of the user's own metadata. NCX nav
