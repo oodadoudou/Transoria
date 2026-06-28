@@ -8,11 +8,15 @@ import posixpath
 import re
 from pathlib import Path
 from typing import Iterator
-import unicodedata
-import urllib.parse
 import zipfile
 
 from lxml import etree
+
+from transoria.formats.epub_paths import (
+    find_archive_entry_by_normalized_path as find_epub_archive_entry,
+    normalize_epub_path,
+    resolve_epub_href,
+)
 
 
 OCF_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:container"
@@ -228,7 +232,7 @@ def parse_container_opf_path(archive: zipfile.ZipFile) -> str:
     opf_path = nodes[0].get("full-path")
     if not opf_path:
         raise ValueError("Invalid OPF full-path")
-    return normalize_epub_path(opf_path)
+    return resolve_epub_href("", opf_path)
 
 
 def parse_manifest(root: etree._Element, opf_dir: str) -> dict[str, dict[str, str]]:
@@ -755,13 +759,7 @@ def read_archive_entry(archive: zipfile.ZipFile, path: str) -> bytes:
 
 
 def find_archive_entry_by_normalized_path(archive: zipfile.ZipFile, path: str) -> str:
-    normalized = normalize_epub_path(path)
-    matches = [
-        name
-        for name in archive.namelist()
-        if normalize_epub_path(name) == normalized
-    ]
-    return matches[0] if len(matches) == 1 else ""
+    return find_epub_archive_entry(archive, path)
 
 
 def iter_elements(root: etree._Element) -> Iterator[etree._Element]:
@@ -782,14 +780,8 @@ def local_name(tag: str) -> str:
     return tag
 
 
-def normalize_epub_path(path: str) -> str:
-    return unicodedata.normalize("NFC", path.replace("\\", "/"))
-
-
 def resolve_href(base_dir: str, href: str) -> str:
-    decoded = normalize_epub_path(urllib.parse.unquote(href))
-    joined = posixpath.normpath(posixpath.join(base_dir, decoded))
-    return joined.lstrip("./")
+    return resolve_epub_href(base_dir, href)
 
 
 def normalize_slot_text(text: str) -> str:

@@ -13,6 +13,8 @@ from typing import Iterable, Mapping
 
 from PIL import Image
 
+from transoria.formats.epub_paths import resolve_epub_href
+
 
 _EPUB_SUFFIX = ".epub"
 _FONT_SUFFIXES = {".ttf", ".otf", ".woff", ".woff2", ".eot"}
@@ -537,10 +539,7 @@ def _zip_dirname(filename: str) -> str:
 
 
 def _resolve_zip_href(base_dir: str, href: str) -> str:
-    href = href.replace("\\", "/").split("?", 1)[0]
-    if href.startswith("/"):
-        return posixpath.normpath(href.lstrip("/"))
-    return posixpath.normpath(posixpath.join(base_dir, href)).lstrip("./")
+    return resolve_epub_href(base_dir, href)
 
 
 def _relative_zip_href(base_dir: str, target: str) -> str:

@@ -18,6 +18,7 @@ from transoria.formats.epub_parser import (
     parse_xhtml_or_html,
     sha1_with_null_separator,
 )
+from transoria.formats.epub_paths import decode_epub_href
 from transoria.formats.text import BILINGUAL_OUTPUT_FOLDER_EN
 
 
@@ -106,11 +107,12 @@ def _write_epub(
         with zipfile.ZipFile(output_path, "w") as output_archive:
             for info in source_archive.infolist():
                 raw = source_archive.read(info.filename)
-                if info.filename in segments_by_doc:
+                doc_key = _segments_doc_key(info.filename, segments_by_doc)
+                if doc_key:
                     raw = _apply_doc_segments(
                         raw,
-                        info.filename,
-                        segments_by_doc[info.filename],
+                        doc_key,
+                        segments_by_doc[doc_key],
                         translations,
                         bilingual,
                         dedup_when_same=dedup_when_same,
@@ -129,6 +131,18 @@ def _segments_by_doc(document: EpubDocument, translations: dict[int, str]):
     for segments in result.values():
         segments.sort(key=lambda segment: segment.row)
     return result
+
+
+def _segments_doc_key(filename: str, segments_by_doc) -> str:
+    if filename in segments_by_doc:
+        return filename
+    normalized = decode_epub_href(filename)
+    matches = [
+        doc_path
+        for doc_path in segments_by_doc
+        if decode_epub_href(doc_path) == normalized
+    ]
+    return matches[0] if len(matches) == 1 else ""
 
 
 def _apply_doc_segments(

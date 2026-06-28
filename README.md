@@ -32,10 +32,10 @@ Transoria 只是本地翻译辅助工具，不拥有、不分发、也不授权�
 
 ### 核心功能
 
-- **模型与 Prompt 管理**：支持自定义 OpenAI 兼容接口、DeepSeek、OpenAI、Anthropic、Google、火山引擎 Ark 等模型配置；翻译、术语提取和术语审查各自拥有独立 Prompt 预设，内置预设会跟随界面语言显示。
+- **模型、Prompt 与工作流预设**：支持自定义 OpenAI 兼容接口、DeepSeek、OpenAI、Anthropic、Google、火山引擎 Ark 等模型配置；翻译、术语提取和术语审查各自拥有独立 Prompt 预设，并可把模型、Prompt、源语言和目标语言保存为模块预设，在运行页一键切换。
 - **长篇翻译任务**：支持 EPUB / TXT 分块翻译、同结构输出、术语表注入、文本保护、前后置替换、低置信度与原文残留检测，并可在停止、失败或重启后继续处理剩余分块。
 - **请求记录与任务诊断**：运行页可打开弹出式请求记录窗口，查看模型请求状态、耗时、token、模型回复、失败原因和本地质量事件；重启后废弃的请求会明确显示为已取消。
-- **校对与重译**：校对页集中展示低置信、原文残留、术语未应用、术语不一致、疑似重复、模型异常和未翻译条目；支持单条、选中条目或当前筛选结果批量重译，并可选择重译所用模型和 Prompt。
+- **校对与重译**：校对页集中展示低置信、原文残留、术语未应用、术语不一致、疑似重复、模型异常和未翻译条目；支持单条、选中条目或当前筛选结果批量重译，并可选择重译所用预设、模型和 Prompt。
 - **术语提取与术语审查**：可从小说原文生成术语表和参考 TXT，进行多轮术语审查，在应用内编辑最终 XLSX，并一键导入到翻译术语表。
 - **通用 EPUB / TXT 工具**：包含批量文本替换、EPUB 压缩、多卷合并、EPUB 转 TXT、TXT 转 EPUB、元数据编辑和 EPUB 修复。
 
@@ -134,10 +134,10 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 
 ### Core features
 
-- **Model and prompt management**: configure custom OpenAI-compatible endpoints, DeepSeek, OpenAI, Anthropic, Google, Volcengine Ark, and other supported providers. Translation, Glossary Extraction, and Glossary Review each have their own prompt presets, and built-in presets follow the active UI language.
+- **Model, prompt, and workflow presets**: configure custom OpenAI-compatible endpoints, DeepSeek, OpenAI, Anthropic, Google, Volcengine Ark, and other supported providers. Translation, Glossary Extraction, and Glossary Review each have their own prompt presets, and module presets can bundle model, prompt, source language, and target language for one-click switching on Run pages.
 - **Long-form translation tasks**: translate EPUB / TXT files in chunks, write the same folder structure back out, inject glossary terms, preserve protected text, run pre/post replacements, detect low-confidence output and source residue, and continue remaining chunks after stop, failure, or restart.
 - **Request logs and diagnostics**: open a pop-out request log from the Run page to inspect model request state, duration, token usage, model responses, failure reasons, and local quality events. Abandoned requests after restart are shown as cancelled.
-- **Proofreading and retranslation**: review low-confidence, source-residue, glossary-not-applied, term-inconsistency, possible-duplicate, model-anomaly, and untranslated rows. Retranslate one row, selected rows, or the current filtered list with a chosen model and prompt.
+- **Proofreading and retranslation**: review low-confidence, source-residue, glossary-not-applied, term-inconsistency, possible-duplicate, model-anomaly, and untranslated rows. Retranslate one row, selected rows, or the current filtered list with a chosen preset, model, and prompt.
 - **Glossary extraction and review**: generate glossary XLSX and reference TXT files from source novels, run multi-round glossary review, edit the final XLSX inside the app, and import it into the Translation glossary.
 - **General EPUB / TXT tools**: batch text replacement, EPUB compression, volume/document merging, EPUB to TXT, TXT to EPUB, metadata editing, and EPUB repair.
 

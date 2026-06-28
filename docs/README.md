@@ -1,7 +1,7 @@
 # Transoria Documentation
 
 Status: Active
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 This directory describes the current implementation. Code and tests remain the
 source of truth; update these docs in the same change when behavior changes.

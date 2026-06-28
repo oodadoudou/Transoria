@@ -1,7 +1,7 @@
 # Product Requirements
 
 Status: Active
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 ## Purpose
 
@@ -87,6 +87,8 @@ Requirements:
 - allow inline edits to the translation and write them back to cache
 - allow per-segment retranslation in isolation, without rerunning the full
   task
+- allow choosing a local retranslation preset that fills the proofreading
+  retranslation model and prompt without changing cached task language metadata
 - allow batch retranslation of the current filtered list with progress
 - regenerate output files (TXT/EPUB/bilingual) from the current cache state
 - never silently overwrite user edits during regeneration
@@ -122,6 +124,7 @@ Requirements:
 - let the user choose one glossary XLSX when multiple candidates exist
 - let the user choose zero or more reference TXT files, while recommending
   references in the normal workflow
+- persist source and target language settings for review prompts
 - default the final output filename to `glossary-review-final.xlsx`, with a
   user-configurable filename setting
 - run multi-round AI review with round-aware progress
@@ -173,6 +176,25 @@ Requirements:
   disabled
 - keep thinking guidance out of user-editable prompt preset content
 - build preview prompts with the same backend function used by the runners
+
+## Workflow Presets
+
+Translation, Glossary Extraction, and Glossary Review each have a module-scoped
+workflow preset library.
+
+Requirements:
+
+- store only user-created workflow presets; no built-in workflow preset rows
+  occupy the list
+- bind preset name, model profile, prompt preset, source language, and target
+  language
+- create and edit presets through a modal with compact dropdown-based fields
+- initialize new preset forms with useful defaults without persisting a preset
+  until the user saves
+- allow duplicating existing presets and editing the copy
+- apply presets from the Presets page or Run page by switching active model,
+  active prompt, source language, and target language together
+- show an empty state when no presets exist and guide the user to create one
 
 ## Task Runtime
 

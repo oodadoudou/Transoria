@@ -16,6 +16,11 @@ from typing import Iterable, Mapping
 
 from PIL import Image
 
+from transoria.formats.epub_paths import (
+    find_archive_entry_by_normalized_path as find_epub_archive_entry,
+    normalize_epub_path,
+    resolve_epub_href,
+)
 from transoria.tools.epub_structure import inspect_epub_structure
 
 
@@ -1436,31 +1441,11 @@ def _manifest_xml(item: Mapping[str, str]) -> str:
 
 
 def _join_href(base: str, href: str) -> str:
-    if not base:
-        return _normalize_epub_path(href.replace("\\", "/").strip("/"))
-    return _normalize_epub_path(f"{base.strip('/')}/{href.replace('\\', '/').strip('/')}".strip("/"))
+    return resolve_epub_href(base.strip("/"), href)
 
 
 def _normalize_path(href: str, base_dir: str) -> str:
-    href = href.split("#", 1)[0]
-    if href.startswith("/"):
-        href = href.lstrip("/")
-    parts: list[str] = []
-    if base_dir:
-        parts.extend(
-            part
-            for part in base_dir.replace("\\", "/").split("/")
-            if part and part != "."
-        )
-    for part in href.replace("\\", "/").split("/"):
-        if part in {"", "."}:
-            continue
-        if part == "..":
-            if parts:
-                parts.pop()
-            continue
-        parts.append(part)
-    return _normalize_epub_path("/".join(parts))
+    return resolve_epub_href(base_dir, href)
 
 
 def _unique_href(href: str, existing: Iterable[str]) -> str:
@@ -1495,17 +1480,11 @@ def _normalize_unicode(text: str) -> str:
 
 
 def _normalize_epub_path(path: str) -> str:
-    return _normalize_unicode(path).replace("\\", "/")
+    return normalize_epub_path(path)
 
 
 def _find_archive_entry_by_normalized_path(archive: zipfile.ZipFile, path: str) -> str:
-    normalized = _normalize_epub_path(path)
-    matches = [
-        name
-        for name in archive.namelist()
-        if _normalize_epub_path(name) == normalized
-    ]
-    return matches[0] if len(matches) == 1 else ""
+    return find_epub_archive_entry(archive, path)
 
 
 def _archive_has_entry(archive: zipfile.ZipFile, path: str) -> bool:

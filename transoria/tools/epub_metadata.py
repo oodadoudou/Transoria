@@ -10,11 +10,14 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import unquote
 from xml.etree import ElementTree as ET
 
 from PIL import Image
 
+from transoria.formats.epub_paths import (
+    find_archive_entry_by_normalized_path,
+    resolve_epub_href,
+)
 from transoria.tools.epub_compressor import (
     EpubCompressAction,
     EpubCompressOptions,
@@ -248,7 +251,7 @@ def _cover_preview_from_archive(
     if cover is None:
         return ""
     try:
-        raw = archive.read(cover.archive_path)
+        raw = archive.read(_archive_entry_or_raise(archive, cover.archive_path))
     except KeyError:
         return ""
     return _cover_preview_data_url(raw)
@@ -299,9 +302,10 @@ def _read_package_path(archive: zipfile.ZipFile) -> str:
     package_path = rootfile.attrib.get("full-path", "").strip()
     if not package_path:
         raise ValueError("Invalid EPUB: empty package path in container.xml.")
-    if package_path not in archive.namelist():
+    matched = find_archive_entry_by_normalized_path(archive, package_path)
+    if not matched:
         raise ValueError(f"Invalid EPUB: package file not found: {package_path}")
-    return package_path
+    return matched
 
 
 def _read_opf(archive: zipfile.ZipFile, package_path: str) -> ET.Element:
@@ -376,7 +380,14 @@ def _cover_from_item(item: ET.Element, package_path: str) -> _CoverTarget:
 
 def _resolve_href(package_path: str, href: str) -> str:
     base = posixpath.dirname(package_path)
-    return posixpath.normpath(posixpath.join(base, unquote(href))).lstrip("/")
+    return resolve_epub_href(base, href)
+
+
+def _archive_entry_or_raise(archive: zipfile.ZipFile, path: str) -> str:
+    matched = find_archive_entry_by_normalized_path(archive, path)
+    if not matched:
+        raise KeyError(path)
+    return matched
 
 
 def _relative_to_package(package_path: str, archive_path: str) -> str:

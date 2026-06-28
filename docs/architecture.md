@@ -1,7 +1,7 @@
 # Architecture
 
 Status: Active
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 This document describes the implemented cross-cutting architecture. Module
 pipelines live in `docs/modules/`.
@@ -192,6 +192,9 @@ Important files:
   prompts.translation.json
   prompts.glossary.json
   prompts.glossary_review.json
+  workflow_presets.translation.json
+  workflow_presets.glossary.json
+  workflow_presets.glossary_review.json
   glossary_presets/
   tasks/
     <task_id>/
@@ -222,11 +225,11 @@ failed and re-run attempts remain visible for debugging. Appends are capped by
 file size, and normal reads use only the recent tail to avoid repeatedly
 parsing large task logs.
 
-Settings, model profiles, prompt presets, task headers, and result payloads are
-JSON-backed. Task headers live in `task.json`; workflow result payloads live in
-`result.json` when the bridge needs a stable artifact summary for
-`read_artifacts`. Writes use temporary files plus `os.replace` where the store
-owns atomic persistence.
+Settings, model profiles, prompt presets, workflow presets, task headers, and
+result payloads are JSON-backed. Task headers live in `task.json`; workflow
+result payloads live in `result.json` when the bridge needs a stable artifact
+summary for `read_artifacts`. Writes use temporary files plus `os.replace`
+where the store owns atomic persistence.
 
 API keys are stored in `model_profile_keys.json`. Profile summaries expose key
 status and masking. The edit modal may request full keys by calling
@@ -284,6 +287,18 @@ system prompt and description content.
 `thinking_prompt` may exist in older JSON payloads, but create/update paths do
 not expose it as user content. Runtime reasoning guidance is assembled from
 system-level code in `transoria/prompts.py`.
+
+## Workflow Presets
+
+Workflow presets are module-scoped bundles for Translation, Glossary
+Extraction, and Glossary Review. Each preset stores a display name, model
+profile id, prompt preset id, source language, target language, and enabled
+flag.
+
+`workflow_presets.apply` validates that the referenced model and prompt still
+exist, then updates the module's active model, active prompt, source language,
+and target language together. Presets are stored separately from prompt
+presets and are not seeded with built-in defaults.
 
 ## Bridge Errors
 

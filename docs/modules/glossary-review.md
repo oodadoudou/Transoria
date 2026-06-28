@@ -1,7 +1,7 @@
 # Glossary Review Module
 
 Status: Active module documentation
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 ## Purpose
 
@@ -18,6 +18,7 @@ Glossary Review pages:
 
 - Run
 - Review
+- Presets
 - Prompt
 - Settings
 
@@ -31,6 +32,8 @@ Persisted under `GlossaryReviewSettings`:
 - `input_folder`
 - `selected_xlsx_path`
 - `selected_reference_paths`
+- `source_language`
+- `target_language`
 - `output_filename`
 - `novel_background`
 - `review_rounds`
@@ -42,8 +45,7 @@ Persisted under `GlossaryReviewSettings`:
 `output_filename` defaults to `glossary-review-final.xlsx`, and the final XLSX
 is written under `input_folder`. The workflow only accepts XLSX glossary input.
 Reference TXT files are optional at the contract level but strongly recommended
-in the product workflow. Glossary Review has no separate output-folder or
-language settings.
+in the product workflow. Glossary Review has no separate output-folder setting.
 
 `retry_attempts` is Glossary Review's module-level transport retry budget for
 failed LLM requests: timeout, provider 5xx, or transport errors. This existing
@@ -78,9 +80,8 @@ The Run page is execution/status only.
 
 It shows:
 
-- active model card
-- active prompt card
-- quick-switch modals for model and prompt
+- compact active configuration bar with preset, model, and prompt selectors
+- quick-switch modals for preset, model, and prompt
 - current task id
 - round-aware progress
 - completed, failed, remaining, elapsed, and average speed stats
@@ -131,6 +132,20 @@ Current behavior:
 - custom presets are editable
 - prompt preview uses the same backend prompt path as the runner
 - thinking guidance is system-level runtime behavior, not user preset text
+
+## Presets Page
+
+Glossary Review workflow presets are managed through the shared Presets page
+with `kind = "glossary_review"`.
+
+Current behavior:
+
+- presets are user-created rows only
+- each preset stores model, prompt, source language, and target language
+- creating/editing uses a modal; model and prompt are selected from dropdowns
+- applying a preset switches active model, active prompt, source language, and
+  target language together
+- duplicate creates a copy that can be edited before further use
 
 ## Backend Flow
 

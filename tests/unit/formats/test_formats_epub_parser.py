@@ -153,6 +153,20 @@ class EpubDocumentTests(TestCase):
         body_segments = [segment for segment in document.segments if segment.kind == EpubTextKind.BODY]
         self.assertTrue(body_segments)
 
+    def test_parse_epub_file_decodes_percent_encoded_container_full_path(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            epub_path = _write_minimal_epub(
+                Path(temp_dir) / "book.epub",
+                container_full_path="OEBPS/package%20file.opf",
+                archive_opf_path="OEBPS/package file.opf",
+            )
+
+            document = parse_epub_file(epub_path)
+
+        self.assertEqual(document.package.opf_path, "OEBPS/package file.opf")
+        body_segments = [segment for segment in document.segments if segment.kind == EpubTextKind.BODY]
+        self.assertTrue(body_segments)
+
     def test_parse_epub_file_skips_opf_title_and_extracts_ncx_text(self) -> None:
         """OPF metadata <dc:title> is intentionally NOT extracted —
         the book title is part of the user's own metadata. NCX nav
@@ -264,6 +278,8 @@ def _write_minimal_epub(
     chapter_head: str = "<title>ignore title</title>",
     opf_title: str = "책 제목",
     archive_chapter_href: str | None = None,
+    container_full_path: str = "OEBPS/content.opf",
+    archive_opf_path: str = "OEBPS/content.opf",
     chapter_body: str = """
     <p>첫 문장 <span>강조</span> 끝</p>
     <p>둘째 문장</p>
@@ -273,7 +289,7 @@ def _write_minimal_epub(
     container = """<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="{container_full_path}" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>
 """
@@ -311,7 +327,7 @@ def _write_minimal_epub(
         chapter_entry_href = archive_chapter_href or chapter_href
         archive.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip", compress_type=zipfile.ZIP_STORED)
         archive.writestr("META-INF/container.xml", container)
-        archive.writestr("OEBPS/content.opf", opf)
+        archive.writestr(archive_opf_path, opf)
         archive.writestr(f"OEBPS/{chapter_entry_href}", chapter)
         archive.writestr("OEBPS/toc.ncx", ncx)
         archive.writestr("OEBPS/Images/cover.jpg", b"\xff\xd8binary-cover\xff\xd9")

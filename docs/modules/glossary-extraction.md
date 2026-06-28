@@ -1,7 +1,7 @@
 # Glossary Extraction Module
 
 Status: Active module documentation
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 ## Purpose
 
@@ -15,6 +15,7 @@ translation run automatically.
 Glossary pages:
 
 - Run
+- Presets
 - Prompt
 - Settings
 
@@ -64,9 +65,8 @@ The Run page is execution/status only.
 
 It shows:
 
-- active model card
-- active prompt card
-- quick-switch modals for model and prompt
+- compact active configuration bar with preset, model, and prompt selectors
+- quick-switch modals for preset, model, and prompt
 - progress ring
 - completed, failed, remaining, elapsed, and average speed stats
 - processed/running subtask counter with the longest running subtask age
@@ -125,6 +125,20 @@ Current behavior:
 - custom presets are editable
 - prompt preview uses the same backend `build_prompt` path as the runner
 - thinking guidance is system-level runtime behavior, not user preset text
+
+## Presets Page
+
+Glossary Extraction workflow presets are managed through the shared Presets page
+with `kind = "glossary"`.
+
+Current behavior:
+
+- presets are user-created rows only
+- each preset stores model, prompt, source language, and target language
+- creating/editing uses a modal; model and prompt are selected from dropdowns
+- applying a preset switches active model, active prompt, source language, and
+  target language together
+- duplicate creates a copy that can be edited before further use
 
 ## Backend Flow
 

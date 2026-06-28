@@ -1,7 +1,7 @@
 # Translation Module
 
 Status: Active module documentation
-Last reviewed: 2026-06-20
+Last reviewed: 2026-06-28
 
 ## Purpose
 
@@ -16,6 +16,7 @@ Translation pages:
 - Run
 - Glossary
 - Proofreading
+- Presets
 - Prompt
 - Settings
 - Rules
@@ -61,9 +62,8 @@ The Run page is execution/status only.
 
 It shows:
 
-- active model card
-- active prompt card
-- quick-switch modals for model and prompt
+- compact active configuration bar with preset, model, and prompt selectors
+- quick-switch modals for preset, model, and prompt
 - progress ring
 - completed, failed, remaining, elapsed, and average speed stats
 - running subtask count and longest running subtask age
@@ -171,6 +171,31 @@ Current behavior:
   default
 - prompt preview uses the same backend `build_prompt` path as the runner
 - thinking guidance is system-level runtime behavior, not user preset text
+
+## Presets Page
+
+Translation workflow presets are managed through the shared Presets page with
+`kind = "translation"`.
+
+Current behavior:
+
+- presets are user-created rows only
+- each preset stores model, prompt, source language, and target language
+- creating/editing uses a modal; model and prompt are selected from dropdowns
+- applying a preset switches active model, active prompt, source language, and
+  target language together
+- duplicate creates a copy that can be edited before further use
+
+## Proofreading Page
+
+Proofreading can retranslate one segment, selected segments, or the current
+filtered list. Its retranslation controls are local to the page:
+
+- users can switch the retranslation model, prompt, or a Translation workflow
+  preset
+- choosing a preset fills the local retranslation model and prompt
+- choosing a preset does not rewrite the completed task's cached source/target
+  language metadata
 
 ## Backend Flow
 
