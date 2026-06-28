@@ -286,7 +286,7 @@ def _write_minimal_epub(
     <script>not translatable</script>
 """,
 ) -> Path:
-    container = """<?xml version="1.0" encoding="UTF-8"?>
+    container = f"""<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
     <rootfile full-path="{container_full_path}" media-type="application/oebps-package+xml"/>

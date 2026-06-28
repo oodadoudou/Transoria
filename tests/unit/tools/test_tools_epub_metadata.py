@@ -25,16 +25,24 @@ def _image_bytes(fmt: str = "JPEG", color: tuple[int, int, int] = (200, 10, 20))
     return output.getvalue()
 
 
-def _write_epub(path: Path, *, with_cover: bool = True) -> None:
-    container = """<?xml version="1.0" encoding="UTF-8"?>
+def _write_epub(
+    path: Path,
+    *,
+    with_cover: bool = True,
+    container_full_path: str = "OEBPS/content.opf",
+    archive_opf_path: str = "OEBPS/content.opf",
+    cover_href: str = "Images/cover.jpg",
+    archive_cover_path: str = "OEBPS/Images/cover.jpg",
+) -> None:
+    container = f"""<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="{container_full_path}" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>
 """
     cover_item = (
-        '<item id="cover-image" href="Images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>'
+        f'<item id="cover-image" href="{cover_href}" media-type="image/jpeg" properties="cover-image"/>'
         if with_cover
         else ""
     )
@@ -60,11 +68,11 @@ def _write_epub(path: Path, *, with_cover: bool = True) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("mimetype", "application/epub+zip")
         archive.writestr("META-INF/container.xml", container)
-        archive.writestr("OEBPS/content.opf", opf)
+        archive.writestr(archive_opf_path, opf)
         archive.writestr("OEBPS/nav.xhtml", "<html><body><nav></nav></body></html>")
         archive.writestr("OEBPS/Text/ch1.xhtml", "<html><body><p>Hello</p></body></html>")
         if with_cover:
-            archive.writestr("OEBPS/Images/cover.jpg", _image_bytes())
+            archive.writestr(archive_cover_path, _image_bytes())
 
 
 def _read_opf(path: Path) -> ET.Element:
@@ -82,6 +90,23 @@ def test_read_epub_metadata_finds_title_author_and_cover(tmp_path: Path):
     assert info.authors == ("Old Author",)
     assert info.has_cover is True
     assert info.cover_archive_path == "OEBPS/Images/cover.jpg"
+    assert info.cover_preview_data_url.startswith("data:image/")
+
+
+def test_read_epub_metadata_decodes_encoded_package_and_cover_paths(tmp_path: Path):
+    epub = tmp_path / "book.epub"
+    _write_epub(
+        epub,
+        container_full_path="OEBPS/package%20file.opf",
+        archive_opf_path="OEBPS/package file.opf",
+        cover_href="Images/cover%20image.jpg",
+        archive_cover_path="OEBPS/Images/cover image.jpg",
+    )
+
+    info = read_epub_metadata(epub)
+
+    assert info.package_path == "OEBPS/package file.opf"
+    assert info.cover_archive_path == "OEBPS/Images/cover image.jpg"
     assert info.cover_preview_data_url.startswith("data:image/")
 
 

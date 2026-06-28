@@ -106,6 +106,35 @@ def test_compress_deduplicates_fonts_and_rewrites_css_and_manifest(tmp_path: Pat
         assert "font-copy.ttf" not in css
 
 
+def test_compress_decodes_percent_encoded_font_hrefs(tmp_path: Path) -> None:
+    source = tmp_path / "Book.epub"
+    output = tmp_path / "Book_压缩.epub"
+    _write_epub(source, duplicate_font=True, encoded_duplicate_font=True)
+
+    result = compress_epub_file(
+        EpubCompressAction(
+            id="epub-0000",
+            source_path=str(source),
+            output_path=str(output),
+        ),
+        EpubCompressOptions(),
+    )
+
+    assert result.status == "compressed"
+    assert result.fonts_removed == 1
+    with zipfile.ZipFile(output) as archive:
+        names = archive.namelist()
+        assert "OEBPS/Fonts/font.ttf" in names
+        assert "OEBPS/Fonts/font copy.ttf" not in names
+        opf = archive.read("OEBPS/content.opf").decode("utf-8")
+        css = archive.read("OEBPS/style.css").decode("utf-8")
+
+    assert 'href="Fonts/font.ttf"' in opf
+    assert "font%20copy.ttf" not in opf
+    assert "font%20copy.ttf" not in css
+    assert "url('Fonts/font.ttf')" in css
+
+
 def test_compress_can_remove_all_fonts_and_font_face_rules(tmp_path: Path) -> None:
     source = tmp_path / "Book.epub"
     output = tmp_path / "Book_压缩.epub"
@@ -170,10 +199,17 @@ def test_bad_zip_returns_failed_result(tmp_path: Path) -> None:
     assert "BadZipFile" in result.error
 
 
-def _write_epub(path: Path, *, duplicate_font: bool = False) -> None:
+def _write_epub(
+    path: Path,
+    *,
+    duplicate_font: bool = False,
+    encoded_duplicate_font: bool = False,
+) -> None:
     image = Image.new("RGB", (128, 128), color=(120, 80, 40))
     image_bytes = io.BytesIO()
     image.save(image_bytes, format="JPEG", quality=95)
+    duplicate_href = "Fonts/font%20copy.ttf" if encoded_duplicate_font else "Fonts/font-copy.ttf"
+    duplicate_entry = "OEBPS/Fonts/font copy.ttf" if encoded_duplicate_font else "OEBPS/Fonts/font-copy.ttf"
     opf = """<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <metadata><dc:title>Original Title</dc:title></metadata>
@@ -186,12 +222,12 @@ def _write_epub(path: Path, *, duplicate_font: bool = False) -> None:
   <spine><itemref idref="chap"/></spine>
 </package>""".format(
         duplicate_font_item=(
-            '<item id="font2" href="Fonts/font-copy.ttf" media-type="application/x-font-ttf"/>'
+            f'<item id="font2" href="{duplicate_href}" media-type="application/x-font-ttf"/>'
             if duplicate_font
             else ""
         )
     )
-    css = "@font-face { font-family: Test; src: url('Fonts/font-copy.ttf'); }\nbody { font-family: Test; }" if duplicate_font else "@font-face { font-family: Test; src: url('Fonts/font.ttf'); }"
+    css = f"@font-face {{ font-family: Test; src: url('{duplicate_href}'); }}\nbody {{ font-family: Test; }}" if duplicate_font else "@font-face { font-family: Test; src: url('Fonts/font.ttf'); }"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             zipfile.ZipInfo("mimetype"),
@@ -204,5 +240,5 @@ def _write_epub(path: Path, *, duplicate_font: bool = False) -> None:
         archive.writestr("OEBPS/style.css", css)
         archive.writestr("OEBPS/Fonts/font.ttf", b"font-data")
         if duplicate_font:
-            archive.writestr("OEBPS/Fonts/font-copy.ttf", b"font-data")
+            archive.writestr(duplicate_entry, b"font-data")
         archive.writestr("OEBPS/Images/cover.jpg", image_bytes.getvalue())

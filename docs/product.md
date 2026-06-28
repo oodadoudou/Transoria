@@ -194,6 +194,8 @@ Requirements:
 - allow duplicating existing presets and editing the copy
 - apply presets from the Presets page or Run page by switching active model,
   active prompt, source language, and target language together
+- treat presets as optional shortcuts, not locked configuration modes; users
+  can still change any individual setting after applying a preset
 - show an empty state when no presets exist and guide the user to create one
 
 ## Task Runtime

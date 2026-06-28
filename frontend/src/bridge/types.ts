@@ -332,7 +332,8 @@ export type TaskKind =
   | "replacement"
   | "epub_compress"
   | "epub_merge"
-  | "epub_convert";
+  | "epub_convert"
+  | "txt_to_epub";
 
 /** Inline-credential payload used by the Add API Profile modal to
  *  test_connection / fetch_model_list before persisting the profile.

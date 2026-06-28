@@ -335,7 +335,23 @@ custom combination or has no presets.
 `workflow_presets.apply` takes `{ kind, id }`, validates referenced model and
 prompt ids still exist, then updates active model id, active prompt id, and the
 module source/target language settings. It returns the updated app settings and
-updated module settings so the frontend can refresh immediately.
+updated module settings so the frontend can refresh immediately. Applying a
+preset does not create a locked mode; later individual model, prompt, or
+language changes are valid and will make `matched_id` return `null` until the
+settings match a saved preset again.
+
+## Translation Rules
+
+Registered methods:
+
+- `rules.import_rules`
+- `rules.export_rules`
+
+These import and export Translation text-preserve, pre-replacement, and
+post-replacement rules. Request `kind` is `"text_preserve"`,
+`"pre_replacement"`, or `"post_replacement"`. Imports read `.txt` rule files
+or readable `.red` containers and return frontend rule payloads; exports write
+the current UI rule table to the requested path.
 
 ## Task Snapshot Types
 
@@ -395,6 +411,18 @@ type TaskStatus =
   }
 }
 ```
+
+## Task Cache Maintenance
+
+Registered methods:
+
+- `tasks.summarize_caches`
+- `tasks.purge_caches`
+
+`summarize_caches` returns task count, total cache bytes, and cache root for
+the App Settings cache panel. `purge_caches` accepts scope `"all"`,
+`"older_than_days"`, or `"completed"` plus optional `days`, removes matching
+inactive task caches, and reports removed ids plus active-task skips.
 
 `progress.total` excludes `skipped` subtasks. In Translation split recovery,
 `skipped` marks the failed parent after child subtasks are created; it remains a
@@ -741,6 +769,7 @@ Registered methods:
 - `proofreading.regenerate_outputs`
 - `proofreading.retranslate_segment`
 - `proofreading.retranslate_status`
+- `proofreading.resume_retranslate`
 
 `list_tasks` returns translation task headers that have at least one cached
 subtask, ordered for the proofreading entry list.
@@ -748,6 +777,10 @@ subtask, ordered for the proofreading entry list.
 `load_snapshot` aggregates per-segment translations, low-confidence flags, and
 optional classification tags across all subtasks in a single translation task.
 Latest write wins, so split-child results override their parent.
+
+`retranslate_segment` starts a single proofreading retranslation request,
+`retranslate_status` polls it, and `resume_retranslate` reattaches to an
+existing request id after UI refresh or navigation.
 
 ```ts
 {

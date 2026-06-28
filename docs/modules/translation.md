@@ -184,6 +184,8 @@ Current behavior:
 - creating/editing uses a modal; model and prompt are selected from dropdowns
 - applying a preset switches active model, active prompt, source language, and
   target language together
+- presets are optional shortcuts; users can still change model, prompt, or
+  languages individually after applying one
 - duplicate creates a copy that can be edited before further use
 
 ## Proofreading Page

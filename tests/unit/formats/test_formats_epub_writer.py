@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+import unicodedata
 import zipfile
 
 from tests.unit.formats.test_formats_epub_parser import _write_minimal_epub
@@ -66,6 +67,31 @@ class EpubWriterTests(TestCase):
 
             self.assertIn("<p>第二句</p>", chapter)
             self.assertNotIn("dropped_image", chapter)
+
+    def test_write_translated_epub_matches_normalized_archive_entry_names(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            chapter_href = "Text/samk - 낫 포 세일.xhtml"
+            archive_chapter_href = unicodedata.normalize("NFD", chapter_href)
+            source = _write_minimal_epub(
+                Path(temp_dir) / "Novel Name.epub",
+                chapter_href=chapter_href,
+                archive_chapter_href=archive_chapter_href,
+            )
+            document = parse_epub_file(source)
+            output_dir = Path(temp_dir) / "out"
+
+            written = write_translated_epub(
+                document,
+                {_first_body_text_index(document, "둘째 문장"): "第二句"},
+                output_dir,
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(written) as archive:
+                chapter = archive.read(f"OEBPS/{archive_chapter_href}").decode("utf-8")
+
+            self.assertIn("<p>第二句</p>", chapter)
+            self.assertNotIn("둘째 문장", chapter)
 
     def test_write_translated_epub_collapses_multipart_segment_when_needed(self) -> None:
         with TemporaryDirectory() as temp_dir:

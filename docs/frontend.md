@@ -178,6 +178,8 @@ Current behavior:
   presets
 - applying a preset updates active model, active prompt, source language, and
   target language together
+- presets are optional shortcuts; model, prompt, source language, and target
+  language controls remain independently editable after a preset is applied
 - the preset list contains only user-created presets; defaults are used only
   as initial values in the create dialog
 - empty states say there are no presets and point the user toward creating one

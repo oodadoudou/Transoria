@@ -35,6 +35,22 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
     assert tuple(s.id for s in snapshot.subtasks) == ("a", "b")
 
 
+def test_write_seed_crash_before_header_leaves_no_loadable_record(tmp_path: Path) -> None:
+    cache = TaskCache(root=tmp_path)
+    record = _record("crash")
+
+    class _ExplodingIterable:
+        def __iter__(self):
+            yield _subtask("crash", "a")
+            raise RuntimeError("simulated crash")
+
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        cache.write_seed(record, _ExplodingIterable())
+
+    with pytest.raises(TaskNotFoundError):
+        cache.load_record("crash")
+
+
 def test_load_raises_for_unknown_task(tmp_path: Path) -> None:
     cache = TaskCache(root=tmp_path)
 

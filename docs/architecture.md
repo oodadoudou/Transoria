@@ -202,6 +202,7 @@ Important files:
       subtasks/
       result.json
       request-events.jsonl
+      glossary-review-report.json
       replacement-report.json
       epub-compress-report.json
       epub-merge-report.json
@@ -298,7 +299,10 @@ flag.
 `workflow_presets.apply` validates that the referenced model and prompt still
 exist, then updates the module's active model, active prompt, source language,
 and target language together. Presets are stored separately from prompt
-presets and are not seeded with built-in defaults.
+presets and are not seeded with built-in defaults. Applying a preset is a
+one-time settings update; it does not lock the module to that preset, and later
+single-field changes simply make the current configuration a custom
+combination.
 
 ## Bridge Errors
 

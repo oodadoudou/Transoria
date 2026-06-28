@@ -487,6 +487,76 @@ def test_merge_rewrites_css_and_image_links_and_deduplicates_images(tmp_path: Pa
         assert "@font-face" not in css
 
 
+def test_merge_decodes_percent_encoded_resource_and_ncx_hrefs(tmp_path: Path) -> None:
+    source = tmp_path / "Encoded.epub"
+    output = tmp_path / "merged.epub"
+    _write_epub(
+        source,
+        title="Encoded",
+        chapter="Encoded Chapter",
+        chapter_href="Section%20001.xhtml",
+        archive_chapter_href="Section 001.xhtml",
+        css_href="style%20file.css",
+        archive_css_href="style file.css",
+        image_href="Images/pic%20one.jpg",
+        archive_image_href="Images/pic one.jpg",
+        font_href="Fonts/main%20font.ttf",
+        archive_font_href="Fonts/main font.ttf",
+    )
+
+    result = merge_epub_files(
+        action_id="merge-0000",
+        input_dir=tmp_path,
+        output_path=output,
+        actions=_actions(source),
+        options=EpubMergeOptions(),
+    )
+
+    assert result.status == "merged"
+    assert result.processed_files[0]["warnings"] == []
+    with zipfile.ZipFile(output) as archive:
+        nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
+        html_name = next(name for name in archive.namelist() if name.startswith("OEBPS/Text/epub_000/"))
+        html = archive.read(html_name).decode("utf-8")
+        css_name = next(name for name in archive.namelist() if name.startswith("OEBPS/Styles/"))
+        css = archive.read(css_name).decode("utf-8")
+
+    assert "Encoded Chapter" in nav
+    assert "../Images/" in html
+    assert "url(\"../Images/" in css
+    assert "@font-face" not in css
+
+
+def test_merge_decodes_percent_encoded_epub3_nav_hrefs(tmp_path: Path) -> None:
+    source = tmp_path / "Nav.epub"
+    output = tmp_path / "merged.epub"
+    _write_epub(
+        source,
+        title="Nav",
+        chapter="Nav Chapter",
+        chapter_href="Section%20001.xhtml",
+        archive_chapter_href="Section 001.xhtml",
+        include_epub3_nav=True,
+        nav_href="nav%20doc.xhtml",
+        archive_nav_href="nav doc.xhtml",
+    )
+
+    result = merge_epub_files(
+        action_id="merge-0000",
+        input_dir=tmp_path,
+        output_path=output,
+        actions=_actions(source),
+        options=EpubMergeOptions(),
+    )
+
+    assert result.status == "merged"
+    with zipfile.ZipFile(output) as archive:
+        nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
+
+    assert "Nav Chapter" in nav
+    assert "Text/epub_000/" in nav
+
+
 def test_merge_strips_orphan_markup_before_xhtml_document(tmp_path: Path) -> None:
     source = tmp_path / "Novel 1화.epub"
     output = tmp_path / "merged.epub"
@@ -664,6 +734,16 @@ def _write_epub(
     include_cover_page: bool = False,
     extra_html: dict[str, str] | None = None,
     chapter_href: str = "chapter.xhtml",
+    archive_chapter_href: str | None = None,
+    css_href: str = "style.css",
+    archive_css_href: str | None = None,
+    image_href: str = "Images/pic.jpg",
+    archive_image_href: str | None = None,
+    font_href: str = "Fonts/font.ttf",
+    archive_font_href: str | None = None,
+    include_epub3_nav: bool = False,
+    nav_href: str = "nav.xhtml",
+    archive_nav_href: str | None = None,
 ) -> None:
     image = image or _image_bytes(color=(120, 80, 40))
     extra_html = extra_html or {}
@@ -680,6 +760,11 @@ def _write_epub(
         if include_cover_page
         else ""
     )
+    nav_item = (
+        f'    <item id="nav" href="{nav_href}" media-type="application/xhtml+xml" properties="nav"/>\n'
+        if include_epub3_nav
+        else ""
+    )
     cover_spine = '    <itemref idref="cover_page"/>\n' if include_cover_page else ""
     opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
@@ -691,11 +776,12 @@ def _write_epub(
   </metadata>
   <manifest>
 {cover_item}
+{nav_item}
     <item id="chap" href="{chapter_href}" media-type="application/xhtml+xml"/>
 {extra_items}
-    <item id="style" href="style.css" media-type="text/css"/>
-    <item id="img" href="Images/pic.jpg" media-type="image/jpeg" properties="cover-image"/>
-    <item id="font" href="Fonts/font.ttf" media-type="application/x-font-ttf"/>
+    <item id="style" href="{css_href}" media-type="text/css"/>
+    <item id="img" href="{image_href}" media-type="image/jpeg" properties="cover-image"/>
+    <item id="font" href="{font_href}" media-type="application/x-font-ttf"/>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
   </manifest>
   <spine toc="ncx">
@@ -706,10 +792,10 @@ def _write_epub(
 </package>"""
     html = f"""{chapter_prefix}<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>{chapter}</title><link href="style.css" rel="stylesheet"/></head>
-<body><h1>{chapter}</h1><img src="Images/pic.jpg"/></body>
+<head><title>{chapter}</title><link href="{css_href}" rel="stylesheet"/></head>
+<body><h1>{chapter}</h1><img src="{image_href}"/></body>
 </html>"""
-    css = "@font-face { src: url('Fonts/font.ttf'); }\nbody { background: url('Images/pic.jpg'); }"
+    css = f"@font-face {{ src: url('{font_href}'); }}\nbody {{ background: url('{image_href}'); }}"
     toc_label = toc_title or chapter
     ncx_body = ncx_body or (
         f'<navPoint id="nav-1" playOrder="1"><navLabel><text>{toc_label}</text></navLabel><content src="{chapter_href}"/></navPoint>'
@@ -722,6 +808,12 @@ def _write_epub(
 {ncx_body}
 </navMap>
 </ncx>"""
+    nav = f"""<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<body><nav epub:type="toc" xmlns:epub="http://www.idpf.org/2007/ops">
+<ol><li><a href="{chapter_href}">{chapter}</a></li></ol>
+</nav></body>
+</html>"""
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             zipfile.ZipInfo("mimetype"),
@@ -742,17 +834,19 @@ def _write_epub(
                 """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml"><body><img src="Images/pic.jpg"/></body></html>""",
             )
-        archive.writestr(f"OEBPS/{chapter_href}", html)
+        archive.writestr(f"OEBPS/{archive_chapter_href or chapter_href}", html)
+        if include_epub3_nav:
+            archive.writestr(f"OEBPS/{archive_nav_href or nav_href}", nav)
         for href, body in extra_html.items():
             archive.writestr(
                 f"OEBPS/{href}",
                 f"""<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml"><head><title>{href}</title></head><body>{body}</body></html>""",
             )
-        archive.writestr("OEBPS/style.css", css)
+        archive.writestr(f"OEBPS/{archive_css_href or css_href}", css)
         archive.writestr("OEBPS/toc.ncx", ncx)
-        archive.writestr("OEBPS/Images/pic.jpg", image)
-        archive.writestr("OEBPS/Fonts/font.ttf", b"font")
+        archive.writestr(f"OEBPS/{archive_image_href or image_href}", image)
+        archive.writestr(f"OEBPS/{archive_font_href or font_href}", b"font")
 
 
 def _image_bytes(*, color: tuple[int, int, int]) -> bytes:
