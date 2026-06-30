@@ -35,22 +35,13 @@ export function useVirtualWindow({
 
   return {
     containerRef,
-    scrollTop,
     startIndex,
     endIndex,
     totalHeight: count * rowHeight,
     topForIndex: (index: number) => index * rowHeight,
     handleScroll: (event: UIEvent<HTMLDivElement>) =>
       setScrollTop(event.currentTarget.scrollTop),
-    scrollToIndex: (index: number) => {
-      const top = index * rowHeight;
-      setScrollTop(top);
-      containerRef.current?.scrollTo({ top });
-    },
-    scrollToOffset: (top: number) => {
-      const nextTop = Math.max(0, top);
-      setScrollTop(nextTop);
-      containerRef.current?.scrollTo({ top: nextTop });
-    },
+    scrollToIndex: (index: number) =>
+      containerRef.current?.scrollTo({ top: index * rowHeight }),
   };
 }

@@ -27,11 +27,6 @@ import {
 import { useToastStore } from "@/store/useToastStore";
 import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
-import {
-  displayPreset,
-  displayStyle,
-  mergeChinesePresets,
-} from "./TxtToEpubPage.logic";
 import styles from "./TxtToEpubPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -45,6 +40,7 @@ const TERMINAL: ReadonlySet<string> = new Set([
   "stopped",
 ]);
 const SIMPLE_RULE_LEVELS = [1, 2, 3, 4] as const;
+const CHINESE_PRESET_IDS = new Set(["zh_novel", "zh_webnovel", "zh_published", "extra"]);
 const VISIBLE_STYLE_IDS = new Set([
   "basic:classic",
   "basic:clean",
@@ -62,6 +58,82 @@ const VISIBLE_STYLE_IDS = new Set([
   "basic:reader_modern",
   "enhanced:soft_structure",
 ]);
+const EN_PRESET_TEXT: Record<string, { label: string; description: string }> = {
+  markdown: {
+    label: "Markdown headings",
+    description: "#, ##, ###, #### headings",
+  },
+  zh_novel: {
+    label: "Chinese fiction headings",
+    description: "Web novel, published chapter, extra, side story, and numeric headings",
+  },
+  ko_novel: {
+    label: "Korean fiction",
+    description: "Korean prologue, episode, volume, side story, epilogue, and numeric headings",
+  },
+  ja_novel: {
+    label: "Japanese fiction",
+    description: "Japanese prologue, episode, volume, side story, epilogue, and numeric headings",
+  },
+  en_chapter: {
+    label: "English chapters",
+    description: "Chapter, Volume, Prologue, Epilogue, and numeric headings",
+  },
+  numeric: {
+    label: "Numeric headings",
+    description: "1., 1.1, 01, 001",
+  },
+};
+const EN_STYLE_LABELS: Record<string, string> = {
+  classic: "Classic",
+  clean: "Clean",
+  contrast: "High contrast",
+  elegant: "Elegant",
+  eyecare: "Eye care",
+  fantasy: "Fantasy",
+  geometric: "Geometric",
+  geometric_frame: "Geometric frame",
+  grayscale: "Grayscale",
+  line_hierarchy: "Line hierarchy",
+  linear: "Linear",
+  minimal: "Minimal",
+  minimal_grid: "Minimal grid",
+  minimal_linear: "Minimal linear",
+  minimal_modern: "Modern minimal",
+  modern: "Modern",
+  monochrome: "Monochrome",
+  literary: "Literary",
+  compact: "Compact",
+  spacious: "Spacious",
+  double_line: "Double line title",
+  sans_clean: "Clean sans",
+  framed: "Framed title",
+  sidebar: "Sidebar emphasis",
+  structure_lines: "Structure lines",
+  reader_modern: "Reader modern",
+  soft_structure: "Soft structure",
+  soft: "Soft",
+  structured_minimal: "Structured minimal",
+  warm: "Warm",
+};
+const ZH_STYLE_LABELS: Record<string, string> = {
+  classic: "经典",
+  clean: "清爽",
+  eyecare: "护眼",
+  modern: "现代",
+  minimal: "极简",
+  literary: "文学排版",
+  compact: "紧凑阅读",
+  spacious: "宽松阅读",
+  double_line: "双线标题",
+  sans_clean: "无衬线清爽",
+  framed: "框线章名",
+  sidebar: "侧栏强调",
+  structure_lines: "结构简约",
+  reader_modern: "阅读器现代",
+  soft_structure: "浅底结构",
+};
+
 interface DraftState {
   title: string;
   author: string;
@@ -125,7 +197,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
   const activeTaskId = useRuntimeStore(
     (state) => state.txt_to_epub.activeTaskId,
   );
-  const tocPresets = useMemo(() => mergeChinesePresets(presets, text), [presets, text]);
+  const tocPresets = useMemo(() => mergeChinesePresets(presets), [presets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,6 +315,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
     snapshot.progress.total > 0
       ? Math.floor((settled / snapshot.progress.total) * 100)
       : 0;
+  const englishUi = messages.generalTools.crumb === "General Tools";
 
   const updateInputPath = (nextPath: string) => {
     if (nextPath === inputPath) return;
@@ -577,7 +650,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
               }
             >
               {tocPresets.map((preset) => {
-                const display = displayPreset(preset, text);
+                const display = displayPreset(preset, englishUi);
                 return (
                   <option key={preset.id} value={preset.id}>
                     {display.label} - {display.description}
@@ -589,7 +662,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
               <small className={styles.selectedSummary}>
                 {displayPreset(
                   selectedPreset ?? tocPresets[0],
-                  text,
+                  englishUi,
                 ).description}
               </small>
             ) : null}
@@ -815,7 +888,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             }
           >
             {styleOptions.map((style) => {
-              const display = displayStyle(style, text);
+              const display = displayStyle(style, englishUi);
               return (
                 <option key={style.id} value={style.id}>
                   {display.label} - {display.groupLabel}
@@ -828,9 +901,9 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
           </select>
           <small className={styles.selectedSummary}>
             {draft.styleId === "custom"
-                ? text.customCssHint
-                : selectedStyle
-                ? displayStyle(selectedStyle, text).groupLabel
+              ? text.customCssHint
+              : selectedStyle
+                ? displayStyle(selectedStyle, englishUi).groupLabel
                 : ""}
           </small>
         </label>
@@ -983,6 +1056,72 @@ function validateCss(css: string, text: ReturnType<typeof useMessages>["txtToEpu
     return text.cssUrlBlocked;
   }
   return "";
+}
+
+function displayPreset(
+  preset: TxtToEpubPreset,
+  englishUi: boolean,
+): { label: string; description: string } {
+  if (!englishUi) return { label: preset.label, description: preset.description };
+  return EN_PRESET_TEXT[preset.id] ?? { label: preset.label, description: preset.description };
+}
+
+function mergeChinesePresets(presets: TxtToEpubPreset[]): TxtToEpubPreset[] {
+  const chinesePresets = presets.filter((preset) => CHINESE_PRESET_IDS.has(preset.id));
+  if (chinesePresets.length === 0) return presets;
+  if (chinesePresets.length === 1 && chinesePresets[0].id === "zh_novel") return presets;
+
+  const seenRules = new Set<string>();
+  const mergedRules: TxtToEpubRule[] = [];
+  for (const preset of chinesePresets) {
+    for (const rule of preset.rules) {
+      const key = `${rule.level}\n${rule.pattern}`;
+      if (seenRules.has(key)) continue;
+      seenRules.add(key);
+      mergedRules.push(rule);
+    }
+  }
+
+  const merged: TxtToEpubPreset = {
+    id: "zh_novel",
+    label: "中文章节综合",
+    description: "网文、出版、番外/外传标题",
+    rules: mergedRules,
+  };
+  const next: TxtToEpubPreset[] = [];
+  let inserted = false;
+  for (const preset of presets) {
+    if (CHINESE_PRESET_IDS.has(preset.id)) {
+      if (!inserted) {
+        next.push(merged);
+        inserted = true;
+      }
+      continue;
+    }
+    next.push(preset);
+  }
+  return next;
+}
+
+function displayStyle(
+  style: TxtToEpubStyle,
+  englishUi: boolean,
+): { label: string; groupLabel: string } {
+  const [, key = style.id] = style.id.split(":");
+  if (!englishUi) {
+    return {
+      label: ZH_STYLE_LABELS[key] ?? style.label,
+      groupLabel: style.id.startsWith("enhanced:")
+        ? "增强样式"
+        : "通用兼容样式",
+    };
+  }
+  return {
+    label: EN_STYLE_LABELS[key] ?? style.label,
+    groupLabel: style.id.startsWith("enhanced:")
+      ? "Enhanced style"
+      : "Compatible style",
+  };
 }
 
 function previewDocument(

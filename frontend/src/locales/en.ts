@@ -372,8 +372,6 @@ export const en: Messages = {
   settingsToolbar: {
     save: "Save",
     reset: "Reset to defaults",
-    resetConfirm:
-      "Reset this module's settings to their defaults? This will discard the current values.",
     saving: "Saving…",
     saved: "Saved",
     error: "Save failed",
@@ -701,72 +699,7 @@ export const en: Messages = {
     confidenceMedium: "Medium",
     confidenceLow: "Low",
     noToc: "No scanned TOC yet.",
-    tocPresetText: {
-      markdown: {
-        label: "Markdown headings",
-        description: "#, ##, ###, #### headings",
-      },
-      zh_novel: {
-        label: "Chinese fiction headings",
-        description:
-          "Web novel, published chapter, extra, side story, and numeric headings",
-      },
-      ko_novel: {
-        label: "Korean fiction",
-        description:
-          "Korean prologue, episode, volume, side story, epilogue, and numeric headings",
-      },
-      ja_novel: {
-        label: "Japanese fiction",
-        description:
-          "Japanese prologue, episode, volume, side story, epilogue, and numeric headings",
-      },
-      en_chapter: {
-        label: "English chapters",
-        description: "Chapter, Volume, Prologue, Epilogue, and numeric headings",
-      },
-      numeric: {
-        label: "Numeric headings",
-        description: "1., 1.1, 01, 001",
-      },
-    },
     epubStyle: "EPUB style",
-    styleLabels: {
-      classic: "Classic",
-      clean: "Clean",
-      contrast: "High contrast",
-      elegant: "Elegant",
-      eyecare: "Eye care",
-      fantasy: "Fantasy",
-      geometric: "Geometric",
-      geometric_frame: "Geometric frame",
-      grayscale: "Grayscale",
-      line_hierarchy: "Line hierarchy",
-      linear: "Linear",
-      minimal: "Minimal",
-      minimal_grid: "Minimal grid",
-      minimal_linear: "Minimal linear",
-      minimal_modern: "Modern minimal",
-      modern: "Modern",
-      monochrome: "Monochrome",
-      literary: "Literary",
-      compact: "Compact",
-      spacious: "Spacious",
-      double_line: "Double line title",
-      sans_clean: "Clean sans",
-      framed: "Framed title",
-      sidebar: "Sidebar emphasis",
-      structure_lines: "Structure lines",
-      reader_modern: "Reader modern",
-      soft_structure: "Soft structure",
-      soft: "Soft",
-      structured_minimal: "Structured minimal",
-      warm: "Warm",
-    },
-    styleGroups: {
-      enhanced: "Enhanced style",
-      compatible: "Compatible style",
-    },
     customCss: "Custom CSS",
     customCssHint: "Edit from template",
     copyTemplate: "Copy template",
