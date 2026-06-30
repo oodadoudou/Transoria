@@ -339,6 +339,7 @@ export interface Messages {
   settingsToolbar: {
     save: string;
     reset: string;
+    resetConfirm: string;
     saving: string;
     saved: string;
     error: string;
@@ -1296,7 +1297,13 @@ export interface Messages {
     confidenceMedium: string;
     confidenceLow: string;
     noToc: string;
+    tocPresetText: Record<string, { label: string; description: string }>;
     epubStyle: string;
+    styleLabels: Record<string, string>;
+    styleGroups: {
+      enhanced: string;
+      compatible: string;
+    };
     customCss: string;
     customCssHint: string;
     copyTemplate: string;

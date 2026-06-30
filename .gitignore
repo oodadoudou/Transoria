@@ -4,6 +4,12 @@ tasks/
 test/
 scripts/
 
+# Documentation policy
+# Only the project-root README.md is meant for GitHub.
+*.md
+!/README.md
+docs/
+
 # macOS
 .DS_Store
 ._*

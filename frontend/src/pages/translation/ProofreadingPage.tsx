@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { format, useI18n, useMessages } from "@/locales";
 import {
   BridgeError,
@@ -26,6 +26,13 @@ import { useModelProfiles } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { useWorkflowPresets } from "@/store/useWorkflowPresetsStore";
+import {
+  readProofreadingViewState,
+  resolveInitialProofreadingTask,
+  resolveProofreadingSelection,
+  writeProofreadingViewState,
+  type ProofreadingViewState,
+} from "./ProofreadingPage.viewState";
 import styles from "./ProofreadingPage.module.css";
 
 type FeedbackKind = "info" | "error" | "success";
@@ -412,6 +419,9 @@ export function ProofreadingPage() {
   const [filters, setFilters] = useState<ReadonlySet<ProofreadingFilterKey>>(
     () => new Set(DEFAULT_PROOFREADING_FILTERS),
   );
+  const pendingRestoreRef = useRef<ProofreadingViewState | null>(null);
+  const pendingScrollTopRef = useRef<number | null>(null);
+  const restoringScrollRef = useRef(false);
   const toggleFilter = (key: ProofreadingFilterKey) =>
     setFilters((prev) => {
       const next = new Set(prev);
@@ -599,10 +609,14 @@ export function ProofreadingPage() {
         setTasks(res.tasks);
         const launch = consumeProofreadingLaunch();
         if (res.tasks.length > 0) {
-          const requested = launch.taskId
-            ? res.tasks.find((task) => task.id === launch.taskId)
-            : null;
-          setActiveTaskId(requested?.id ?? res.tasks[0].id);
+          const initial = resolveInitialProofreadingTask(
+            res.tasks,
+            launch.taskId,
+            readProofreadingViewState(),
+          );
+          pendingRestoreRef.current = initial.restoreState;
+          pendingScrollTopRef.current = initial.restoreState?.scrollTop ?? null;
+          setActiveTaskId(initial.taskId);
           setFilters(
             new Set(
               launch.filters.length > 0
@@ -636,6 +650,10 @@ export function ProofreadingPage() {
       return;
     }
     let cancelled = false;
+    const restoreState =
+      pendingRestoreRef.current?.activeTaskId === activeTaskId
+        ? pendingRestoreRef.current
+        : null;
     setLoading(true);
     setSelectedSegmentId(null);
     setSelectedSegmentIds(new Set());
@@ -645,10 +663,14 @@ export function ProofreadingPage() {
       .then((next) => {
         if (cancelled) return;
         setSnapshot(next);
-        const firstId = next.items[0]?.segment_id ?? null;
-        setSelectedSegmentId(firstId);
-        setSelectionAnchorId(firstId);
-        setSelectedSegmentIds(firstId ? new Set([firstId]) : new Set());
+        const selectedId = resolveProofreadingSelection(
+          next.items,
+          restoreState?.selectedSegmentId ?? null,
+        );
+        pendingRestoreRef.current = null;
+        setSelectedSegmentId(selectedId);
+        setSelectionAnchorId(selectedId);
+        setSelectedSegmentIds(selectedId ? new Set([selectedId]) : new Set());
       })
       .catch((err) => {
         if (cancelled) return;
@@ -819,6 +841,29 @@ export function ProofreadingPage() {
   const endIndex = virtual.endIndex;
   const visibleItems = filteredItems.slice(startIndex, endIndex);
   const selectedCount = selectedSegmentIds.size;
+  useEffect(() => {
+    if (!activeTaskId || !snapshot || snapshot.task_id !== activeTaskId) return;
+    const pendingTop = pendingScrollTopRef.current;
+    if (pendingTop === null) return;
+    pendingScrollTopRef.current = null;
+    const maxTop = Math.max(0, virtual.totalHeight - ROW_HEIGHT);
+    restoringScrollRef.current = true;
+    virtual.scrollToOffset(Math.min(pendingTop, maxTop));
+  }, [activeTaskId, filteredItems.length, snapshot, virtual.totalHeight]);
+
+  useEffect(() => {
+    if (!activeTaskId || !snapshot || snapshot.task_id !== activeTaskId) return;
+    if (restoringScrollRef.current) {
+      restoringScrollRef.current = false;
+      return;
+    }
+    writeProofreadingViewState({
+      activeTaskId,
+      selectedSegmentId,
+      scrollTop: virtual.scrollTop,
+    });
+  }, [activeTaskId, selectedSegmentId, snapshot, virtual.scrollTop]);
+
   const filteredHasRisk = useMemo(
     () =>
       filteredItems.some(
@@ -1709,7 +1754,11 @@ export function ProofreadingPage() {
           <select
             className={styles.taskSelect}
             value={activeTaskId ?? ""}
-            onChange={(e) => setActiveTaskId(e.target.value || null)}
+            onChange={(e) => {
+              pendingRestoreRef.current = null;
+              pendingScrollTopRef.current = 0;
+              setActiveTaskId(e.target.value || null);
+            }}
             aria-label={m.taskPicker}
           >
             {(tasks ?? []).map((task) => (

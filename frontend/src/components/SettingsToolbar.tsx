@@ -43,6 +43,10 @@ export function SettingsToolbar({
       : ''
   }`.trim();
   const errorText = lastError?.message || lastError?.code || "";
+  const handleReset = () => {
+    if (!window.confirm(settingsToolbar.resetConfirm)) return;
+    onReset();
+  };
 
   return (
     <div className={styles.toolbar}>
@@ -62,7 +66,7 @@ export function SettingsToolbar({
         <button
           type="button"
           className={styles.button}
-          onClick={onReset}
+          onClick={handleReset}
           disabled={saveState === 'saving'}
         >
           {settingsToolbar.reset}
