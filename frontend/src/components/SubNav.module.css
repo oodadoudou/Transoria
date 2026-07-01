@@ -119,3 +119,33 @@
 .localeLink:hover {
   color: var(--ink);
 }
+
+.themeToggle {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+.themeToggle:hover {
+  background: var(--panel-soft);
+  color: var(--ink);
+}
+
+.themeToggle:active {
+  transform: scale(0.94);
+}
+
+.themeToggle:focus-visible {
+  outline: 2px solid var(--hairline-strong);
+  outline-offset: 2px;
+}

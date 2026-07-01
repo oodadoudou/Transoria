@@ -2,7 +2,7 @@ import { useI18n, useMessages, type Locale } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import type { Route } from "@/store/useTaskStore";
 import { Pill } from "./Pill";
-import { PlayIcon, StopIcon } from "./Icon";
+import { MoonIcon, PlayIcon, StopIcon, SunIcon } from "./Icon";
 import { useTypewriter } from "./useTypewriter";
 import styles from "./SubNav.module.css";
 
@@ -34,11 +34,19 @@ export function SubNav({
   const messages = useMessages();
   const locale = useI18n((state) => state.locale);
   const setLocale = useI18n((state) => state.setLocale);
+  const appDraft = useSettingsStore((state) => state.app.draft);
   const altLocale: Locale = locale === "en" ? "zh" : "en";
   const altLabel =
     altLocale === "en"
       ? messages.appSettings.languageEnglish
       : messages.appSettings.languageChinese;
+  const colorTheme = appDraft?.color_theme === "dark" ? "dark" : "light";
+  const nextColorTheme = colorTheme === "dark" ? "light" : "dark";
+  const nextThemeLabel =
+    nextColorTheme === "dark"
+      ? messages.appSettingsExtra.colorThemeDark
+      : messages.appSettingsExtra.colorThemeLight;
+
   const handleLocaleChange = async () => {
     const previous = locale;
     setLocale(altLocale);
@@ -59,6 +67,24 @@ export function SubNav({
       useSettingsStore
         .getState()
         .updateField("app", "interface_language", previous);
+    }
+  };
+  const handleThemeChange = async () => {
+    const store = useSettingsStore.getState();
+    if (!store.hydrated && !store.hydrating) {
+      await store.hydrate();
+    }
+    const currentDraft = useSettingsStore.getState().app.draft;
+    if (!currentDraft) return;
+    const previous =
+      currentDraft.color_theme === "dark" ? "dark" : "light";
+    const next = previous === "dark" ? "light" : "dark";
+    useSettingsStore.getState().updateField("app", "color_theme", next);
+    await useSettingsStore.getState().saveNow("app");
+    if (useSettingsStore.getState().app.lastError) {
+      useSettingsStore
+        .getState()
+        .updateField("app", "color_theme", previous);
     }
   };
 
@@ -113,16 +139,33 @@ export function SubNav({
             </Pill>
           </>
         ) : (
-          <button
-            type="button"
-            className={styles.localeLink}
-            onClick={() => {
-              void handleLocaleChange();
-            }}
-            aria-label={messages.appSettings.interfaceLanguage}
-          >
-            {altLabel}
-          </button>
+          <>
+            <button
+              type="button"
+              className={styles.localeLink}
+              onClick={() => {
+                void handleLocaleChange();
+              }}
+              aria-label={messages.appSettings.interfaceLanguage}
+            >
+              {altLabel}
+            </button>
+            <button
+              type="button"
+              className={styles.themeToggle}
+              onClick={() => {
+                void handleThemeChange();
+              }}
+              aria-label={`${messages.appSettingsExtra.colorTheme}: ${nextThemeLabel}`}
+              title={`${messages.appSettingsExtra.colorTheme}: ${nextThemeLabel}`}
+            >
+              {colorTheme === "dark" ? (
+                <SunIcon size={15} aria-hidden />
+              ) : (
+                <MoonIcon size={15} aria-hidden />
+              )}
+            </button>
+          </>
         )}
       </div>
     </header>
