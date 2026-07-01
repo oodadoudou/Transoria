@@ -594,6 +594,8 @@ export const en: Messages = {
     inputPlaceholder: "Choose or paste an .epub file path",
     outputFile: "Output EPUB",
     outputFolder: "Output folder",
+    syncFilenameWithTitle: "Keep output filename in sync with title metadata",
+    outputFilename: "Output filename",
     titleLabel: "Title",
     authorLabel: "Author",
     coverFile: "Cover image",
@@ -607,7 +609,7 @@ export const en: Messages = {
     openOutput: "Open output",
     dialogTitle: "Edit EPUB metadata",
     dialogSub:
-      "OK uses the title as the EPUB filename. If the output folder is blank, the input EPUB folder is used.",
+      "By default the EPUB filename follows the title metadata. Uncheck it to use a separate output filename.",
     cancel: "Cancel",
     ok: "OK",
     coverPlaceholder: "Leave empty to keep the source EPUB cover",

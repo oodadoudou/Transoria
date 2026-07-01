@@ -579,6 +579,8 @@ export const zh: Messages = {
     inputPlaceholder: "选择或粘贴 .epub 文件路径",
     outputFile: "输出 EPUB",
     outputFolder: "输出文件夹",
+    syncFilenameWithTitle: "输出文件名跟随书名 metadata",
+    outputFilename: "输出文件名",
     titleLabel: "书名",
     authorLabel: "作者",
     coverFile: "封面图片",
@@ -592,7 +594,7 @@ export const zh: Messages = {
     openOutput: "打开输出",
     dialogTitle: "编辑 EPUB 元数据",
     dialogSub:
-      "确认后会按书名生成 EPUB 文件名；输出文件夹为空时使用输入 EPUB 同目录。",
+      "默认按书名 metadata 生成 EPUB 文件名；需要不同文件名时取消勾选后单独填写。",
     cancel: "取消",
     ok: "OK",
     coverPlaceholder: "留空则沿用源 EPUB 封面",

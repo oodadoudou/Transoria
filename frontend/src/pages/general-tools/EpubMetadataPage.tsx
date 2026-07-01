@@ -38,6 +38,20 @@ function filenameFromTitle(title: string, inputPath: string): string {
   return `${stem || "metadata"}.epub`;
 }
 
+function normalizeOutputFilename(
+  filename: string,
+  title: string,
+  inputPath: string,
+): string {
+  const fallback = filenameFromTitle(title, inputPath);
+  const stem = (filename.trim() || fallback)
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  const name = stem && stem !== ".epub" ? stem : fallback;
+  return name.toLowerCase().endsWith(".epub") ? name : `${name}.epub`;
+}
+
 function outputFolder(path: string): string {
   const { dir } = splitPath(path);
   return dir.replace(/[\\/]$/, "");
@@ -72,6 +86,8 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
   const [coverPreviewUrl, setCoverPreviewUrl] = useState("");
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [syncOutputFilename, setSyncOutputFilename] = useState(true);
+  const [customOutputFilename, setCustomOutputFilename] = useState("");
   const [compressOutput, setCompressOutput] = useState(false);
   const [info, setInfo] = useState<EpubMetadataInfo | null>(null);
   const [result, setResult] = useState<EpubMetadataApplyResult | null>(null);
@@ -83,9 +99,12 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
 
   const resolvedOutputFolder =
     outputFolderPath.trim() || defaultOutputFolder(inputPath);
+  const resolvedOutputFilename = syncOutputFilename
+    ? filenameFromTitle(title, inputPath)
+    : normalizeOutputFilename(customOutputFilename, title, inputPath);
   const resolvedOutputPath = joinPath(
     resolvedOutputFolder,
-    filenameFromTitle(title, inputPath),
+    resolvedOutputFilename,
   );
 
   const loadMetadata = async (path: string, resetOutputPath = false) => {
@@ -101,6 +120,8 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
       setAuthor(next.authors.join(", "));
       setCoverPath("");
       setCoverPreviewUrl(next.cover_preview_data_url);
+      setSyncOutputFilename(true);
+      setCustomOutputFilename(filenameFromTitle(next.title, path));
       if (resetOutputPath || !outputFolderPath.trim()) {
         setOutputFolderPath(defaultOutputFolder(path));
       }
@@ -370,6 +391,34 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
                     </Pill>
                   </div>
                 </label>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={syncOutputFilename}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setSyncOutputFilename(checked);
+                      if (!checked && !customOutputFilename.trim()) {
+                        setCustomOutputFilename(
+                          filenameFromTitle(title, inputPath),
+                        );
+                      }
+                    }}
+                  />
+                  <span>{text.syncFilenameWithTitle}</span>
+                </label>
+                {!syncOutputFilename ? (
+                  <label className={styles.field}>
+                    <span>{text.outputFilename}</span>
+                    <input
+                      value={customOutputFilename}
+                      onChange={(event) =>
+                        setCustomOutputFilename(event.target.value)
+                      }
+                      placeholder={filenameFromTitle(title, inputPath)}
+                    />
+                  </label>
+                ) : null}
                 <div className={styles.generatedOutput}>
                   <span>{text.generatedOutput}</span>
                   <code>{resolvedOutputPath}</code>

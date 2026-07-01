@@ -1196,6 +1196,8 @@ export interface Messages {
     inputPlaceholder: string;
     outputFile: string;
     outputFolder: string;
+    syncFilenameWithTitle: string;
+    outputFilename: string;
     titleLabel: string;
     authorLabel: string;
     coverFile: string;
