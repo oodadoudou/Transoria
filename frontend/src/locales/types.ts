@@ -1260,6 +1260,8 @@ export interface Messages {
     outputDir: string;
     titleLabel: string;
     titlePlaceholder: string;
+    syncFilenameWithTitle: string;
+    outputFilename: string;
     authorLabel: string;
     optionalPlaceholder: string;
     cover: string;

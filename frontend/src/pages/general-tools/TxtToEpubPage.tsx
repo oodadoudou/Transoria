@@ -136,6 +136,8 @@ const ZH_STYLE_LABELS: Record<string, string> = {
 
 interface DraftState {
   title: string;
+  syncOutputFilename: boolean;
+  customOutputFilename: string;
   author: string;
   presetId: string;
   regexMode: "preset" | "simple" | "advanced";
@@ -148,6 +150,8 @@ interface DraftState {
 function defaultDraft(): DraftState {
   return {
     title: "",
+    syncOutputFilename: true,
+    customOutputFilename: "",
     author: "",
     presetId: "markdown",
     regexMode: "preset",
@@ -161,6 +165,35 @@ function defaultDraft(): DraftState {
     styleId: "basic:classic",
     customCss: "",
   };
+}
+
+function splitPath(path: string): { name: string } {
+  const index = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (index < 0) return { name: path };
+  return { name: path.slice(index + 1) };
+}
+
+function filenameFromTitle(title: string, inputPath: string): string {
+  const fallback = splitPath(inputPath.trim()).name.replace(/\.txt$/i, "");
+  const stem = (title.trim() || fallback || "book")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${stem || "book"}.epub`;
+}
+
+function normalizeOutputFilename(
+  filename: string,
+  title: string,
+  inputPath: string,
+): string {
+  const fallback = filenameFromTitle(title, inputPath);
+  const stem = (filename.trim() || fallback)
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  const name = stem && stem !== ".epub" ? stem : fallback;
+  return name.toLowerCase().endsWith(".epub") ? name : `${name}.epub`;
 }
 
 export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {}) {
@@ -316,12 +349,20 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
       ? Math.floor((settled / snapshot.progress.total) * 100)
       : 0;
   const englishUi = messages.generalTools.crumb === "General Tools";
+  const syncOutputFilename = draft.syncOutputFilename !== false;
+  const customOutputFilename = draft.customOutputFilename ?? "";
 
   const updateInputPath = (nextPath: string) => {
     if (nextPath === inputPath) return;
     setInputPath(nextPath);
     setCoverPath("");
-    setDraft((prev) => ({ ...prev, title: "", author: "" }));
+    setDraft((prev) => ({
+      ...prev,
+      title: "",
+      syncOutputFilename: true,
+      customOutputFilename: "",
+      author: "",
+    }));
     setTocEntries([]);
     setSelectedTocIds([]);
     setScanInfo(null);
@@ -396,6 +437,9 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
     source_path: inputPath,
     output_dir: outputDir,
     title: draft.title,
+    output_filename: syncOutputFilename
+      ? ""
+      : normalizeOutputFilename(customOutputFilename, draft.title, inputPath),
     author: draft.author,
     language: "zh",
     cover_path: coverPath,
@@ -620,6 +664,42 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
               </Pill>
             </div>
           </label>
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              checked={syncOutputFilename}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setDraft((prev) => {
+                  const currentFilename = prev.customOutputFilename ?? "";
+                  return {
+                    ...prev,
+                    syncOutputFilename: checked,
+                    customOutputFilename:
+                      checked || currentFilename.trim()
+                        ? currentFilename
+                        : filenameFromTitle(prev.title, inputPath),
+                  };
+                });
+              }}
+            />
+            <span>{text.syncFilenameWithTitle}</span>
+          </label>
+          {!syncOutputFilename ? (
+            <label className={styles.field}>
+              <span>{text.outputFilename}</span>
+              <input
+                value={customOutputFilename}
+                onChange={(event) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    customOutputFilename: event.target.value,
+                  }))
+                }
+                placeholder={filenameFromTitle(draft.title, inputPath)}
+              />
+            </label>
+          ) : null}
         </div>
       </Panel>
 

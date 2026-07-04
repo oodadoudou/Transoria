@@ -896,6 +896,7 @@ export interface TxtToEpubOptions {
   source_path: string;
   output_dir: string;
   title: string;
+  output_filename: string;
   author: string;
   language: string;
   cover_path: string;

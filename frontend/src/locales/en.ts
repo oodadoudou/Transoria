@@ -662,6 +662,8 @@ export const en: Messages = {
     outputDir: "Output folder",
     titleLabel: "Title",
     titlePlaceholder: "Blank uses the TXT filename",
+    syncFilenameWithTitle: "Keep output filename in sync with title metadata",
+    outputFilename: "Output filename",
     authorLabel: "Author",
     optionalPlaceholder: "Optional",
     cover: "Cover",
@@ -713,7 +715,7 @@ export const en: Messages = {
     generating: "Generating",
     stop: "Stop",
     outputHint:
-      "Filename defaults to the title; blank output folder uses the input TXT folder.",
+      "Filename follows the title by default; uncheck it to use a separate output filename.",
     output: "Output",
     noOutput: "No output files yet",
     openOutputFolder: "Open output folder",

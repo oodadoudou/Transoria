@@ -325,6 +325,30 @@ def test_txt_to_epub_writes_each_body_line_as_separate_paragraph(tmp_path: Path)
     assert "셋째 문장입니다." in body_segments
 
 
+def test_txt_to_epub_custom_output_filename_keeps_title_metadata(tmp_path: Path) -> None:
+    source = tmp_path / "novel.txt"
+    output_dir = tmp_path / "out"
+    source.write_text("제1화 시작\n본문입니다.\n", encoding="utf-8")
+    plan = build_txt_to_epub_plan(
+        TxtToEpubOptions(
+            source_path=str(source),
+            output_dir=str(output_dir),
+            title="Metadata Title",
+            output_filename="Custom File",
+            overwrite=True,
+        )
+    )
+
+    result = convert_txt_to_epub(plan.action)
+
+    assert result.status == "converted"
+    assert plan.output_path.name == "Custom File.epub"
+    with zipfile.ZipFile(plan.output_path) as archive:
+        package = archive.read("OEBPS/content.opf").decode("utf-8")
+    assert "<dc:title>Metadata Title</dc:title>" in package
+    assert "Custom File" not in package
+
+
 def test_txt_to_epub_keeps_prefix_text_out_of_toc_when_chapters_are_scanned(
     tmp_path: Path,
 ) -> None:

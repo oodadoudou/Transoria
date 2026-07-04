@@ -156,6 +156,7 @@ class TxtToEpubOptions:
     source_path: str
     output_dir: str = ""
     title: str = ""
+    output_filename: str = ""
     author: str = ""
     language: str = "zh"
     cover_path: str = ""
@@ -169,6 +170,7 @@ class TxtToEpubOptions:
             "source_path": self.source_path,
             "output_dir": self.output_dir,
             "title": self.title,
+            "output_filename": self.output_filename,
             "author": self.author,
             "language": self.language,
             "cover_path": self.cover_path,
@@ -190,6 +192,9 @@ class TxtToEpubOptions:
             source_path=str(data.get("source_path", data.get("sourcePath", ""))),
             output_dir=str(data.get("output_dir", data.get("outputDir", ""))),
             title=str(data.get("title", "")),
+            output_filename=str(
+                data.get("output_filename", data.get("outputFilename", ""))
+            ),
             author=str(data.get("author", "")),
             language=str(data.get("language", "zh") or "zh"),
             cover_path=str(data.get("cover_path", data.get("coverPath", ""))),
@@ -510,7 +515,8 @@ def build_txt_to_epub_plan(options: TxtToEpubOptions) -> TxtToEpubPlan:
         else source.parent
     )
     title = options.title.strip() or source.stem
-    output_path = (output_dir / f"{_safe_filename(title)}{_EPUB_SUFFIX}").resolve()
+    filename = _epub_output_filename(options.output_filename, title=title)
+    output_path = (output_dir / filename).resolve()
     action = TxtToEpubAction(
         id="txt-epub-0000",
         source_path=str(source),
@@ -732,6 +738,14 @@ def _safe_filename(value: str) -> str:
     safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", normalized)
     safe = re.sub(r"\s+", " ", safe).strip(" .")
     return safe or "output"
+
+
+def _epub_output_filename(filename: str, *, title: str) -> str:
+    raw = filename.strip()
+    if raw:
+        safe = _safe_filename(raw)
+        return safe if safe.lower().endswith(_EPUB_SUFFIX) else f"{safe}{_EPUB_SUFFIX}"
+    return f"{_safe_filename(title)}{_EPUB_SUFFIX}"
 
 
 def _style_key(path: Path) -> str:
