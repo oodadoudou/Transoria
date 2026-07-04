@@ -11,9 +11,13 @@ Transoria 是一个面向小说翻译的桌面应用：把 EPUB / TXT 小说交�
 
 界面支持中英文切换。所有任务在本地运行，由你自己的 LLM API Key 调用模型。
 
-![翻译运行](assets/demo/translation-run-zh.jpg)
+![翻译运行](assets/demo/translation-run-zh.png)
 
-![术语校对](assets/demo/term-review-zh.jpg)
+![翻译术语表](assets/demo/translation-glossary-zh.png)
+
+![翻译预设](assets/demo/translation-presets-zh.png)
+
+![EPUB 工具](assets/demo/epub-tools-zh.png)
 
 交流/问题反馈群 QQ：**1104197845**。欢迎加入，使用中遇到问题可以进群反馈。
 
@@ -115,9 +119,13 @@ The UI ships with both Chinese and English. All tasks run locally and call model
 
 > The UI can be switched between Chinese and English from the top-right of the app.
 
-![Translation run](assets/demo/translation-run-en.jpg)
+![Translation run](assets/demo/translation-run-en.png)
 
-![Term review](assets/demo/term-review-en.jpg)
+![Translation glossary](assets/demo/translation-glossary-en.png)
+
+![Translation presets](assets/demo/translation-presets-en.png)
+
+![EPUB tools](assets/demo/epub-tools-en.png)
 
 ### Copyright and Usage Notice
 
