@@ -52,6 +52,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "model_profiles.create",
     "model_profiles.update",
     "model_profiles.delete",
+    "model_profiles.duplicate",
     "model_profiles.set_api_key",
     "model_profiles.test_connection",
     "model_profiles.fetch_model_list",
@@ -238,9 +239,10 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-05-04 (glossary_review final XLSX bulk delete) +
     # 1 added 2026-05-04 (restore deleted glossary-review report row) +
     # 3 added 2026-06-18 (LLM request logs for LLM workflows) +
-    # 6 added 2026-06-28 (workflow presets).
+    # 6 added 2026-06-28 (workflow presets) +
+    # 1 added 2026-07-05 (model_profiles.duplicate).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 152
+    assert len(actual) == 153
 # Test 2 — frontend bridge wraps every backend method
 
 
@@ -290,6 +292,7 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
     "model_profiles.create": {"profile": {"display_name": "x"}},
     "model_profiles.update": {"id": "missing-id", "patch": {}},
     "model_profiles.delete": {"id": "missing-id"},
+    "model_profiles.duplicate": {"id": "missing-id"},
     "model_profiles.set_api_key": {"id": "missing-id", "api_keys": []},
     "model_profiles.test_connection": {"id": "preset-deepseek", "request_id": "rid"},
     "model_profiles.fetch_model_list": {"id": "preset-deepseek", "request_id": "rid"},

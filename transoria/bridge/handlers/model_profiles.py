@@ -17,7 +17,9 @@ live dropdown instead of typing it.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
+from dataclasses import replace
 from typing import Callable, Mapping
 
 import httpx
@@ -41,6 +43,7 @@ ACTIVE_FIELD_BY_MODULE = {
     "glossary": "active_glossary_model_id",
     "glossary_review": "active_glossary_review_model_id",
 }
+_COPY_SUFFIX_PATTERN = re.compile(r"^(?P<base>.*?)(?:\s+(?P<number>[1-9]\d*))?$")
 
 
 def _profile_to_dict(profile: ModelConfig, status: str) -> dict[str, object]:
@@ -149,6 +152,37 @@ def _build_handlers(
         if patch:
             settings_store.save_partial("app", patch)
         return {}
+
+    def duplicate(payload: Mapping[str, object]) -> dict[str, object]:
+        profile_id = expect_string(payload, "id")
+        source = profile_store.get(profile_id)
+        if source is None:
+            raise BridgeError.not_found(
+                f"profile {profile_id!r} does not exist.",
+                details={"id": profile_id},
+            )
+        existing_names = tuple(profile.display_name for profile in profile_store.load())
+        display_name = _next_copy_display_name(source.display_name, existing_names)
+        try:
+            stored = profile_store.create(
+                replace(
+                    source,
+                    id=_generate_id(
+                        {
+                            "display_name": display_name,
+                            "model_id": source.model_id,
+                        }
+                    ),
+                    display_name=display_name,
+                )
+            )
+        except ValueError as exc:
+            raise BridgeError.conflict(str(exc)) from exc
+        return {
+            "profile": _profile_to_dict(
+                stored, profile_store.api_key_status(stored.id)
+            )
+        }
 
     def set_api_key(payload: Mapping[str, object]) -> dict[str, object]:
         profile_id = expect_string(payload, "id")
@@ -290,6 +324,7 @@ def _build_handlers(
         "model_profiles.create": create,
         "model_profiles.update": update,
         "model_profiles.delete": delete,
+        "model_profiles.duplicate": duplicate,
         "model_profiles.set_api_key": set_api_key,
         "model_profiles.select_active": select_active,
         "model_profiles.test_connection": test_connection,
@@ -533,6 +568,23 @@ def _generate_id(body: Mapping[str, object]) -> str:
     import secrets  # noqa: PLC0415
 
     return f"{slug}-{secrets.token_hex(3)}"
+
+
+def _next_copy_display_name(name: str, existing_names: tuple[str, ...]) -> str:
+    stripped = name.strip() or "profile"
+    match = _COPY_SUFFIX_PATTERN.match(stripped)
+    base = (match.group("base") if match else stripped).strip() or stripped
+    used_numbers = {
+        int(found.group("number"))
+        for existing in existing_names
+        if (found := _COPY_SUFFIX_PATTERN.match(existing.strip()))
+        and found.group("base").strip() == base
+        and found.group("number") is not None
+    }
+    suffix = max(used_numbers, default=0) + 1
+    while f"{base} {suffix}" in existing_names:
+        suffix += 1
+    return f"{base} {suffix}"
 
 
 def _coerce_patch(patch: Mapping[str, object]) -> dict[str, object]:

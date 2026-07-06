@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -100,6 +101,14 @@ from transoria.workflows.translation.statistics import (
 # proofread. Deeper geometric splitting re-translated whole sub-chunks
 # repeatedly for little reliability gain and large token cost.
 _SPLIT_ROUNDS = 1
+_ERROR_CODE_PATTERN = re.compile(r"^\[([a-z0-9_.-]+)\]")
+_HTTP_STATUS_PATTERN = re.compile(r"\bHTTP\s+(\d{3})\b", re.IGNORECASE)
+_REQUEST_FAILURE_CODES = {
+    "llm.transport_error",
+    "llm.no_api_key",
+    "llm.all_keys_failed",
+}
+_REQUEST_FAILURE_HTTP_STATUSES = {401, 403, 408, 429}
 
 
 class TranslationEmptyInputError(RuntimeError):
@@ -480,6 +489,8 @@ class TranslationOrchestrator:
         for subtask in subtasks:
             if subtask.status is not SubtaskStatus.FAILED:
                 continue
+            if not _should_split_failed_subtask(subtask):
+                continue
             child_payloads = _split_failed_payload(
                 subtask.request_payload,
                 parent_subtask_id=subtask.id,
@@ -507,6 +518,37 @@ class TranslationOrchestrator:
                 )
                 created += 1
         return created
+
+
+def _should_split_failed_subtask(subtask: Subtask) -> bool:
+    return not _is_request_failure(subtask.last_error)
+
+
+def _is_request_failure(last_error: str) -> bool:
+    if not last_error:
+        return False
+    match = _ERROR_CODE_PATTERN.match(last_error.strip())
+    code = match.group(1) if match else ""
+    if code in _REQUEST_FAILURE_CODES:
+        return True
+    if code == "llm.http_error":
+        status = _extract_http_status(last_error)
+        return status in _REQUEST_FAILURE_HTTP_STATUSES or status >= 500
+    lowered = last_error.lower()
+    return (
+        "transporterror" in last_error
+        or "timeouterror" in lowered
+        or "connectionerror" in last_error
+        or "noapikeyerror" in last_error
+        or "auth failure" in lowered
+    )
+
+
+def _extract_http_status(message: str) -> int:
+    match = _HTTP_STATUS_PATTERN.search(message)
+    if match is None:
+        return 0
+    return int(match.group(1))
 
 
 def _scan_and_parse(input_dir: Path, *, buffer_epub_archives: bool) -> tuple[_ParsedFile, ...]:

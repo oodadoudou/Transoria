@@ -8,7 +8,7 @@ from typing import Mapping
 
 import pytest
 
-from transoria.domain import Language, TaskStatus
+from transoria.domain import Language, SubtaskStatus, TaskStatus
 from transoria.formats.epub_parser import parse_epub_file
 from transoria.llm import LlmClient, ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.client import TransportResult
@@ -24,6 +24,7 @@ from transoria.workflows.translation import (
 )
 from transoria.workflows.translation.orchestrator import (
     _default_runner_factory,
+    _should_split_failed_subtask,
     _split_failed_payload,
 )
 from tests.unit.formats.test_formats_epub_parser import _write_minimal_epub
@@ -512,7 +513,13 @@ def test_orchestrator_splits_failed_chunk_and_retries_children(tmp_path: Path) -
             ]
             self.request_line_counts.append(len(rows))
             if len(rows) > 2:
-                return TransportResult(500, {"error": "chunk too large"})
+                return TransportResult(
+                    200,
+                    {
+                        "choices": [{"message": {"role": "assistant", "content": ""}}],
+                        "usage": {"prompt_tokens": 1, "completion_tokens": 0},
+                    },
+                )
             lines: list[str] = []
             for line in rows:
                 try:
@@ -545,7 +552,7 @@ def test_orchestrator_splits_failed_chunk_and_retries_children(tmp_path: Path) -
     )
 
     assert result.final_status is TaskStatus.COMPLETED
-    assert transport.request_line_counts == [4, 2, 2]
+    assert transport.request_line_counts == [4, 4, 4, 2, 2]
     assert result.statistics.failed_subtasks == 0
     assert result.statistics.completed_segments == 4
     assert result.translated_outputs[0].read_text(encoding="utf-8").count(_PREFIX) == 4
@@ -718,6 +725,44 @@ def test_split_failed_payload_clears_context_lines() -> None:
     assert all(child["context_lines"] == [] for child in children)
 
 
+def test_split_failed_subtask_skips_request_failures_but_keeps_quality_failures() -> None:
+    def failed_subtask(last_error: str) -> Subtask:
+        return Subtask(
+            id="chunk-00000",
+            task_id="task",
+            status=SubtaskStatus.FAILED,
+            request_payload={
+                "segments": [
+                    {"segment_id": "0:0", "chunk_index": 0, "prompt_text": "a"},
+                    {"segment_id": "0:1", "chunk_index": 1, "prompt_text": "b"},
+                ]
+            },
+            last_error=last_error,
+        )
+
+    assert not _should_split_failed_subtask(
+        failed_subtask("[llm.transport_error] LlmRequestError: timeout")
+    )
+    assert not _should_split_failed_subtask(
+        failed_subtask("[llm.no_api_key] NoApiKeyError: missing")
+    )
+    assert not _should_split_failed_subtask(
+        failed_subtask("[llm.http_error] LlmRequestError: HTTP 401 from provider")
+    )
+    assert not _should_split_failed_subtask(
+        failed_subtask("[llm.http_error] LlmRequestError: HTTP 429 from provider")
+    )
+    assert not _should_split_failed_subtask(
+        failed_subtask("[llm.http_error] LlmRequestError: HTTP 503 from provider")
+    )
+    assert _should_split_failed_subtask(
+        failed_subtask("[llm.line_count_mismatch] LlmRequestError: expected 2 got 1")
+    )
+    assert _should_split_failed_subtask(
+        failed_subtask("ValueError: malformed translation response")
+    )
+
+
 def test_orchestrator_marks_running_before_split_to_avoid_terminal_flicker(
     tmp_path: Path,
 ) -> None:
@@ -753,7 +798,13 @@ def test_orchestrator_marks_running_before_split_to_avoid_terminal_flicker(
             ]
             self.request_line_counts.append(len(rows))
             if len(rows) > 2:
-                return TransportResult(500, {"error": "chunk too large"})
+                return TransportResult(
+                    200,
+                    {
+                        "choices": [{"message": {"role": "assistant", "content": ""}}],
+                        "usage": {"prompt_tokens": 1, "completion_tokens": 0},
+                    },
+                )
             lines: list[str] = []
             for line in rows:
                 parsed = json.loads(line)

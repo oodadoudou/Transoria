@@ -124,6 +124,12 @@ export function ModelConfigPage() {
                       onEdit={() =>
                         setModalState({ mode: "edit", profileId: profile.id })
                       }
+                      onDuplicate={async () => {
+                        const copy = await store.duplicateProfile(profile.id);
+                        if (copy) {
+                          setModalState({ mode: "edit", profileId: copy.id });
+                        }
+                      }}
                       onDelete={() => void store.deleteProfile(profile.id)}
                     />
                   ))}
@@ -180,9 +186,11 @@ interface ConfiguredModelRowProps {
   menu: {
     triggerLabel: string;
     edit: string;
+    duplicate: string;
     delete: string;
   };
   onEdit: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }
 
@@ -190,6 +198,7 @@ function ConfiguredModelRow({
   profile,
   menu,
   onEdit,
+  onDuplicate,
   onDelete,
 }: ConfiguredModelRowProps) {
   const profileMeta = `${profile.provider_format} · ${profile.model_id}`;
@@ -208,6 +217,7 @@ function ConfiguredModelRow({
           ariaLabel={menu.triggerLabel}
           items={[
             { key: "edit", label: menu.edit, onSelect: onEdit },
+            { key: "duplicate", label: menu.duplicate, onSelect: onDuplicate },
             {
               key: "delete",
               label: menu.delete,

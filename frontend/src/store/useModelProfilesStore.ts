@@ -44,6 +44,7 @@ interface ModelProfilesState {
     patch: Partial<ModelProfile>,
   ) => Promise<ModelProfile | null>;
   deleteProfile: (id: string) => Promise<boolean>;
+  duplicateProfile: (id: string) => Promise<ModelProfile | null>;
   setApiKey: (id: string, apiKeys: string[]) => Promise<ModelProfile | null>;
   selectActive: (
     module: "translation" | "glossary" | "glossary_review",
@@ -161,6 +162,18 @@ export const useModelProfilesStore = create<ModelProfilesState>((set, get) => {
       } catch (error) {
         set({ mutationError: asBridgeError(error) });
         return false;
+      }
+    },
+
+    duplicateProfile: async (id) => {
+      set({ mutationError: null });
+      try {
+        const { profile } = await modelProfilesBridge.duplicate(id);
+        set((state) => ({ profiles: [...state.profiles, profile] }));
+        return profile;
+      } catch (error) {
+        set({ mutationError: asBridgeError(error) });
+        return null;
       }
     },
 

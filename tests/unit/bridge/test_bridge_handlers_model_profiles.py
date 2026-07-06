@@ -218,6 +218,27 @@ def test_create_rejects_duplicate_id_with_conflict(env):
     assert caught.value.code == "bridge.conflict"
 
 
+def test_duplicate_copies_profile_keys_and_increments_name(env):
+    router, store, _ = env
+    store.set_api_keys("preset-openai", ["sk-original"])
+
+    first = router.call("model_profiles.duplicate", {"id": "preset-openai"})[
+        "profile"
+    ]
+    second = router.call("model_profiles.duplicate", {"id": first["id"]})[
+        "profile"
+    ]
+
+    assert first["display_name"] == "OpenAI 1"
+    assert second["display_name"] == "OpenAI 2"
+    assert first["id"] != "preset-openai"
+    assert second["id"] != first["id"]
+    assert first["api_key_status"] == "present"
+    assert second["api_key_status"] == "present"
+    assert store.get(first["id"]).api_keys == ("sk-original",)
+    assert store.get(second["id"]).api_keys == ("sk-original",)
+
+
 def test_update_persists_change(env):
     router, store, _ = env
 

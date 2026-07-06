@@ -179,6 +179,9 @@ export const modelProfilesBridge = {
   delete(id: string): Promise<Record<string, never>> {
     return call("model_profiles.delete", { id });
   },
+  duplicate(id: string): Promise<{ profile: ModelProfile }> {
+    return call("model_profiles.duplicate", { id });
+  },
   readFull(id: string): Promise<{ profile: ModelProfile; api_keys: string[] }> {
     return call("model_profiles.read_full", { id });
   },
