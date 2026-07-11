@@ -155,13 +155,16 @@ def _build_handlers(
 
     def duplicate(payload: Mapping[str, object]) -> dict[str, object]:
         profile_id = expect_string(payload, "id")
-        source = profile_store.get(profile_id)
+        all_profiles = profile_store.load()
+        source = next(
+            (p for p in all_profiles if p.id == profile_id), None
+        )
         if source is None:
             raise BridgeError.not_found(
                 f"profile {profile_id!r} does not exist.",
                 details={"id": profile_id},
             )
-        existing_names = tuple(profile.display_name for profile in profile_store.load())
+        existing_names = tuple(p.display_name for p in all_profiles)
         display_name = _next_copy_display_name(source.display_name, existing_names)
         try:
             stored = profile_store.create(
