@@ -43,14 +43,15 @@ def find_archive_entry_by_normalized_path(
     archive: zipfile.ZipFile,
     path: str,
 ) -> str:
-    for candidate in archive_lookup_candidates(path):
+    candidates = archive_lookup_candidates(path)
+    for candidate in candidates:
         try:
             archive.getinfo(candidate)
         except KeyError:
             continue
         return candidate
 
-    lookup_keys = {decode_epub_href(candidate) for candidate in archive_lookup_candidates(path)}
+    lookup_keys = {decode_epub_href(candidate) for candidate in candidates}
     matches = [
         name
         for name in archive.namelist()
