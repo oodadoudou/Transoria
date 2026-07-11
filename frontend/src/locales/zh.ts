@@ -359,6 +359,7 @@ export const zh: Messages = {
   settingsToolbar: {
     save: "保存",
     reset: "恢复默认值",
+    resetConfirm: "将本模块设置全部恢复为默认值？此操作无法撤销。",
     saving: "保存中…",
     saved: "已保存",
     error: "保存失败",

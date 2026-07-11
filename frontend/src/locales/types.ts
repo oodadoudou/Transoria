@@ -339,6 +339,7 @@ export interface Messages {
   settingsToolbar: {
     save: string;
     reset: string;
+    resetConfirm: string;
     saving: string;
     saved: string;
     error: string;

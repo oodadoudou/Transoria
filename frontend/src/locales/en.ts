@@ -372,6 +372,7 @@ export const en: Messages = {
   settingsToolbar: {
     save: "Save",
     reset: "Reset to defaults",
+    resetConfirm: "Reset all settings in this module to defaults? This cannot be undone.",
     saving: "Saving…",
     saved: "Saved",
     error: "Save failed",
