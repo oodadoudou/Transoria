@@ -5,7 +5,9 @@ import copy
 import io
 import os
 import posixpath
+import re
 import tempfile
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -122,6 +124,13 @@ def read_cover_preview(image_path: str | Path) -> str:
     return preview
 
 
+def _safe_filename(value: str) -> str:
+    normalized = unicodedata.normalize("NFC", value).strip()
+    safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", normalized)
+    safe = re.sub(r"\s+", " ", safe).strip(" .")
+    return safe or "output"
+
+
 def apply_epub_metadata(
     input_path: str | Path,
     output_path: str | Path,
@@ -134,6 +143,9 @@ def apply_epub_metadata(
 ) -> EpubMetadataApplyResult:
     epub_path = _validate_epub_path(input_path)
     out_path = Path(output_path).expanduser()
+    safe_name = _safe_filename(out_path.name)
+    if safe_name != out_path.name:
+        out_path = out_path.with_name(safe_name)
     if out_path.suffix.lower() != ".epub":
         raise ValueError("Output path must end with .epub.")
     same_path = epub_path.resolve() == out_path.resolve()
