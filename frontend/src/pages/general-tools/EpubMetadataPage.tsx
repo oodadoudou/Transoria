@@ -32,7 +32,7 @@ function defaultOutputFolder(inputPath: string): string {
 function filenameFromTitle(title: string, inputPath: string): string {
   const fallback = splitPath(inputPath.trim()).name.replace(/\.epub$/i, "");
   const stem = (title.trim() || fallback || "metadata")
-    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
     .replace(/\s+/g, " ")
     .trim();
   return `${stem || "metadata"}.epub`;
@@ -45,7 +45,7 @@ function normalizeOutputFilename(
 ): string {
   const fallback = filenameFromTitle(title, inputPath);
   const stem = (filename.trim() || fallback)
-    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
     .replace(/\s+/g, " ")
     .trim();
   const name = stem && stem !== ".epub" ? stem : fallback;
