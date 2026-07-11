@@ -347,15 +347,32 @@ export function usePollRunSnapshot(kind: RunKind, intervalMs = 2000): void {
     if (!activeTaskId) return;
     if (TERMINAL_STATUSES.has(status)) return;
     let cancelled = false;
-    const tick = () => {
-      if (cancelled) return;
-      void pollSnapshot(kind);
+    let handle: number | null = null;
+    let consecutiveFailures = 0;
+    const schedule = (delay: number) => {
+      handle = window.setTimeout(tick, delay);
     };
-    tick();
-    const handle = window.setInterval(tick, intervalMs);
+    const tick = async () => {
+      if (cancelled) return;
+      const prevError = useRuntimeStore.getState()[kind].lastError;
+      await pollSnapshot(kind);
+      const nextError = useRuntimeStore.getState()[kind].lastError;
+      if (nextError && nextError !== prevError && nextError.code !== "bridge.not_found") {
+        consecutiveFailures += 1;
+      } else {
+        consecutiveFailures = 0;
+      }
+      if (cancelled) return;
+      const delay =
+        consecutiveFailures === 0
+          ? intervalMs
+          : Math.min(intervalMs * 2 ** consecutiveFailures, 15000);
+      schedule(delay);
+    };
+    schedule(0);
     return () => {
       cancelled = true;
-      window.clearInterval(handle);
+      if (handle !== null) window.clearTimeout(handle);
     };
   }, [kind, activeTaskId, status, intervalMs, pollSnapshot]);
 }
