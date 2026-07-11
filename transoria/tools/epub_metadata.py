@@ -167,11 +167,8 @@ def apply_epub_metadata(
         raise ValueError("Provide at least a title, author, or cover image.")
 
     temp_paths: list[Path] = []
-    metadata_output = (
-        _temporary_epub_path(out_path) if same_path or compress else out_path
-    )
-    if metadata_output != out_path:
-        temp_paths.append(metadata_output)
+    metadata_output = _temporary_epub_path(out_path)
+    temp_paths.append(metadata_output)
 
     try:
         with zipfile.ZipFile(epub_path) as source:
@@ -226,7 +223,7 @@ def apply_epub_metadata(
             if compress_result.status != "compressed":
                 raise ValueError(f"EPUB compression failed: {compress_result.error}")
             os.replace(compress_result.output_path, out_path)
-        elif metadata_output != out_path:
+        else:
             os.replace(metadata_output, out_path)
     finally:
         for temp_path in temp_paths:
