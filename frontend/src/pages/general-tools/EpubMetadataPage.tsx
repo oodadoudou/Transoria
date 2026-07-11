@@ -175,7 +175,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
     await loadMetadata(inputPath.trim(), false);
   };
 
-  const applyMetadata = async (overwrite: boolean) => {
+  const applyMetadata = async (overwrite: boolean, probe = false) => {
     setConfirmOverwriteOpen(false);
     setActionError(null);
     setFeedback(null);
@@ -196,6 +196,14 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
       setInfo(await epubMetadataBridge.read(next.output_path));
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {
+        if (
+          probe &&
+          !overwrite &&
+          /confirm overwrite first/i.test(error.message)
+        ) {
+          setConfirmOverwriteOpen(true);
+          return;
+        }
         setActionError(error);
       } else {
         throw error;
@@ -205,13 +213,13 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
     }
   };
 
-  const handleApplyRequest = () => {
+  const handleApplyRequest = async () => {
     if (!inputPath.trim() || !resolvedOutputPath.trim()) return;
     if (isSamePath(inputPath, resolvedOutputPath)) {
       setConfirmOverwriteOpen(true);
       return;
     }
-    void applyMetadata(false);
+    await applyMetadata(false, true);
   };
 
   const handleRevealOutput = async () => {

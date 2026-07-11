@@ -137,8 +137,13 @@ def apply_epub_metadata(
     if out_path.suffix.lower() != ".epub":
         raise ValueError("Output path must end with .epub.")
     same_path = epub_path.resolve() == out_path.resolve()
-    if same_path and not overwrite:
-        raise ValueError("Output path matches input path; confirm overwrite first.")
+    output_exists = out_path.exists()
+    if (same_path or output_exists) and not overwrite:
+        raise ValueError(
+            "Output path exists; confirm overwrite first."
+            if output_exists and not same_path
+            else "Output path matches input path; confirm overwrite first."
+        )
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     next_title = title.strip()
