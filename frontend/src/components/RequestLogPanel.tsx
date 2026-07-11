@@ -164,7 +164,7 @@ export function RequestLogPanel({
     }
     const timer = window.setInterval(() => {
       void loadEvents();
-    }, 2000);
+    }, 5000);
     return () => window.clearInterval(timer);
   }, [loadEvents, taskId, taskStatus, visible]);
 
