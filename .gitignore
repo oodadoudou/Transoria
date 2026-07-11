@@ -130,6 +130,7 @@ output/
 outputs/
 translated/
 exports/
+extracted_chunks/
 
 # Agent instructions
 .claude/
