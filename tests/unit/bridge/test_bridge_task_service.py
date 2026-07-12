@@ -2156,6 +2156,86 @@ def test_continue_allows_stopped_translation_with_only_finalization_left(
     assert persisted.record.status is TaskStatus.RUNNING
 
 
+def test_probe_and_continue_allow_failed_translation_with_source_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "sample.txt").write_text("원문", encoding="utf-8")
+    _seed_translation_settings(service, input_dir=input_dir, output_dir=output_dir)
+    task_id = "translation-source-fallback"
+    created_at = "2026-05-01T00:00:00+00:00"
+    service._cache_for_kind("translation").write_seed(
+        TaskRecord(
+            id=task_id,
+            kind=TaskKind.TRANSLATION,
+            status=TaskStatus.FAILED,
+            created_at=created_at,
+            updated_at=created_at,
+            metadata={
+                "input_dir": str(input_dir),
+                "output_dir": str(output_dir),
+            },
+        ),
+        (
+            Subtask(
+                id="chunk-00000",
+                task_id=task_id,
+                status=SubtaskStatus.COMPLETED,
+                request_payload={
+                    "segments": [
+                        {
+                            "segment_id": "0:0",
+                            "chunk_index": 0,
+                            "prompt_text": "원문",
+                            "original_text": "원문",
+                        }
+                    ]
+                },
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {"0:0": "원문"},
+                        "low_confidence": [
+                            {
+                                "segment_id": "0:0",
+                                "reasons": [
+                                    "fell_back_to_source_after_max_retries"
+                                ],
+                                "tags": ["source_residue"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+    spawned: list[str] = []
+    monkeypatch.setattr(
+        service,
+        "_spawn_thread",
+        lambda running, *, target, task_id: spawned.append(task_id),
+    )
+
+    probe = service.probe_continuable(kind="translation")
+
+    assert probe == {
+        "continuable": True,
+        "task_id": task_id,
+        "status": "failed",
+        "pending": 0,
+        "failed": 0,
+    }
+
+    response = service.continue_task(kind="translation", task_id=task_id)
+
+    assert response["task_id"] == task_id
+    assert spawned == [task_id]
+
+
 def test_continue_allows_stopped_glossary_review_with_only_finalization_left(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -2943,7 +3023,7 @@ def test_clean_completion_preserves_cache_on_disk(tmp_path: Path):
     user's output folder never contains a ``transoria-cache/`` working
     directory either way (it now lives under ``default_cache_root()``)."""
 
-    transport = EchoTranslationTransport()
+    transport = EchoTranslationTransport(include_source=False)
     service = _service(tmp_path, transport=transport)
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"
@@ -2985,7 +3065,7 @@ def test_completed_snapshot_returns_persisted_subtasks_after_clean_run(
     the actual subtask list from disk (not an empty mirror). The
     proofreading flow depends on this surviving data."""
 
-    transport = EchoTranslationTransport()
+    transport = EchoTranslationTransport(include_source=False)
     service = _service(tmp_path, transport=transport)
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"

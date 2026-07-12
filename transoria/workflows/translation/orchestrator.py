@@ -81,11 +81,14 @@ from transoria.workflows.translation.preprocessor import (
     strip_protection_sentinels,
 )
 from transoria.workflows.translation.runner import (
+    RECOVERY_SEGMENT_IDS_KEY,
+    TranslationRecoveryRunner,
     TranslationSubtaskRunner,
     encode_subtask_payload,
 )
 from transoria.workflows.translation.segment_state import (
-    collect_segment_state_from_completed_subtasks,
+    ACCEPTED_OVERRIDE_SEGMENTS_KEY,
+    collect_segment_state_from_authoritative_subtasks,
 )
 from transoria.workflows.translation.statistics import (
     FailedFile,
@@ -196,21 +199,7 @@ class TranslationOrchestrator:
             self.cache.load_subtasks(task_id) if self.cache.has_task(task_id) else ()
         )
         if existing_subtasks:
-            # Continue path: reuse the prior cache record + subtasks.
-            # Reset FAILED subtasks to PENDING so the executor reruns
-            # them; COMPLETED subtasks stay completed and are skipped.
-            # Re-chunking is intentionally avoided so subtask ids stay
-            # stable across stop → continue cycles.
-            for stored in existing_subtasks:
-                if stored.status is SubtaskStatus.FAILED:
-                    self.cache.save_subtask(
-                        replace(
-                            stored,
-                            status=SubtaskStatus.PENDING,
-                            last_error="",
-                            last_error_at="",
-                        )
-                    )
+            _prepare_segment_recovery(self.cache, task_id, existing_subtasks)
         else:
             record = TaskRecord(
                 id=task_id,
@@ -290,7 +279,7 @@ class TranslationOrchestrator:
         config = replace(
             config, model=replace(config.model, concurrency_limit=actual_concurrency)
         )
-        runner = self.runner_factory(self.client, config)
+        runner = TranslationRecoveryRunner(self.runner_factory(self.client, config))
         executor = TaskExecutor(
             cache=self.cache,
             runner=runner,
@@ -325,6 +314,13 @@ class TranslationOrchestrator:
             and self._split_failed_subtasks(task_id, snapshot.subtasks, config)
         ):
             snapshot = await executor.run(task_id)
+
+        if (
+            snapshot.record.status is TaskStatus.COMPLETED
+            and _segment_recovery_candidates(snapshot.subtasks)
+        ):
+            self._mark_task_status(task_id, TaskStatus.FAILED)
+            snapshot = self.cache.load(task_id)
 
         translations_by_segment, low_confidence_records = _collect_translations(
             snapshot.subtasks
@@ -521,6 +517,8 @@ class TranslationOrchestrator:
 
 
 def _should_split_failed_subtask(subtask: Subtask) -> bool:
+    if subtask.request_payload.get(RECOVERY_SEGMENT_IDS_KEY):
+        return False
     return not _is_request_failure(subtask.last_error)
 
 
@@ -643,6 +641,116 @@ def _segment_metadata(prepared: PreparedSegment) -> Mapping[str, object]:
     }
 
 
+def _decode_subtask_payload(subtask: Subtask) -> dict[str, object]:
+    if not subtask.response_content:
+        return {}
+    try:
+        payload = json.loads(subtask.response_content)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
+    translations, low_confidence = collect_segment_state_from_authoritative_subtasks(
+        subtasks
+    )
+    accepted: set[str] = set()
+    for subtask in subtasks:
+        payload = _decode_subtask_payload(subtask)
+        raw_accepted = payload.get(ACCEPTED_OVERRIDE_SEGMENTS_KEY, [])
+        if isinstance(raw_accepted, list):
+            accepted.update(
+                str(item) for item in raw_accepted if item not in (None, "")
+            )
+
+    candidates: set[str] = set()
+    for segment_id, record in low_confidence.items():
+        reasons = set(record.get("reasons", []))
+        if (
+            "fell_back_to_source_after_max_retries" in reasons
+            or "missing_translation_fell_back_to_source" in reasons
+            or "mass_source_residue_after_retry" in reasons
+        ):
+            candidates.add(segment_id)
+
+    for subtask in subtasks:
+        if subtask.status is not SubtaskStatus.FAILED:
+            continue
+        raw_segments = subtask.request_payload.get("segments", [])
+        if not isinstance(raw_segments, list):
+            continue
+        for segment in raw_segments:
+            if not isinstance(segment, Mapping):
+                continue
+            segment_id = str(segment.get("segment_id", ""))
+            if segment_id and segment_id not in translations:
+                candidates.add(segment_id)
+    return candidates - accepted
+
+
+def _prepare_segment_recovery(
+    cache: TaskCache,
+    task_id: str,
+    subtasks: tuple[Subtask, ...],
+) -> None:
+    candidates = _segment_recovery_candidates(subtasks)
+    owners = _recovery_owners(subtasks, candidates)
+
+    for subtask in subtasks:
+        segment_ids = owners.get(subtask.id)
+        if segment_ids:
+            request_payload = dict(subtask.request_payload)
+            request_payload[RECOVERY_SEGMENT_IDS_KEY] = sorted(
+                segment_ids,
+                key=lambda value: tuple(int(part) for part in value.split(":")),
+            )
+            cache.save_subtask(
+                replace(
+                    subtask,
+                    status=SubtaskStatus.PENDING,
+                    request_payload=request_payload,
+                    last_error="",
+                    last_error_at="",
+                )
+            )
+        elif subtask.status is SubtaskStatus.FAILED:
+            cache.save_subtask(
+                replace(
+                    subtask,
+                    status=SubtaskStatus.SKIPPED,
+                    last_error="",
+                    last_error_at="",
+                )
+            )
+
+
+def _recovery_owners(
+    subtasks: tuple[Subtask, ...], candidates: set[str]
+) -> dict[str, list[str]]:
+    owners: dict[str, list[str]] = {}
+    for segment_id in candidates:
+        owner: Subtask | None = None
+        for subtask in reversed(subtasks):
+            raw_segments = subtask.request_payload.get("segments", [])
+            if not isinstance(raw_segments, list):
+                continue
+            if not any(
+                isinstance(segment, Mapping)
+                and str(segment.get("segment_id", "")) == segment_id
+                for segment in raw_segments
+            ):
+                continue
+            if subtask.status is SubtaskStatus.SKIPPED:
+                continue
+            owner = subtask
+            if subtask.status in {SubtaskStatus.COMPLETED, SubtaskStatus.FAILED}:
+                break
+        if owner is not None:
+            owners.setdefault(owner.id, []).append(segment_id)
+    return owners
+
+
 def _split_failed_payload(
     payload: Mapping[str, object],
     *,
@@ -694,7 +802,7 @@ def _collect_translations(
     """
 
     translations, low_confidence_by_segment = (
-        collect_segment_state_from_completed_subtasks(subtasks)
+        collect_segment_state_from_authoritative_subtasks(subtasks)
     )
     low_confidence = [
         {

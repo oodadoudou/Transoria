@@ -52,6 +52,7 @@ class QueuedTransport:
 @dataclass
 class EchoTranslationTransport:
     prefix: str = "翻译:"
+    include_source: bool = True
     forced_failure_calls: tuple[int, ...] = ()
     requests: list[dict[str, object]] = field(default_factory=list)
 
@@ -83,9 +84,12 @@ class EchoTranslationTransport:
             except json.JSONDecodeError:
                 continue
             for key, value in parsed.items():
-                lines.append(
-                    json.dumps({key: f"{self.prefix}{value}"}, ensure_ascii=False)
+                translated = (
+                    f"{self.prefix}{value}"
+                    if self.include_source
+                    else f"{self.prefix}{key}"
                 )
+                lines.append(json.dumps({key: translated}, ensure_ascii=False))
         body = {
             "choices": [
                 {"message": {"role": "assistant", "content": "\n".join(lines)}}

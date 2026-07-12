@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Mapping
 
@@ -563,7 +563,7 @@ def test_orchestrator_splits_failed_chunk_and_retries_children(tmp_path: Path) -
     assert len(children) == 2
 
 
-def test_orchestrator_keeps_mass_source_echo_for_proofreading(tmp_path: Path) -> None:
+def test_orchestrator_marks_mass_source_echo_for_model_switch_recovery(tmp_path: Path) -> None:
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"
     input_dir.mkdir()
@@ -620,7 +620,7 @@ def test_orchestrator_keeps_mass_source_echo_for_proofreading(tmp_path: Path) ->
         )
     )
 
-    assert result.final_status is TaskStatus.COMPLETED
+    assert result.final_status is TaskStatus.FAILED
     assert result.statistics.failed_subtasks == 0
     assert transport.request_line_counts == [4, 4]
     body = result.translated_outputs[0].read_text(encoding="utf-8")
@@ -633,7 +633,7 @@ def test_orchestrator_keeps_mass_source_echo_for_proofreading(tmp_path: Path) ->
     assert children == []
 
 
-def test_orchestrator_completes_persistent_source_echo_with_review_flags(
+def test_orchestrator_fails_persistent_source_echo_for_model_switch_recovery(
     tmp_path: Path,
 ) -> None:
     input_dir = tmp_path / "in"
@@ -691,7 +691,7 @@ def test_orchestrator_completes_persistent_source_echo_with_review_flags(
         )
     )
 
-    assert result.final_status is TaskStatus.COMPLETED
+    assert result.final_status is TaskStatus.FAILED
     assert len(result.translated_outputs) == 1
     assert result.statistics.failed_subtasks == 0
     assert transport.request_line_counts[0] == 4
@@ -706,6 +706,118 @@ def test_orchestrator_completes_persistent_source_echo_with_review_flags(
         if s.status.value == "failed"
     ]
     assert terminal_failures == []
+
+
+def test_continue_with_switched_model_recovers_only_unresolved_segments(
+    tmp_path: Path,
+) -> None:
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    sources = [f"복구 대상 문장 {idx}" for idx in range(13)]
+    (input_dir / "Recovery.txt").write_text(
+        "\n".join(sources) + "\n", encoding="utf-8"
+    )
+
+    @dataclass
+    class SwitchableTransport:
+        request_segment_ids: list[list[str]] = field(default_factory=list)
+
+        async def execute(
+            self,
+            url: str,
+            headers: Mapping[str, str],
+            payload: Mapping[str, object],
+            timeout: float,
+        ) -> TransportResult:
+            user_message = payload["messages"][-1]["content"]
+            translate_section = user_message.rsplit("[Translate]\n", 1)[-1]
+            rows = [
+                json.loads(line)
+                for line in translate_section.splitlines()
+                if line.strip().startswith("{")
+            ]
+            segment_ids = [str(key) for row in rows for key in row]
+            self.request_segment_ids.append(segment_ids)
+            lines: list[str] = []
+            for row in rows:
+                for key in row:
+                    translated = f"补救译文-{key}"
+                    lines.append(json.dumps({key: translated}, ensure_ascii=False))
+            return TransportResult(
+                200,
+                {
+                    "choices": [
+                        {"message": {"role": "assistant", "content": "\n".join(lines)}}
+                    ],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                },
+            )
+
+    transport = SwitchableTransport()
+    task_id = "translation-segment-recovery"
+    orchestrator = TranslationOrchestrator(
+        cache=TaskCache(root=tmp_path / "cache"),
+        client=LlmClient(transport=transport),  # type: ignore[arg-type]
+        clock=_frozen_clock,
+        id_factory=lambda: task_id,
+    )
+    config = _build_config(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        chunk_size=16,
+        enable_confidence_check=True,
+        low_confidence_max_retries=0,
+    )
+
+    seeded_result = asyncio.run(orchestrator.run(config))
+    assert seeded_result.final_status is TaskStatus.COMPLETED
+    snapshot = orchestrator.cache.load(task_id)
+    assert len(snapshot.subtasks) == 1
+    owner = snapshot.subtasks[0]
+    fallback_ids = {f"0:{index}" for index in range(1, 7)}
+    fallback_payload = {
+        "version": 2,
+        "translations": {
+            f"0:{index}": (
+                sources[index]
+                if f"0:{index}" in fallback_ids
+                else f"初始正常译文-0:{index}"
+            )
+            for index in range(13)
+        },
+        "low_confidence": [
+            {
+                "segment_id": segment_id,
+                "reasons": ["fell_back_to_source_after_max_retries"],
+                "tags": ["source_residue"],
+            }
+            for segment_id in sorted(fallback_ids)
+        ],
+    }
+    orchestrator.cache.save_subtask(
+        replace(owner, response_content=json.dumps(fallback_payload, ensure_ascii=False))
+    )
+    orchestrator.cache.save_task(snapshot.record.with_status(TaskStatus.FAILED))
+    transport.request_segment_ids.clear()
+    switched_config = replace(
+        config,
+        model=replace(config.model, id="rescue-model", display_name="Rescue model"),
+    )
+
+    recovered_result = asyncio.run(orchestrator.run(switched_config))
+
+    assert recovered_result.final_status is TaskStatus.COMPLETED
+    assert transport.request_segment_ids == [
+        [str(index) for index in range(1, 6)],
+        ["6"],
+    ]
+    recovered_body = recovered_result.translated_outputs[0].read_text(encoding="utf-8")
+    for index in (0, *range(7, 13)):
+        assert f"初始正常译文-0:{index}" in recovered_body
+    for index in range(1, 7):
+        assert f"补救译文-{index}" in recovered_body
+        assert sources[index] not in recovered_body
 
 
 def test_split_failed_payload_clears_context_lines() -> None:

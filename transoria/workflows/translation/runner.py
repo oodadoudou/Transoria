@@ -27,7 +27,11 @@ from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
-from transoria.runtime.executor import SubtaskFailedWithResult, SubtaskResult
+from transoria.runtime.executor import (
+    SubtaskFailedWithResult,
+    SubtaskResult,
+    SubtaskRunner,
+)
 from transoria.runtime.request_log import append_local_failure
 from transoria.runtime.subtask import Subtask
 from transoria.workflows.debug_log import write_subtask_debug_log
@@ -87,6 +91,7 @@ _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 360.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
 _LINE_COUNT_FALLBACK_REASON = "line_count_mismatch_after_max_retries"
+RECOVERY_SEGMENT_IDS_KEY = "recovery_segment_ids"
 
 
 # When the first attempt produces non-JSONL output (prose, mixed text,
@@ -136,6 +141,196 @@ _SYSTEM_LANGUAGE_CONTRACT_HINT = (
     "code fragment, URL, file path, or other non-translatable literal that "
     "must be preserved verbatim."
 )
+
+
+def split_segment_payload_batches(
+    segments: Sequence[Mapping[str, object]],
+    *,
+    max_segments: int = _LOW_CONFIDENCE_MICRO_BATCH_MAX_SEGMENTS,
+    token_cap: int = _LOW_CONFIDENCE_MICRO_BATCH_TOKEN_CAP,
+) -> tuple[tuple[Mapping[str, object], ...], ...]:
+    batches: list[tuple[Mapping[str, object], ...]] = []
+    current: list[Mapping[str, object]] = []
+    current_tokens = 0
+    current_file = ""
+    for segment in segments:
+        segment_id = str(segment.get("segment_id", ""))
+        file_id = segment_id.partition(":")[0]
+        source_text = str(
+            segment.get("prompt_text") or segment.get("original_text") or ""
+        )
+        segment_tokens = max(1, estimate_tokens_from_text(source_text))
+        if current and (
+            len(current) >= max(1, max_segments)
+            or current_tokens + segment_tokens > max(1, token_cap)
+            or file_id != current_file
+        ):
+            batches.append(tuple(current))
+            current = []
+            current_tokens = 0
+        if not current:
+            current_file = file_id
+        current.append(segment)
+        current_tokens += segment_tokens
+    if current:
+        batches.append(tuple(current))
+    return tuple(batches)
+
+
+@dataclass
+class TranslationRecoveryRunner:
+    runner: SubtaskRunner
+
+    async def run(self, subtask: Subtask) -> SubtaskResult:
+        raw_ids = subtask.request_payload.get(RECOVERY_SEGMENT_IDS_KEY)
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return await self.runner.run(subtask)
+
+        recovery_ids = {str(item) for item in raw_ids if item not in (None, "")}
+        raw_segments = subtask.request_payload.get("segments", [])
+        segments = (
+            [
+                segment
+                for segment in raw_segments
+                if isinstance(segment, Mapping)
+                and str(segment.get("segment_id", "")) in recovery_ids
+            ]
+            if isinstance(raw_segments, list)
+            else []
+        )
+        if not segments:
+            raise ValueError("recovery subtask contains no matching segments")
+
+        try:
+            merged = (
+                json.loads(subtask.response_content)
+                if subtask.response_content
+                else {}
+            )
+        except (TypeError, json.JSONDecodeError):
+            merged = {}
+        if not isinstance(merged, dict):
+            merged = {}
+        merged.setdefault("version", SUBTASK_RESPONSE_VERSION)
+        translations = merged.setdefault("translations", {})
+        if not isinstance(translations, dict):
+            translations = {}
+            merged["translations"] = translations
+        low_confidence = merged.setdefault("low_confidence", [])
+        if not isinstance(low_confidence, list):
+            low_confidence = []
+            merged["low_confidence"] = low_confidence
+
+        total_input = subtask.input_tokens
+        total_output = subtask.output_tokens
+        total_cached_input = subtask.cached_input_tokens
+        failures: list[str] = []
+        batches = split_segment_payload_batches(segments)
+        for batch_index, batch in enumerate(batches, start=1):
+            batch_ids = {str(segment.get("segment_id", "")) for segment in batch}
+            payload = dict(subtask.request_payload)
+            payload.pop(RECOVERY_SEGMENT_IDS_KEY, None)
+            payload["segments"] = list(batch)
+            payload["context_lines"] = []
+            batch_subtask = replace(
+                subtask,
+                id=f"{subtask.id}-recovery-{batch_index:03d}",
+                request_payload=payload,
+                response_content="",
+            )
+            try:
+                result = await self.runner.run(batch_subtask)
+            except SubtaskFailedWithResult as exc:
+                result = exc.result
+                failures.append(str(exc))
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"{type(exc).__name__}: {exc}")
+                continue
+            total_input += result.input_tokens
+            total_output += result.output_tokens
+            total_cached_input += result.cached_input_tokens
+            try:
+                batch_payload = json.loads(result.response_content)
+            except (TypeError, json.JSONDecodeError):
+                failures.append(f"batch {batch_index} returned invalid JSON")
+                continue
+            if not isinstance(batch_payload, Mapping):
+                failures.append(f"batch {batch_index} returned invalid payload")
+                continue
+            batch_translations = batch_payload.get("translations", {})
+            if isinstance(batch_translations, Mapping):
+                for segment_id, text in batch_translations.items():
+                    sid = str(segment_id)
+                    if sid in batch_ids:
+                        translations[sid] = str(text)
+            batch_low_confidence = batch_payload.get("low_confidence", [])
+            low_confidence[:] = [
+                entry
+                for entry in low_confidence
+                if not (
+                    isinstance(entry, Mapping)
+                    and str(entry.get("segment_id", "")) in batch_ids
+                )
+            ]
+            if isinstance(batch_low_confidence, list):
+                low_confidence.extend(
+                    entry
+                    for entry in batch_low_confidence
+                    if isinstance(entry, Mapping)
+                    and str(entry.get("segment_id", "")) in batch_ids
+                )
+            batch_unresolved = _recovery_candidate_ids(merged) & batch_ids
+            accepted = merged.setdefault("accepted_overrides", [])
+            if not isinstance(accepted, list):
+                accepted = []
+                merged["accepted_overrides"] = accepted
+            for segment_id in batch_ids - batch_unresolved:
+                if segment_id in translations and segment_id not in accepted:
+                    accepted.append(segment_id)
+
+        unresolved = _recovery_candidate_ids(merged) & recovery_ids
+        missing = recovery_ids - set(translations)
+        unresolved.update(missing)
+        merged_result = SubtaskResult(
+            response_content=json.dumps(merged, ensure_ascii=False),
+            input_tokens=total_input,
+            output_tokens=total_output,
+            cached_input_tokens=total_cached_input,
+        )
+        if failures or unresolved:
+            details = "; ".join(failures) or (
+                f"{len(unresolved)} segments remain unresolved"
+            )
+            raise SubtaskFailedWithResult(
+                details,
+                result=merged_result,
+                code="translation.segment_recovery_failed",
+            )
+        return merged_result
+
+
+def _recovery_candidate_ids(payload: Mapping[str, object]) -> set[str]:
+    candidates: set[str] = set()
+    raw_entries = payload.get("low_confidence", [])
+    if not isinstance(raw_entries, list):
+        return candidates
+    for entry in raw_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        segment_id = str(entry.get("segment_id", ""))
+        reasons = entry.get("reasons", [])
+        reason_values = (
+            {str(reason) for reason in reasons}
+            if isinstance(reasons, list)
+            else set()
+        )
+        if segment_id and (
+            "fell_back_to_source_after_max_retries" in reason_values
+            or "missing_translation_fell_back_to_source" in reason_values
+            or "mass_source_residue_after_retry" in reason_values
+        ):
+            candidates.add(segment_id)
+    return candidates
 
 
 def _looks_truncated_jsonl_response(raw_content: str) -> bool:
@@ -1807,7 +2002,10 @@ def _match_retry_glossary(
 
 
 __all__ = [
+    "RECOVERY_SEGMENT_IDS_KEY",
     "SUBTASK_PAYLOAD_VERSION",
+    "TranslationRecoveryRunner",
     "TranslationSubtaskRunner",
     "encode_subtask_payload",
+    "split_segment_payload_batches",
 ]
