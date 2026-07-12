@@ -23,7 +23,7 @@ from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import decode_translation_jsonl
 from transoria.llm.retry import is_transient_llm_error, retry_async
-from transoria.llm.usage import estimate_tokens_from_text
+from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.rate_limit import TpmLimiter
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
@@ -1184,6 +1184,9 @@ class TranslationSubtaskRunner:
             return result
         except BaseException as exc:
             terminal_error = exc
+            partial_response = getattr(exc, "partial_response", "")
+            if isinstance(partial_response, str) and partial_response:
+                last_raw = self._restore_roster(partial_response)
             if isinstance(exc, TranslationQualityFailureError):
                 error_text = f"{type(exc).__name__}: {exc}"
                 response_text = error_text
@@ -1291,6 +1294,7 @@ class TranslationSubtaskRunner:
             ) + estimate_tokens_from_text(user_prompt)
             reservation = await self.tpm_limiter.reserve(estimated)
         response = None
+        failure_usage: TokenUsage | None = None
         try:
             response = await self.client.chat(
                 ChatRequest(
@@ -1298,13 +1302,23 @@ class TranslationSubtaskRunner:
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     stream=self.stream,
+                    detect_stream_repetition=True,
                     key_pool=self.key_pool,
                     log_label=log_label,
                 )
             )
+        except BaseException as exc:
+            usage = getattr(exc, "usage", None)
+            if isinstance(usage, TokenUsage):
+                failure_usage = usage
+            raise
         finally:
             if self.tpm_limiter is not None and reservation >= 0:
-                actual = response.usage.total_tokens if response is not None else 0
+                actual = 0
+                if response is not None:
+                    actual = response.usage.total_tokens
+                elif failure_usage is not None:
+                    actual = failure_usage.total_tokens
                 self.tpm_limiter.settle(reservation, actual)
         assert response is not None
         return response

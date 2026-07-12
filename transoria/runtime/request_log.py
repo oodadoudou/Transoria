@@ -113,6 +113,7 @@ class RequestLogHandle:
         status_code: int | None = None,
         response_text: str = "",
         response_chars: int | None = None,
+        usage: TokenUsage | None = None,
     ) -> None:
         payload: dict[str, object] = {
             "status": "failed",
@@ -127,6 +128,8 @@ class RequestLogHandle:
             payload["response_chars"] = response_chars
         if response_text:
             payload["response_text"] = _truncate(response_text, _MAX_TEXT_LENGTH)
+        if usage is not None:
+            payload.update(usage.to_dict())
         self._append(payload)
 
     def cancel(self) -> None:

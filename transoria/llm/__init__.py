@@ -6,6 +6,7 @@ from transoria.llm.client import (
     ChatTransport,
     HttpxChatTransport,
     LlmClient,
+    LlmDegenerateOutputError,
     LlmRequestError,
     NoApiKeyError,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "ChatTransport",
     "HttpxChatTransport",
     "LlmClient",
+    "LlmDegenerateOutputError",
     "LlmRequestError",
     "NoApiKeyError",
     "ModelConfig",

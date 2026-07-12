@@ -759,6 +759,11 @@ def test_split_failed_subtask_skips_request_failures_but_keeps_quality_failures(
         failed_subtask("[llm.line_count_mismatch] LlmRequestError: expected 2 got 1")
     )
     assert _should_split_failed_subtask(
+        failed_subtask(
+            "[llm.degenerate_output] LlmDegenerateOutputError: runaway repetition"
+        )
+    )
+    assert _should_split_failed_subtask(
         failed_subtask("ValueError: malformed translation response")
     )
 

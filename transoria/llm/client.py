@@ -47,6 +47,18 @@ class NoApiKeyError(LlmRequestError):
     code: str = "llm.no_api_key"
 
 
+class LlmDegenerateOutputError(LlmRequestError):
+    code: str = "llm.degenerate_output"
+
+    def __init__(self, partial_response: str, usage: TokenUsage) -> None:
+        super().__init__(
+            "Model output entered a runaway repetition loop.",
+            code=self.code,
+        )
+        self.partial_response = partial_response
+        self.usage = usage
+
+
 @dataclass(frozen=True)
 class ChatMessage:
     role: str
@@ -64,6 +76,7 @@ class ChatRequest:
     history: tuple[ChatMessage, ...] = field(default_factory=tuple)
     temperature: float | None = None
     stream: bool = False
+    detect_stream_repetition: bool = False
     # Optional task-scoped key pool. When provided, the client picks
     # keys via round-robin from the pool instead of iterating
     # ``model.api_keys`` in order. Persistent auth failures evict
@@ -167,10 +180,16 @@ class HttpxChatTransport:
         payload: Mapping[str, object],
         timeout: float,
         request_log: RequestLogHandle | None,
+        detect_stream_repetition: bool = False,
     ) -> TransportResult:
         if bool(payload.get("stream")):
             return await self._execute_streaming(
-                url, headers, payload, timeout, request_log=request_log
+                url,
+                headers,
+                payload,
+                timeout,
+                request_log=request_log,
+                detect_stream_repetition=detect_stream_repetition,
             )
         response = await self._get_client().post(
             url,
@@ -192,6 +211,7 @@ class HttpxChatTransport:
         timeout: float,
         *,
         request_log: RequestLogHandle | None = None,
+        detect_stream_repetition: bool = False,
     ) -> TransportResult:
         import json
 
@@ -202,6 +222,10 @@ class HttpxChatTransport:
         last_progress_chars = 0
         current_chars = 0
         first_token_logged = False
+        last_repetition_check_chars = 0
+        prompt_text = (
+            _prompt_text_from_payload(payload) if detect_stream_repetition else ""
+        )
         async with self._get_client().stream(
             "POST",
             url,
@@ -265,6 +289,31 @@ class HttpxChatTransport:
                         first_token_logged = True
                         last_progress_at = now
                         last_progress_chars = current_chars
+                if (
+                    detect_stream_repetition
+                    and current_chars - last_repetition_check_chars >= 128
+                ):
+                    accumulated = "".join(chunks)
+                    last_repetition_check_chars = current_chars
+                    if _runaway_repetition_unit(
+                        accumulated,
+                        prompt_text=prompt_text,
+                    ):
+                        usage = TokenUsage.from_openai_usage(
+                            _estimate_stream_usage(payload, accumulated)
+                        )
+                        if request_log is not None:
+                            request_log.fail(
+                                error=(
+                                    "[llm.degenerate_output] Model output entered "
+                                    "a runaway repetition loop."
+                                ),
+                                status_code=status_code,
+                                response_text=accumulated,
+                                response_chars=current_chars,
+                                usage=usage,
+                            )
+                        raise LlmDegenerateOutputError(accumulated, usage)
                     elif (
                         now - last_progress_at
                         >= self._REQUEST_LOG_PROGRESS_SECONDS
@@ -392,9 +441,26 @@ def _body_to_request_log_text(body: Mapping[str, object]) -> str:
 def _record_request_response(
     request_log: RequestLogHandle | None,
     *,
+    request: ChatRequest,
     status_code: int,
     response: ChatResponse,
 ) -> None:
+    if request.detect_stream_repetition and _runaway_repetition_unit(
+        response.content,
+        prompt_text=_request_prompt_text(request),
+    ):
+        if request_log is not None:
+            request_log.fail(
+                error=(
+                    "[llm.degenerate_output] Model output entered a runaway "
+                    "repetition loop."
+                ),
+                status_code=status_code,
+                response_text=response.content,
+                response_chars=len(response.content),
+                usage=response.usage,
+            )
+        raise LlmDegenerateOutputError(response.content, response.usage)
     if request_log is None:
         return
     if not response.content.strip():
@@ -437,6 +503,16 @@ def _request_prompt_chars(request: ChatRequest) -> int:
     )
 
 
+def _request_prompt_text(request: ChatRequest) -> str:
+    return "\n".join(
+        (
+            request.system_prompt,
+            *(message.content for message in request.history),
+            request.user_prompt,
+        )
+    )
+
+
 def _prompt_text_from_payload(payload: Mapping[str, object]) -> str:
     parts: list[str] = []
 
@@ -471,6 +547,36 @@ def _estimate_stream_usage(
         "output_tokens": output_tokens,
         "transoria_estimated": True,
     }
+
+
+_REPETITION_WINDOW_CHARS = 2048
+_REPETITION_MIN_SPAN_CHARS = 512
+_REPETITION_MAX_UNIT_CHARS = 32
+
+
+def _runaway_repetition_unit(text: str, *, prompt_text: str = "") -> str:
+    if len(text) < _REPETITION_MIN_SPAN_CHARS:
+        return ""
+    tail = text[-_REPETITION_WINDOW_CHARS:]
+    for unit_length in range(1, _REPETITION_MAX_UNIT_CHARS + 1):
+        unit = tail[-unit_length:]
+        if not any(char.isalnum() for char in unit):
+            continue
+        repetitions = 1
+        cursor = len(tail) - unit_length * 2
+        while cursor >= 0 and tail[cursor : cursor + unit_length] == unit:
+            repetitions += 1
+            cursor -= unit_length
+        repeated_span = repetitions * unit_length
+        if repeated_span < _REPETITION_MIN_SPAN_CHARS:
+            continue
+        sample_repetitions = (
+            _REPETITION_MIN_SPAN_CHARS + unit_length - 1
+        ) // unit_length
+        if unit * sample_repetitions in prompt_text:
+            continue
+        return unit
+    return ""
 
 
 def _usage_has_token_counts(usage: Mapping[str, object]) -> bool:
@@ -558,10 +664,18 @@ class LlmClient:
         payload: Mapping[str, object],
         timeout: float,
         request_log: RequestLogHandle | None,
+        detect_stream_repetition: bool = False,
     ) -> TransportResult:
         observed = getattr(self.transport, "execute_observed", None)
         if callable(observed):
-            return await observed(url, headers, payload, timeout, request_log)
+            return await observed(
+                url,
+                headers,
+                payload,
+                timeout,
+                request_log,
+                detect_stream_repetition,
+            )
         return await self.transport.execute(url, headers, payload, timeout)
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
@@ -780,8 +894,15 @@ class LlmClient:
         )
         try:
             result = await self._execute_transport(
-                url, headers, payload, request.model.timeout_seconds, fallback_log
+                url,
+                headers,
+                payload,
+                request.model.timeout_seconds,
+                fallback_log,
+                request.detect_stream_repetition,
             )
+        except LlmDegenerateOutputError:
+            raise
         except asyncio.CancelledError:
             if fallback_log is not None:
                 fallback_log.cancel()
@@ -837,8 +958,15 @@ class LlmClient:
             )
             try:
                 result = await self._execute_transport(
-                    url, headers, payload, request.model.timeout_seconds, request_log
+                    url,
+                    headers,
+                    payload,
+                    request.model.timeout_seconds,
+                    request_log,
+                    request.detect_stream_repetition,
                 )
+            except LlmDegenerateOutputError:
+                raise
             except asyncio.CancelledError:
                 if request_log is not None:
                     request_log.cancel()
@@ -879,6 +1007,8 @@ class LlmClient:
                             drop_fields=("stream_options",),
                         )
                     )
+                except LlmDegenerateOutputError:
+                    raise
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -908,6 +1038,8 @@ class LlmClient:
                             drop_fields=("stream_options", "stream"),
                         )
                     )
+                except LlmDegenerateOutputError:
+                    raise
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -971,6 +1103,7 @@ class LlmClient:
 
             _record_request_response(
                 request_log,
+                request=request,
                 status_code=result.status_code,
                 response=response,  # type: ignore[arg-type]
             )
@@ -1025,8 +1158,15 @@ class LlmClient:
             )
             try:
                 result = await self._execute_transport(
-                    url, headers, payload, request.model.timeout_seconds, request_log
+                    url,
+                    headers,
+                    payload,
+                    request.model.timeout_seconds,
+                    request_log,
+                    request.detect_stream_repetition,
                 )
+            except LlmDegenerateOutputError:
+                raise
             except asyncio.CancelledError:
                 if request_log is not None:
                     request_log.cancel()
@@ -1066,6 +1206,8 @@ class LlmClient:
                             drop_fields=("stream_options",),
                         )
                     )
+                except LlmDegenerateOutputError:
+                    raise
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -1092,6 +1234,8 @@ class LlmClient:
                             drop_fields=("stream_options", "stream"),
                         )
                     )
+                except LlmDegenerateOutputError:
+                    raise
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -1162,6 +1306,7 @@ class LlmClient:
 
             _record_request_response(
                 request_log,
+                request=request,
                 status_code=result.status_code,
                 response=response,  # type: ignore[arg-type]
             )

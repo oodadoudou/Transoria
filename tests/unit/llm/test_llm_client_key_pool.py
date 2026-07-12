@@ -12,6 +12,7 @@ from transoria.domain import TaskKind
 from transoria.llm.client import (
     ChatRequest,
     LlmClient,
+    LlmDegenerateOutputError,
     LlmRequestError,
     TransportResult,
 )
@@ -151,6 +152,66 @@ def test_request_log_marks_empty_model_response_failed(tmp_path) -> None:
     assert events[1]["http_status"] == 200
     assert events[1]["response_chars"] == 0
     assert events[1]["error"] == "Empty model response."
+
+
+def test_request_log_marks_degenerate_output_failed_with_usage(tmp_path) -> None:
+    cache = TaskCache(root=tmp_path)
+    cache.save_task(TaskRecord(id="task-1", kind=TaskKind.TRANSLATION))
+    runaway = "我去" * 300
+    client = LlmClient(transport=RecordingTransport(queue=[_ok(runaway)]))
+    request = ChatRequest(
+        model=_model("ka"),
+        system_prompt="stable system",
+        user_prompt="chunk text",
+        detect_stream_repetition=True,
+        log_label="translation chunk-degenerate",
+    )
+
+    with request_log_scope(
+        cache,
+        task_id="task-1",
+        subtask_id="chunk-degenerate",
+        subtask_attempt=1,
+    ):
+        with pytest.raises(LlmDegenerateOutputError) as caught:
+            asyncio.run(client.chat(request))
+
+    assert caught.value.partial_response == runaway
+    events = cache.load_request_events("task-1")
+    assert [event["status"] for event in events] == ["running", "failed"]
+    assert events[1]["error"].startswith("[llm.degenerate_output]")
+    assert events[1]["response_text"] == runaway
+    assert events[1]["input_tokens"] == 1
+    assert events[1]["output_tokens"] == 1
+
+
+@pytest.mark.parametrize(
+    ("prompt", "response", "detect"),
+    [
+        ("translate this", "我去" * 300, False),
+        ("translate " + "我去" * 300, "我去" * 300, True),
+        ("translate this", "哈哈" * 100, True),
+    ],
+)
+def test_degenerate_output_guard_avoids_non_translation_and_source_false_positives(
+    prompt: str,
+    response: str,
+    detect: bool,
+) -> None:
+    client = LlmClient(transport=RecordingTransport(queue=[_ok(response)]))
+
+    result = asyncio.run(
+        client.chat(
+            ChatRequest(
+                model=_model("ka"),
+                system_prompt="",
+                user_prompt=prompt,
+                detect_stream_repetition=detect,
+            )
+        )
+    )
+
+    assert result.content == response
 
 
 def test_request_log_records_http_failure_body(tmp_path) -> None:

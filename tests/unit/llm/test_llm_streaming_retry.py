@@ -5,8 +5,15 @@ import json
 from dataclasses import dataclass, field
 from typing import Mapping
 
+import pytest
+
 from transoria.domain import Language
-from transoria.llm import LlmClient, ModelConfig, ProviderFormat
+from transoria.llm import (
+    LlmClient,
+    LlmDegenerateOutputError,
+    ModelConfig,
+    ProviderFormat,
+)
 from transoria.llm.client import TransportResult
 from transoria.prompts import PromptKind, default_preset
 from transoria.runtime import Subtask
@@ -109,3 +116,50 @@ def test_streaming_request_retries_after_transient_5xx_then_succeeds() -> None:
     # cannot silently switch a streaming request to non-streaming.
     assert transport.call_count == 2
     assert transport.seen_stream_flags == [True, True]
+
+
+def test_translation_aborts_degenerate_output_without_transport_retry() -> None:
+    @dataclass
+    class DegenerateTransport:
+        call_count: int = 0
+
+        async def execute(
+            self,
+            url: str,
+            headers: Mapping[str, str],
+            payload: Mapping[str, object],
+            timeout: float,
+        ) -> TransportResult:
+            self.call_count += 1
+            return TransportResult(
+                200,
+                {
+                    "choices": [
+                        {"message": {"role": "assistant", "content": "我去" * 300}}
+                    ],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 300},
+                },
+            )
+
+    transport = DegenerateTransport()
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=ModelConfig(
+            id="m",
+            display_name="m",
+            provider_format=ProviderFormat.OPENAI,
+            base_url="https://example/api/v1/",
+            model_id="m",
+            api_keys=("k",),
+        ),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.KOREAN,
+        stream=True,
+        transport_retry_attempts=3,
+    )
+
+    with pytest.raises(LlmDegenerateOutputError):
+        asyncio.run(runner.run(_make_subtask()))
+
+    assert transport.call_count == 1
