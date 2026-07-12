@@ -102,7 +102,7 @@ def test_api_methods_lists_methods(http_server: str):
     with urllib.request.urlopen(f"{http_server}/api/_methods", timeout=5) as response:
         payload = json.loads(response.read().decode("utf-8"))
     methods = payload["methods"]
-    assert len(methods) == 152
+    assert len(methods) == 153
     for method in (
         "app.get_metadata",
         "translation.start_task",
