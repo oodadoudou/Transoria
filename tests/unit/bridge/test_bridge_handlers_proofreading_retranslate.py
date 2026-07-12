@@ -255,6 +255,130 @@ def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):
     assert payload["translations"]["0:0"] == "重翻译文0"
 
 
+def test_retranslate_batch_sends_five_segments_in_one_request_and_patches_all(
+    router_and_service,
+):
+    router, service, transport = router_and_service
+    segments = tuple(
+        (f"0:{index}", f"원문 {index}", f"旧译文 {index}")
+        for index in range(5)
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": [segment_id for segment_id, _src, _dst in segments],
+        },
+    )
+    final = _wait_for_status(
+        service, response["request_id"], {"completed", "failed"}
+    )
+
+    assert final["status"] == "completed", final
+    assert len(transport.requests) == 1
+    assert [item["status"] for item in final["results"]] == ["completed"] * 5
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"] == {
+        f"0:{index}": f"重翻译文{index}" for index in range(5)
+    }
+
+
+def test_retranslate_batch_keeps_user_edited_segment_stale(tmp_path: Path):
+    block = threading.Event()
+    transport = _StubTransport(block_event=block)
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = (
+        ("0:0", "원문 0", "旧译文 0"),
+        ("0:1", "원문 1", "旧译文 1"),
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )
+    deadline = time.monotonic() + 5.0
+    while not transport.requests and time.monotonic() < deadline:
+        time.sleep(0.01)
+    router.call(
+        "proofreading.update_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:1",
+            "dst": "用户手动改的",
+        },
+    )
+    block.set()
+
+    final = _wait_for_status(
+        service, response["request_id"], {"completed", "failed"}
+    )
+
+    statuses = {item["segment_id"]: item["status"] for item in final["results"]}
+    assert statuses == {"0:0": "completed", "0:1": "stale"}
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "重翻译文0"
+    assert payload["translations"]["0:1"] == "用户手动改的"
+
+
+def test_retranslate_batch_status_survives_memory_gc(router_and_service):
+    router, service, _transport = router_and_service
+    segments = (
+        ("0:0", "원문 0", "旧译文 0"),
+        ("0:1", "원문 1", "旧译文 1"),
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )
+    request_id = response["request_id"]
+    final = _wait_for_status(service, request_id, {"completed", "failed"})
+    assert final["status"] == "completed"
+
+    service._retranslate_jobs.pop(request_id, None)  # type: ignore[attr-defined]
+    persisted = service.read_retranslate_status(request_id=request_id)
+
+    assert persisted["status"] == "completed"
+    assert [item["segment_id"] for item in persisted["results"]] == ["0:0", "0:1"]
+
+
+def test_retranslate_batch_rejects_more_than_five_segments(router_and_service):
+    router, service, _transport = router_and_service
+    segments = tuple(
+        (f"0:{index}", f"원문 {index}", f"旧译文 {index}")
+        for index in range(6)
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    with pytest.raises(BridgeError) as caught:
+        router.call(
+            "proofreading.retranslate_segment",
+            {
+                "task_id": "translation-pf-rt-1",
+                "segment_id": "0:0",
+                "segment_ids": [item[0] for item in segments],
+            },
+        )
+
+    assert caught.value.code == "bridge.invalid_argument"
+
+
 def test_retranslate_uses_low_confidence_retry_to_prefer_target_language(
     tmp_path: Path,
 ):

@@ -141,6 +141,7 @@ interface TermAuditGroup {
 interface StoredRetranslateQueueEntry {
   taskId: string;
   segmentId: string;
+  segmentIds?: string[];
   requestId: string;
 }
 
@@ -174,17 +175,26 @@ function writeStoredRetranslateQueue(
 
 function rememberRetranslateRequest(
   taskId: string,
-  segmentId: string,
+  segmentIds: string[],
   requestId: string,
 ): void {
+  const requested = new Set(segmentIds);
   const entries = readStoredRetranslateQueue().filter(
     (entry) =>
       !(
         entry.requestId === requestId ||
-        (entry.taskId === taskId && entry.segmentId === segmentId)
+        (entry.taskId === taskId &&
+          (entry.segmentIds ?? [entry.segmentId]).some((id) =>
+            requested.has(id),
+          ))
       ),
   );
-  entries.push({ taskId, segmentId, requestId });
+  entries.push({
+    taskId,
+    segmentId: segmentIds[0] ?? "",
+    segmentIds,
+    requestId,
+  });
   writeStoredRetranslateQueue(entries);
 }
 
@@ -1204,6 +1214,79 @@ export function ProofreadingPage() {
       void tick();
     });
 
+  const pollRetranslateBatch = (
+    segmentIds: string[],
+    requestId: string,
+  ): Promise<Map<string, RetranslateOutcome>> =>
+    new Promise((resolve) => {
+      const tick = async () => {
+        try {
+          const status = await proofreadingBridge.retranslateStatus(requestId);
+          if (status.status === "completed") {
+            const outcomes = new Map<string, RetranslateOutcome>();
+            for (const item of status.results) {
+              const outcome: RetranslateOutcome = {
+                status: item.status,
+                reason: item.error,
+              };
+              outcomes.set(item.segment_id, outcome);
+              if (item.status === "completed" && item.result_dst !== undefined) {
+                patchCompletedRetranslateResult(item.segment_id, item.result_dst);
+              }
+            }
+            for (const segmentId of segmentIds) {
+              if (!outcomes.has(segmentId)) {
+                outcomes.set(segmentId, {
+                  status: "failed",
+                  reason: "retranslate batch returned no segment result",
+                });
+              }
+            }
+            finish();
+            resolve(outcomes);
+            return;
+          }
+          if (status.status === "failed") {
+            const reason = status.error || status.last_error;
+            finish();
+            resolve(
+              new Map(
+                segmentIds.map((segmentId) => [
+                  segmentId,
+                  { status: "failed" as const, reason },
+                ]),
+              ),
+            );
+            return;
+          }
+        } catch (err) {
+          const reason = BridgeError.isBridgeError(err)
+            ? `${err.code}: ${err.message}`
+            : String(err);
+          finish();
+          resolve(
+            new Map(
+              segmentIds.map((segmentId) => [
+                segmentId,
+                { status: "failed" as const, reason },
+              ]),
+            ),
+          );
+          return;
+        }
+        window.setTimeout(tick, RETRANSLATE_FAST_POLL_MS);
+      };
+      const finish = () => {
+        forgetRetranslateRequest(requestId);
+        setInflightRetranslates((prev) => {
+          const next = { ...prev };
+          for (const segmentId of segmentIds) delete next[segmentId];
+          return next;
+        });
+      };
+      void tick();
+    });
+
   useEffect(() => {
     if (!activeTaskId || !snapshot || resumeStartedForTask === activeTaskId) {
       return;
@@ -1211,30 +1294,43 @@ export function ProofreadingPage() {
     setResumeStartedForTask(activeTaskId);
     const segmentIds = new Set(snapshot.items.map((item) => item.segment_id));
     for (const entry of storedRetranslateRequestsForTask(activeTaskId)) {
-      if (!segmentIds.has(entry.segmentId)) {
+      const storedIds = (entry.segmentIds ?? [entry.segmentId]).filter((id) =>
+        segmentIds.has(id),
+      );
+      if (storedIds.length === 0) {
         forgetRetranslateRequest(entry.requestId);
         continue;
       }
-      setInflightRetranslates((prev) =>
-        prev[entry.segmentId]
-          ? prev
-          : { ...prev, [entry.segmentId]: entry.requestId },
-      );
+      setInflightRetranslates((prev) => {
+        const next = { ...prev };
+        for (const segmentId of storedIds) next[segmentId] = entry.requestId;
+        return next;
+      });
       void proofreadingBridge
         .resumeRetranslate(entry.requestId)
-        .then(() =>
-          pollRetranslate(entry.segmentId, entry.requestId, false, true),
-        )
+        .then(() => {
+          if (storedIds.length === 1) {
+            void pollRetranslate(storedIds[0], entry.requestId, false, true);
+          } else {
+            void pollRetranslateBatch(storedIds, entry.requestId);
+          }
+        })
         .catch(() => {
           forgetRetranslateRequest(entry.requestId);
           setInflightRetranslates((prev) => {
             const next = { ...prev };
-            delete next[entry.segmentId];
+            for (const segmentId of storedIds) delete next[segmentId];
             return next;
           });
         });
     }
-  }, [activeTaskId, pollRetranslate, resumeStartedForTask, snapshot]);
+  }, [
+    activeTaskId,
+    pollRetranslate,
+    pollRetranslateBatch,
+    resumeStartedForTask,
+    snapshot,
+  ]);
 
   const runRetranslateSegment = async (
     segmentId: string,
@@ -1262,7 +1358,7 @@ export function ProofreadingPage() {
         ...prev,
         [segmentId]: request_id,
       }));
-      rememberRetranslateRequest(activeTaskId, segmentId, request_id);
+      rememberRetranslateRequest(activeTaskId, [segmentId], request_id);
       return await pollRetranslate(
         segmentId,
         request_id,
@@ -1277,6 +1373,52 @@ export function ProofreadingPage() {
         : String(err);
       if (showFeedback) setFeedback({ kind: "error", text });
       return { status: "failed", reason: text };
+    }
+  };
+
+  const runRetranslateBatch = async (
+    segmentIds: string[],
+  ): Promise<Map<string, RetranslateOutcome>> => {
+    const firstSegmentId = segmentIds[0];
+    if (!firstSegmentId) return new Map();
+    if (!activeTaskId || segmentIds.some((id) => inflightRetranslates[id])) {
+      return new Map(
+        segmentIds.map((segmentId) => [
+          segmentId,
+          {
+            status: "failed" as const,
+            reason: "retranslate request is already running",
+          },
+        ]),
+      );
+    }
+    try {
+      const { request_id } = await proofreadingBridge.retranslateSegment(
+        activeTaskId,
+        firstSegmentId,
+        {
+          modelId: proofreadingModelId,
+          promptPresetId: effectiveProofreadingPromptId,
+          segmentIds,
+        },
+      );
+      setInflightRetranslates((prev) => {
+        const next = { ...prev };
+        for (const segmentId of segmentIds) next[segmentId] = request_id;
+        return next;
+      });
+      rememberRetranslateRequest(activeTaskId, segmentIds, request_id);
+      return await pollRetranslateBatch(segmentIds, request_id);
+    } catch (err) {
+      const reason = BridgeError.isBridgeError(err)
+        ? `${err.code}: ${err.message}`
+        : String(err);
+      return new Map(
+        segmentIds.map((segmentId) => [
+          segmentId,
+          { status: "failed" as const, reason },
+        ]),
+      );
     }
   };
 
@@ -1323,9 +1465,13 @@ export function ProofreadingPage() {
   };
 
   const retranslateIds = async (ids: string[]) => {
+    const batches = Array.from(
+      { length: Math.ceil(ids.length / 5) },
+      (_, index) => ids.slice(index * 5, index * 5 + 5),
+    );
     const concurrency = getRetranslateConcurrency(
       selectedProofreadingModel,
-      ids.length,
+      batches.length,
     );
     const waitForRateSlot = createRetranslateRateGate(
       selectedProofreadingModel,
@@ -1344,6 +1490,7 @@ export function ProofreadingPage() {
     );
     const undoEntries: RetranslateUndo["entries"] = [];
     let nextIndex = 0;
+    let launchedCount = 0;
     let processedCount = 0;
     let completedCount = 0;
     let staleCount = 0;
@@ -1356,36 +1503,43 @@ export function ProofreadingPage() {
         completed: completedCount,
         stale: staleCount,
         failed: failedCount,
-        current: Math.min(nextIndex, ids.length),
+        current: Math.min(launchedCount, ids.length),
       });
     };
     try {
       const workerCount = Math.max(1, concurrency);
       await Promise.all(
         Array.from({ length: workerCount }, async () => {
-          while (nextIndex < ids.length) {
+          while (nextIndex < batches.length) {
             const index = nextIndex;
             nextIndex += 1;
+            const batch = batches[index] ?? [];
+            launchedCount += batch.length;
             updateProgress();
-            const segmentId = ids[index];
             await waitForRateSlot();
-            const result = await runRetranslateSegment(segmentId, {
-              showFeedback: false,
-              refreshOnComplete: false,
-            });
-            if (result.status === "completed") {
-              completedCount += 1;
-              const previous = previousById.get(segmentId);
-              if (previous !== undefined) {
-                undoEntries.push({ segmentId, dst: previous });
+            const outcomes = await runRetranslateBatch(batch);
+            for (const segmentId of batch) {
+              const result = outcomes.get(segmentId) ?? {
+                status: "failed" as const,
+                reason: "missing batch result",
+              };
+              if (result.status === "completed") {
+                completedCount += 1;
+                const previous = previousById.get(segmentId);
+                if (previous !== undefined) {
+                  undoEntries.push({ segmentId, dst: previous });
+                }
+              } else if (
+                result.status === "stale" ||
+                result.status === "skipped"
+              ) {
+                staleCount += 1;
+              } else {
+                failedCount += 1;
+                failedReasons.push(result.reason ?? "unknown");
               }
-            } else if (result.status === "stale" || result.status === "skipped")
-              staleCount += 1;
-            else {
-              failedCount += 1;
-              failedReasons.push(result.reason ?? "unknown");
+              processedCount += 1;
             }
-            processedCount += 1;
             updateProgress();
           }
         }),

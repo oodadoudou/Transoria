@@ -88,6 +88,12 @@ type RetranslateStatusResponse = {
   attempts: number;
   last_error: string;
   last_translation: string;
+  results: Array<{
+    segment_id: string;
+    status: "completed" | "failed" | "stale" | "skipped";
+    result_dst?: string;
+    error?: string;
+  }>;
 };
 
 export const appBridge = {
@@ -425,11 +431,16 @@ export const proofreadingBridge = {
   retranslateSegment(
     taskId: string,
     segmentId: string,
-    options?: { modelId?: string | null; promptPresetId?: string | null },
+    options?: {
+      modelId?: string | null;
+      promptPresetId?: string | null;
+      segmentIds?: string[];
+    },
   ): Promise<{ request_id: string; status: string }> {
     return call("proofreading.retranslate_segment", {
       task_id: taskId,
       segment_id: segmentId,
+      segment_ids: options?.segmentIds ?? null,
       model_id: options?.modelId ?? null,
       prompt_preset_id: options?.promptPresetId ?? null,
     });

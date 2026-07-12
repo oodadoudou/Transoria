@@ -236,6 +236,8 @@ class RetranslateJob:
     metadata: dict[str, object] | None = None
     model_snapshot: dict[str, object] | None = None
     prompt_snapshot: dict[str, object] | None = None
+    batch_items: list[dict[str, object]] | None = None
+    batch_results: list[dict[str, object]] | None = None
     created_at_wall: str = ""
     updated_at_wall: str = ""
     schema_version: int = 1
@@ -262,6 +264,8 @@ class RetranslateJob:
             "metadata": self.metadata or {},
             "model_snapshot": self.model_snapshot or {},
             "prompt_snapshot": self.prompt_snapshot or {},
+            "batch_items": self.batch_items or [],
+            "batch_results": self.batch_results or [],
             "created_at_wall": self.created_at_wall,
             "updated_at_wall": self.updated_at_wall,
         }
@@ -275,6 +279,12 @@ class RetranslateJob:
         def mapping_or_none(key: str) -> dict[str, object] | None:
             value = data.get(key)
             return dict(value) if isinstance(value, Mapping) else None
+
+        def mappings(key: str) -> list[dict[str, object]] | None:
+            value = data.get(key)
+            if not isinstance(value, list):
+                return None
+            return [dict(item) for item in value if isinstance(item, Mapping)]
 
         created_at = data.get("created_at")
         try:
@@ -311,10 +321,23 @@ class RetranslateJob:
             metadata=mapping_or_none("metadata"),
             model_snapshot=mapping_or_none("model_snapshot"),
             prompt_snapshot=mapping_or_none("prompt_snapshot"),
+            batch_items=mappings("batch_items"),
+            batch_results=mappings("batch_results"),
             created_at_wall=str(data.get("created_at_wall", "")),
             updated_at_wall=str(data.get("updated_at_wall", "")),
             schema_version=schema_version_int,
         )
+
+
+def _retranslate_job_segment_ids(job: RetranslateJob) -> set[str]:
+    if job.batch_items:
+        return {
+            str(item.get("segment_id", ""))
+            for item in job.batch_items
+            if item.get("segment_id") not in (None, "")
+        }
+    return {job.segment_id}
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -1711,6 +1734,7 @@ class TaskService:
         *,
         task_id: str,
         segment_id: str,
+        segment_ids: Sequence[str] | None = None,
         model_id: str | None = None,
         prompt_preset_id: str | None = None,
     ) -> dict[str, object]:
@@ -1744,13 +1768,33 @@ class TaskService:
                 details={"task_id": task_id, "status": snapshot.record.status.value},
             )
 
-        seg_data = _find_segment_payload(snapshot, segment_id)
-        if seg_data is None:
-            raise BridgeError.not_found(
-                f"segment {segment_id!r} not found in task {task_id!r}.",
-                details={"task_id": task_id, "segment_id": segment_id},
+        requested_ids = list(dict.fromkeys(segment_ids or (segment_id,)))
+        if not requested_ids or len(requested_ids) > 5:
+            raise BridgeError.invalid_argument(
+                "retranslate accepts between 1 and 5 segment ids.",
+                field="segment_ids",
             )
-        original_dst = _read_segment_dst(snapshot, segment_id)
+        batch_items: list[dict[str, object]] = []
+        for requested_id in requested_ids:
+            seg_data = _find_segment_payload(snapshot, requested_id)
+            if seg_data is None:
+                raise BridgeError.not_found(
+                    f"segment {requested_id!r} not found in task {task_id!r}.",
+                    details={"task_id": task_id, "segment_id": requested_id},
+                )
+            original_dst = _read_segment_dst(snapshot, requested_id)
+            batch_items.append(
+                {
+                    "segment_id": requested_id,
+                    "original_dst": original_dst,
+                    "source_hash": _hash_text(_retranslate_source_text(seg_data)),
+                    "seg_data": dict(seg_data),
+                }
+            )
+        primary = batch_items[0]
+        segment_id = str(primary["segment_id"])
+        original_dst = str(primary["original_dst"])
+        seg_data = dict(primary["seg_data"])
         source_text = _retranslate_source_text(seg_data)
         settings = self.settings_store.load_all()
         effective_model_id = model_id or settings.app.active_translation_model_id
@@ -1761,7 +1805,9 @@ class TaskService:
             for job in self._retranslate_jobs.values():
                 if (
                     job.task_id == task_id
-                    and job.segment_id == segment_id
+                    and set(requested_ids).intersection(
+                        _retranslate_job_segment_ids(job)
+                    )
                     and job.status in {"pending", "running"}
                 ):
                     raise BridgeError.conflict(
@@ -1788,6 +1834,9 @@ class TaskService:
                 prompt_snapshot=self._prompt_snapshot_for_retranslate(
                     effective_prompt_id, metadata
                 ),
+                batch_items=batch_items,
+                batch_results=[],
+                schema_version=2,
                 created_at_wall=_utc_now_iso(),
                 updated_at_wall=_utc_now_iso(),
             )
@@ -1898,10 +1947,29 @@ class TaskService:
             "attempts": job.attempts,
             "last_error": job.last_error,
             "last_translation": job.last_translation,
+            "results": list(job.batch_results or []),
         }
 
     def _sync_completed_retranslate_result(self, job: RetranslateJob) -> None:
-        if job.status != "completed" or not job.result_dst:
+        if job.status != "completed":
+            return
+        if job.batch_results:
+            for result in job.batch_results:
+                if result.get("status") != "completed":
+                    continue
+                segment_id = str(result.get("segment_id", ""))
+                result_dst = str(result.get("result_dst", ""))
+                original_dst = str(result.get("original_dst", ""))
+                try:
+                    snapshot = self.cache.load(job.task_id)
+                except (TaskNotFoundError, OSError, ValueError):
+                    return
+                if _read_segment_dst(snapshot, segment_id) == original_dst:
+                    _patch_segment_dst(
+                        self.cache, snapshot, segment_id, result_dst
+                    )
+            return
+        if not job.result_dst:
             return
         try:
             snapshot = self.cache.load(job.task_id)
@@ -1985,6 +2053,9 @@ class TaskService:
         if job is None:
             job = self._load_retranslate_job(request_id)
         if job is None:
+            return
+        if job.batch_items and len(job.batch_items) > 1:
+            self._run_retranslate_batch(job)
             return
         if job.seg_data is None or job.metadata is None:
             job.error = "retranslate request is missing persisted source data."
@@ -2077,6 +2148,142 @@ class TaskService:
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
 
+    def _run_retranslate_batch(self, job: RetranslateJob) -> None:
+        items = list(job.batch_items or [])
+        if not items or job.metadata is None:
+            job.error = "retranslate batch is missing persisted source data."
+            job.last_error = job.error
+            job.status = "failed"
+            self._save_retranslate_job(job)
+            return
+        with self._retranslate_lock:
+            job.status = "running"
+            job.error = ""
+            job.attempts += 1
+            job.updated_at_wall = _utc_now_iso()
+            self._retranslate_jobs[job.request_id] = job
+            self._save_retranslate_job(job)
+
+        ready: list[dict[str, object]] = []
+        results: list[dict[str, object]] = []
+        try:
+            snapshot = self.cache.load(job.task_id)
+        except (TaskNotFoundError, OSError, ValueError):
+            job.error = "task cache disappeared during retranslate."
+            job.last_error = job.error
+            job.status = "failed"
+            self._save_retranslate_job(job)
+            return
+        for item in items:
+            segment_id = str(item.get("segment_id", ""))
+            seg_data = item.get("seg_data")
+            original_dst = str(item.get("original_dst", ""))
+            current_seg = _find_segment_payload(snapshot, segment_id)
+            if not isinstance(seg_data, Mapping) or current_seg is None:
+                results.append(
+                    {
+                        "segment_id": segment_id,
+                        "status": "skipped",
+                        "error": "segment disappeared during retranslate.",
+                    }
+                )
+                continue
+            if str(item.get("source_hash", "")) and _hash_text(
+                _retranslate_source_text(current_seg)
+            ) != str(item.get("source_hash", "")):
+                results.append(
+                    {
+                        "segment_id": segment_id,
+                        "status": "skipped",
+                        "error": "source segment changed during retranslate.",
+                    }
+                )
+                continue
+            if _read_segment_dst(snapshot, segment_id) != original_dst:
+                results.append({"segment_id": segment_id, "status": "stale"})
+                continue
+            ready.append(item)
+
+        try:
+            translations = (
+                asyncio.run(
+                    self._call_runner_for_retranslate_batch(
+                        tuple(dict(item["seg_data"]) for item in ready),
+                        job.metadata,
+                        model_id=job.model_id,
+                        model_snapshot=job.model_snapshot,
+                        prompt_preset_id=job.prompt_preset_id,
+                        prompt_snapshot=job.prompt_snapshot,
+                    )
+                )
+                if ready
+                else {}
+            )
+        except Exception as exc:  # noqa: BLE001
+            job.error = (
+                f"{exc.code}: {exc.payload.message}"
+                if isinstance(exc, BridgeError)
+                else f"{type(exc).__name__}: {exc}"
+            )
+            job.last_error = job.error
+            results.extend(
+                {
+                    "segment_id": str(item.get("segment_id", "")),
+                    "status": "failed",
+                    "error": job.error,
+                }
+                for item in ready
+            )
+            job.batch_results = results
+            job.status = "failed"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+
+        for item in ready:
+            segment_id = str(item["segment_id"])
+            original_dst = str(item.get("original_dst", ""))
+            new_dst = translations[segment_id]
+            snapshot = self.cache.load(job.task_id)
+            current_seg = _find_segment_payload(snapshot, segment_id)
+            if current_seg is None or (
+                str(item.get("source_hash", ""))
+                and _hash_text(_retranslate_source_text(current_seg))
+                != str(item.get("source_hash", ""))
+            ):
+                results.append(
+                    {
+                        "segment_id": segment_id,
+                        "status": "skipped",
+                        "error": "source segment changed during retranslate.",
+                    }
+                )
+                continue
+            if _read_segment_dst(snapshot, segment_id) != original_dst:
+                results.append({"segment_id": segment_id, "status": "stale"})
+                continue
+            _patch_segment_dst(self.cache, snapshot, segment_id, new_dst)
+            results.append(
+                {
+                    "segment_id": segment_id,
+                    "status": "completed",
+                    "result_dst": new_dst,
+                    "original_dst": original_dst,
+                }
+            )
+
+        job.batch_results = results
+        primary = next(
+            (item for item in results if item.get("segment_id") == job.segment_id),
+            None,
+        )
+        if primary and primary.get("status") == "completed":
+            job.result_dst = str(primary.get("result_dst", ""))
+            job.last_translation = job.result_dst
+        job.status = "completed"
+        job.updated_at_wall = _utc_now_iso()
+        self._save_retranslate_job(job)
+
     def _finish_retranslate_if_cache_changed(self, job: RetranslateJob) -> bool:
         with self._retranslate_lock:
             try:
@@ -2123,6 +2330,27 @@ class TaskService:
         prompt_preset_id: str | None = None,
         prompt_snapshot: Mapping[str, object] | None = None,
     ) -> str:
+        translations = await self._call_runner_for_retranslate_batch(
+            (seg_data,),
+            metadata,
+            model_id=model_id,
+            model_snapshot=model_snapshot,
+            prompt_preset_id=prompt_preset_id,
+            prompt_snapshot=prompt_snapshot,
+        )
+        segment_id = str(seg_data["segment_id"])
+        return translations[segment_id]
+
+    async def _call_runner_for_retranslate_batch(
+        self,
+        seg_datas: Sequence[Mapping[str, object]],
+        metadata: Mapping[str, object],
+        *,
+        model_id: str | None = None,
+        model_snapshot: Mapping[str, object] | None = None,
+        prompt_preset_id: str | None = None,
+        prompt_snapshot: Mapping[str, object] | None = None,
+    ) -> dict[str, str]:
         from transoria.workflows.translation.chunker import (  # noqa: PLC0415
             ChunkSegment,
             TranslationChunk,
@@ -2134,6 +2362,7 @@ class TaskService:
         from transoria.workflows.translation.runner import (  # noqa: PLC0415
             TranslationSubtaskRunner,
             encode_subtask_payload,
+            split_segment_payload_batches,
         )
 
         settings = self.settings_store.load_all()
@@ -2203,34 +2432,6 @@ class TaskService:
             else ()
         )
 
-        segment_id = str(seg_data["segment_id"])
-        original_text = str(seg_data.get("original_text", ""))
-        chunk = TranslationChunk(
-            segments=(
-                ChunkSegment(
-                    segment_id=segment_id,
-                    chunk_index=0,
-                    prompt_text=str(seg_data.get("prompt_text", original_text)),
-                ),
-            ),
-            context_lines=(),
-            glossary_entries=glossary.match(original_text),
-        )
-        seg_meta = [
-            {
-                "original_text": original_text,
-                "protection_spans": list(seg_data.get("protection_spans", [])),
-                "leading_whitespace": str(seg_data.get("leading_whitespace", "")),
-                "trailing_whitespace": str(seg_data.get("trailing_whitespace", "")),
-            }
-        ]
-        payload = encode_subtask_payload(chunk, segment_metadata=seg_meta)
-        subtask = Subtask(
-            id=f"retranslate-{segment_id.replace(':', '_')}",
-            task_id="retranslate-virtual",
-            request_payload=payload,
-        )
-
         runner = TranslationSubtaskRunner(
             client=self.llm_client_factory(),
             model=model,
@@ -2246,30 +2447,85 @@ class TaskService:
                 0, int(settings.translation.request_retry_attempts)
             ),
         )
+        translations: dict[str, str] = {}
         try:
-            result = await runner.run(subtask)
+            for batch_index, batch in enumerate(
+                split_segment_payload_batches(seg_datas), start=1
+            ):
+                chunk_segments = []
+                segment_metadata = []
+                source_texts = []
+                for chunk_index, seg_data in enumerate(batch):
+                    segment_id = str(seg_data["segment_id"])
+                    original_text = str(seg_data.get("original_text", ""))
+                    prompt_text = str(
+                        seg_data.get("prompt_text", original_text)
+                    )
+                    source_texts.append(original_text)
+                    chunk_segments.append(
+                        ChunkSegment(
+                            segment_id=segment_id,
+                            chunk_index=chunk_index,
+                            prompt_text=prompt_text,
+                        )
+                    )
+                    segment_metadata.append(
+                        {
+                            "original_text": original_text,
+                            "protection_spans": list(
+                                seg_data.get("protection_spans", [])
+                            ),
+                            "leading_whitespace": str(
+                                seg_data.get("leading_whitespace", "")
+                            ),
+                            "trailing_whitespace": str(
+                                seg_data.get("trailing_whitespace", "")
+                            ),
+                        }
+                    )
+                chunk = TranslationChunk(
+                    segments=tuple(chunk_segments),
+                    context_lines=(),
+                    glossary_entries=glossary.match_many(source_texts),
+                )
+                payload = encode_subtask_payload(
+                    chunk, segment_metadata=segment_metadata
+                )
+                subtask = Subtask(
+                    id=f"retranslate-batch-{batch_index:03d}",
+                    task_id="retranslate-virtual",
+                    request_payload=payload,
+                )
+                result = await runner.run(subtask)
+                try:
+                    response = json.loads(result.response_content)
+                except json.JSONDecodeError as exc:
+                    raise BridgeError(
+                        "bridge.io_error",
+                        f"runner returned invalid JSON: {exc}",
+                        retryable=True,
+                    ) from exc
+                records = (
+                    response.get("translations", {})
+                    if isinstance(response, Mapping)
+                    else {}
+                )
+                if isinstance(records, Mapping):
+                    translations.update(
+                        (str(segment_id), str(text))
+                        for segment_id, text in records.items()
+                    )
         finally:
             await runner.client.aclose()
-        try:
-            response = json.loads(result.response_content)
-        except json.JSONDecodeError as exc:
+        expected = {str(seg_data["segment_id"]) for seg_data in seg_datas}
+        missing = expected - set(translations)
+        if missing:
             raise BridgeError(
                 "bridge.io_error",
-                f"runner returned invalid JSON: {exc}",
-                retryable=True,
-            ) from exc
-        translations = (
-            response.get("translations", {})
-            if isinstance(response, Mapping)
-            else {}
-        )
-        if not isinstance(translations, Mapping) or segment_id not in translations:
-            raise BridgeError(
-                "bridge.io_error",
-                "runner returned no translation for the segment.",
+                f"runner returned no translation for segments: {sorted(missing)!r}.",
                 retryable=True,
             )
-        return str(translations[segment_id])
+        return translations
 
     def _model_for_retranslate(
         self,

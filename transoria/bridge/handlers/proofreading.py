@@ -1103,9 +1103,21 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         }
 
     def retranslate_segment(payload: Mapping[str, object]) -> dict[str, object]:
+        raw_segment_ids = payload.get("segment_ids")
+        segment_ids = None
+        if raw_segment_ids is not None:
+            if not isinstance(raw_segment_ids, list) or not all(
+                isinstance(item, str) and item.strip() for item in raw_segment_ids
+            ):
+                raise BridgeError.invalid_argument(
+                    "segment_ids must be a list of non-empty strings.",
+                    field="segment_ids",
+                )
+            segment_ids = [item.strip() for item in raw_segment_ids]
         return service.start_retranslate(
             task_id=expect_string(payload, "task_id"),
             segment_id=expect_string(payload, "segment_id"),
+            segment_ids=segment_ids,
             model_id=_optional_string(payload, "model_id"),
             prompt_preset_id=_optional_string(payload, "prompt_preset_id"),
         )
