@@ -6,6 +6,7 @@ import os
 import re
 import tempfile
 import unicodedata
+import urllib.parse
 import uuid
 import zipfile
 import xml.etree.ElementTree as ET
@@ -755,7 +756,7 @@ class _EpubMerger:
         )
         guide = (
             "\n<guide>\n"
-            f'<reference type="cover" title="Cover" href="{_xml_escape(self.cover_page_href)}"/>\n'
+            f'<reference type="cover" title="Cover" href="{_xml_escape(_encode_href(self.cover_page_href))}"/>\n'
             "</guide>"
             if self.cover_page_href
             else ""
@@ -1077,7 +1078,7 @@ def _nav_entry_xhtml(entry: _NavEntry) -> str:
     children = "".join(_nav_entry_xhtml(child) for child in entry.children)
     child_block = f"<ol>{children}</ol>" if children else ""
     return (
-        f'<li><a href="{_xml_escape(entry.href)}">{_xml_escape(entry.title)}</a>'
+        f'<li><a href="{_xml_escape(_encode_href(entry.href))}">{_xml_escape(entry.title)}</a>'
         f"{child_block}</li>"
     )
 
@@ -1092,7 +1093,7 @@ def _nav_entry_ncx(entry: _NavEntry, play: int) -> tuple[str, int]:
     xml = (
         f'<navPoint id="nav-{current}" playOrder="{current}">'
         f"<navLabel><text>{_xml_escape(entry.title)}</text></navLabel>"
-        f'<content src="{_xml_escape(entry.href)}"/>'
+        f'<content src="{_xml_escape(_encode_href(entry.href))}"/>'
         f"{''.join(children)}</navPoint>"
     )
     return xml, play
@@ -1120,6 +1121,7 @@ def _sort_key_epub(
     int,
     tuple[tuple[int, str | int], ...],
 ]:
+    filename = _normalize_unicode(filename)
     name = Path(filename).stem
     is_extra = 1 if _EXTRA_MARKER_PATTERN.search(name) else 0
     return (
@@ -1250,7 +1252,8 @@ def _process_css(
         mapped = resource_map.get(normalized)
         if not mapped:
             return match.group(0)
-        return f'url("../{mapped}")'
+        encoded_href = _encode_href(f"../{mapped}")
+        return f'url("{encoded_href}")'
 
     css = re.sub(r"url\s*\(\s*[\"']?([^\"'()]+?)[\"']?\s*\)", replace_url, css, flags=re.IGNORECASE)
     css = re.sub(r";{2,}", ";", css)
@@ -1282,7 +1285,7 @@ def _process_html(
         if not mapped:
             return match.group(0)
         rel = os.path.relpath(mapped, new_dir).replace("\\", "/")
-        return f"{attr}={quote}{rel}{quote}"
+        return f"{attr}={quote}{_encode_href(rel)}{quote}"
 
     html_text = re.sub(r"\b(src|href)=([\"'])([^\"']+)\2", replace_attr, html_text, flags=re.IGNORECASE)
 
@@ -1294,7 +1297,7 @@ def _process_html(
         if not mapped:
             return match.group(0)
         rel = os.path.relpath(mapped, new_dir).replace("\\", "/")
-        return f'url("{rel}")'
+        return f'url("{_encode_href(rel)}")'
 
     return re.sub(r"url\s*\(\s*[\"']?([^\"'()]+?)[\"']?\s*\)", replace_style_url, html_text, flags=re.IGNORECASE)
 
@@ -1435,9 +1438,14 @@ def _manifest_xml(item: Mapping[str, str]) -> str:
     props = item.get("properties", "")
     props_text = f' properties="{_xml_escape(props)}"' if props else ""
     return (
-        f'<item id="{_xml_escape(item["id"])}" href="{_xml_escape(item["href"])}" '
+        f'<item id="{_xml_escape(item["id"])}" href="{_xml_escape(_encode_href(item["href"]))}" '
         f'media-type="{_xml_escape(item["media-type"])}"{props_text}/>'
     )
+
+
+def _encode_href(href: str) -> str:
+    """Serialize an EPUB href as a percent-encoded reference."""
+    return urllib.parse.quote(urllib.parse.unquote(href), safe="/#")
 
 
 def _join_href(base: str, href: str) -> str:
@@ -1537,7 +1545,7 @@ def _validate_epub(path: Path) -> None:
             href = item.get("href", "")
             if not item_id or not href:
                 raise ValueError("merged EPUB has invalid manifest item")
-            if "#" in href or "%" in href:
+            if "#" in href or _encode_href(href) != href:
                 raise ValueError(f"merged EPUB manifest href is not URL-safe: {href}")
             entry_name = _join_href(opf_dir, href)
             if not _archive_has_entry(archive, entry_name):

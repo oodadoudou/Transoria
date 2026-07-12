@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import unicodedata
+import urllib.parse
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -82,6 +83,30 @@ def test_build_epub_merge_plan_sorts_main_volumes_before_side_stories(tmp_path: 
         "[플로나] 모두가 그대를 증오할지라도 외전 1.epub",
         "[플로나] 모두가 그대를 증오할지라도 외전 2.epub",
         "[플로나] 모두가 그대를 증오할지라도 외전 3.epub",
+    ]
+
+
+def test_build_epub_merge_plan_sorts_decomposed_korean_side_stories_last(tmp_path: Path) -> None:
+    names = [
+        "풀칠 ; 내 가이드 입에 풀칠하기 외전 2화.epub",
+        "풀칠 ; 내 가이드 입에 풀칠하기 2화.epub",
+        "풀칠 ; 내 가이드 입에 풀칠하기 외전 1화.epub",
+        "풀칠 ; 내 가이드 입에 풀칠하기 1화.epub",
+    ]
+    for name in names:
+        decomposed = unicodedata.normalize("NFD", name)
+        _write_epub(tmp_path / decomposed, title=name, chapter=name)
+
+    plan = build_epub_merge_plan(tmp_path, options=EpubMergeOptions())
+
+    assert [
+        unicodedata.normalize("NFC", Path(action.source_path).name)
+        for action in plan.actions
+    ] == [
+        "풀칠 ; 내 가이드 입에 풀칠하기 1화.epub",
+        "풀칠 ; 내 가이드 입에 풀칠하기 2화.epub",
+        "풀칠 ; 내 가이드 입에 풀칠하기 외전 1화.epub",
+        "풀칠 ; 내 가이드 입에 풀칠하기 외전 2화.epub",
     ]
 
 
@@ -401,8 +426,8 @@ def test_merge_multi_epub_volume_nav_points_to_first_content_and_drops_copyright
         nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
         ncx = archive.read("OEBPS/toc.ncx").decode("utf-8")
 
-    assert '<li><a href="Text/epub_000/Volume 1.xhtml">Volume 1</a>' in nav
-    assert '<li><a href="Text/epub_001/Volume 2.xhtml">Volume 2</a>' in nav
+    assert '<li><a href="Text/epub_000/Volume%201.xhtml">Volume 1</a>' in nav
+    assert '<li><a href="Text/epub_001/Volume%202.xhtml">Volume 2</a>' in nav
     assert "판권" not in nav
     assert "auto_cover" not in nav
     assert "판권" not in ncx
@@ -670,6 +695,42 @@ def test_merge_normalizes_unicode_internal_paths_for_parser(tmp_path: Path) -> N
     assert all(name == unicodedata.normalize("NFC", name) for name in names)
     document = parse_epub_file(output)
     assert any("본문" in segment.text for segment in document.segments)
+
+
+def test_merge_percent_encodes_non_ascii_spine_hrefs_for_strict_readers(tmp_path: Path) -> None:
+    source = tmp_path / "source.epub"
+    output = tmp_path / "merged.epub"
+    chapter_name = "풀칠 ; 내 가이드 001화.xhtml"
+    _write_epub(source, title="풀칠 ; 내 가이드", chapter="본문", chapter_href=chapter_name)
+
+    result = merge_epub_files(
+        action_id="merge-0000",
+        input_dir=tmp_path,
+        output_path=output,
+        actions=_actions(source),
+        options=EpubMergeOptions(),
+    )
+
+    assert result.status == "merged"
+    with zipfile.ZipFile(output) as archive:
+        opf = ET.fromstring(archive.read("OEBPS/content.opf"))
+        manifest = {
+            item.get("id", ""): item.get("href", "")
+            for item in opf.findall(".//{*}manifest/{*}item")
+        }
+        spine_hrefs = [
+            manifest[itemref.get("idref", "")]
+            for itemref in opf.findall(".//{*}spine/{*}itemref")
+        ]
+        nav = archive.read("OEBPS/nav.xhtml").decode("utf-8")
+        ncx = archive.read("OEBPS/toc.ncx").decode("utf-8")
+
+        assert spine_hrefs
+        assert all(href.isascii() and " " not in href for href in spine_hrefs)
+        assert any("%" in href for href in spine_hrefs)
+        assert all(f"OEBPS/{urllib.parse.unquote(href)}" in archive.namelist() for href in spine_hrefs)
+        assert "%ED%92%80%EC%B9%A0" in nav
+        assert "%ED%92%80%EC%B9%A0" in ncx
 
 
 def test_merge_disallows_overwriting_selected_input(tmp_path: Path) -> None:
