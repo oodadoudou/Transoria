@@ -513,6 +513,8 @@ class TranslationOrchestrator:
 def _should_split_failed_subtask(subtask: Subtask) -> bool:
     if subtask.request_payload.get(RECOVERY_SEGMENT_IDS_KEY):
         return False
+    if _is_model_or_request_failure(subtask.last_error):
+        return False
     return bool(_source_residue_segment_ids(_decode_subtask_payload(subtask)))
 
 
@@ -618,6 +620,27 @@ def _decode_subtask_payload(subtask: Subtask) -> dict[str, object]:
     return dict(payload) if isinstance(payload, Mapping) else {}
 
 
+def _is_model_or_request_failure(last_error: str) -> bool:
+    stripped = last_error.strip()
+    if stripped.startswith("["):
+        closing = stripped.find("]")
+        if closing > 1:
+            code = stripped[1:closing]
+            if code.startswith("llm.") or code.startswith("runtime."):
+                return True
+    lowered = stripped.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "transporterror",
+            "timeouterror",
+            "connectionerror",
+            "noapikeyerror",
+            "auth failure",
+        )
+    )
+
+
 def _source_residue_segment_ids(payload: Mapping[str, object]) -> set[str]:
     return {
         segment_id
@@ -662,6 +685,8 @@ def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
 
     for subtask in subtasks:
         if subtask.status is not SubtaskStatus.FAILED:
+            continue
+        if _is_model_or_request_failure(subtask.last_error):
             continue
         candidates.update(_source_residue_segment_ids(_decode_subtask_payload(subtask)))
     return candidates - accepted

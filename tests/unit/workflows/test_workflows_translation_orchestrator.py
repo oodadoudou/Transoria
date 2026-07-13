@@ -920,25 +920,40 @@ def test_split_failed_subtask_requires_explicit_source_residue() -> None:
             ),
         )
     )
+    source_residue_payload = json.dumps(
+        {
+            "version": 2,
+            "translations": {"0:0": "원문", "0:1": "正常译文"},
+            "low_confidence": [
+                {
+                    "segment_id": "0:0",
+                    "reasons": ["fell_back_to_source_after_max_retries"],
+                    "tags": ["source_residue"],
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
     assert _should_split_failed_subtask(
         failed_subtask(
             "[translation.quality_failed] source residue remains",
-            json.dumps(
-                {
-                    "version": 2,
-                    "translations": {"0:0": "원문", "0:1": "正常译文"},
-                    "low_confidence": [
-                        {
-                            "segment_id": "0:0",
-                            "reasons": ["fell_back_to_source_after_max_retries"],
-                            "tags": ["source_residue"],
-                        }
-                    ],
-                },
-                ensure_ascii=False,
-            ),
+            source_residue_payload,
         )
     )
+    for model_error in (
+        "[llm.http_error] LlmRequestError: HTTP 400 from provider",
+        "[llm.http_error] LlmRequestError: HTTP 503 from provider",
+        "[llm.transport_error] LlmRequestError: connection reset",
+        "[llm.no_api_key] NoApiKeyError: missing",
+        "[llm.all_keys_failed] LlmRequestError: exhausted",
+        "[llm.malformed_response] LlmRequestError: invalid JSON",
+        "[llm.degenerate_output] LlmDegenerateOutputError: repetition",
+        "[llm.line_count_mismatch] LlmRequestError: expected 2 got 1",
+        "[runtime.subtask_failed] TimeoutError: request timed out",
+    ):
+        assert not _should_split_failed_subtask(
+            failed_subtask(model_error, source_residue_payload)
+        )
 
 
 def test_orchestrator_marks_running_before_source_residue_split(

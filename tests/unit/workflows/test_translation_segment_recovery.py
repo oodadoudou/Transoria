@@ -226,6 +226,60 @@ def test_prepare_segment_recovery_retries_http_400_as_whole_chunk(tmp_path) -> N
     ] == ["0:0", "0:1"]
 
 
+@pytest.mark.parametrize(
+    "last_error",
+    [
+        "[llm.http_error] LlmRequestError: HTTP 400 from provider",
+        "[llm.http_error] LlmRequestError: HTTP 503 from provider",
+        "[llm.transport_error] LlmRequestError: connection reset",
+        "[llm.no_api_key] NoApiKeyError: missing",
+        "[llm.all_keys_failed] LlmRequestError: exhausted",
+        "[llm.malformed_response] LlmRequestError: invalid JSON",
+        "[runtime.subtask_failed] TimeoutError: request timed out",
+    ],
+)
+def test_prepare_segment_recovery_ignores_stale_residue_after_model_error(
+    tmp_path,
+    last_error: str,
+) -> None:
+    cache = TaskCache(tmp_path)
+    task_id = "translation-model-error-recovery"
+    failed = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={"segments": [_segment(0), _segment(1)]},
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "원문", "0:1": "正常译文"},
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["fell_back_to_source_after_max_retries"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        last_error=last_error,
+    )
+    cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [failed],
+    )
+
+    snapshot = cache.load(task_id)
+    assert _segment_recovery_candidates(snapshot.subtasks) == set()
+    _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
+    updated = cache.load_subtasks(task_id)[0]
+
+    assert updated.status is SubtaskStatus.PENDING
+    assert RECOVERY_SEGMENT_IDS_KEY not in updated.request_payload
+    assert len(updated.request_payload["segments"]) == 2
+
+
 def test_prepare_segment_recovery_targets_only_explicit_source_residue(
     tmp_path,
 ) -> None:
