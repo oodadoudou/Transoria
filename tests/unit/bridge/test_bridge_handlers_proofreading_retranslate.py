@@ -90,8 +90,34 @@ class _StubTransport:
         )
 
 
+@dataclass
+class _ConcurrencyTransport(_StubTransport):
+    active: int = 0
+    max_active: int = 0
+    active_lock: threading.Lock = field(default_factory=threading.Lock)
+
+    async def execute(
+        self,
+        url: str,
+        headers: Mapping[str, str],
+        payload: Mapping[str, object],
+        timeout: float,
+    ) -> TransportResult:
+        with self.active_lock:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            return await super().execute(url, headers, payload, timeout)
+        finally:
+            with self.active_lock:
+                self.active -= 1
+
+
 def _make_service(
-    tmp_path: Path, *, transport: _StubTransport | None = None
+    tmp_path: Path,
+    *,
+    transport: _StubTransport | None = None,
+    concurrency_limit: int = 0,
 ) -> TaskService:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
@@ -104,6 +130,7 @@ def _make_service(
         model_id="m",
         api_keys=("test-key",),
         thinking_level=ThinkingLevel.OFF,
+        concurrency_limit=concurrency_limit,
         rpm_limit=0,
     )
     profile_store.create(profile)
@@ -732,6 +759,63 @@ def test_retranslate_rejects_concurrent_job_for_same_segment(tmp_path: Path):
         _wait_for_status(
             service, first["request_id"], {"completed", "failed", "stale"}
         )
+
+
+def test_retranslate_enforces_model_concurrency_across_single_requests(
+    tmp_path: Path,
+):
+    release = threading.Event()
+    transport = _ConcurrencyTransport(block_event=release)
+    service = _make_service(
+        tmp_path,
+        transport=transport,
+        concurrency_limit=2,
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = tuple(
+        (f"0:{index}", f"원문 {index}", f"旧译文 {index}")
+        for index in range(4)
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    requests = [
+        router.call(
+            "proofreading.retranslate_segment",
+            {
+                "task_id": "translation-pf-rt-1",
+                "segment_id": segment_id,
+            },
+        )["request_id"]
+        for segment_id, _src, _dst in segments
+    ]
+    deadline = time.monotonic() + 5.0
+    while len(transport.requests) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    statuses = [
+        service.read_retranslate_status(request_id=request_id)["status"]
+        for request_id in requests
+    ]
+    assert len(transport.requests) == 2
+    assert transport.max_active == 2
+    assert statuses.count("running") == 2
+    assert statuses.count("pending") == 2
+
+    release.set()
+    finals = [
+        _wait_for_status(service, request_id, {"completed", "failed"})
+        for request_id in requests
+    ]
+
+    assert [item["status"] for item in finals] == ["completed"] * 4
+    assert transport.max_active == 2
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert all(
+        payload["translations"][segment_id] == "重翻译文0"
+        for segment_id, _src, _dst in segments
+    )
 
 
 def test_retranslate_marks_stale_when_user_edits_during_flight(tmp_path: Path):

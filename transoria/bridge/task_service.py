@@ -41,7 +41,7 @@ from transoria.domain import (
 )
 from transoria.formats.scanner import scan_input_directory
 from transoria.llm.client import HttpxChatTransport, LlmClient
-from transoria.llm.config import ModelConfig
+from transoria.llm.config import ModelConfig, effective_concurrency_limit
 from transoria.model_profiles import ModelProfileStore
 from transoria.prompts import (
     PromptKind,
@@ -1583,6 +1583,8 @@ class TaskService:
         }
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
+        self._retranslate_gate = threading.Condition()
+        self._active_retranslates_by_model: dict[str, int] = {}
 
     # All task records live under a single central root
     # (``<cache_root>/tasks/<task_id>/``). Records carry their kind
@@ -2111,6 +2113,14 @@ class TaskService:
             job = self._load_retranslate_job(request_id)
         if job is None:
             return
+        model_key, concurrency_limit = self._retranslate_concurrency(job)
+        self._acquire_retranslate_slot(model_key, concurrency_limit)
+        try:
+            self._execute_retranslate(job)
+        finally:
+            self._release_retranslate_slot(model_key)
+
+    def _execute_retranslate(self, job: RetranslateJob) -> None:
         if job.batch_items and len(job.batch_items) > 1:
             self._run_retranslate_batch(job)
             return
@@ -2126,7 +2136,7 @@ class TaskService:
             job.error = ""
             job.attempts += 1
             job.updated_at_wall = _utc_now_iso()
-            self._retranslate_jobs[request_id] = job
+            self._retranslate_jobs[job.request_id] = job
             self._save_retranslate_job(job)
         if self._finish_retranslate_if_cache_changed(job):
             return
@@ -2219,6 +2229,34 @@ class TaskService:
             job.status = "completed"
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
+
+    def _retranslate_concurrency(self, job: RetranslateJob) -> tuple[str, int]:
+        snapshot = job.model_snapshot
+        if isinstance(snapshot, Mapping):
+            try:
+                model = ModelConfig.from_dict(snapshot)
+            except (TypeError, ValueError):
+                pass
+            else:
+                return model.id, effective_concurrency_limit(model)
+        return job.model_id or "unknown", 1
+
+    def _acquire_retranslate_slot(self, model_key: str, limit: int) -> None:
+        with self._retranslate_gate:
+            while self._active_retranslates_by_model.get(model_key, 0) >= limit:
+                self._retranslate_gate.wait()
+            self._active_retranslates_by_model[model_key] = (
+                self._active_retranslates_by_model.get(model_key, 0) + 1
+            )
+
+    def _release_retranslate_slot(self, model_key: str) -> None:
+        with self._retranslate_gate:
+            active = self._active_retranslates_by_model.get(model_key, 0) - 1
+            if active > 0:
+                self._active_retranslates_by_model[model_key] = active
+            else:
+                self._active_retranslates_by_model.pop(model_key, None)
+            self._retranslate_gate.notify_all()
 
     def _run_retranslate_batch(self, job: RetranslateJob) -> None:
         items = list(job.batch_items or [])
@@ -2314,53 +2352,15 @@ class TaskService:
 
         for item in ready:
             segment_id = str(item["segment_id"])
-            original_dst = str(item.get("original_dst", ""))
             new_dst = runner_result.translations[segment_id]
             confidence_entry = runner_result.low_confidence.get(segment_id)
-            snapshot = self.cache.load(job.task_id)
-            current_seg = _find_segment_payload(snapshot, segment_id)
-            if current_seg is None or (
-                str(item.get("source_hash", ""))
-                and _hash_text(_retranslate_source_text(current_seg))
-                != str(item.get("source_hash", ""))
-            ):
-                results.append(
-                    {
-                        "segment_id": segment_id,
-                        "status": "skipped",
-                        "error": "source segment changed during retranslate.",
-                    }
-                )
-                continue
-            if _read_segment_dst(snapshot, segment_id) != original_dst:
-                results.append({"segment_id": segment_id, "status": "stale"})
-                continue
-            if _should_keep_existing_retranslation(
-                snapshot,
-                segment_id,
-                original_dst,
-                new_dst,
-                confidence_entry,
-            ):
-                results.append(
-                    {
-                        "segment_id": segment_id,
-                        "status": "unresolved",
-                        "result_dst": new_dst,
-                        "error": "retranslation did not improve source-language residue.",
-                        "reasons": list((confidence_entry or {}).get("reasons", [])),
-                        "tags": list((confidence_entry or {}).get("tags", [])),
-                    }
-                )
-                continue
-            _patch_segment_dst(self.cache, snapshot, segment_id, new_dst)
             results.append(
-                {
-                    "segment_id": segment_id,
-                    "status": "completed",
-                    "result_dst": new_dst,
-                    "original_dst": original_dst,
-                }
+                self._apply_retranslate_batch_candidate(
+                    job,
+                    item,
+                    new_dst,
+                    confidence_entry,
+                )
             )
 
         job.batch_results = results
@@ -2374,6 +2374,67 @@ class TaskService:
         job.status = "completed"
         job.updated_at_wall = _utc_now_iso()
         self._save_retranslate_job(job)
+
+    def _apply_retranslate_batch_candidate(
+        self,
+        job: RetranslateJob,
+        item: Mapping[str, object],
+        new_dst: str,
+        confidence_entry: Mapping[str, object] | None,
+    ) -> dict[str, object]:
+        segment_id = str(item["segment_id"])
+        original_dst = str(item.get("original_dst", ""))
+        with self._retranslate_lock:
+            try:
+                snapshot = self.cache.load(job.task_id)
+            except (TaskNotFoundError, OSError, ValueError) as exc:
+                return {
+                    "segment_id": segment_id,
+                    "status": "failed",
+                    "error": f"failed to read cache: {exc}",
+                }
+            current_seg = _find_segment_payload(snapshot, segment_id)
+            if current_seg is None or (
+                str(item.get("source_hash", ""))
+                and _hash_text(_retranslate_source_text(current_seg))
+                != str(item.get("source_hash", ""))
+            ):
+                return {
+                    "segment_id": segment_id,
+                    "status": "skipped",
+                    "error": "source segment changed during retranslate.",
+                }
+            if _read_segment_dst(snapshot, segment_id) != original_dst:
+                return {"segment_id": segment_id, "status": "stale"}
+            if _should_keep_existing_retranslation(
+                snapshot,
+                segment_id,
+                original_dst,
+                new_dst,
+                confidence_entry,
+            ):
+                return {
+                    "segment_id": segment_id,
+                    "status": "unresolved",
+                    "result_dst": new_dst,
+                    "error": "retranslation did not improve source-language residue.",
+                    "reasons": list((confidence_entry or {}).get("reasons", [])),
+                    "tags": list((confidence_entry or {}).get("tags", [])),
+                }
+            try:
+                _patch_segment_dst(self.cache, snapshot, segment_id, new_dst)
+            except (TaskNotFoundError, OSError) as exc:
+                return {
+                    "segment_id": segment_id,
+                    "status": "failed",
+                    "error": f"failed to write cache: {exc}",
+                }
+        return {
+            "segment_id": segment_id,
+            "status": "completed",
+            "result_dst": new_dst,
+            "original_dst": original_dst,
+        }
 
     def _finish_retranslate_if_cache_changed(self, job: RetranslateJob) -> bool:
         with self._retranslate_lock:
