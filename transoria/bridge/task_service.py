@@ -1085,8 +1085,10 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
             }
             for s in snapshot.subtasks
         ],
-        "active_model_id": metadata.get("model_id"),
-        "active_prompt_id": metadata.get("prompt_preset_id"),
+        "active_model_id": metadata.get("active_model_id")
+        or metadata.get("model_id"),
+        "active_prompt_id": metadata.get("active_prompt_id")
+        or metadata.get("prompt_preset_id"),
         "metadata": metadata,
     }
 
@@ -4424,10 +4426,16 @@ class TaskService:
     def _continue_translation(self, task_id: str) -> dict[str, object]:
         config, _model, _preset = self._build_translation_config()
         started_at = _utc_now_iso()
+        cache = self._cache_for_kind("translation")
+        record = cache.load_record(task_id)
+        metadata = dict(record.metadata)
+        metadata["active_model_id"] = config.model.id
+        metadata["active_prompt_id"] = config.prompt_preset.id
+        cache.save_task(replace(record, metadata=metadata))
         running = RunningTask(
             task_id=task_id,
             kind="translation",
-            cache=self._cache_for_kind("translation"),
+            cache=cache,
             created_at=started_at,
         )
         self.registry.add(running)
