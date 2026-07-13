@@ -8,12 +8,12 @@ from typing import Mapping
 
 import pytest
 
-from transoria.domain import Language, SubtaskStatus, TaskStatus
+from transoria.domain import Language, SubtaskStatus, TaskKind, TaskStatus
 from transoria.formats.epub_parser import parse_epub_file
 from transoria.llm import LlmClient, ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.client import TransportResult
 from transoria.prompts import PromptKind, default_preset
-from transoria.runtime import Subtask, SubtaskResult, TaskCache
+from transoria.runtime import Subtask, SubtaskResult, TaskCache, TaskRecord
 from transoria.workflows.translation import (
     BILINGUAL_OUTPUT_FOLDER_EN,
     Glossary,
@@ -487,7 +487,7 @@ def test_orchestrator_finalizes_outputs_when_stop_hits_after_all_segments(
     assert getattr(holder["executor"], "subtask_timeout_seconds") == 0.0
 
 
-def test_orchestrator_splits_failed_chunk_and_retries_children(tmp_path: Path) -> None:
+def test_orchestrator_does_not_split_empty_response_failure(tmp_path: Path) -> None:
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"
     input_dir.mkdir()
@@ -551,16 +551,16 @@ def test_orchestrator_splits_failed_chunk_and_retries_children(tmp_path: Path) -
         )
     )
 
-    assert result.final_status is TaskStatus.COMPLETED
-    assert transport.request_line_counts == [4, 4, 4, 2, 2]
-    assert result.statistics.failed_subtasks == 0
-    assert result.statistics.completed_segments == 4
-    assert result.translated_outputs[0].read_text(encoding="utf-8").count(_PREFIX) == 4
+    assert result.final_status is TaskStatus.FAILED
+    assert transport.request_line_counts == [4, 4, 4]
+    assert result.statistics.failed_subtasks == 1
+    assert result.statistics.completed_segments == 0
+    assert result.translated_outputs == ()
     snapshot = orchestrator.cache.load(result.task_id)
     skipped = [s for s in snapshot.subtasks if s.status.value == "skipped"]
     children = [s for s in snapshot.subtasks if s.request_payload.get("parent_subtask_id")]
-    assert len(skipped) == 1
-    assert len(children) == 2
+    assert skipped == []
+    assert children == []
 
 
 def test_orchestrator_marks_mass_source_echo_for_model_switch_recovery(tmp_path: Path) -> None:
@@ -837,8 +837,8 @@ def test_split_failed_payload_clears_context_lines() -> None:
     assert all(child["context_lines"] == [] for child in children)
 
 
-def test_split_failed_subtask_skips_request_failures_but_keeps_quality_failures() -> None:
-    def failed_subtask(last_error: str) -> Subtask:
+def test_split_failed_subtask_requires_explicit_source_residue() -> None:
+    def failed_subtask(last_error: str, response_content: str = "") -> Subtask:
         return Subtask(
             id="chunk-00000",
             task_id="task",
@@ -850,6 +850,7 @@ def test_split_failed_subtask_skips_request_failures_but_keeps_quality_failures(
                 ]
             },
             last_error=last_error,
+            response_content=response_content,
         )
 
     assert not _should_split_failed_subtask(
@@ -857,6 +858,9 @@ def test_split_failed_subtask_skips_request_failures_but_keeps_quality_failures(
     )
     assert not _should_split_failed_subtask(
         failed_subtask("[llm.no_api_key] NoApiKeyError: missing")
+    )
+    assert not _should_split_failed_subtask(
+        failed_subtask("[llm.http_error] LlmRequestError: HTTP 400 from provider")
     )
     assert not _should_split_failed_subtask(
         failed_subtask("[llm.http_error] LlmRequestError: HTTP 401 from provider")
@@ -867,107 +871,131 @@ def test_split_failed_subtask_skips_request_failures_but_keeps_quality_failures(
     assert not _should_split_failed_subtask(
         failed_subtask("[llm.http_error] LlmRequestError: HTTP 503 from provider")
     )
-    assert _should_split_failed_subtask(
+    assert not _should_split_failed_subtask(
         failed_subtask("[llm.line_count_mismatch] LlmRequestError: expected 2 got 1")
     )
-    assert _should_split_failed_subtask(
+    assert not _should_split_failed_subtask(
         failed_subtask(
             "[llm.degenerate_output] LlmDegenerateOutputError: runaway repetition"
         )
     )
-    assert _should_split_failed_subtask(
+    assert not _should_split_failed_subtask(
         failed_subtask("ValueError: malformed translation response")
     )
-
-
-def test_orchestrator_marks_running_before_split_to_avoid_terminal_flicker(
-    tmp_path: Path,
-) -> None:
-    """After round 1 fails, the executor's _finalize writes FAILED to
-    disk. If frontend polling happens to fire between rounds it sees
-    that terminal status and stops polling forever. The orchestrator
-    must therefore flip the record back to RUNNING before split commits
-    new pending children, so pollers never observe the transient
-    terminal state."""
-
-    input_dir = tmp_path / "in"
-    output_dir = tmp_path / "out"
-    input_dir.mkdir()
-    (input_dir / "Split.txt").write_text("a\nb\nc\nd\n", encoding="utf-8")
-
-    @dataclass
-    class FailLargeChunkTransport:
-        request_line_counts: list[int] = field(default_factory=list)
-
-        async def execute(
-            self,
-            url: str,
-            headers: Mapping[str, str],
-            payload: Mapping[str, object],
-            timeout: float,
-        ) -> TransportResult:
-            user_message = payload["messages"][-1]["content"]
-            translate_section = user_message.rsplit("[Translate]\n", 1)[-1]
-            rows = [
-                line
-                for line in translate_section.splitlines()
-                if line.strip().startswith("{")
-            ]
-            self.request_line_counts.append(len(rows))
-            if len(rows) > 2:
-                return TransportResult(
-                    200,
-                    {
-                        "choices": [{"message": {"role": "assistant", "content": ""}}],
-                        "usage": {"prompt_tokens": 1, "completion_tokens": 0},
-                    },
-                )
-            lines: list[str] = []
-            for line in rows:
-                parsed = json.loads(line)
-                for key, value in parsed.items():
-                    lines.append(json.dumps({key: f"{_PREFIX}{value}"}, ensure_ascii=False))
-            return TransportResult(
-                200,
+    assert not _should_split_failed_subtask(
+        failed_subtask(
+            "[translation.quality_failed] duplicate output",
+            json.dumps(
                 {
-                    "choices": [
-                        {"message": {"role": "assistant", "content": "\n".join(lines)}}
+                    "version": 2,
+                    "translations": {"0:0": "重复", "0:1": "重复"},
+                    "low_confidence": [
+                        {
+                            "segment_id": "0:0",
+                            "reasons": ["possible duplicate"],
+                            "tags": ["possible_duplicate"],
+                        }
                     ],
-                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
                 },
-            )
-
-    transport = FailLargeChunkTransport()
-    orchestrator = _new_orchestrator(transport, tmp_path / "cache")  # type: ignore[arg-type]
-
-    captured_statuses_after_split: list[TaskStatus] = []
-    real_split = orchestrator._split_failed_subtasks
-
-    def spy_split(task_id: str, subtasks, config):
-        created = real_split(task_id, subtasks, config)
-        if created > 0:
-            captured_statuses_after_split.append(
-                orchestrator.cache.load_record(task_id).status
-            )
-        return created
-
-    orchestrator._split_failed_subtasks = spy_split  # type: ignore[assignment]
-
-    result = asyncio.run(
-        orchestrator.run(
-            _build_config(
-                input_dir=input_dir,
-                output_dir=output_dir,
-                chunk_size=4,
-            )
+                ensure_ascii=False,
+            ),
+        )
+    )
+    assert not _should_split_failed_subtask(
+        failed_subtask(
+            "[translation.quality_failed] source residue warning",
+            json.dumps(
+                {
+                    "version": 2,
+                    "translations": {"0:0": "申海范(신해범)"},
+                    "low_confidence": [
+                        {
+                            "segment_id": "0:0",
+                            "reasons": ["source language remains"],
+                            "tags": ["source_residue"],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+        )
+    )
+    assert _should_split_failed_subtask(
+        failed_subtask(
+            "[translation.quality_failed] source residue remains",
+            json.dumps(
+                {
+                    "version": 2,
+                    "translations": {"0:0": "원문", "0:1": "正常译文"},
+                    "low_confidence": [
+                        {
+                            "segment_id": "0:0",
+                            "reasons": ["fell_back_to_source_after_max_retries"],
+                            "tags": ["source_residue"],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
         )
     )
 
-    assert result.final_status is TaskStatus.COMPLETED
-    assert captured_statuses_after_split, "expected at least one split that created children"
-    assert all(
-        s is TaskStatus.RUNNING for s in captured_statuses_after_split
-    ), captured_statuses_after_split
+
+def test_orchestrator_marks_running_before_source_residue_split(
+    tmp_path: Path,
+) -> None:
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    orchestrator = _new_orchestrator(EchoTranslateTransport(), tmp_path / "cache")
+    task_id = "task-source-residue-split"
+    request_segments = [
+        {
+            "segment_id": f"0:{index}",
+            "chunk_index": index,
+            "prompt_text": f"원문 {index}",
+        }
+        for index in range(4)
+    ]
+    failed = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={"segments": request_segments},
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {f"0:{index}": f"원문 {index}" for index in range(4)},
+                "low_confidence": [
+                    {
+                        "segment_id": f"0:{index}",
+                        "reasons": ["fell_back_to_source_after_max_retries"],
+                        "tags": ["source_residue"],
+                    }
+                    for index in range(4)
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        last_error="[translation.quality_failed] source residue remains",
+    )
+    orchestrator.cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [failed],
+    )
+
+    created = orchestrator._split_failed_subtasks(
+        task_id,
+        orchestrator.cache.load_subtasks(task_id),
+        _build_config(input_dir=input_dir, output_dir=output_dir),
+    )
+
+    assert created == 2
+    snapshot = orchestrator.cache.load(task_id)
+    assert snapshot.record.status is TaskStatus.RUNNING
+    assert len([s for s in snapshot.subtasks if s.status is SubtaskStatus.SKIPPED]) == 1
+    assert len(
+        [s for s in snapshot.subtasks if s.request_payload.get("parent_subtask_id")]
+    ) == 2
 
 
 def test_orchestrator_keeps_single_line_split_failure_as_final_failure(tmp_path: Path) -> None:

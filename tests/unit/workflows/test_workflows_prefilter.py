@@ -6,6 +6,7 @@ import pytest
 
 from transoria.domain import Language
 from transoria.workflows.prefilter import contains_source_language_script
+from transoria.workflows.prefilter import is_fixed_identifier_line
 from transoria.workflows.prefilter import is_translation_skippable
 from transoria.workflows.prefilter import should_translate_for_language
 
@@ -38,6 +39,9 @@ def test_skippable_blank(text: str) -> None:
         "ISBN | 979-11-01-87478-2",
         "ISBN-13: 978 1 4028 9462 6",
         "ISBN 0-306-40615-2",
+        "010-xxxx-xxxx",
+        "010-12XX-XXXX",
+        "02 xxxx xxxx",
     ],
 )
 def test_skippable_numeric(text: str) -> None:
@@ -98,6 +102,13 @@ def test_kept_when_letters_mixed_with_punctuation_and_digits() -> None:
     # Sentences are obviously kept regardless of trailing punctuation.
     assert is_translation_skippable("It cost $1,234.56!") is False
     assert is_translation_skippable("그는 말했다: ‘1234’.") is False
+
+
+def test_masked_phone_detection_does_not_hide_translatable_text() -> None:
+    assert is_fixed_identifier_line("010-xxxx-xxxx") is True
+    assert is_fixed_identifier_line("문의는 010-xxxx-xxxx로 연락하세요.") is False
+    assert is_fixed_identifier_line("REF-xxxx-xxxx") is False
+    assert is_translation_skippable("문의는 010-xxxx-xxxx로 연락하세요.") is False
 
 
 def test_language_prefilter_skips_already_translated_chinese_for_korean_source() -> None:

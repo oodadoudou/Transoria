@@ -2,7 +2,7 @@
 
 A line of source text is "translation-skippable" when, after stripping
 whitespace, it contains no letter characters — only digits, punctuation,
-symbols, whitespace, or a fixed bibliographic identifier. Examples:
+symbols, whitespace, or a fixed identifier. Examples:
 
 - ``""`` — empty paragraph break
 - ``"   "`` — whitespace only
@@ -12,6 +12,7 @@ symbols, whitespace, or a fixed bibliographic identifier. Examples:
 - ``"(1)"`` — figure label
 - ``"🎉"`` — emoji line
 - ``"ISBN | 979-11-01-87478-2"`` — fixed identifier line
+- ``"010-xxxx-xxxx"`` — masked phone number
 
 These lines have no meaningful content for either translation or
 glossary extraction, so the orchestrator skips them: the writer keeps
@@ -44,6 +45,10 @@ _CYRILLIC_RE = re.compile(r"[\u0400-\u04ff]")
 _ARABIC_RE = re.compile(r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]")
 _THAI_RE = re.compile(r"[\u0e00-\u0e7f]")
 _ISBN_PREFIX_RE = re.compile(r"^\s*ISBN(?:-1[03])?\s*(?:[:：|｜]\s*)?", re.IGNORECASE)
+_MASKED_KOREAN_PHONE_RE = re.compile(
+    r"^(?=[0-9Xx*\s-]*[Xx*])"
+    r"(?:01[016789]|02|0[3-6][1-5])[-\s][0-9Xx*]{3,4}[-\s][0-9Xx*]{4}$"
+)
 
 _LANGUAGE_SCRIPT_RE: dict[Language, re.Pattern[str]] = {
     Language.KOREAN: _HANGUL_RE,
@@ -89,6 +94,8 @@ def is_translation_skippable(text: str) -> bool:
 
 def is_fixed_identifier_line(text: str) -> bool:
     stripped = text.strip()
+    if _MASKED_KOREAN_PHONE_RE.fullmatch(stripped):
+        return True
     match = _ISBN_PREFIX_RE.match(stripped)
     if match is None:
         return False

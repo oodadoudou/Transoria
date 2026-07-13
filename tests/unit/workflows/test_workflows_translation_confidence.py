@@ -473,6 +473,19 @@ def test_evaluate_allows_unchanged_isbn_identifier() -> None:
     assert not verdict.is_low_confidence
 
 
+def test_evaluate_allows_unchanged_masked_phone_identifier() -> None:
+    verdict = evaluate_segment_confidence(
+        "010-xxxx-xxxx",
+        "010-xxxx-xxxx",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=4,
+        source_language=Language.KOREAN,
+    )
+
+    assert not verdict.is_low_confidence
+
+
 @dataclass
 class TruncatingTransport:
     """Returns a translation that's clearly too short to pass length check."""

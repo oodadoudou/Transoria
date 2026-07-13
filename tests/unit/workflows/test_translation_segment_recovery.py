@@ -199,6 +199,78 @@ def test_prepare_segment_recovery_resets_only_owner_with_source_fallback(
     assert updated["chunk-00001"].request_payload[RECOVERY_SEGMENT_IDS_KEY] == ["0:1"]
 
 
+def test_prepare_segment_recovery_retries_http_400_as_whole_chunk(tmp_path) -> None:
+    cache = TaskCache(tmp_path)
+    task_id = "translation-http-400-recovery"
+    failed = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={"segments": [_segment(0), _segment(1)]},
+        last_error="[llm.http_error] LlmRequestError: HTTP 400 from provider",
+    )
+    cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [failed],
+    )
+
+    snapshot = cache.load(task_id)
+    assert _segment_recovery_candidates(snapshot.subtasks) == set()
+    _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
+    updated = cache.load_subtasks(task_id)[0]
+
+    assert updated.status is SubtaskStatus.PENDING
+    assert RECOVERY_SEGMENT_IDS_KEY not in updated.request_payload
+    assert [
+        segment["segment_id"] for segment in updated.request_payload["segments"]
+    ] == ["0:0", "0:1"]
+
+
+def test_prepare_segment_recovery_targets_only_explicit_source_residue(
+    tmp_path,
+) -> None:
+    cache = TaskCache(tmp_path)
+    task_id = "translation-source-residue-recovery"
+    failed = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={"segments": [_segment(0), _segment(1)]},
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "원문", "0:1": "正常译文"},
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["fell_back_to_source_after_max_retries"],
+                        "tags": ["source_residue"],
+                    },
+                    {
+                        "segment_id": "0:1",
+                        "reasons": ["possible duplicate"],
+                        "tags": ["possible_duplicate"],
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        last_error="[translation.segment_recovery_failed] unresolved output",
+    )
+    cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [failed],
+    )
+
+    snapshot = cache.load(task_id)
+    assert _segment_recovery_candidates(snapshot.subtasks) == {"0:0"}
+    _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
+    updated = cache.load_subtasks(task_id)[0]
+
+    assert updated.status is SubtaskStatus.PENDING
+    assert updated.request_payload[RECOVERY_SEGMENT_IDS_KEY] == ["0:0"]
+
+
 def test_segment_recovery_does_not_override_user_accepted_source_text() -> None:
     subtask = Subtask(
         id="chunk-00000",

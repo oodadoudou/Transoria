@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,6 +88,7 @@ from transoria.workflows.translation.runner import (
 from transoria.workflows.translation.segment_state import (
     ACCEPTED_OVERRIDE_SEGMENTS_KEY,
     collect_segment_state_from_authoritative_subtasks,
+    low_confidence_by_segment,
 )
 from transoria.workflows.translation.statistics import (
     FailedFile,
@@ -98,20 +98,14 @@ from transoria.workflows.translation.statistics import (
 )
 
 
-# One split round only: a 32-line chunk that keeps failing splits once
-# (16+16) so a single malformed response loses less work, then any
-# still-failed chunk settles to FAILED for the user to Continue or
-# proofread. Deeper geometric splitting re-translated whole sub-chunks
-# repeatedly for little reliability gain and large token cost.
+# One split round only for failures with explicit source-residue evidence.
+# Other failures keep the original chunk intact for a user-triggered Continue.
 _SPLIT_ROUNDS = 1
-_ERROR_CODE_PATTERN = re.compile(r"^\[([a-z0-9_.-]+)\]")
-_HTTP_STATUS_PATTERN = re.compile(r"\bHTTP\s+(\d{3})\b", re.IGNORECASE)
-_REQUEST_FAILURE_CODES = {
-    "llm.transport_error",
-    "llm.no_api_key",
-    "llm.all_keys_failed",
+_SOURCE_RESIDUE_RECOVERY_REASONS = {
+    "fell_back_to_source_after_max_retries",
+    "missing_translation_fell_back_to_source",
+    "mass_source_residue_after_retry",
 }
-_REQUEST_FAILURE_HTTP_STATUSES = {401, 403, 408, 429}
 
 
 class TranslationEmptyInputError(RuntimeError):
@@ -519,34 +513,7 @@ class TranslationOrchestrator:
 def _should_split_failed_subtask(subtask: Subtask) -> bool:
     if subtask.request_payload.get(RECOVERY_SEGMENT_IDS_KEY):
         return False
-    return not _is_request_failure(subtask.last_error)
-
-
-def _is_request_failure(last_error: str) -> bool:
-    if not last_error:
-        return False
-    match = _ERROR_CODE_PATTERN.match(last_error.strip())
-    code = match.group(1) if match else ""
-    if code in _REQUEST_FAILURE_CODES:
-        return True
-    if code == "llm.http_error":
-        status = _extract_http_status(last_error)
-        return status in _REQUEST_FAILURE_HTTP_STATUSES or status >= 500
-    lowered = last_error.lower()
-    return (
-        "transporterror" in last_error
-        or "timeouterror" in lowered
-        or "connectionerror" in last_error
-        or "noapikeyerror" in last_error
-        or "auth failure" in lowered
-    )
-
-
-def _extract_http_status(message: str) -> int:
-    match = _HTTP_STATUS_PATTERN.search(message)
-    if match is None:
-        return 0
-    return int(match.group(1))
+    return bool(_source_residue_segment_ids(_decode_subtask_payload(subtask)))
 
 
 def _scan_and_parse(input_dir: Path, *, buffer_epub_archives: bool) -> tuple[_ParsedFile, ...]:
@@ -651,8 +618,30 @@ def _decode_subtask_payload(subtask: Subtask) -> dict[str, object]:
     return dict(payload) if isinstance(payload, Mapping) else {}
 
 
+def _source_residue_segment_ids(payload: Mapping[str, object]) -> set[str]:
+    return {
+        segment_id
+        for segment_id, record in low_confidence_by_segment(payload).items()
+        if _is_recoverable_source_residue(record)
+    }
+
+
+def _is_recoverable_source_residue(record: Mapping[str, object]) -> bool:
+    raw_tags = record.get("tags", [])
+    tags = {str(tag) for tag in raw_tags} if isinstance(raw_tags, list) else set()
+    raw_reasons = record.get("reasons", [])
+    reasons = (
+        {str(reason) for reason in raw_reasons}
+        if isinstance(raw_reasons, list)
+        else set()
+    )
+    return "source_residue" in tags and bool(
+        _SOURCE_RESIDUE_RECOVERY_REASONS.intersection(reasons)
+    )
+
+
 def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
-    translations, low_confidence = collect_segment_state_from_authoritative_subtasks(
+    _, low_confidence = collect_segment_state_from_authoritative_subtasks(
         subtasks
     )
     accepted: set[str] = set()
@@ -665,27 +654,16 @@ def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
             )
 
     candidates: set[str] = set()
-    for segment_id, record in low_confidence.items():
-        reasons = set(record.get("reasons", []))
-        if (
-            "fell_back_to_source_after_max_retries" in reasons
-            or "missing_translation_fell_back_to_source" in reasons
-            or "mass_source_residue_after_retry" in reasons
-        ):
-            candidates.add(segment_id)
+    candidates.update(
+        segment_id
+        for segment_id, record in low_confidence.items()
+        if _is_recoverable_source_residue(record)
+    )
 
     for subtask in subtasks:
         if subtask.status is not SubtaskStatus.FAILED:
             continue
-        raw_segments = subtask.request_payload.get("segments", [])
-        if not isinstance(raw_segments, list):
-            continue
-        for segment in raw_segments:
-            if not isinstance(segment, Mapping):
-                continue
-            segment_id = str(segment.get("segment_id", ""))
-            if segment_id and segment_id not in translations:
-                candidates.add(segment_id)
+        candidates.update(_source_residue_segment_ids(_decode_subtask_payload(subtask)))
     return candidates - accepted
 
 
@@ -715,10 +693,13 @@ def _prepare_segment_recovery(
                 )
             )
         elif subtask.status is SubtaskStatus.FAILED:
+            request_payload = dict(subtask.request_payload)
+            request_payload.pop(RECOVERY_SEGMENT_IDS_KEY, None)
             cache.save_subtask(
                 replace(
                     subtask,
-                    status=SubtaskStatus.SKIPPED,
+                    status=SubtaskStatus.PENDING,
+                    request_payload=request_payload,
                     last_error="",
                     last_error_at="",
                 )
