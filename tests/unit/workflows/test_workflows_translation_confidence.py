@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
+import pytest
+
 from transoria.domain import Language, SubtaskStatus, TaskStatus
 from transoria.llm import LlmClient, ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.client import TransportResult
@@ -486,6 +488,26 @@ def test_evaluate_allows_unchanged_masked_phone_identifier() -> None:
     assert not verdict.is_low_confidence
 
 
+def test_evaluate_allows_unchanged_online_identifiers() -> None:
+    for identifier in (
+        "www.ebookclub.co.kr",
+        "https://example.com/path?q=1#section",
+        "@Ventura_official_f1",
+        "@dylanroxburgh",
+    ):
+        verdict = evaluate_segment_confidence(
+            identifier,
+            identifier,
+            min_length_ratio=0.0,
+            max_length_ratio=10.0,
+            max_punctuation_delta=4,
+            source_language=Language.KOREAN,
+            target_language=Language.CHINESE_SIMPLIFIED,
+        )
+
+        assert not verdict.is_low_confidence
+
+
 @dataclass
 class TruncatingTransport:
     """Returns a translation that's clearly too short to pass length check."""
@@ -673,6 +695,21 @@ def test_evaluate_allows_single_korean_letter_cultural_reference() -> None:
     )
 
     assert not any("Korean residue" in r for r in verdict.reasons)
+
+
+@pytest.mark.parametrize("translated", ["忙ㅏㅏㅇ死了", "小ㅐㅐㅐ鱼干"])
+def test_evaluate_flags_non_emoticon_jamo_inside_chinese(translated: str) -> None:
+    verdict = evaluate_segment_confidence(
+        "한국어 문장",
+        translated,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+    )
+
+    assert verdict.is_low_confidence
+    assert any("Korean residue" in reason for reason in verdict.reasons)
 
 
 def test_evaluate_flags_korean_halfwidth_hangul() -> None:

@@ -220,6 +220,27 @@ class TranslationRecoveryRunner:
         if not isinstance(low_confidence, list):
             low_confidence = []
             merged["low_confidence"] = low_confidence
+        accepted = merged.setdefault("accepted_overrides", [])
+        if not isinstance(accepted, list):
+            accepted = []
+            merged["accepted_overrides"] = accepted
+
+        # A recovery request owns only ``recovery_ids``. If a later request
+        # fails, the already translated rows from the original chunk must
+        # remain authoritative instead of disappearing with the FAILED
+        # recovery subtask during aggregation.
+        requested_ids = {
+            str(segment.get("segment_id", ""))
+            for segment in raw_segments
+            if isinstance(segment, Mapping)
+            and segment.get("segment_id") not in (None, "")
+        }
+        for segment_id in requested_ids - recovery_ids:
+            if (
+                _has_usable_translation(translations, segment_id)
+                and segment_id not in accepted
+            ):
+                accepted.append(segment_id)
 
         total_input = subtask.input_tokens
         total_output = subtask.output_tokens
@@ -280,33 +301,47 @@ class TranslationRecoveryRunner:
                     and str(entry.get("segment_id", "")) in batch_ids
                 )
             batch_unresolved = _recovery_candidate_ids(merged) & batch_ids
-            accepted = merged.setdefault("accepted_overrides", [])
-            if not isinstance(accepted, list):
-                accepted = []
-                merged["accepted_overrides"] = accepted
             for segment_id in batch_ids - batch_unresolved:
-                if segment_id in translations and segment_id not in accepted:
+                if (
+                    _has_usable_translation(translations, segment_id)
+                    and segment_id not in accepted
+                ):
                     accepted.append(segment_id)
 
-        unresolved = _recovery_candidate_ids(merged) & recovery_ids
-        missing = recovery_ids - set(translations)
-        unresolved.update(missing)
+        missing = {
+            segment_id
+            for segment_id in recovery_ids
+            if not _has_usable_translation(translations, segment_id)
+        }
         merged_result = SubtaskResult(
             response_content=json.dumps(merged, ensure_ascii=False),
             input_tokens=total_input,
             output_tokens=total_output,
             cached_input_tokens=total_cached_input,
         )
-        if failures or unresolved:
-            details = "; ".join(failures) or (
-                f"{len(unresolved)} segments remain unresolved"
-            )
+        if failures or missing:
+            details = "; ".join(failures) or f"{len(missing)} translations missing"
             raise SubtaskFailedWithResult(
                 details,
                 result=merged_result,
-                code="translation.segment_recovery_failed",
+                code=(
+                    "translation.segment_recovery_request_failed"
+                    if failures
+                    else "translation.segment_recovery_failed"
+                ),
             )
+        # Quality exhaustion remains in ``low_confidence`` for proofreading;
+        # it does not discard the rest of an otherwise complete chunk.
         return merged_result
+
+
+def _has_usable_translation(
+    translations: Mapping[object, object], segment_id: str
+) -> bool:
+    if segment_id not in translations:
+        return False
+    value = translations[segment_id]
+    return isinstance(value, str) and bool(value.strip())
 
 
 def _recovery_candidate_ids(payload: Mapping[str, object]) -> set[str]:

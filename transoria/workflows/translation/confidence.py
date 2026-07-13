@@ -185,6 +185,8 @@ _KOREAN_HARD_RESIDUE_PATTERN = re.compile(r"[\uac00-\ud7af\uffa0-\uffdc]")
 _KOREAN_SOFT_RESIDUE_PATTERN = re.compile(
     r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]"
 )
+_KOREAN_EMOTICON_JAMO = frozenset("\u314b\u314e\u3160\u315c")
+_KOREAN_COMPATIBILITY_CONSONANT_PATTERN = re.compile(r"[\u3131-\u314e]")
 _KOREAN_TARGET_SCRIPT_PATTERN = re.compile(
     r"[\uac00-\ud7af\u1100-\u11ff\u3130-\u318f"
     r"\ua960-\ua97f\ud7b0-\ud7ff\uffa0-\uffdc]"
@@ -361,21 +363,32 @@ def _source_language_residue(
         # a problem.
         if _KOREAN_HARD_RESIDUE_PATTERN.search(translated_text):
             return "Korean residue remains in translation"
-        # Soft residue (chat-style jamo) is fine when the output also
-        # contains translated CJK content — the jamo are emoji-fragment
-        # retention (ㅋㅋ / ㅠㅠ alongside Chinese prose). Flag only when
-        # the output saturates with jamo AND has no CJK to back it up.
+        # Mixed Chinese output may retain explicit chat emoticons or one
+        # compatibility consonant as a cultural marker. Other Jamo embedded
+        # in Chinese usually indicates a partially decoded Korean syllable.
         has_cjk = bool(_CJK_IDEOGRAPH_PATTERN.search(translated_text))
-        if (
-            not has_cjk
-            and _ratio(_KOREAN_SOFT_RESIDUE_PATTERN, translated_text)
-            > _JAMO_RATIO_THRESHOLD
+        soft_jamo = _KOREAN_SOFT_RESIDUE_PATTERN.findall(translated_text)
+        if soft_jamo and (
+            (
+                not has_cjk
+                and _ratio(_KOREAN_SOFT_RESIDUE_PATTERN, translated_text)
+                > _JAMO_RATIO_THRESHOLD
+            )
+            or (has_cjk and not _allows_mixed_jamo_retention(soft_jamo))
         ):
             return "Korean residue remains in translation"
     elif source_language is Language.JAPANESE:
         if _JAPANESE_KANA_PATTERN.search(translated_text):
             return "Japanese kana residue remains in translation"
     return None
+
+
+def _allows_mixed_jamo_retention(soft_jamo: list[str]) -> bool:
+    if all(char in _KOREAN_EMOTICON_JAMO for char in soft_jamo):
+        return True
+    return len(soft_jamo) == 1 and bool(
+        _KOREAN_COMPATIBILITY_CONSONANT_PATTERN.fullmatch(soft_jamo[0])
+    )
 
 
 def _english_function_word_leak(

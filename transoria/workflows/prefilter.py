@@ -13,6 +13,8 @@ symbols, whitespace, or a fixed identifier. Examples:
 - ``"🎉"`` — emoji line
 - ``"ISBN | 979-11-01-87478-2"`` — fixed identifier line
 - ``"010-xxxx-xxxx"`` — masked phone number
+- ``"www.example.com"`` — standalone URL
+- ``"@example_account"`` — standalone social handle
 
 These lines have no meaningful content for either translation or
 glossary extraction, so the orchestrator skips them: the writer keeps
@@ -49,6 +51,13 @@ _MASKED_KOREAN_PHONE_RE = re.compile(
     r"^(?=[0-9Xx*\s-]*[Xx*])"
     r"(?:01[016789]|02|0[3-6][1-5])[-\s][0-9Xx*]{3,4}[-\s][0-9Xx*]{4}$"
 )
+_STANDALONE_URL_RE = re.compile(
+    r"^(?:https?://|www\.)"
+    r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?"
+    r"(?::[0-9]{1,5})?(?:[/?#][^\s]*)?$",
+    re.IGNORECASE,
+)
+_STANDALONE_SOCIAL_HANDLE_RE = re.compile(r"^@[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 _LANGUAGE_SCRIPT_RE: dict[Language, re.Pattern[str]] = {
     Language.KOREAN: _HANGUL_RE,
@@ -94,7 +103,11 @@ def is_translation_skippable(text: str) -> bool:
 
 def is_fixed_identifier_line(text: str) -> bool:
     stripped = text.strip()
-    if _MASKED_KOREAN_PHONE_RE.fullmatch(stripped):
+    if (
+        _MASKED_KOREAN_PHONE_RE.fullmatch(stripped)
+        or _STANDALONE_URL_RE.fullmatch(stripped)
+        or _STANDALONE_SOCIAL_HANDLE_RE.fullmatch(stripped)
+    ):
         return True
     match = _ISBN_PREFIX_RE.match(stripped)
     if match is None:

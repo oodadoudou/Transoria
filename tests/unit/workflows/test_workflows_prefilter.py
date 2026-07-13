@@ -111,6 +111,35 @@ def test_masked_phone_detection_does_not_hide_translatable_text() -> None:
     assert is_translation_skippable("문의는 010-xxxx-xxxx로 연락하세요.") is False
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "www.ebookclub.co.kr",
+        "https://example.com/path?q=1#section",
+        "@Ventura_official_f1",
+        "@dylanroxburgh",
+    ],
+)
+def test_standalone_online_identifiers_are_skipped(text: str) -> None:
+    assert is_fixed_identifier_line(text) is True
+    assert is_translation_skippable(text) is True
+    assert (
+        should_translate_for_language(
+            text,
+            source_language=Language.KOREAN,
+            target_language=Language.CHINESE_SIMPLIFIED,
+        )
+        is False
+    )
+
+
+def test_online_identifier_detection_does_not_hide_translatable_text() -> None:
+    assert is_fixed_identifier_line("官网是 www.ebookclub.co.kr。") is False
+    assert is_fixed_identifier_line("문의는 @dylanroxburgh에게 하세요.") is False
+    assert is_fixed_identifier_line("@") is False
+    assert is_translation_skippable("문의는 @dylanroxburgh에게 하세요.") is False
+
+
 def test_language_prefilter_skips_already_translated_chinese_for_korean_source() -> None:
     assert (
         should_translate_for_language(

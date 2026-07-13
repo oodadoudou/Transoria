@@ -13,12 +13,11 @@ Design decisions worth calling out:
   multiple files are present. Subtasks carry a stable ``segment_id`` of the
   form ``"<file_index>:<segment_index>"`` so the orchestrator can route each
   decoded result back to the right file at writeback time.
-- After the executor + split-failed-chunks loop finishes the run
-  settles to a terminal status immediately. Leftover FAILED subtasks
-  stay continuable: the user clicks "Continue" (or proofreads the
-  flagged segments) instead of the orchestrator silently re-running the
-  whole task. Transient transport errors are absorbed by request-level
-  backoff retries, not by whole-task recovery rounds.
+- After the executor + split-failed-chunks loop finishes the run settles to a
+  terminal status immediately. Execution/integrity failures stay continuable;
+  complete responses with quality warnings finish successfully and surface the
+  exact rows in proofreading. Transient transport errors are absorbed by
+  request-level backoff retries, not by whole-task recovery rounds.
 - User-facing translated files are written on any terminal status
   (COMPLETED or FAILED) that produced at least one translated segment.
   Missing segments fall back to original source text in the writers,
@@ -308,13 +307,6 @@ class TranslationOrchestrator:
             and self._split_failed_subtasks(task_id, snapshot.subtasks, config)
         ):
             snapshot = await executor.run(task_id)
-
-        if (
-            snapshot.record.status is TaskStatus.COMPLETED
-            and _segment_recovery_candidates(snapshot.subtasks)
-        ):
-            self._mark_task_status(task_id, TaskStatus.FAILED)
-            snapshot = self.cache.load(task_id)
 
         translations_by_segment, low_confidence_records = _collect_translations(
             snapshot.subtasks
@@ -632,10 +624,17 @@ def _is_model_or_request_failure(last_error: str) -> bool:
     return any(
         marker in lowered
         for marker in (
+            "http 4",
+            "http 5",
+            "requesterror",
             "transporterror",
             "timeouterror",
             "connectionerror",
             "noapikeyerror",
+            "api key",
+            "all keys failed",
+            "malformed response",
+            "invalid json",
             "auth failure",
         )
     )
@@ -664,9 +663,6 @@ def _is_recoverable_source_residue(record: Mapping[str, object]) -> bool:
 
 
 def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
-    _, low_confidence = collect_segment_state_from_authoritative_subtasks(
-        subtasks
-    )
     accepted: set[str] = set()
     for subtask in subtasks:
         payload = _decode_subtask_payload(subtask)
@@ -677,12 +673,6 @@ def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
             )
 
     candidates: set[str] = set()
-    candidates.update(
-        segment_id
-        for segment_id, record in low_confidence.items()
-        if _is_recoverable_source_residue(record)
-    )
-
     for subtask in subtasks:
         if subtask.status is not SubtaskStatus.FAILED:
             continue
@@ -697,10 +687,18 @@ def _prepare_segment_recovery(
     task_id: str,
     subtasks: tuple[Subtask, ...],
 ) -> None:
-    candidates = _segment_recovery_candidates(subtasks)
-    owners = _recovery_owners(subtasks, candidates)
-
+    normalized: list[Subtask] = []
     for subtask in subtasks:
+        settled = _settle_complete_quality_recovery(subtask)
+        if settled is not subtask:
+            cache.save_subtask(settled)
+        normalized.append(settled)
+
+    prepared_subtasks = tuple(normalized)
+    candidates = _segment_recovery_candidates(prepared_subtasks)
+    owners = _recovery_owners(prepared_subtasks, candidates)
+
+    for subtask in prepared_subtasks:
         segment_ids = owners.get(subtask.id)
         if segment_ids:
             request_payload = dict(subtask.request_payload)
@@ -729,6 +727,43 @@ def _prepare_segment_recovery(
                     last_error_at="",
                 )
             )
+
+
+def _settle_complete_quality_recovery(subtask: Subtask) -> Subtask:
+    """Upgrade legacy quality-only failures without issuing another request."""
+
+    if subtask.status is not SubtaskStatus.FAILED or not subtask.last_error.startswith(
+        "[translation.segment_recovery_failed]"
+    ):
+        return subtask
+    if _is_model_or_request_failure(subtask.last_error):
+        return subtask
+    payload = _decode_subtask_payload(subtask)
+    raw_translations = payload.get("translations")
+    if not isinstance(raw_translations, Mapping):
+        return subtask
+    requested_ids = {
+        str(segment.get("segment_id", ""))
+        for segment in subtask.request_payload.get("segments", [])
+        if isinstance(segment, Mapping)
+        and segment.get("segment_id") not in (None, "")
+    }
+    if not requested_ids or any(
+        segment_id not in raw_translations
+        or not isinstance(raw_translations[segment_id], str)
+        or not str(raw_translations[segment_id]).strip()
+        for segment_id in requested_ids
+    ):
+        return subtask
+    request_payload = dict(subtask.request_payload)
+    request_payload.pop(RECOVERY_SEGMENT_IDS_KEY, None)
+    return replace(
+        subtask,
+        status=SubtaskStatus.COMPLETED,
+        request_payload=request_payload,
+        last_error="",
+        last_error_at="",
+    )
 
 
 def _recovery_owners(

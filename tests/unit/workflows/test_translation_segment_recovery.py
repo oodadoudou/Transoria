@@ -117,7 +117,7 @@ def test_recovery_runner_batches_and_merges_only_requested_segments() -> None:
     assert payload["translations"]["0:0"] == "保留的正常译文"
     assert payload["translations"]["0:1"] == "译文-0:1"
     assert payload["low_confidence"] == []
-    assert set(payload["accepted_overrides"]) == {f"0:{index}" for index in range(1, 7)}
+    assert set(payload["accepted_overrides"]) == {f"0:{index}" for index in range(7)}
     assert result.input_tokens == 120
     assert result.output_tokens == 60
     assert result.cached_input_tokens == 20
@@ -141,11 +141,100 @@ def test_recovery_runner_preserves_successful_batches_when_one_fails() -> None:
         asyncio.run(runner.run(subtask))
 
     payload = json.loads(caught.value.result.response_content)
+    assert caught.value.code == "translation.segment_recovery_request_failed"
     assert set(payload["translations"]) == {f"0:{index}" for index in range(6)}
     assert set(payload["accepted_overrides"]) == {f"0:{index}" for index in range(6)}
 
 
-def test_prepare_segment_recovery_resets_only_owner_with_source_fallback(
+@dataclass
+class ResidueRunner:
+    async def run(self, subtask: Subtask) -> SubtaskResult:
+        segment_id = str(subtask.request_payload["segments"][0]["segment_id"])
+        return SubtaskResult(
+            response_content=json.dumps(
+                {
+                    "version": 2,
+                    "translations": {segment_id: "원문"},
+                    "low_confidence": [
+                        {
+                            "segment_id": segment_id,
+                            "reasons": ["fell_back_to_source_after_max_retries"],
+                            "tags": ["source_residue"],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            )
+        )
+
+
+def test_recovery_runner_completes_when_quality_warning_has_usable_text() -> None:
+    runner = TranslationRecoveryRunner(ResidueRunner())  # type: ignore[arg-type]
+    subtask = Subtask(
+        id="chunk-00001",
+        task_id="translation-test",
+        request_payload={
+            "segments": [_segment(0), _segment(1)],
+            RECOVERY_SEGMENT_IDS_KEY: ["0:1"],
+        },
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "保留的正常译文", "0:1": "원문"},
+                "low_confidence": [],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    result = asyncio.run(runner.run(subtask))
+    payload = json.loads(result.response_content)
+
+    assert payload["translations"] == {"0:0": "保留的正常译文", "0:1": "원문"}
+    assert payload["accepted_overrides"] == ["0:0"]
+    assert payload["low_confidence"][0]["segment_id"] == "0:1"
+
+
+@dataclass
+class MissingTranslationRunner:
+    async def run(self, subtask: Subtask) -> SubtaskResult:
+        return SubtaskResult(
+            response_content=json.dumps(
+                {"version": 2, "translations": {}, "low_confidence": []}
+            )
+        )
+
+
+def test_recovery_runner_fails_only_missing_row_and_preserves_existing_text() -> None:
+    runner = TranslationRecoveryRunner(  # type: ignore[arg-type]
+        MissingTranslationRunner()
+    )
+    subtask = Subtask(
+        id="chunk-00001",
+        task_id="translation-test",
+        request_payload={
+            "segments": [_segment(0), _segment(1)],
+            RECOVERY_SEGMENT_IDS_KEY: ["0:1"],
+        },
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "保留的正常译文"},
+                "low_confidence": [],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    with pytest.raises(SubtaskFailedWithResult) as caught:
+        asyncio.run(runner.run(subtask))
+
+    payload = json.loads(caught.value.result.response_content)
+    assert payload["translations"] == {"0:0": "保留的正常译文"}
+    assert payload["accepted_overrides"] == ["0:0"]
+
+
+def test_prepare_segment_recovery_keeps_completed_quality_warning_for_review(
     tmp_path,
 ) -> None:
     cache = TaskCache(tmp_path)
@@ -190,13 +279,13 @@ def test_prepare_segment_recovery_resets_only_owner_with_source_fallback(
     )
 
     snapshot = cache.load(task_id)
-    assert _segment_recovery_candidates(snapshot.subtasks) == {"0:1"}
+    assert _segment_recovery_candidates(snapshot.subtasks) == set()
     _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
     updated = {subtask.id: subtask for subtask in cache.load_subtasks(task_id)}
 
     assert updated["chunk-00000"].status is SubtaskStatus.COMPLETED
-    assert updated["chunk-00001"].status is SubtaskStatus.PENDING
-    assert updated["chunk-00001"].request_payload[RECOVERY_SEGMENT_IDS_KEY] == ["0:1"]
+    assert updated["chunk-00001"].status is SubtaskStatus.COMPLETED
+    assert RECOVERY_SEGMENT_IDS_KEY not in updated["chunk-00001"].request_payload
 
 
 def test_prepare_segment_recovery_retries_http_400_as_whole_chunk(tmp_path) -> None:
@@ -321,8 +410,94 @@ def test_prepare_segment_recovery_targets_only_explicit_source_residue(
     _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
     updated = cache.load_subtasks(task_id)[0]
 
+    assert updated.status is SubtaskStatus.COMPLETED
+    assert RECOVERY_SEGMENT_IDS_KEY not in updated.request_payload
+    assert updated.last_error == ""
+
+
+def test_prepare_segment_recovery_retries_incomplete_legacy_quality_failure(
+    tmp_path,
+) -> None:
+    cache = TaskCache(tmp_path)
+    task_id = "translation-incomplete-source-residue-recovery"
+    failed = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={"segments": [_segment(0), _segment(1)]},
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:1": "正常译文"},
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["missing_translation_fell_back_to_source"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        last_error="[translation.segment_recovery_failed] one translation missing",
+    )
+    cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [failed],
+    )
+
+    snapshot = cache.load(task_id)
+    _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
+    updated = cache.load_subtasks(task_id)[0]
+
     assert updated.status is SubtaskStatus.PENDING
     assert updated.request_payload[RECOVERY_SEGMENT_IDS_KEY] == ["0:0"]
+
+
+def test_prepare_segment_recovery_does_not_settle_wrapped_http_failure(
+    tmp_path,
+) -> None:
+    cache = TaskCache(tmp_path)
+    task_id = "translation-wrapped-http-recovery"
+    failed = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={
+            "segments": [_segment(0), _segment(1)],
+            RECOVERY_SEGMENT_IDS_KEY: ["0:0"],
+        },
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "원문", "0:1": "正常译文"},
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["fell_back_to_source_after_max_retries"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        last_error=(
+            "[translation.segment_recovery_failed] "
+            "SubtaskFailedWithResult: HTTP 503 from provider"
+        ),
+    )
+    cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [failed],
+    )
+
+    snapshot = cache.load(task_id)
+    _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
+    updated = cache.load_subtasks(task_id)[0]
+
+    assert updated.status is SubtaskStatus.PENDING
+    assert RECOVERY_SEGMENT_IDS_KEY not in updated.request_payload
+    assert len(updated.request_payload["segments"]) == 2
 
 
 def test_segment_recovery_does_not_override_user_accepted_source_text() -> None:

@@ -1778,10 +1778,13 @@ export function ProofreadingPage() {
   const visibleRiskSummaries = riskIssueSummaries.slice(0, 4);
   const hiddenRiskSummaryCount =
     riskIssueSummaries.length - visibleRiskSummaries.length;
-  const riskIssueTotal = riskIssueSummaries.reduce(
-    (sum, card) => sum + card.count,
-    0,
-  );
+  const riskIssueTotal = proofreadingIndex.sortedItems.reduce((count, item) => {
+    const meta = proofreadingIndex.metaBySegmentId.get(item.segment_id);
+    return meta &&
+      (meta.rank <= REVIEW_RISK_MAX_RANK || meta.formatRescue)
+      ? count + 1
+      : count;
+  }, 0);
   const qualitySummary =
     riskIssueTotal === 0
       ? m.qualitySummaryClean
