@@ -133,6 +133,7 @@ from transoria.workflows.translation.orchestrator import (
 )
 from transoria.workflows.translation.segment_state import (
     collect_segment_state_from_authoritative_subtasks,
+    low_confidence_by_segment,
     mark_accepted_override,
 )
 from transoria.workflows.translation.statistics import STATISTICS_FILENAME_JSON
@@ -200,7 +201,7 @@ _LIVE_TASK_STALL_TIMEOUT_HEADROOM_SECONDS = 120.0
 _MAX_RETRANSLATE_JOBS = 50
 _RETRANSLATE_TERMINAL_TTL_SECONDS = 300.0
 _RETRANSLATE_TERMINAL_STATUSES = frozenset(
-    {"completed", "failed", "stale", "skipped"}
+    {"completed", "failed", "stale", "skipped", "unresolved"}
 )
 
 
@@ -337,6 +338,12 @@ def _retranslate_job_segment_ids(job: RetranslateJob) -> set[str]:
             if item.get("segment_id") not in (None, "")
         }
     return {job.segment_id}
+
+
+@dataclass(frozen=True)
+class _RetranslateRunnerResult:
+    translations: dict[str, str]
+    low_confidence: dict[str, dict[str, list[str]]]
 
 
 def _utc_now_iso() -> str:
@@ -507,6 +514,45 @@ def _replace_low_confidence_entry(
     if entry is not None:
         next_entries.append(entry)
     payload["low_confidence"] = next_entries
+
+
+def _should_keep_existing_retranslation(
+    snapshot: TaskSnapshot,
+    segment_id: str,
+    existing_dst: str,
+    candidate_dst: str,
+    candidate_entry: Mapping[str, object] | None,
+) -> bool:
+    candidate_tags = set(_string_values((candidate_entry or {}).get("tags")))
+    if "source_residue" not in candidate_tags:
+        return False
+    if candidate_dst == existing_dst:
+        return True
+    existing_entry = _confidence_entry_for_segment(
+        snapshot, segment_id, existing_dst
+    )
+    return _retranslation_quality_rank(candidate_entry) >= _retranslation_quality_rank(
+        existing_entry
+    )
+
+
+def _retranslation_quality_rank(
+    entry: Mapping[str, object] | None,
+) -> tuple[int, int, int, int, int]:
+    tags = set(_string_values((entry or {}).get("tags")))
+    return (
+        int("source_residue" in tags),
+        int("verbatim_echo" in tags),
+        int("target_language_weak" in tags),
+        int("model_chatter" in tags),
+        len(tags),
+    )
+
+
+def _string_values(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    return tuple(str(item) for item in value if item not in (None, ""))
 
 
 def _coerce_text_preserve_rules(
@@ -1937,6 +1983,17 @@ class TaskService:
         return RetranslateJob.from_dict(data)
 
     def _retranslate_status_payload(self, job: RetranslateJob) -> dict[str, object]:
+        results = list(job.batch_results or [])
+        if not results and job.status in _RETRANSLATE_TERMINAL_STATUSES:
+            result: dict[str, object] = {
+                "segment_id": job.segment_id,
+                "status": job.status,
+            }
+            if job.result_dst:
+                result["result_dst"] = job.result_dst
+            if job.error:
+                result["error"] = job.error
+            results.append(result)
         return {
             "request_id": job.request_id,
             "task_id": job.task_id,
@@ -1947,7 +2004,7 @@ class TaskService:
             "attempts": job.attempts,
             "last_error": job.last_error,
             "last_translation": job.last_translation,
-            "results": list(job.batch_results or []),
+            "results": results,
         }
 
     def _sync_completed_retranslate_result(self, job: RetranslateJob) -> None:
@@ -2074,7 +2131,7 @@ class TaskService:
         if self._finish_retranslate_if_cache_changed(job):
             return
         try:
-            new_dst = asyncio.run(
+            runner_result = asyncio.run(
                 self._call_runner_for_retranslate(
                     job.seg_data,
                     job.metadata,
@@ -2100,6 +2157,8 @@ class TaskService:
             return
 
         with self._retranslate_lock:
+            new_dst = runner_result.translations[job.segment_id]
+            confidence_entry = runner_result.low_confidence.get(job.segment_id)
             job.last_translation = new_dst
             try:
                 snapshot = self.cache.load(job.task_id)
@@ -2131,6 +2190,19 @@ class TaskService:
             current_dst = _read_segment_dst(snapshot, job.segment_id)
             if current_dst != job.original_dst:
                 job.status = "stale"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return
+            if _should_keep_existing_retranslation(
+                snapshot,
+                job.segment_id,
+                current_dst,
+                new_dst,
+                confidence_entry,
+            ):
+                job.error = "retranslation did not improve source-language residue."
+                job.last_error = job.error
+                job.status = "unresolved"
                 job.updated_at_wall = _utc_now_iso()
                 self._save_retranslate_job(job)
                 return
@@ -2205,7 +2277,7 @@ class TaskService:
             ready.append(item)
 
         try:
-            translations = (
+            runner_result = (
                 asyncio.run(
                     self._call_runner_for_retranslate_batch(
                         tuple(dict(item["seg_data"]) for item in ready),
@@ -2217,7 +2289,7 @@ class TaskService:
                     )
                 )
                 if ready
-                else {}
+                else _RetranslateRunnerResult({}, {})
             )
         except Exception as exc:  # noqa: BLE001
             job.error = (
@@ -2243,7 +2315,8 @@ class TaskService:
         for item in ready:
             segment_id = str(item["segment_id"])
             original_dst = str(item.get("original_dst", ""))
-            new_dst = translations[segment_id]
+            new_dst = runner_result.translations[segment_id]
+            confidence_entry = runner_result.low_confidence.get(segment_id)
             snapshot = self.cache.load(job.task_id)
             current_seg = _find_segment_payload(snapshot, segment_id)
             if current_seg is None or (
@@ -2261,6 +2334,24 @@ class TaskService:
                 continue
             if _read_segment_dst(snapshot, segment_id) != original_dst:
                 results.append({"segment_id": segment_id, "status": "stale"})
+                continue
+            if _should_keep_existing_retranslation(
+                snapshot,
+                segment_id,
+                original_dst,
+                new_dst,
+                confidence_entry,
+            ):
+                results.append(
+                    {
+                        "segment_id": segment_id,
+                        "status": "unresolved",
+                        "result_dst": new_dst,
+                        "error": "retranslation did not improve source-language residue.",
+                        "reasons": list((confidence_entry or {}).get("reasons", [])),
+                        "tags": list((confidence_entry or {}).get("tags", [])),
+                    }
+                )
                 continue
             _patch_segment_dst(self.cache, snapshot, segment_id, new_dst)
             results.append(
@@ -2329,8 +2420,8 @@ class TaskService:
         model_snapshot: Mapping[str, object] | None = None,
         prompt_preset_id: str | None = None,
         prompt_snapshot: Mapping[str, object] | None = None,
-    ) -> str:
-        translations = await self._call_runner_for_retranslate_batch(
+    ) -> _RetranslateRunnerResult:
+        return await self._call_runner_for_retranslate_batch(
             (seg_data,),
             metadata,
             model_id=model_id,
@@ -2338,8 +2429,6 @@ class TaskService:
             prompt_preset_id=prompt_preset_id,
             prompt_snapshot=prompt_snapshot,
         )
-        segment_id = str(seg_data["segment_id"])
-        return translations[segment_id]
 
     async def _call_runner_for_retranslate_batch(
         self,
@@ -2350,7 +2439,7 @@ class TaskService:
         model_snapshot: Mapping[str, object] | None = None,
         prompt_preset_id: str | None = None,
         prompt_snapshot: Mapping[str, object] | None = None,
-    ) -> dict[str, str]:
+    ) -> _RetranslateRunnerResult:
         from transoria.workflows.translation.chunker import (  # noqa: PLC0415
             ChunkSegment,
             TranslationChunk,
@@ -2448,6 +2537,7 @@ class TaskService:
             ),
         )
         translations: dict[str, str] = {}
+        low_confidence: dict[str, dict[str, list[str]]] = {}
         try:
             for batch_index, batch in enumerate(
                 split_segment_payload_batches(seg_datas), start=1
@@ -2515,6 +2605,8 @@ class TaskService:
                         (str(segment_id), str(text))
                         for segment_id, text in records.items()
                     )
+                if isinstance(response, Mapping):
+                    low_confidence.update(low_confidence_by_segment(response))
         finally:
             await runner.client.aclose()
         expected = {str(seg_data["segment_id"]) for seg_data in seg_datas}
@@ -2525,7 +2617,7 @@ class TaskService:
                 f"runner returned no translation for segments: {sorted(missing)!r}.",
                 retryable=True,
             )
-        return translations
+        return _RetranslateRunnerResult(translations, low_confidence)
 
     def _model_for_retranslate(
         self,

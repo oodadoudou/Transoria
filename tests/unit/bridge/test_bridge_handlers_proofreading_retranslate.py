@@ -41,6 +41,7 @@ class _StubTransport:
     block_event: threading.Event | None = None
     fail: bool = False
     scripted_translations: list[str] = field(default_factory=list)
+    translations_by_key: dict[str, str] = field(default_factory=dict)
     requests: list[dict[str, object]] = field(default_factory=list)
 
     async def execute(
@@ -69,7 +70,9 @@ class _StubTransport:
                 continue
             for key, value in parsed.items():
                 translated = (
-                    self.scripted_translations[call_index]
+                    self.translations_by_key[key]
+                    if key in self.translations_by_key
+                    else self.scripted_translations[call_index]
                     if call_index < len(self.scripted_translations)
                     else f"{self.prefix}{key}"
                 )
@@ -285,6 +288,94 @@ def test_retranslate_batch_sends_five_segments_in_one_request_and_patches_all(
     assert payload["translations"] == {
         f"0:{index}": f"重翻译文{index}" for index in range(5)
     }
+
+
+def test_retranslate_batch_keeps_successes_and_preserves_unresolved_segment(
+    tmp_path: Path,
+):
+    transport = _StubTransport(
+        translations_by_key={
+            "0": "译文零",
+            "1": "译文一",
+            "2": "译文二",
+            "3": "译文三",
+            "4": "원문 4",
+        }
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 0, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = tuple(
+        (f"0:{index}", f"원문 {index}", f"旧译文 {index}")
+        for index in range(5)
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": [item[0] for item in segments],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    statuses = {item["segment_id"]: item["status"] for item in final["results"]}
+    assert statuses == {
+        "0:0": "completed",
+        "0:1": "completed",
+        "0:2": "completed",
+        "0:3": "completed",
+        "0:4": "unresolved",
+    }
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "译文零"
+    assert payload["translations"]["0:4"] == "旧译文 4"
+
+
+def test_retranslate_single_source_echo_is_unresolved_and_not_written(
+    tmp_path: Path,
+):
+    transport = _StubTransport(translations_by_key={"0": "안녕"})
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 0, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service, segments=(("0:0", "안녕", "已有的较好译文"),)
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0"],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"unresolved", "failed"})
+
+    assert final["status"] == "unresolved"
+    assert final["last_translation"] == "안녕"
+    assert final["results"] == [
+        {
+            "segment_id": "0:0",
+            "status": "unresolved",
+            "error": "retranslation did not improve source-language residue.",
+        }
+    ]
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "已有的较好译文"
 
 
 def test_retranslate_batch_keeps_user_edited_segment_stale(tmp_path: Path):

@@ -779,6 +779,7 @@ export interface Messages {
       retranslateSaveDirtyFirst: string;
       retranslateFailed: string;
       retranslateStale: string;
+      retranslateUnresolved: string;
       retranslateRejectedRunning: string;
       selectRowLabel: string;
       subtaskHint: string;

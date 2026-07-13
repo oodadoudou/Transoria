@@ -82,7 +82,14 @@ type RetranslateStatusResponse = {
   request_id: string;
   task_id: string;
   segment_id: string;
-  status: "pending" | "running" | "completed" | "failed" | "stale" | "skipped";
+  status:
+    | "pending"
+    | "running"
+    | "completed"
+    | "failed"
+    | "stale"
+    | "skipped"
+    | "unresolved";
   result_dst: string;
   error: string;
   attempts: number;
@@ -90,7 +97,7 @@ type RetranslateStatusResponse = {
   last_translation: string;
   results: Array<{
     segment_id: string;
-    status: "completed" | "failed" | "stale" | "skipped";
+    status: "completed" | "failed" | "stale" | "skipped" | "unresolved";
     result_dst?: string;
     error?: string;
   }>;

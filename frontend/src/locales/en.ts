@@ -1199,6 +1199,8 @@ export const en: Messages = {
       retranslateFailed: "Retranslate failed: {reason}",
       retranslateStale:
         "You edited this segment manually; LLM result discarded.",
+      retranslateUnresolved:
+        "The new result still contains source-language text, so the existing translation was kept for review.",
       retranslateRejectedRunning:
         "Task is running; stop it before retranslating.",
       selectRowLabel: "Select {id}",

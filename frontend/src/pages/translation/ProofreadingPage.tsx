@@ -45,7 +45,12 @@ interface RegenerateFailedFile {
   details?: Record<string, unknown>;
 }
 
-type RetranslateStatus = "completed" | "stale" | "skipped" | "failed";
+type RetranslateStatus =
+  | "completed"
+  | "stale"
+  | "skipped"
+  | "failed"
+  | "unresolved";
 
 interface RetranslateOutcome {
   status: RetranslateStatus;
@@ -1169,6 +1174,15 @@ export function ProofreadingPage() {
             });
             return;
           }
+          if (status.status === "unresolved") {
+            const reason = status.error || status.last_error;
+            if (showFeedback) {
+              setFeedback({ kind: "info", text: m.retranslateUnresolved });
+            }
+            finish(true);
+            resolve({ status: "unresolved", reason });
+            return;
+          }
           if (status.status === "failed") {
             const reason = status.error || status.last_error;
             if (showFeedback) {
@@ -1254,6 +1268,24 @@ export function ProofreadingPage() {
                 segmentIds.map((segmentId) => [
                   segmentId,
                   { status: "failed" as const, reason },
+                ]),
+              ),
+            );
+            return;
+          }
+          if (
+            status.status === "stale" ||
+            status.status === "skipped" ||
+            status.status === "unresolved"
+          ) {
+            const reason = status.error || status.last_error;
+            const terminalStatus: RetranslateStatus = status.status;
+            finish();
+            resolve(
+              new Map(
+                segmentIds.map((segmentId) => [
+                  segmentId,
+                  { status: terminalStatus, reason },
                 ]),
               ),
             );
@@ -1531,7 +1563,8 @@ export function ProofreadingPage() {
                 }
               } else if (
                 result.status === "stale" ||
-                result.status === "skipped"
+                result.status === "skipped" ||
+                result.status === "unresolved"
               ) {
                 staleCount += 1;
               } else {
