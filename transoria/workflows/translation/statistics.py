@@ -101,6 +101,8 @@ def write_translation_statistics(
             for subtask_id, error in failed_subtask_details
         ]
         failed_path.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
+    else:
+        (output_dir / STATISTICS_FILENAME_FAILED_SUBTASKS).unlink(missing_ok=True)
     return json_path
 
 
