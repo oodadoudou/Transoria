@@ -2081,6 +2081,21 @@ export function ProofreadingPage() {
         <button
           type="button"
           className={styles.retranslateConfigButton}
+          onClick={() => setSwitchOpen("preset")}
+        >
+          <span className={styles.retranslateConfigLabel}>
+            {m.retranslatePreset}
+          </span>
+          <span className={styles.retranslateConfigName}>
+            {activeProofreadingPreset?.name ?? messages.runConfig.customPreset}
+          </span>
+          <span className={styles.retranslateConfigSwitch}>
+            {m.switchModelPrompt}
+          </span>
+        </button>
+        <button
+          type="button"
+          className={styles.retranslateConfigButton}
           onClick={() => setSwitchOpen("model")}
         >
           <span className={styles.retranslateConfigLabel}>
@@ -2103,21 +2118,6 @@ export function ProofreadingPage() {
           </span>
           <span className={styles.retranslateConfigName}>
             {selectedProofreadingPrompt?.name ?? "—"}
-          </span>
-          <span className={styles.retranslateConfigSwitch}>
-            {m.switchModelPrompt}
-          </span>
-        </button>
-        <button
-          type="button"
-          className={styles.retranslateConfigButton}
-          onClick={() => setSwitchOpen("preset")}
-        >
-          <span className={styles.retranslateConfigLabel}>
-            {m.retranslatePreset}
-          </span>
-          <span className={styles.retranslateConfigName}>
-            {activeProofreadingPreset?.name ?? messages.runConfig.customPreset}
           </span>
           <span className={styles.retranslateConfigSwitch}>
             {m.switchModelPrompt}
