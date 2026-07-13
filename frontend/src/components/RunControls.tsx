@@ -249,19 +249,24 @@ export function RunControls({ kind, children }: RunControlsProps) {
 
   const handleContinue = useCallback(() => {
     if (controlPendingRef.current) return;
+    if (status === "completed") return;
     const taskId = probe.task_id;
     if (!taskId) return;
     setProbe((current) =>
       current.task_id === taskId ? { ...current, continuable: false } : current,
     );
     void dispatch(() => bridge.continueTask(taskId), "continue");
-  }, [bridge, dispatch, probe.task_id]);
+  }, [bridge, dispatch, probe.task_id, status]);
 
   // Pause is intentionally fused into Stop — the pause path was racy
   // and crash-prone. Stop is the only way to pause-then-resume now;
   // the user picks up via Continue (cache survives stop).
   const canStop = !idle && status === "running";
-  const canContinue = probe.continuable && !isInFlight;
+  // The progress snapshot can reach COMPLETED before the asynchronous
+  // continuability probe clears its previous result. Never expose that
+  // short stale window as an actionable Continue button.
+  const canContinue =
+    status !== "completed" && probe.continuable && !isInFlight;
   // Start looks inactive while a task is in flight, but stays clickable
   // so a triple-click can force-restart (see handleStartClick).
   const startActive = isInFlight;
