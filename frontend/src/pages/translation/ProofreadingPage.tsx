@@ -17,6 +17,7 @@ import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import { ChevronDownIcon } from "@/components/Icon";
+import { RequestLogPanel } from "@/components/RequestLogPanel";
 import {
   QuickSwitchModal,
   type QuickSwitchItem,
@@ -65,9 +66,17 @@ interface BatchRetranslateProgress {
   total: number;
   processed: number;
   completed: number;
+  unresolved: number;
   stale: number;
   failed: number;
-  current: number;
+  submitted: number;
+  active: number;
+  longestSeconds: number;
+}
+
+interface RetranslateActivity {
+  status: "pending" | "running";
+  elapsedSeconds: number;
 }
 
 interface ProofreadingItemMeta {
@@ -286,6 +295,13 @@ function summarizeReasons(reasons: string[]): string {
     .join("；");
 }
 
+function formatRetranslateElapsed(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(total / 60);
+  const remainder = total % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+}
+
 function getRetranslateConcurrency(
   model: ModelProfile | undefined,
   total: number,
@@ -444,6 +460,9 @@ export function ProofreadingPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [inflightRetranslates, setInflightRetranslates] = useState<
     Record<string, string>
+  >({});
+  const [retranslateActivities, setRetranslateActivities] = useState<
+    Record<string, RetranslateActivity>
   >({});
   const [resumeStartedForTask, setResumeStartedForTask] = useState<
     string | null
@@ -1147,6 +1166,16 @@ export function ProofreadingPage() {
       const tick = async () => {
         try {
           const status = await proofreadingBridge.retranslateStatus(requestId);
+          if (status.status === "pending" || status.status === "running") {
+            const activityStatus: RetranslateActivity["status"] = status.status;
+            setRetranslateActivities((prev) => ({
+              ...prev,
+              [segmentId]: {
+                status: activityStatus,
+                elapsedSeconds: status.elapsed_seconds,
+              },
+            }));
+          }
           if (status.status === "completed") {
             if (refreshOnComplete) {
               try {
@@ -1224,6 +1253,11 @@ export function ProofreadingPage() {
           delete next[segmentId];
           return next;
         });
+        setRetranslateActivities((prev) => {
+          const next = { ...prev };
+          delete next[segmentId];
+          return next;
+        });
       };
       void tick();
     });
@@ -1236,6 +1270,19 @@ export function ProofreadingPage() {
       const tick = async () => {
         try {
           const status = await proofreadingBridge.retranslateStatus(requestId);
+          if (status.status === "pending" || status.status === "running") {
+            const activityStatus: RetranslateActivity["status"] = status.status;
+            setRetranslateActivities((prev) => {
+              const next = { ...prev };
+              for (const segmentId of segmentIds) {
+                next[segmentId] = {
+                  status: activityStatus,
+                  elapsedSeconds: status.elapsed_seconds,
+                };
+              }
+              return next;
+            });
+          }
           if (status.status === "completed") {
             const outcomes = new Map<string, RetranslateOutcome>();
             for (const item of status.results) {
@@ -1311,6 +1358,11 @@ export function ProofreadingPage() {
       const finish = () => {
         forgetRetranslateRequest(requestId);
         setInflightRetranslates((prev) => {
+          const next = { ...prev };
+          for (const segmentId of segmentIds) delete next[segmentId];
+          return next;
+        });
+        setRetranslateActivities((prev) => {
           const next = { ...prev };
           for (const segmentId of segmentIds) delete next[segmentId];
           return next;
@@ -1513,9 +1565,12 @@ export function ProofreadingPage() {
       total: ids.length,
       processed: 0,
       completed: 0,
+      unresolved: 0,
       stale: 0,
       failed: 0,
-      current: concurrency,
+      submitted: 0,
+      active: 0,
+      longestSeconds: 0,
     });
     const previousById = new Map(
       (snapshot?.items ?? []).map((item) => [item.segment_id, item.dst]),
@@ -1525,19 +1580,34 @@ export function ProofreadingPage() {
     let launchedCount = 0;
     let processedCount = 0;
     let completedCount = 0;
+    let unresolvedCount = 0;
     let staleCount = 0;
     let failedCount = 0;
+    const activeBatches = new Map<number, { count: number; startedAt: number }>();
     const failedReasons: string[] = [];
     const updateProgress = () => {
+      const now = Date.now();
+      const active = Array.from(activeBatches.values()).reduce(
+        (count, item) => count + item.count,
+        0,
+      );
+      const longestSeconds = Array.from(activeBatches.values()).reduce(
+        (longest, item) => Math.max(longest, (now - item.startedAt) / 1000),
+        0,
+      );
       setBatchRetranslateProgress({
         total: ids.length,
         processed: processedCount,
         completed: completedCount,
+        unresolved: unresolvedCount,
         stale: staleCount,
         failed: failedCount,
-        current: Math.min(launchedCount, ids.length),
+        submitted: Math.min(launchedCount, ids.length),
+        active,
+        longestSeconds,
       });
     };
+    const progressTimer = window.setInterval(updateProgress, 1000);
     try {
       const workerCount = Math.max(1, concurrency);
       await Promise.all(
@@ -1546,10 +1616,20 @@ export function ProofreadingPage() {
             const index = nextIndex;
             nextIndex += 1;
             const batch = batches[index] ?? [];
-            launchedCount += batch.length;
-            updateProgress();
             await waitForRateSlot();
-            const outcomes = await runRetranslateBatch(batch);
+            launchedCount += batch.length;
+            activeBatches.set(index, {
+              count: batch.length,
+              startedAt: Date.now(),
+            });
+            updateProgress();
+            let outcomes: Map<string, RetranslateOutcome>;
+            try {
+              outcomes = await runRetranslateBatch(batch);
+            } finally {
+              activeBatches.delete(index);
+              updateProgress();
+            }
             for (const segmentId of batch) {
               const result = outcomes.get(segmentId) ?? {
                 status: "failed" as const,
@@ -1561,10 +1641,11 @@ export function ProofreadingPage() {
                 if (previous !== undefined) {
                   undoEntries.push({ segmentId, dst: previous });
                 }
+              } else if (result.status === "unresolved") {
+                unresolvedCount += 1;
               } else if (
                 result.status === "stale" ||
-                result.status === "skipped" ||
-                result.status === "unresolved"
+                result.status === "skipped"
               ) {
                 staleCount += 1;
               } else {
@@ -1586,11 +1667,17 @@ export function ProofreadingPage() {
       }
       const baseText = format(m.retranslateSelectedDone, {
         done: completedCount,
+        unresolved: unresolvedCount,
         stale: staleCount,
         failed: failedCount,
       });
       setFeedback({
-        kind: failedCount > 0 ? "error" : staleCount > 0 ? "info" : "success",
+        kind:
+          failedCount > 0
+            ? "error"
+            : unresolvedCount > 0 || staleCount > 0
+              ? "info"
+              : "success",
         text:
           failedReasons.length > 0
             ? format(m.retranslateSelectedDoneWithReasons, {
@@ -1603,6 +1690,7 @@ export function ProofreadingPage() {
         undoEntries.length > 0 ? { entries: undoEntries } : null,
       );
     } finally {
+      window.clearInterval(progressTimer);
       setBatchRetranslating(false);
       setBatchRetranslateProgress(null);
     }
@@ -1891,6 +1979,10 @@ export function ProofreadingPage() {
     }
     return parts.join("\n") || undefined;
   };
+  const activeTaskStatus = (tasks ?? []).find(
+    (task) => task.id === activeTaskId,
+  )?.status;
+  const hasActiveRetranslate = Object.keys(inflightRetranslates).length > 0;
 
   return (
     <Panel title={m.title} subtitle={m.sub}>
@@ -1947,6 +2039,11 @@ export function ProofreadingPage() {
           ) : null}
         </div>
         <div className={styles.taskActions}>
+          <RequestLogPanel
+            kind="translation"
+            taskId={activeTaskId}
+            taskStatus={hasActiveRetranslate ? "running" : activeTaskStatus}
+          />
           <Pill
             onClick={() => void handleRegenerate(false)}
             disabled={Boolean(regenerating) || !activeTaskId}
@@ -2247,10 +2344,15 @@ export function ProofreadingPage() {
             </span>
             <span>
               {format(m.retranslateProgressDetail, {
-                current: batchRetranslateProgress.current,
+                submitted: batchRetranslateProgress.submitted,
+                active: batchRetranslateProgress.active,
                 completed: batchRetranslateProgress.completed,
+                unresolved: batchRetranslateProgress.unresolved,
                 stale: batchRetranslateProgress.stale,
                 failed: batchRetranslateProgress.failed,
+                longest: formatRetranslateElapsed(
+                  batchRetranslateProgress.longestSeconds,
+                ),
               })}
             </span>
           </div>
@@ -2616,7 +2718,19 @@ export function ProofreadingPage() {
                   )}
                 >
                   {inflightRetranslates[selectedItem.segment_id]
-                    ? m.retranslating
+                    ? retranslateActivities[selectedItem.segment_id]
+                      ? format(m.retranslatingDetail, {
+                          phase:
+                            retranslateActivities[selectedItem.segment_id]
+                              .status === "pending"
+                              ? m.retranslateQueued
+                              : m.retranslateRequesting,
+                          time: formatRetranslateElapsed(
+                            retranslateActivities[selectedItem.segment_id]
+                              .elapsedSeconds,
+                          ),
+                        })
+                      : m.retranslating
                     : m.retranslateAction}
                 </Pill>
                 <Pill

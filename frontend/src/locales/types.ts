@@ -768,6 +768,9 @@ export interface Messages {
       retranslateFilteredAction: string;
       retranslateFilteredDisabled: string;
       retranslating: string;
+      retranslatingDetail: string;
+      retranslateQueued: string;
+      retranslateRequesting: string;
       retranslateSuccess: string;
       retranslateSelectedDone: string;
       retranslateSelectedDoneWithReasons: string;

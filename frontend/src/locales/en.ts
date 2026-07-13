@@ -1182,15 +1182,18 @@ export const en: Messages = {
       retranslateFilteredDisabled:
         "There are no rows in the current list to retranslate.",
       retranslating: "Retranslating…",
+      retranslatingDetail: "{phase} {time}",
+      retranslateQueued: "Queued",
+      retranslateRequesting: "Requesting",
       retranslateSuccess: "Retranslated and saved to cache.",
       retranslateSelectedDone:
-        "Batch retranslate finished: {done} completed, {stale} discarded, {failed} failed.",
+        "Batch retranslate finished: {done} completed, {unresolved} not improved, {stale} discarded, {failed} failed.",
       retranslateSelectedDoneWithReasons:
         "{summary} Failure reasons: {reasons}.",
       retranslateProgressLabel:
-        "Batch retranslate progress: {processed}/{total} ({percent}%)",
+        "Batch retranslate: {processed}/{total} processed ({percent}%)",
       retranslateProgressDetail:
-        "Current {current} · completed {completed} · discarded {stale} · failed {failed}",
+        "submitted {submitted} · active {active} · completed {completed} · not improved {unresolved} · discarded {stale} · failed {failed} · longest {longest}",
       retranslateUndoAction: "Undo last retranslate",
       retranslateUndoRunning: "Undoing…",
       retranslateUndoDone: "Undid {n} retranslated item(s).",

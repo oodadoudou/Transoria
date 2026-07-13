@@ -1145,14 +1145,17 @@ export const zh: Messages = {
       retranslateFilteredAction: "重翻当前列表 {n} 条",
       retranslateFilteredDisabled: "当前列表没有可重翻条目。",
       retranslating: "重翻中…",
+      retranslatingDetail: "{phase} {time}",
+      retranslateQueued: "排队中",
+      retranslateRequesting: "请求中",
       retranslateSuccess: "已重翻并写入缓存。",
       retranslateSelectedDone:
-        "批量重翻完成：成功 {done} 条，丢弃 {stale} 条，失败 {failed} 条。",
+        "批量重翻完成：成功 {done} 条，未改善 {unresolved} 条，丢弃 {stale} 条，失败 {failed} 条。",
       retranslateSelectedDoneWithReasons: "{summary} 失败原因：{reasons}。",
       retranslateProgressLabel:
-        "批量重翻进度：{processed}/{total}（{percent}%）",
+        "批量重翻：已处理 {processed}/{total}（{percent}%）",
       retranslateProgressDetail:
-        "当前第 {current} 条 · 成功 {completed} · 丢弃 {stale} · 失败 {failed}",
+        "已提交 {submitted} · 进行中 {active} · 成功 {completed} · 未改善 {unresolved} · 丢弃 {stale} · 失败 {failed} · 最长 {longest}",
       retranslateUndoAction: "撤回上次重翻",
       retranslateUndoRunning: "撤回中…",
       retranslateUndoDone: "已撤回 {n} 条重翻结果。",

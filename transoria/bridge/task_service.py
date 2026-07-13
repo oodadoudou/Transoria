@@ -50,6 +50,7 @@ from transoria.prompts import (
 )
 from transoria.runtime.cache import TaskCache, TaskNotFoundError
 from transoria.runtime.executor import TaskExecutor
+from transoria.runtime.request_log import request_log_scope
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskRecord, TaskSnapshot
 from transoria.runtime.task_timing import (
@@ -338,6 +339,10 @@ def _retranslate_job_segment_ids(job: RetranslateJob) -> set[str]:
             if item.get("segment_id") not in (None, "")
         }
     return {job.segment_id}
+
+
+def _retranslate_log_subtask_id(request_id: str) -> str:
+    return f"proofreading-{request_id}"
 
 
 @dataclass(frozen=True)
@@ -757,6 +762,7 @@ def _format_request_events(
     status: str = "",
     task_status: TaskStatus | None = None,
     subtask_statuses: Mapping[str, SubtaskStatus] | None = None,
+    live_subtask_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, object]], int]:
     latest_by_request: dict[str, dict[str, object]] = {}
     order: dict[str, int] = {}
@@ -778,6 +784,7 @@ def _format_request_events(
             row,
             task_status=task_status,
             subtask_statuses=subtask_statuses or {},
+            live_subtask_ids=live_subtask_ids or set(),
         )
         for row in rows
     ]
@@ -796,11 +803,14 @@ def _cancel_stale_running_request_event(
     *,
     task_status: TaskStatus | None,
     subtask_statuses: Mapping[str, SubtaskStatus],
+    live_subtask_ids: set[str] | None = None,
 ) -> dict[str, object]:
     current = dict(row)
     if current.get("status") != "running":
         return current
     subtask_id = str(current.get("subtask_id", ""))
+    if subtask_id in (live_subtask_ids or set()):
+        return current
     subtask_status = subtask_statuses.get(subtask_id)
     if subtask_status is SubtaskStatus.RUNNING:
         return current
@@ -1996,6 +2006,17 @@ class TaskService:
             if job.error:
                 result["error"] = job.error
             results.append(result)
+        created_at = _parse_iso_timestamp(job.created_at_wall)
+        finished_at = (
+            _parse_iso_timestamp(job.updated_at_wall)
+            if job.status in _RETRANSLATE_TERMINAL_STATUSES
+            else datetime.now(timezone.utc)
+        )
+        elapsed_seconds = (
+            max(0.0, (finished_at - created_at).total_seconds())
+            if created_at is not None and finished_at is not None
+            else 0.0
+        )
         return {
             "request_id": job.request_id,
             "task_id": job.task_id,
@@ -2007,6 +2028,11 @@ class TaskService:
             "last_error": job.last_error,
             "last_translation": job.last_translation,
             "results": results,
+            "model_id": job.model_id or "",
+            "segment_count": len(job.batch_items or ()) or 1,
+            "created_at": job.created_at_wall,
+            "updated_at": job.updated_at_wall,
+            "elapsed_seconds": round(elapsed_seconds, 1),
         }
 
     def _sync_completed_retranslate_result(self, job: RetranslateJob) -> None:
@@ -2141,16 +2167,23 @@ class TaskService:
         if self._finish_retranslate_if_cache_changed(job):
             return
         try:
-            runner_result = asyncio.run(
-                self._call_runner_for_retranslate(
-                    job.seg_data,
-                    job.metadata,
-                    model_id=job.model_id,
-                    model_snapshot=job.model_snapshot,
-                    prompt_preset_id=job.prompt_preset_id,
-                    prompt_snapshot=job.prompt_snapshot,
+            with request_log_scope(
+                self.cache,
+                task_id=job.task_id,
+                subtask_id=_retranslate_log_subtask_id(job.request_id),
+                subtask_attempt=job.attempts,
+                clock=_utc_now_iso,
+            ):
+                runner_result = asyncio.run(
+                    self._call_runner_for_retranslate(
+                        job.seg_data,
+                        job.metadata,
+                        model_id=job.model_id,
+                        model_snapshot=job.model_snapshot,
+                        prompt_preset_id=job.prompt_preset_id,
+                        prompt_snapshot=job.prompt_snapshot,
+                    )
                 )
-            )
         except BridgeError as exc:
             job.error = f"{exc.code}: {exc.payload.message}"
             job.last_error = job.error
@@ -2315,20 +2348,26 @@ class TaskService:
             ready.append(item)
 
         try:
-            runner_result = (
-                asyncio.run(
-                    self._call_runner_for_retranslate_batch(
-                        tuple(dict(item["seg_data"]) for item in ready),
-                        job.metadata,
-                        model_id=job.model_id,
-                        model_snapshot=job.model_snapshot,
-                        prompt_preset_id=job.prompt_preset_id,
-                        prompt_snapshot=job.prompt_snapshot,
+            if ready:
+                with request_log_scope(
+                    self.cache,
+                    task_id=job.task_id,
+                    subtask_id=_retranslate_log_subtask_id(job.request_id),
+                    subtask_attempt=job.attempts,
+                    clock=_utc_now_iso,
+                ):
+                    runner_result = asyncio.run(
+                        self._call_runner_for_retranslate_batch(
+                            tuple(dict(item["seg_data"]) for item in ready),
+                            job.metadata,
+                            model_id=job.model_id,
+                            model_snapshot=job.model_snapshot,
+                            prompt_preset_id=job.prompt_preset_id,
+                            prompt_snapshot=job.prompt_snapshot,
+                        )
                     )
-                )
-                if ready
-                else _RetranslateRunnerResult({}, {})
-            )
+            else:
+                runner_result = _RetranslateRunnerResult({}, {})
         except Exception as exc:  # noqa: BLE001
             job.error = (
                 f"{exc.code}: {exc.payload.message}"
@@ -4673,6 +4712,12 @@ class TaskService:
                     request_events=events,
                 ),
             )
+        with self._retranslate_lock:
+            live_retranslate_subtasks = {
+                _retranslate_log_subtask_id(job.request_id)
+                for job in self._retranslate_jobs.values()
+                if job.task_id == task_id and job.status in {"pending", "running"}
+            }
         formatted, total = _format_request_events(
             events,
             limit=limit,
@@ -4684,6 +4729,7 @@ class TaskService:
             }
             if snapshot is not None
             else {},
+            live_subtask_ids=live_retranslate_subtasks,
         )
         return {
             "events": formatted,

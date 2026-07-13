@@ -279,10 +279,54 @@ def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):
     final = _wait_for_status(service, request_id, {"completed", "failed", "stale"})
     assert final["status"] == "completed", final
     assert final["result_dst"] == "重翻译文0"
+    assert final["model_id"] == "test-profile"
+    assert final["segment_count"] == 1
+    assert final["created_at"]
+    assert final["elapsed_seconds"] >= 0
 
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == "重翻译文0"
+
+
+def test_retranslate_writes_live_and_completed_request_log_events(tmp_path: Path):
+    release = threading.Event()
+    transport = _StubTransport(block_event=release)
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(service)
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    deadline = time.monotonic() + 5.0
+    while not transport.requests and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    live = service.read_request_events(
+        kind="translation",
+        task_id="translation-pf-rt-1",
+    )
+    assert live["events"][0]["status"] == "running"
+    assert live["events"][0]["model_profile_id"] == "test-profile"
+    assert live["events"][0]["subtask_id"].startswith(
+        "proofreading-retranslate-"
+    )
+
+    release.set()
+    final = _wait_for_status(
+        service, response["request_id"], {"completed", "failed"}
+    )
+    completed = service.read_request_events(
+        kind="translation",
+        task_id="translation-pf-rt-1",
+    )
+
+    assert final["status"] == "completed"
+    assert completed["events"][0]["status"] == "completed"
+    assert completed["events"][0]["phase"] == "completed"
 
 
 def test_retranslate_batch_sends_five_segments_in_one_request_and_patches_all(

@@ -95,6 +95,11 @@ type RetranslateStatusResponse = {
   attempts: number;
   last_error: string;
   last_translation: string;
+  model_id: string;
+  segment_count: number;
+  created_at: string;
+  updated_at: string;
+  elapsed_seconds: number;
   results: Array<{
     segment_id: string;
     status: "completed" | "failed" | "stale" | "skipped" | "unresolved";
