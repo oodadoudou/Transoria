@@ -708,7 +708,7 @@ def test_orchestrator_completes_persistent_source_echo_for_proofreading(
     assert terminal_failures == []
 
 
-def test_continue_does_not_reissue_completed_quality_warnings(
+def test_continue_recovers_only_completed_source_fallback_rows(
     tmp_path: Path,
 ) -> None:
     input_dir = tmp_path / "in"
@@ -808,12 +808,15 @@ def test_continue_does_not_reissue_completed_quality_warnings(
     recovered_result = asyncio.run(orchestrator.run(switched_config))
 
     assert recovered_result.final_status is TaskStatus.COMPLETED
-    assert transport.request_segment_ids == []
+    assert transport.request_segment_ids == [
+        ["1", "2", "3", "4", "5"],
+        ["6"],
+    ]
     recovered_body = recovered_result.translated_outputs[0].read_text(encoding="utf-8")
     for index in (0, *range(7, 13)):
         assert f"初始正常译文-0:{index}" in recovered_body
     for index in range(1, 7):
-        assert sources[index] in recovered_body
+        assert f"补救译文-{index}" in recovered_body
 
 
 def test_split_failed_payload_clears_context_lines() -> None:

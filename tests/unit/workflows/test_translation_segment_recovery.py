@@ -234,7 +234,7 @@ def test_recovery_runner_fails_only_missing_row_and_preserves_existing_text() ->
     assert payload["accepted_overrides"] == ["0:0"]
 
 
-def test_prepare_segment_recovery_keeps_completed_quality_warning_for_review(
+def test_prepare_segment_recovery_targets_completed_source_fallback(
     tmp_path,
 ) -> None:
     cache = TaskCache(tmp_path)
@@ -279,13 +279,65 @@ def test_prepare_segment_recovery_keeps_completed_quality_warning_for_review(
     )
 
     snapshot = cache.load(task_id)
-    assert _segment_recovery_candidates(snapshot.subtasks) == set()
+    assert _segment_recovery_candidates(snapshot.subtasks) == {"0:1"}
     _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
     updated = {subtask.id: subtask for subtask in cache.load_subtasks(task_id)}
 
     assert updated["chunk-00000"].status is SubtaskStatus.COMPLETED
-    assert updated["chunk-00001"].status is SubtaskStatus.COMPLETED
+    assert updated["chunk-00001"].status is SubtaskStatus.PENDING
+    assert updated["chunk-00001"].request_payload[RECOVERY_SEGMENT_IDS_KEY] == [
+        "0:1"
+    ]
+
+
+def test_prepare_segment_recovery_combines_completed_residue_with_http_failure(
+    tmp_path,
+) -> None:
+    cache = TaskCache(tmp_path)
+    task_id = "translation-mixed-recovery"
+    fallback = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.COMPLETED,
+        request_payload={"segments": [_segment(0), _segment(1)]},
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "원문", "0:1": "正常译文"},
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["fell_back_to_source_after_max_retries"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+    )
+    failed = Subtask(
+        id="chunk-00001",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={"segments": [_segment(2), _segment(3)]},
+        last_error="[llm.http_error] LlmRequestError: HTTP 503 from provider",
+    )
+    cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [fallback, failed],
+    )
+
+    snapshot = cache.load(task_id)
+    _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
+    updated = {subtask.id: subtask for subtask in cache.load_subtasks(task_id)}
+
+    assert updated["chunk-00000"].status is SubtaskStatus.PENDING
+    assert updated["chunk-00000"].request_payload[RECOVERY_SEGMENT_IDS_KEY] == [
+        "0:0"
+    ]
+    assert updated["chunk-00001"].status is SubtaskStatus.PENDING
     assert RECOVERY_SEGMENT_IDS_KEY not in updated["chunk-00001"].request_payload
+    assert len(updated["chunk-00001"].request_payload["segments"]) == 2
 
 
 def test_prepare_segment_recovery_retries_http_400_as_whole_chunk(tmp_path) -> None:
@@ -410,8 +462,8 @@ def test_prepare_segment_recovery_targets_only_explicit_source_residue(
     _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
     updated = cache.load_subtasks(task_id)[0]
 
-    assert updated.status is SubtaskStatus.COMPLETED
-    assert RECOVERY_SEGMENT_IDS_KEY not in updated.request_payload
+    assert updated.status is SubtaskStatus.PENDING
+    assert updated.request_payload[RECOVERY_SEGMENT_IDS_KEY] == ["0:0"]
     assert updated.last_error == ""
 
 

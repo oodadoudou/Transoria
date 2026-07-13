@@ -674,9 +674,15 @@ def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
 
     candidates: set[str] = set()
     for subtask in subtasks:
-        if subtask.status is not SubtaskStatus.FAILED:
+        if subtask.status not in {
+            SubtaskStatus.COMPLETED,
+            SubtaskStatus.FAILED,
+        }:
             continue
-        if _is_model_or_request_failure(subtask.last_error):
+        if (
+            subtask.status is SubtaskStatus.FAILED
+            and _is_model_or_request_failure(subtask.last_error)
+        ):
             continue
         candidates.update(_source_residue_segment_ids(_decode_subtask_payload(subtask)))
     return candidates - accepted
