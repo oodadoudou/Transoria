@@ -87,6 +87,7 @@ _LOW_CONFIDENCE_MICRO_BATCH_MAX_SEGMENTS = 5
 _LOW_CONFIDENCE_MICRO_BATCH_TOKEN_CAP = 1200
 _MASS_SOURCE_RESIDUE_MIN_SEGMENTS = 4
 _MASS_SOURCE_RESIDUE_RATIO = 0.5
+_TERMINAL_MASS_SOURCE_RESIDUE_RATIO = 0.2
 _HIGH_CONCURRENCY_THRESHOLD = 20
 _HIGH_CONCURRENCY_BATCH_TIMEOUT_SECONDS = 360.0
 _HIGH_CONCURRENCY_RESCUE_TIMEOUT_SECONDS = 60.0
@@ -1325,10 +1326,9 @@ class TranslationSubtaskRunner:
                     self.source_language,
                 ):
                     terminal_source_residue_count += 1
-            if _should_fail_for_mass_source_residue(
+            if _should_fail_for_terminal_source_residue(
                 terminal_source_residue_count,
                 len(metadata),
-                include_small_all=True,
             ):
                 for meta in metadata:
                     final_text = finalized.get(meta.segment_id)
@@ -1966,6 +1966,17 @@ def _should_fail_for_mass_source_residue(
     return (
         count >= _MASS_SOURCE_RESIDUE_MIN_SEGMENTS
         and count / total >= _MASS_SOURCE_RESIDUE_RATIO
+    )
+
+
+def _should_fail_for_terminal_source_residue(count: int, total: int) -> bool:
+    if total <= 0:
+        return False
+    if 1 < total < _MASS_SOURCE_RESIDUE_MIN_SEGMENTS and count == total:
+        return True
+    return (
+        count >= _MASS_SOURCE_RESIDUE_MIN_SEGMENTS
+        and count / total >= _TERMINAL_MASS_SOURCE_RESIDUE_RATIO
     )
 
 

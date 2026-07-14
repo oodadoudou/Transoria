@@ -563,7 +563,9 @@ def test_orchestrator_does_not_split_empty_response_failure(tmp_path: Path) -> N
     assert children == []
 
 
-def test_orchestrator_completes_mass_source_echo_for_proofreading(tmp_path: Path) -> None:
+def test_orchestrator_fails_mass_source_echo_for_model_switch_recovery(
+    tmp_path: Path,
+) -> None:
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"
     input_dir.mkdir()
@@ -620,7 +622,7 @@ def test_orchestrator_completes_mass_source_echo_for_proofreading(tmp_path: Path
         )
     )
 
-    assert result.final_status is TaskStatus.COMPLETED
+    assert result.final_status is TaskStatus.FAILED
     assert result.statistics.failed_subtasks == 0
     assert transport.request_line_counts == [4, 4]
     body = result.translated_outputs[0].read_text(encoding="utf-8")
@@ -633,7 +635,7 @@ def test_orchestrator_completes_mass_source_echo_for_proofreading(tmp_path: Path
     assert children == []
 
 
-def test_orchestrator_completes_persistent_source_echo_for_proofreading(
+def test_orchestrator_fails_persistent_source_echo_for_model_switch_recovery(
     tmp_path: Path,
 ) -> None:
     input_dir = tmp_path / "in"
@@ -691,7 +693,7 @@ def test_orchestrator_completes_persistent_source_echo_for_proofreading(
         )
     )
 
-    assert result.final_status is TaskStatus.COMPLETED
+    assert result.final_status is TaskStatus.FAILED
     assert len(result.translated_outputs) == 1
     assert result.statistics.failed_subtasks == 0
     assert transport.request_line_counts[0] == 4

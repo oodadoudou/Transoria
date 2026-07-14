@@ -1478,6 +1478,40 @@ def test_runner_keeps_mass_source_residue_after_micro_batch_still_echoes() -> No
     assert len(transport.requests) == 2
 
 
+def test_runner_marks_terminal_source_residue_at_twenty_percent() -> None:
+    sources = tuple(f"안녕하세요 친구입니다 정말 긴 문장 {idx}" for idx in range(32))
+    initial = "\n".join(
+        json.dumps(
+            {str(idx): text if idx < 7 else f"中文译文 {idx}"},
+            ensure_ascii=False,
+        )
+        for idx, text in enumerate(sources)
+    )
+    transport = FakeTransport(
+        responses=[TransportResult(200, _ok_body(initial + "\n"))]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=0,
+    )
+
+    result = asyncio.run(runner.run(_make_subtask(sources=sources)))
+
+    payload = json.loads(result.response_content)
+    systemic = [
+        item
+        for item in payload["low_confidence"]
+        if "mass_source_residue_after_retry" in item["reasons"]
+    ]
+    assert len(systemic) == 7
+    assert len(transport.requests) == 1
+
+
 def test_runner_keeps_small_chunk_if_all_solo_retries_still_echo_source() -> None:
     sources = ("안녕하세요 친구입니다 정말 긴 문장 0", "오늘도 같이 갑니다 정말 긴 문장 1")
     initial = "\n".join(

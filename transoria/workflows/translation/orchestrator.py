@@ -308,6 +308,13 @@ class TranslationOrchestrator:
         ):
             snapshot = await executor.run(task_id)
 
+        if (
+            snapshot.record.status is TaskStatus.COMPLETED
+            and _has_systemic_source_residue(snapshot.subtasks)
+        ):
+            self._mark_task_status(task_id, TaskStatus.FAILED)
+            snapshot = self.cache.load(task_id)
+
         translations_by_segment, low_confidence_records = _collect_translations(
             snapshot.subtasks
         )
@@ -646,6 +653,19 @@ def _source_residue_segment_ids(payload: Mapping[str, object]) -> set[str]:
         for segment_id, record in low_confidence_by_segment(payload).items()
         if _is_recoverable_source_residue(record)
     }
+
+
+def _has_systemic_source_residue(subtasks: tuple[Subtask, ...]) -> bool:
+    for subtask in subtasks:
+        if subtask.status is not SubtaskStatus.COMPLETED:
+            continue
+        for record in low_confidence_by_segment(
+            _decode_subtask_payload(subtask)
+        ).values():
+            reasons = record.get("reasons", [])
+            if "mass_source_residue_after_retry" in reasons:
+                return True
+    return False
 
 
 def _is_recoverable_source_residue(record: Mapping[str, object]) -> bool:
