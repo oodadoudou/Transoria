@@ -26,6 +26,12 @@ import {
 import { useToastStore } from "@/store/useToastStore";
 import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
+import {
+  EpubToolActionDock,
+  EpubToolAdvancedSettings,
+  EpubToolStage,
+  EpubToolWorkspace,
+} from "./EpubToolWorkflow";
 import styles from "./EpubMergePage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -155,6 +161,13 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
     snapshot.progress.total > 0
       ? Math.floor((settled / snapshot.progress.total) * 100)
       : 0;
+  const stage = isRunning
+    ? "progress"
+    : artifacts
+      ? "result"
+      : plan
+        ? "preview"
+        : "idle";
 
   const handlePreview = async () => {
     setActionError(null);
@@ -280,7 +293,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
   };
 
   return (
-    <>
+    <EpubToolWorkspace>
       <Panel
         title={embedded ? undefined : text.title}
         subtitle={embedded ? undefined : text.sub}
@@ -333,8 +346,9 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             />
           </label>
         </div>
-        <div className={styles.optionsGrid}>
-          <label className={styles.option}>
+        <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
+          <div className={styles.optionsGrid}>
+            <label className={styles.option}>
             <input
               type="checkbox"
               checked={options.recursive}
@@ -346,9 +360,9 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
               }
             />
             {text.recursive}
-          </label>
-          {outputFormat === "epub" ? (
-            <>
+            </label>
+            {outputFormat === "epub" ? (
+              <>
               <label className={styles.option}>
                 <input
                   type="checkbox"
@@ -375,30 +389,14 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                 />
                 {text.keepOriginalImages}
               </label>
-            </>
-          ) : null}
-        </div>
-        <div className={styles.actionRow}>
-          <Pill onClick={handlePreview} disabled={!inputDir || isRunning}>
-            {text.scan}
-          </Pill>
-          <Pill
-            onClick={handleExecute}
-            disabled={!inputDir || selectedCount < 1 || isRunning}
-          >
-            {text.execute}
-          </Pill>
-          <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
-            {text.stop}
-          </Pill>
-          {actionError ? (
-            <span className={styles.actionError}>
-              <code>{actionError.code}</code> {actionError.message}
-            </span>
-          ) : null}
-        </div>
+              </>
+            ) : null}
+          </div>
+        </EpubToolAdvancedSettings>
       </Panel>
 
+      <EpubToolStage>
+      {stage === "idle" || stage === "preview" ? (
       <Panel label={text.previewLabel}>
         {plan ? (
           <>
@@ -539,7 +537,9 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
           <p className={styles.empty}>{text.noPlan}</p>
         )}
       </Panel>
+      ) : null}
 
+      {stage === "progress" ? (
       <Panel label={text.progressLabel}>
         <div className={styles.summaryGrid}>
           <Stat label={text.statusLabel} value={`${snapshot.status} · ${percent}%`} />
@@ -547,7 +547,9 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
           <Stat label={text.failedFiles} value={NUM.format(snapshot.progress.failed)} />
         </div>
       </Panel>
+      ) : null}
 
+      {stage === "result" ? (
       <Panel label={text.artifactsLabel}>
         {artifacts ? (
           <>
@@ -649,7 +651,43 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
           <p className={styles.empty}>-</p>
         )}
       </Panel>
-    </>
+      ) : null}
+      </EpubToolStage>
+
+      <EpubToolActionDock
+        statusLabel={text.statusLabel}
+        status={
+          stage === "preview"
+            ? `${text.selectedCount} ${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`
+            : stage === "progress"
+              ? `${snapshot.status} · ${percent}%`
+              : stage === "result" && report
+                ? outcomeLabel(report.outcome, text)
+                : text.previewLabel
+        }
+        actions={
+          <>
+            <Pill variant="ghost" onClick={handlePreview} disabled={!inputDir || isRunning}>
+              {text.scan}
+            </Pill>
+            <Pill
+              onClick={handleExecute}
+              disabled={!plan || selectedCount < 1 || isRunning}
+            >
+              {text.execute}
+            </Pill>
+            <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
+              {text.stop}
+            </Pill>
+          </>
+        }
+        error={actionError ? (
+          <span className={styles.actionError}>
+            <code>{actionError.code}</code> {actionError.message}
+          </span>
+        ) : undefined}
+      />
+    </EpubToolWorkspace>
   );
 }
 

@@ -25,6 +25,12 @@ import {
 import { useToastStore } from "@/store/useToastStore";
 import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
+import {
+  EpubToolActionDock,
+  EpubToolAdvancedSettings,
+  EpubToolStage,
+  EpubToolWorkspace,
+} from "./EpubToolWorkflow";
 import styles from "./EpubConvertPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -130,6 +136,15 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
       : 0;
   const canExecute =
     Boolean(inputPath) && !isRunning && (mode === "file" || selectedCount > 0);
+  const stage = isRunning
+    ? "progress"
+    : artifacts
+      ? "result"
+      : mode === "folder"
+        ? "preview"
+        : activeTaskId
+          ? "progress"
+          : "idle";
 
   const clearPreviewState = () => {
     setPlan(null);
@@ -242,7 +257,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
   };
 
   return (
-    <>
+    <EpubToolWorkspace>
       <Panel
         title={embedded ? undefined : text.title}
         subtitle={embedded ? undefined : text.sub}
@@ -287,61 +302,42 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
             </div>
           )}
         </div>
-        <div className={styles.optionsGrid}>
-          <FolderPickerRow
-            label={text.outputFolder}
-            value={options.output_dir}
-            variant="output"
-            onChange={(path) =>
-              setOptions((prev) => ({ ...prev, output_dir: path }))
-            }
-            historyKey="general_tools:epub_convert:output_folder"
-            compact
-          />
-          <span className={styles.hint}>{text.outputHint}</span>
-        </div>
-        {mode === "folder" ? (
+        <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
           <div className={styles.optionsGrid}>
-            <label className={styles.option}>
-              <input
-                type="checkbox"
-                checked={options.recursive}
-                onChange={(event) =>
-                  setOptions((prev) => ({
-                    ...prev,
-                    recursive: event.target.checked,
-                  }))
-                }
-              />
-              {text.recursive}
-            </label>
+            <FolderPickerRow
+              label={text.outputFolder}
+              value={options.output_dir}
+              variant="output"
+              onChange={(path) =>
+                setOptions((prev) => ({ ...prev, output_dir: path }))
+              }
+              historyKey="general_tools:epub_convert:output_folder"
+              compact
+            />
             <span className={styles.hint}>{text.outputHint}</span>
           </div>
-        ) : null}
-        <div className={styles.actionRow}>
           {mode === "folder" ? (
-            <Pill onClick={handlePreview} disabled={!inputPath || isRunning}>
-              {text.scan}
-            </Pill>
+            <div className={styles.optionsGrid}>
+              <label className={styles.option}>
+                <input
+                  type="checkbox"
+                  checked={options.recursive}
+                  onChange={(event) =>
+                    setOptions((prev) => ({
+                      ...prev,
+                      recursive: event.target.checked,
+                    }))
+                  }
+                />
+                {text.recursive}
+              </label>
+            </div>
           ) : null}
-          <Pill
-            onClick={handleExecute}
-            disabled={!canExecute}
-          >
-            {text.execute}
-          </Pill>
-          <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
-            {text.stop}
-          </Pill>
-          {actionError ? (
-            <span className={styles.actionError}>
-              <code>{actionError.code}</code> {actionError.message}
-            </span>
-          ) : null}
-        </div>
+        </EpubToolAdvancedSettings>
       </Panel>
 
-      {mode === "folder" ? (
+      <EpubToolStage>
+      {stage === "preview" ? (
         <Panel label={text.previewLabel}>
           {plan ? (
             <>
@@ -405,7 +401,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
         </Panel>
       ) : null}
 
-      {activeTaskId ? (
+      {stage === "progress" ? (
         <Panel label={text.progressLabel}>
           <div className={styles.summaryGrid}>
             <Stat label={text.statusLabel} value={snapshot.status} />
@@ -421,7 +417,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
         </Panel>
       ) : null}
 
-      {artifacts ? (
+      {stage === "result" && artifacts ? (
         <Panel label={text.artifactsLabel}>
           <div className={styles.summaryGrid}>
             <Stat
@@ -525,7 +521,41 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
           ) : null}
         </Panel>
       ) : null}
-    </>
+      </EpubToolStage>
+
+      <EpubToolActionDock
+        statusLabel={text.statusLabel}
+        status={
+          stage === "preview" && plan
+            ? `${text.selectedCount} ${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`
+            : stage === "progress"
+              ? `${snapshot.status} · ${percent}%`
+              : stage === "result"
+                ? text.artifactsLabel
+                : text.previewLabel
+        }
+        actions={
+          <>
+            {mode === "folder" ? (
+              <Pill variant="ghost" onClick={handlePreview} disabled={!inputPath || isRunning}>
+                {text.scan}
+              </Pill>
+            ) : null}
+            <Pill onClick={handleExecute} disabled={!canExecute}>
+              {text.execute}
+            </Pill>
+            <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
+              {text.stop}
+            </Pill>
+          </>
+        }
+        error={actionError ? (
+          <span className={styles.actionError}>
+            <code>{actionError.code}</code> {actionError.message}
+          </span>
+        ) : undefined}
+      />
+    </EpubToolWorkspace>
   );
 }
 

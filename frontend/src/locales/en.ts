@@ -498,7 +498,7 @@ export const en: Messages = {
     successWithWarnings: "Success with warnings",
     failed: "Failed",
     revealOutput: "Show in Finder",
-    advancedSettings: "Advanced settings",
+    advancedSettings: "Settings",
     readyLabel: "Ready to scan",
     actionsLabel: "Compression actions",
   },
@@ -1852,6 +1852,7 @@ export const en: Messages = {
     copyPath: "Copy path",
     copyPathDone: "Path copied",
     copyPathFailed: "Copy failed",
+    advancedSettings: "Settings",
   },
 };
 

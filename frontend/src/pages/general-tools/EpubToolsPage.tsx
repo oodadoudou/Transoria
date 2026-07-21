@@ -4,7 +4,7 @@ import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
-import type { GeneralToolsPage } from "@/store/useTaskStore";
+import { useTaskStore, type GeneralToolsPage } from "@/store/useTaskStore";
 import { EpubCompressPage } from "./EpubCompressPage";
 import { EpubConvertPage } from "./EpubConvertPage";
 import { EpubMergePage } from "./EpubMergePage";
@@ -22,6 +22,7 @@ interface EpubToolsPageProps {
 export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   const messages = useMessages();
   const text = messages.generalTools.epubTools;
+  const navigate = useTaskStore((state) => state.navigate);
   const [activeTool, setActiveTool] = useState<EpubToolPage | null>(initialTool);
   const tools = useMemo(
     () =>
@@ -56,7 +57,16 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
           title: messages.generalTools.epubRepair.title,
           sub: messages.generalTools.epubRepair.sub,
         },
-      ] satisfies Array<{ id: EpubToolPage; title: string; sub: string }>,
+        {
+          id: "batchReplacement",
+          title: messages.batchReplacement.title,
+          sub: messages.batchReplacement.sub,
+        },
+      ] satisfies Array<{
+        id: EpubToolPage | "batchReplacement";
+        title: string;
+        sub: string;
+      }>,
     [messages],
   );
   const activeSpec = tools.find((tool) => tool.id === activeTool) ?? null;
@@ -75,7 +85,13 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
               key={tool.id}
               type="button"
               className={styles.toolButton}
-              onClick={() => setActiveTool(tool.id)}
+              onClick={() => {
+                if (tool.id === "batchReplacement") {
+                  navigate({ module: "general-tools", page: "batchReplacement" });
+                  return;
+                }
+                setActiveTool(tool.id);
+              }}
             >
               <span>{tool.title}</span>
               <small>{tool.sub}</small>

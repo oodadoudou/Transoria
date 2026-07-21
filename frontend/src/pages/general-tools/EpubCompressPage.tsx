@@ -25,6 +25,12 @@ import {
 import { useToastStore } from "@/store/useToastStore";
 import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
+import {
+  EpubToolActionDock,
+  EpubToolAdvancedSettings,
+  EpubToolStage,
+  EpubToolWorkspace,
+} from "./EpubToolWorkflow";
 import styles from "./EpubCompressPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -240,7 +246,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
   };
 
   return (
-    <div className={styles.workspace}>
+    <EpubToolWorkspace>
       <Panel
         className={styles.configuration}
         title={embedded ? undefined : text.title}
@@ -286,8 +292,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
             </div>
           )}
         </div>
-        <details className={styles.advancedSettings}>
-          <summary>{text.advancedSettings}</summary>
+        <EpubToolAdvancedSettings label={text.advancedSettings}>
           <div className={styles.optionsGrid}>
             <label className={styles.option}>
               <input
@@ -358,10 +363,10 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               />
             </label>
           </div>
-        </details>
+        </EpubToolAdvancedSettings>
       </Panel>
 
-      <div className={styles.stageArea}>
+      <EpubToolStage>
         {stage === "idle" || stage === "preview" ? (
           <Panel label={stage === "preview" ? text.previewLabel : text.readyLabel}>
             {plan ? (
@@ -570,22 +575,21 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
           ) : null}
           </Panel>
         ) : null}
-      </div>
+      </EpubToolStage>
 
-      <div className={styles.actionDock} role="group" aria-label={text.actionsLabel}>
-        <div className={styles.actionStatus}>
-          <span>{text.statusLabel}</span>
-          <strong>
-            {stage === "idle"
-              ? text.readyLabel
-              : stage === "preview"
-                ? `${text.selectedCount} ${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`
-                : stage === "result" && report
-                  ? outcomeLabel(report.outcome, text)
-                  : `${snapshot.status} · ${percent}%`}
-          </strong>
-        </div>
-        <div className={styles.actionButtons}>
+      <EpubToolActionDock
+        statusLabel={text.statusLabel}
+        status={
+          stage === "idle"
+            ? text.readyLabel
+            : stage === "preview"
+              ? `${text.selectedCount} ${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`
+              : stage === "result" && report
+                ? outcomeLabel(report.outcome, text)
+                : `${snapshot.status} · ${percent}%`
+        }
+        actions={
+          <>
           <Pill variant="ghost" onClick={handlePreview} disabled={!inputPath || isRunning}>
             {text.scan}
           </Pill>
@@ -598,14 +602,15 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
           <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
             {text.stop}
           </Pill>
-        </div>
-        {actionError ? (
+          </>
+        }
+        error={actionError ? (
           <span className={styles.actionError}>
             <code>{actionError.code}</code> {actionError.message}
           </span>
-        ) : null}
-      </div>
-    </div>
+        ) : undefined}
+      />
+    </EpubToolWorkspace>
   );
 }
 

@@ -13,6 +13,11 @@ import { CompactPath } from "@/components/CompactPath";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import { useLocalState } from "@/utils/localState";
+import {
+  EpubToolActionDock,
+  EpubToolStage,
+  EpubToolWorkspace,
+} from "./EpubToolWorkflow";
 import styles from "./EpubMetadataPage.module.css";
 
 const INPUT_LOCAL_KEY = "transoria.generalTools.epubMetadata.inputPath";
@@ -244,7 +249,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
   );
 
   return (
-    <>
+    <EpubToolWorkspace>
       <Panel
         title={embedded ? undefined : text.title}
         subtitle={embedded ? undefined : text.sub}
@@ -265,26 +270,9 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
           </label>
         </div>
 
-        <div className={styles.actionRow}>
-          <Pill onClick={handleOpenEditor} disabled={!inputPath || loading}>
-            {text.openEditor}
-          </Pill>
-          <Pill
-            variant="ghost"
-            onClick={handleRevealOutput}
-            disabled={!result}
-          >
-            {text.openOutput}
-          </Pill>
-          {feedback ? <span className={styles.feedback}>{feedback}</span> : null}
-          {actionError ? (
-            <span className={styles.actionError}>
-              <code>{actionError.code}</code> {actionError.message}
-            </span>
-          ) : null}
-        </div>
       </Panel>
 
+      <EpubToolStage>
       <Panel label={text.currentLabel}>
         {info ? (
           <div className={styles.summaryGrid}>
@@ -316,6 +304,43 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
           <div className={styles.empty}>{text.noMetadata}</div>
         )}
       </Panel>
+      </EpubToolStage>
+
+      <EpubToolActionDock
+        statusLabel={text.currentLabel}
+        status={
+          loading
+            ? text.read
+            : result
+              ? outcomeLabel(result.outcome, text)
+              : info
+                ? info.title || text.currentLabel
+                : text.noMetadata
+        }
+        actions={
+          <>
+            <Pill onClick={handleOpenEditor} disabled={!inputPath || loading}>
+              {text.openEditor}
+            </Pill>
+            <Pill
+              variant="ghost"
+              onClick={handleRevealOutput}
+              disabled={!result}
+            >
+              {text.openOutput}
+            </Pill>
+          </>
+        }
+        error={
+          actionError ? (
+            <span className={styles.actionError}>
+              <code>{actionError.code}</code> {actionError.message}
+            </span>
+          ) : feedback ? (
+            <span className={styles.feedback}>{feedback}</span>
+          ) : undefined
+        }
+      />
 
       {editorOpen ? (
         <div className={styles.overlay} role="presentation">
@@ -487,7 +512,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
           </div>
         </div>
       ) : null}
-    </>
+    </EpubToolWorkspace>
   );
 }
 

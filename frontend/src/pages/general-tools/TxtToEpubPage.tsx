@@ -27,6 +27,12 @@ import {
 import { useToastStore } from "@/store/useToastStore";
 import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
+import {
+  EpubToolActionDock,
+  EpubToolAdvancedSettings,
+  EpubToolStage,
+  EpubToolWorkspace,
+} from "./EpubToolWorkflow";
 import styles from "./TxtToEpubPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -602,7 +608,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
   };
 
   return (
-    <>
+    <EpubToolWorkspace>
       <Panel
         title={embedded ? undefined : pageText.title}
         subtitle={embedded ? undefined : pageText.sub}
@@ -630,6 +636,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             compact
           />
         </div>
+        <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
         <div className={styles.metaGrid}>
           <label className={styles.field}>
             <span>{text.titleLabel}</span>
@@ -701,9 +708,11 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             </label>
           ) : null}
         </div>
+        </EpubToolAdvancedSettings>
       </Panel>
 
-      <Panel label={text.chapterRecognition}>
+      <EpubToolStage>
+      <EpubToolAdvancedSettings label={text.chapterRecognition}>
         <div className={styles.modeRow}>
           {(["preset", "simple", "advanced"] as const).map((mode) => (
             <button
@@ -775,16 +784,13 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             />
           </label>
         )}
-        <div className={styles.actionRow}>
-          <Pill onClick={handleScan}>{text.scanToc}</Pill>
-          <span className={styles.hint}>
+        <div className={styles.sectionHint}>
             {scanInfo
               ? text.scanSummary
                   .replace("{candidates}", NUM.format(tocEntries.length))
                   .replace("{selected}", NUM.format(selectedCount))
                   .replace("{lines}", NUM.format(scanInfo.lineCount))
               : text.scanHint}
-          </span>
         </div>
         <div className={styles.tocEditorBar}>
           <label className={styles.addTocField}>
@@ -956,9 +962,9 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             </tbody>
           </table>
         </div>
-      </Panel>
+      </EpubToolAdvancedSettings>
 
-      <Panel label={text.epubStyle}>
+      <EpubToolAdvancedSettings label={text.epubStyle}>
         <label className={styles.selectBlock}>
           <span>{text.epubStyle}</span>
           <select
@@ -1054,19 +1060,10 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             srcDoc={previewDocument(activeCss, text)}
           />
         </div>
-      </Panel>
+      </EpubToolAdvancedSettings>
 
+      {activeTaskId || artifacts || report ? (
       <Panel label={text.generate}>
-        {actionError ? <div className={styles.actionError}>{actionError.message}</div> : null}
-        <div className={styles.actionRow}>
-          <Pill onClick={handleExecute} disabled={isRunning}>
-            {isRunning ? text.generating : text.generate}
-          </Pill>
-          <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
-            {text.stop}
-          </Pill>
-          <span className={styles.hint}>{text.outputHint}</span>
-        </div>
         {activeTaskId ? (
           <div className={styles.progressBlock}>
             <div className={styles.progressTrack}>
@@ -1124,7 +1121,41 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
           </div>
         ) : null}
       </Panel>
-    </>
+      ) : null}
+      </EpubToolStage>
+
+      <EpubToolActionDock
+        statusLabel={text.generate}
+        status={
+          isRunning
+            ? `${snapshot.status} · ${percent}%`
+            : artifacts
+              ? text.output
+              : scanInfo
+                ? text.scanSummary
+                    .replace("{candidates}", NUM.format(tocEntries.length))
+                    .replace("{selected}", NUM.format(selectedCount))
+                    .replace("{lines}", NUM.format(scanInfo.lineCount))
+                : text.scanHint
+        }
+        actions={
+          <>
+            <Pill variant="ghost" onClick={handleScan} disabled={isRunning}>
+              {text.scanToc}
+            </Pill>
+            <Pill onClick={handleExecute} disabled={isRunning || !inputPath.trim()}>
+              {isRunning ? text.generating : text.generate}
+            </Pill>
+            <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
+              {text.stop}
+            </Pill>
+          </>
+        }
+        error={actionError ? (
+          <div className={styles.actionError}>{actionError.message}</div>
+        ) : undefined}
+      />
+    </EpubToolWorkspace>
   );
 }
 

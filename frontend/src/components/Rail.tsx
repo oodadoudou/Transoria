@@ -94,7 +94,6 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         id: "general-tools",
         label: messages.rail.generalTools,
         children: [
-          { page: "batchReplacement", label: gt.batchReplacement },
           { page: "epubTools", label: gt.epubTools },
         ],
       },

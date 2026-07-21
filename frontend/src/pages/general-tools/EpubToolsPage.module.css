@@ -118,6 +118,10 @@
 }
 
 @media (max-width: 760px) {
+  .toolGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .overlay {
     align-items: stretch;
     padding: 10px;

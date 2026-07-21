@@ -6,8 +6,7 @@
   max-width: 620px;
 }
 
-.modeRow,
-.actionRow {
+.modeRow {
   display: flex;
   align-items: center;
   flex-wrap: wrap;

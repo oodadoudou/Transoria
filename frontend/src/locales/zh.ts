@@ -485,7 +485,7 @@ export const zh: Messages = {
     successWithWarnings: "成功但有警告",
     failed: "失败",
     revealOutput: "在 Finder 中显示",
-    advancedSettings: "高级设置",
+    advancedSettings: "配置",
     readyLabel: "等待扫描",
     actionsLabel: "压缩操作",
   },
@@ -1787,5 +1787,6 @@ export const zh: Messages = {
     copyPath: "复制路径",
     copyPathDone: "已复制路径",
     copyPathFailed: "复制失败",
+    advancedSettings: "配置",
   },
 };

@@ -132,6 +132,12 @@
   font-size: 12.5px;
 }
 
+.sectionHint {
+  margin-top: 10px;
+  color: var(--muted, #7a7166);
+  font-size: 12.5px;
+}
+
 .tocEditorBar,
 .batchBar {
   display: flex;

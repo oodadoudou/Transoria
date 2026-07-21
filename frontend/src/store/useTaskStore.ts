@@ -80,7 +80,7 @@ export function defaultPageFor(module: ModuleId): Route {
     case "glossary-review":
       return { module: "glossary-review", page: "run" };
     case "general-tools":
-      return { module: "general-tools", page: "batchReplacement" };
+      return { module: "general-tools", page: "epubTools" };
     case "app-settings":
       return { module: "app-settings", page: "general" };
   }
@@ -158,7 +158,7 @@ function coerceRoute(value: unknown): Route {
           page: candidate.page as GeneralToolsPage,
         };
       }
-      return { module: "general-tools", page: "batchReplacement" };
+      return { module: "general-tools", page: "epubTools" };
     case "app-settings":
       return { module: "app-settings", page: "general" };
     default:

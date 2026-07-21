@@ -12,6 +12,12 @@ import { Pill } from "@/components/Pill";
 import { CompactPath } from "@/components/CompactPath";
 import { useMessages } from "@/locales";
 import { useLocalState } from "@/utils/localState";
+import {
+  EpubToolActionDock,
+  EpubToolAdvancedSettings,
+  EpubToolStage,
+  EpubToolWorkspace,
+} from "./EpubToolWorkflow";
 import styles from "./EpubMetadataPage.module.css";
 
 const INPUT_LOCAL_KEY = "transoria.generalTools.epubRepair.inputPath";
@@ -144,13 +150,17 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
   };
 
   return (
-    <>
+    <EpubToolWorkspace>
       <Panel
         title={embedded ? undefined : text.title}
         subtitle={embedded ? undefined : text.sub}
       >
-        <div className={styles.pathGrid}>
-          <label className={styles.field}>
+        <div className={styles.pathGridSingle}>
+        </div>
+
+        <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
+          <div className={styles.pathGridSingle}>
+            <label className={styles.field}>
             <span>{text.inputFile}</span>
             <div className={styles.fileRow}>
               <input
@@ -187,45 +197,23 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
                 {text.chooseOutputFolder}
               </Pill>
             </div>
-          </label>
-        </div>
+            </label>
+          </div>
 
-        <div className={styles.generatedOutput}>
-          <span>{text.generatedOutput}</span>
-          <CompactPath
-            value={resolvedOutputPath}
-            copyLabel={messages.common.copyPath}
-            className={styles.generatedPath}
-            emptyLabel="-"
-          />
-        </div>
-
-        <div className={styles.actionRow}>
-          <Pill onClick={handlePreview} disabled={!inputPath || loading}>
-            {text.preview}
-          </Pill>
-          <Pill
-            onClick={handleRepair}
-            disabled={!preview || preview.output_path !== resolvedOutputPath || loading}
-          >
-            {text.repair}
-          </Pill>
-          <Pill
-            variant="ghost"
-            onClick={handleRevealOutput}
-            disabled={!result}
-          >
-            {text.openOutput}
-          </Pill>
-          {feedback ? <span className={styles.feedback}>{feedback}</span> : null}
-          {actionError ? (
-            <span className={styles.actionError}>
-              <code>{actionError.code}</code> {actionError.message}
-            </span>
-          ) : null}
-        </div>
+          <div className={styles.generatedOutput}>
+            <span>{text.generatedOutput}</span>
+            <CompactPath
+              value={resolvedOutputPath}
+              copyLabel={messages.common.copyPath}
+              className={styles.generatedPath}
+              emptyLabel="-"
+            />
+          </div>
+        </EpubToolAdvancedSettings>
       </Panel>
 
+      <EpubToolStage>
+      {!result ? (
       <Panel label={text.previewLabel}>
         {preview ? (
           <div className={styles.summaryGrid}>
@@ -244,7 +232,9 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
           <div className={styles.empty}>{text.noResult}</div>
         )}
       </Panel>
+      ) : null}
 
+      {result ? (
       <Panel label={text.currentLabel}>
         {result ? (
           <div className={styles.summaryGrid}>
@@ -275,7 +265,51 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
           <div className={styles.empty}>{text.noResult}</div>
         )}
       </Panel>
-    </>
+      ) : null}
+      </EpubToolStage>
+
+      <EpubToolActionDock
+        statusLabel={text.currentLabel}
+        status={
+          loading
+            ? text.repair
+            : result
+              ? outcomeLabel(result.outcome, text)
+              : preview
+                ? `${text.toRepair} ${preview.documents_to_repair}`
+                : text.previewLabel
+        }
+        actions={
+          <>
+            <Pill variant="ghost" onClick={handlePreview} disabled={!inputPath || loading}>
+              {text.preview}
+            </Pill>
+            <Pill
+              onClick={handleRepair}
+              disabled={!preview || preview.output_path !== resolvedOutputPath || loading}
+            >
+              {text.repair}
+            </Pill>
+            <Pill
+              variant="ghost"
+              onClick={handleRevealOutput}
+              disabled={!result}
+            >
+              {text.openOutput}
+            </Pill>
+          </>
+        }
+        error={
+          actionError ? (
+            <span className={styles.actionError}>
+              <code>{actionError.code}</code> {actionError.message}
+            </span>
+          ) : feedback ? (
+            <span className={styles.feedback}>{feedback}</span>
+          ) : undefined
+        }
+      />
+    </EpubToolWorkspace>
   );
 }
 

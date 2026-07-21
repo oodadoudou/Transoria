@@ -1644,5 +1644,6 @@ export interface Messages {
     copyPath: string;
     copyPathDone: string;
     copyPathFailed: string;
+    advancedSettings: string;
   };
 }

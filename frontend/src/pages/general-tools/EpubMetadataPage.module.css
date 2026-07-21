@@ -7,6 +7,12 @@
   grid-template-columns: repeat(2, minmax(220px, 420px));
 }
 
+.pathGridSingle {
+  display: grid;
+  grid-template-columns: minmax(220px, 620px);
+  gap: 10px;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -39,14 +45,6 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-}
-
-.actionRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
 }
 
 .feedback {
