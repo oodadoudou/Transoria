@@ -182,6 +182,7 @@ def test_merge_uses_output_filename_for_metadata_title(tmp_path: Path) -> None:
     assert result.structure_check is not None
     assert result.structure_check["status"] == "ok"
     assert result.structure_check["missing_entries"] == []
+    assert result.outcome == "success"
     with zipfile.ZipFile(output) as archive:
         names = archive.namelist()
         assert archive.namelist()[0] == "mimetype"

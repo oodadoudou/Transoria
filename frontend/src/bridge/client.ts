@@ -23,6 +23,7 @@ import type {
   EpubMergePlan,
   EpubMergeReport,
   EpubRepairResult,
+  EpubRepairPreview,
   GlossaryArtifacts,
   GlossaryFileResult,
   GlossaryReviewArtifacts,
@@ -1047,6 +1048,12 @@ export const epubMetadataBridge = {
 };
 
 export const epubRepairBridge = {
+  preview(inputPath: string, outputPath: string): Promise<EpubRepairPreview> {
+    return call("epub_repair.preview", {
+      input_path: inputPath,
+      output_path: outputPath,
+    });
+  },
   apply(
     inputPath: string,
     outputPath: string,

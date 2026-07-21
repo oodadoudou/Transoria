@@ -493,6 +493,11 @@ export const en: Messages = {
     fonts: "Fonts",
     result: "Result",
     compressed: "Compressed",
+    structure: "Structure check",
+    success: "Success",
+    successWithWarnings: "Success with warnings",
+    failed: "Failed",
+    revealOutput: "Show in Finder",
   },
   epubMergeTool: {
     title: "Document Merger",
@@ -546,6 +551,11 @@ export const en: Messages = {
     result: "Result",
     merged: "Merged",
     warnings: "Warnings",
+    structure: "Structure check",
+    success: "Success",
+    successWithWarnings: "Success with warnings",
+    failed: "Failed",
+    revealOutput: "Show in Finder",
   },
   epubConvertTool: {
     title: "EPUB to TXT",
@@ -632,6 +642,10 @@ export const en: Messages = {
       "Choose an EPUB to read its current title, authors, and cover status.",
     saved: "New EPUB written.",
     savedCompressed: "New compressed EPUB written.",
+    structure: "Structure check",
+    success: "Success",
+    successWithWarnings: "Success with warnings",
+    failed: "Failed",
   },
   epubRepairTool: {
     title: "EPUB Repair",
@@ -655,6 +669,13 @@ export const en: Messages = {
     noResult:
       "Choose an EPUB and run repair to see the repair statistics here.",
     repaired: "Repaired EPUB written.",
+    preview: "Preview changes",
+    previewLabel: "Repair preview",
+    toRepair: "Documents to change",
+    structure: "Structure check",
+    success: "Success",
+    successWithWarnings: "Success with warnings",
+    failed: "Failed",
   },
   txtToEpubTool: {
     inputTxt: "Input TXT",

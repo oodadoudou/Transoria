@@ -91,6 +91,7 @@ def test_read_epub_metadata_finds_title_author_and_cover(tmp_path: Path):
     assert info.has_cover is True
     assert info.cover_archive_path == "OEBPS/Images/cover.jpg"
     assert info.cover_preview_data_url.startswith("data:image/")
+    assert info.structure_check["status"] in {"ok", "warning"}
 
 
 def test_read_epub_metadata_decodes_encoded_package_and_cover_paths(tmp_path: Path):
@@ -133,6 +134,8 @@ def test_apply_metadata_updates_only_package_metadata(tmp_path: Path):
 
     assert result.metadata_updated is True
     assert result.cover_updated is False
+    assert result.outcome in {"success", "success_with_warnings"}
+    assert result.structure_comparison["status"] in {"ok", "warning"}
     updated = read_epub_metadata(out)
     assert updated.title == "New Title"
     assert updated.authors == ("New Author",)

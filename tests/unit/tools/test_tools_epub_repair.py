@@ -5,7 +5,19 @@ import zipfile
 
 from transoria.bridge import build_default_router
 from transoria.formats.epub_parser import parse_epub_file
-from transoria.tools.epub_repair import repair_epub_file
+from transoria.tools.epub_repair import preview_epub_repair, repair_epub_file
+
+
+def test_preview_epub_repair_is_read_only(tmp_path: Path):
+    epub_path = _write_epub(tmp_path / "bad.epub", "<p><br>숨은 원문</br></p>")
+    output_path = tmp_path / "preview-output.epub"
+
+    preview = preview_epub_repair(epub_path, output_path)
+
+    assert preview.documents_to_repair >= 1
+    assert preview.output_path == output_path
+    assert preview.structure_check["status"] in {"ok", "warning"}
+    assert not output_path.exists()
 
 
 def test_repair_epub_exposes_text_hidden_inside_invalid_void_tags(tmp_path: Path):
@@ -84,6 +96,21 @@ def test_epub_repair_bridge_returns_repair_result(tmp_path: Path):
     assert response["structure_check"]["missing_entries"] == []
     assert response["documents_repaired"] >= 1
     assert output_path.exists()
+
+
+def test_epub_repair_bridge_previews_without_writing(tmp_path: Path):
+    epub_path = _write_epub(tmp_path / "bad.epub", "<p><br>숨은 원문</br></p>")
+    output_path = tmp_path / "out.epub"
+    router = build_default_router(cache_root=tmp_path / "cache")
+
+    response = router.call(
+        "epub_repair.preview",
+        {"input_path": str(epub_path), "output_path": str(output_path)},
+    )
+
+    assert response["documents_to_repair"] >= 1
+    assert response["would_change"] is True
+    assert not output_path.exists()
 
 
 def _write_epub(

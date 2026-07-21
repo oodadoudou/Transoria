@@ -1103,6 +1103,11 @@ export interface Messages {
     fonts: string;
     result: string;
     compressed: string;
+    structure: string;
+    success: string;
+    successWithWarnings: string;
+    failed: string;
+    revealOutput: string;
   };
   epubMergeTool: {
     title: string;
@@ -1153,6 +1158,11 @@ export interface Messages {
     result: string;
     merged: string;
     warnings: string;
+    structure: string;
+    success: string;
+    successWithWarnings: string;
+    failed: string;
+    revealOutput: string;
   };
   epubConvertTool: {
     title: string;
@@ -1235,6 +1245,10 @@ export interface Messages {
     noMetadata: string;
     saved: string;
     savedCompressed: string;
+    structure: string;
+    success: string;
+    successWithWarnings: string;
+    failed: string;
   };
   epubRepairTool: {
     title: string;
@@ -1257,6 +1271,13 @@ export interface Messages {
     wrappersAdded: string;
     noResult: string;
     repaired: string;
+    preview: string;
+    previewLabel: string;
+    toRepair: string;
+    structure: string;
+    success: string;
+    successWithWarnings: string;
+    failed: string;
   };
   txtToEpubTool: {
     inputTxt: string;

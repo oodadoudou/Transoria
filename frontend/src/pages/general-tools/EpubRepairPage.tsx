@@ -4,6 +4,7 @@ import {
   BridgeError,
   dialogsBridge,
   epubRepairBridge,
+  type EpubRepairPreview,
   type EpubRepairResult,
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
@@ -35,7 +36,7 @@ function defaultOutputFolder(inputPath: string): string {
 
 function repairedFilename(inputPath: string): string {
   const fallback = splitPath(inputPath.trim()).name.replace(/\.epub$/i, "");
-  return `${fallback || "repaired"}-repaired.epub`;
+  return fallback ? `${fallback}-repaired.epub` : "repaired.epub";
 }
 
 export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}) {
@@ -47,6 +48,7 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
     "",
   );
   const [result, setResult] = useState<EpubRepairResult | null>(null);
+  const [preview, setPreview] = useState<EpubRepairPreview | null>(null);
   const [actionError, setActionError] = useState<BridgeError | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,6 +65,8 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
       const selected = await dialogsBridge.chooseEpubFile(inputPath || undefined);
       if (selected.path) {
         setInputPath(selected.path);
+        setPreview(null);
+        setResult(null);
         if (!outputFolderPath.trim()) {
           setOutputFolderPath(defaultOutputFolder(selected.path));
         }
@@ -77,9 +81,29 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
       const selected = await dialogsBridge.chooseOutputDirectory(
         resolvedOutputFolder || undefined,
       );
-      if (selected.path) setOutputFolderPath(selected.path);
+      if (selected.path) {
+        setOutputFolderPath(selected.path);
+        setPreview(null);
+        setResult(null);
+      }
     } catch (error) {
       if (BridgeError.isBridgeError(error)) setActionError(error);
+    }
+  };
+
+  const handlePreview = async () => {
+    if (!inputPath.trim() || !resolvedOutputPath.trim()) return;
+    setActionError(null);
+    setFeedback(null);
+    setResult(null);
+    setLoading(true);
+    try {
+      setPreview(await epubRepairBridge.preview(inputPath, resolvedOutputPath));
+    } catch (error) {
+      if (BridgeError.isBridgeError(error)) setActionError(error);
+      else throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -131,7 +155,11 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
             <div className={styles.fileRow}>
               <input
                 value={inputPath}
-                onChange={(event) => setInputPath(event.target.value)}
+                onChange={(event) => {
+                  setInputPath(event.target.value);
+                  setPreview(null);
+                  setResult(null);
+                }}
                 placeholder={text.inputPlaceholder}
               />
               <Pill variant="ghost" onClick={handleChooseInput} disabled={loading}>
@@ -144,7 +172,11 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
             <div className={styles.fileRow}>
               <input
                 value={outputFolderPath}
-                onChange={(event) => setOutputFolderPath(event.target.value)}
+                onChange={(event) => {
+                  setOutputFolderPath(event.target.value);
+                  setPreview(null);
+                  setResult(null);
+                }}
                 placeholder={defaultOutputFolder(inputPath)}
               />
               <Pill
@@ -169,13 +201,19 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
         </div>
 
         <div className={styles.actionRow}>
-          <Pill onClick={handleRepair} disabled={!inputPath || loading}>
+          <Pill onClick={handlePreview} disabled={!inputPath || loading}>
+            {text.preview}
+          </Pill>
+          <Pill
+            onClick={handleRepair}
+            disabled={!preview || preview.output_path !== resolvedOutputPath || loading}
+          >
             {text.repair}
           </Pill>
           <Pill
             variant="ghost"
             onClick={handleRevealOutput}
-            disabled={!result && !resolvedOutputPath}
+            disabled={!result}
           >
             {text.openOutput}
           </Pill>
@@ -188,9 +226,29 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
         </div>
       </Panel>
 
+      <Panel label={text.previewLabel}>
+        {preview ? (
+          <div className={styles.summaryGrid}>
+            <Stat label={text.scanned} value={String(preview.documents_scanned)} />
+            <Stat label={text.toRepair} value={String(preview.documents_to_repair)} />
+            <Stat
+              label={text.structure}
+              value={outcomeLabel(preview.structure_check.status, text)}
+            />
+            <Stat
+              label={text.currentOutput}
+              value={<CompactPath value={preview.output_path} copyLabel={messages.common.copyPath} />}
+            />
+          </div>
+        ) : (
+          <div className={styles.empty}>{text.noResult}</div>
+        )}
+      </Panel>
+
       <Panel label={text.currentLabel}>
         {result ? (
           <div className={styles.summaryGrid}>
+            <Stat label={text.currentLabel} value={outcomeLabel(result.outcome, text)} />
             <Stat label={text.scanned} value={String(result.documents_scanned)} />
             <Stat label={text.repairedFiles} value={String(result.documents_repaired)} />
             <Stat label={text.htmlScanned} value={String(result.html_files_scanned)} />
@@ -219,6 +277,17 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
       </Panel>
     </>
   );
+}
+
+function outcomeLabel(
+  status: string,
+  text: { success: string; successWithWarnings: string; failed: string },
+): string {
+  if (status === "ok" || status === "success") return text.success;
+  if (status === "warning" || status === "success_with_warnings") {
+    return text.successWithWarnings;
+  }
+  return text.failed;
 }
 
 interface StatProps {

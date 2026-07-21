@@ -23,7 +23,10 @@ from transoria.formats.epub_parser import (
     repair_redundant_void_end_tags,
     trim_to_html_document_start,
 )
-from transoria.tools.epub_structure import inspect_epub_structure
+from transoria.tools.epub_structure import (
+    compare_epub_structure_checks,
+    inspect_epub_structure,
+)
 
 
 _EPUB_SUFFIX = ".epub"
@@ -60,7 +63,9 @@ class EpubRepairResult:
     xml_files_repaired: int
     void_containers_repaired: int
     document_wrappers_added: int
+    outcome: str = "success"
     structure_check: Mapping[str, object] | None = None
+    structure_comparison: Mapping[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -74,10 +79,87 @@ class EpubRepairResult:
             "xml_files_repaired": self.xml_files_repaired,
             "void_containers_repaired": self.void_containers_repaired,
             "document_wrappers_added": self.document_wrappers_added,
+            "outcome": self.outcome,
         }
         if self.structure_check is not None:
             payload["structure_check"] = dict(self.structure_check)
+        if self.structure_comparison is not None:
+            payload["structure_comparison"] = dict(self.structure_comparison)
         return payload
+
+
+@dataclass(frozen=True)
+class EpubRepairPreview:
+    input_path: Path
+    output_path: Path
+    documents_scanned: int
+    documents_to_repair: int
+    html_files_scanned: int
+    html_files_to_repair: int
+    xml_files_scanned: int
+    xml_files_to_repair: int
+    void_containers_to_repair: int
+    document_wrappers_to_add: int
+    structure_check: Mapping[str, object]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "input_path": str(self.input_path),
+            "output_path": str(self.output_path),
+            "documents_scanned": self.documents_scanned,
+            "documents_to_repair": self.documents_to_repair,
+            "html_files_scanned": self.html_files_scanned,
+            "html_files_to_repair": self.html_files_to_repair,
+            "xml_files_scanned": self.xml_files_scanned,
+            "xml_files_to_repair": self.xml_files_to_repair,
+            "void_containers_to_repair": self.void_containers_to_repair,
+            "document_wrappers_to_add": self.document_wrappers_to_add,
+            "would_change": self.documents_to_repair > 0,
+            "structure_check": dict(self.structure_check),
+        }
+
+
+def preview_epub_repair(
+    input_path: str | Path,
+    output_path: str | Path | None = None,
+) -> EpubRepairPreview:
+    source = _validate_epub_path(input_path)
+    requested_output = _resolve_output_path(source, output_path)
+    html_scanned = 0
+    html_repaired = 0
+    xml_scanned = 0
+    xml_repaired = 0
+    voids = 0
+    wrappers = 0
+    with zipfile.ZipFile(source, "r") as archive:
+        for info in archive.infolist():
+            filename = info.filename.lower()
+            raw = archive.read(info.filename)
+            if filename.endswith(HTML_DOCUMENT_SUFFIXES):
+                html_scanned += 1
+                repaired = _repair_html_document(raw)
+                if repaired.changed:
+                    html_repaired += 1
+                    voids += repaired.void_containers
+                    wrappers += repaired.document_wrappers
+            elif filename.endswith(_XML_SUFFIXES):
+                xml_scanned += 1
+                repaired = _repair_xml_document(raw, is_ncx=filename.endswith(".ncx"))
+                if repaired.changed:
+                    xml_repaired += 1
+    return EpubRepairPreview(
+        input_path=source,
+        output_path=requested_output,
+        documents_scanned=html_scanned + xml_scanned,
+        documents_to_repair=html_repaired + xml_repaired,
+        html_files_scanned=html_scanned,
+        html_files_to_repair=html_repaired,
+        xml_files_scanned=xml_scanned,
+        xml_files_to_repair=xml_repaired,
+        void_containers_to_repair=voids,
+        document_wrappers_to_add=wrappers,
+        structure_check=inspect_epub_structure(source),
+    )
 
 
 def repair_epub_file(
@@ -105,6 +187,7 @@ def repair_epub_file(
     xml_files_repaired = 0
     void_containers_repaired = 0
     document_wrappers_added = 0
+    source_check = inspect_epub_structure(source)
     try:
         temp_output.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(source, "r") as src:
@@ -129,15 +212,21 @@ def repair_epub_file(
                             xml_files_repaired += 1
                     dst.writestr(_clone_zip_info(info), next_raw)
         _validate_epub_archive(temp_output)
+        structure_check = inspect_epub_structure(temp_output)
+        comparison = compare_epub_structure_checks(
+            source_check,
+            structure_check,
+            preserve_counts=("spine", "html", "nav", "ncx", "images", "fonts", "css"),
+        )
+        if comparison["status"] == "failed":
+            raise ValueError("repaired EPUB failed structure validation")
         if temp_output != target_output:
             os.replace(temp_output, target_output)
-        structure_check = inspect_epub_structure(target_output)
     except Exception:
-        if temp_output != target_output:
-            try:
-                temp_output.unlink()
-            except FileNotFoundError:
-                pass
+        try:
+            temp_output.unlink()
+        except FileNotFoundError:
+            pass
         raise
 
     return EpubRepairResult(
@@ -151,7 +240,13 @@ def repair_epub_file(
         xml_files_repaired=xml_files_repaired,
         void_containers_repaired=void_containers_repaired,
         document_wrappers_added=document_wrappers_added,
+        outcome=(
+            "success_with_warnings"
+            if comparison["status"] == "warning"
+            else comparison["status"]
+        ),
         structure_check=structure_check,
+        structure_comparison=comparison,
     )
 
 
@@ -365,4 +460,9 @@ def _validate_epub_archive(path: Path) -> None:
             raise ValueError("output EPUB mimetype is invalid")
 
 
-__all__ = ["EpubRepairResult", "repair_epub_file"]
+__all__ = [
+    "EpubRepairPreview",
+    "EpubRepairResult",
+    "preview_epub_repair",
+    "repair_epub_file",
+]

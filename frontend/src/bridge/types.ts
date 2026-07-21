@@ -649,6 +649,7 @@ export interface EpubCompressAction {
   source_path: string;
   output_path: string;
   selected: boolean;
+  structure_check?: EpubStructureCheck | null;
 }
 
 export interface EpubCompressPlan {
@@ -681,6 +682,9 @@ export interface EpubCompressReportResult {
   images_skipped: number;
   entries_written: number;
   error: string;
+  outcome: "success" | "success_with_warnings" | "failed" | string;
+  structure_check?: EpubStructureCheck | null;
+  structure_comparison?: EpubStructureComparison | null;
 }
 
 export interface EpubCompressReport {
@@ -688,10 +692,12 @@ export interface EpubCompressReport {
   generated_at: string;
   input_path: string;
   mode: string;
+  outcome: "success" | "success_with_warnings" | "failed" | string;
   totals: {
     actions: number;
     compressed: number;
     failed: number;
+    warnings: number;
     original_size_bytes: number;
     output_size_bytes: number;
     fonts_removed: number;
@@ -718,6 +724,7 @@ export interface EpubMergeAction {
   title_hint: string;
   size_bytes: number;
   selected: boolean;
+  structure_check?: EpubStructureCheck | null;
 }
 
 export interface EpubMergePlan {
@@ -762,12 +769,14 @@ export interface EpubMergeReportResult {
   }>;
   error: string;
   structure_check?: EpubStructureCheck | null;
+  outcome: "success" | "success_with_warnings" | "failed" | string;
 }
 
 export interface EpubMergeReport {
   task_id: string;
   generated_at: string;
   input_dir: string;
+  outcome: "success" | "success_with_warnings" | "failed" | string;
   totals: {
     actions: number;
     merged: number;
@@ -873,6 +882,13 @@ export interface EpubStructureCheck {
   error?: string;
 }
 
+export interface EpubStructureComparison {
+  status: "ok" | "warning" | "failed" | string;
+  warnings: string[];
+  before_counts: Record<string, number>;
+  after_counts: Record<string, number>;
+}
+
 export interface TxtToEpubTocEntry {
   id: string;
   level: number;
@@ -966,6 +982,7 @@ export interface EpubMetadataInfo {
   cover_archive_path: string;
   has_cover: boolean;
   cover_preview_data_url: string;
+  structure_check: EpubStructureCheck;
 }
 
 export interface EpubMetadataApplyResult {
@@ -976,6 +993,24 @@ export interface EpubMetadataApplyResult {
   cover_updated: boolean;
   metadata_updated: boolean;
   compressed: boolean;
+  outcome: "success" | "success_with_warnings" | "failed" | string;
+  structure_check: EpubStructureCheck;
+  structure_comparison: EpubStructureComparison;
+}
+
+export interface EpubRepairPreview {
+  input_path: string;
+  output_path: string;
+  documents_scanned: number;
+  documents_to_repair: number;
+  html_files_scanned: number;
+  html_files_to_repair: number;
+  xml_files_scanned: number;
+  xml_files_to_repair: number;
+  void_containers_to_repair: number;
+  document_wrappers_to_add: number;
+  would_change: boolean;
+  structure_check: EpubStructureCheck;
 }
 
 export interface EpubRepairResult {
@@ -989,7 +1024,9 @@ export interface EpubRepairResult {
   xml_files_repaired: number;
   void_containers_repaired: number;
   document_wrappers_added: number;
+  outcome: "success" | "success_with_warnings" | "failed" | string;
   structure_check?: EpubStructureCheck | null;
+  structure_comparison?: EpubStructureComparison | null;
 }
 
 export interface ReplacementReportOccurrence {

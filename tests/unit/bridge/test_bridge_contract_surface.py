@@ -200,6 +200,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "epub_metadata.cover_preview",
     "epub_metadata.apply",
     # EPUB repair
+    "epub_repair.preview",
     "epub_repair.apply",
     # updates
     "updates.check_latest",
@@ -240,9 +241,12 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-05-04 (restore deleted glossary-review report row) +
     # 3 added 2026-06-18 (LLM request logs for LLM workflows) +
     # 6 added 2026-06-28 (workflow presets) +
-    # 1 added 2026-07-05 (model_profiles.duplicate).
+    # 1 added 2026-07-05 (model_profiles.duplicate) +
+    # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 153
+    assert len(actual) == 154
+
+
 # Test 2 — frontend bridge wraps every backend method
 
 
@@ -520,6 +524,10 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
         "input_path": "/nonexistent.epub",
         "output_path": "",
         "overwrite": False,
+    },
+    "epub_repair.preview": {
+        "input_path": "/nonexistent.epub",
+        "output_path": "",
     },
     "updates.check_latest": {"request_id": "rid"},
     "updates.open_release_page": {"url": "https://example.com"},

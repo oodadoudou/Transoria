@@ -14,6 +14,10 @@ from typing import Iterable, Mapping
 from PIL import Image
 
 from transoria.formats.epub_paths import resolve_epub_href
+from transoria.tools.epub_structure import (
+    compare_epub_structure_checks,
+    inspect_epub_structure,
+)
 
 
 _EPUB_SUFFIX = ".epub"
@@ -81,14 +85,18 @@ class EpubCompressAction:
     source_path: str
     output_path: str
     selected: bool = True
+    structure_check: Mapping[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "id": self.id,
             "source_path": self.source_path,
             "output_path": self.output_path,
             "selected": self.selected,
         }
+        if self.structure_check is not None:
+            payload["structure_check"] = dict(self.structure_check)
+        return payload
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "EpubCompressAction":
@@ -97,6 +105,11 @@ class EpubCompressAction:
             source_path=str(data.get("source_path", "")),
             output_path=str(data.get("output_path", "")),
             selected=bool(data.get("selected", True)),
+            structure_check=(
+                dict(raw_check)
+                if isinstance((raw_check := data.get("structure_check")), Mapping)
+                else None
+            ),
         )
 
 
@@ -127,6 +140,9 @@ class EpubCompressResult:
     images_compressed: int = 0
     images_skipped: int = 0
     entries_written: int = 0
+    outcome: str = "success"
+    structure_check: Mapping[str, object] | None = None
+    structure_comparison: Mapping[str, object] | None = None
     error: str = ""
 
     def to_dict(self) -> dict[str, object]:
@@ -136,7 +152,7 @@ class EpubCompressResult:
             if self.original_size_bytes > 0
             else 0.0
         )
-        return {
+        payload: dict[str, object] = {
             "action_id": self.action_id,
             "source_path": self.source_path,
             "output_path": self.output_path,
@@ -149,8 +165,14 @@ class EpubCompressResult:
             "images_compressed": self.images_compressed,
             "images_skipped": self.images_skipped,
             "entries_written": self.entries_written,
+            "outcome": self.outcome,
             "error": self.error,
         }
+        if self.structure_check is not None:
+            payload["structure_check"] = dict(self.structure_check)
+        if self.structure_comparison is not None:
+            payload["structure_comparison"] = dict(self.structure_comparison)
+        return payload
 
 
 def build_epub_compress_plan(
@@ -182,6 +204,7 @@ def build_epub_compress_plan(
             id=f"epub-{index:04d}",
             source_path=str(path),
             output_path=str(_output_path_for(path, options)),
+            structure_check=inspect_epub_structure(path),
         )
         for index, path in enumerate(files)
     )
@@ -200,6 +223,7 @@ def compress_epub_file(
         if source.suffix.lower() != _EPUB_SUFFIX:
             raise ValueError(f"source is not an EPUB file: {source}")
         original_size = source.stat().st_size
+        source_check = inspect_epub_structure(source)
         if options.replace_original:
             tmp_output = source.with_name(f".{source.name}.transoria-compress.tmp")
             output = source
@@ -212,6 +236,34 @@ def compress_epub_file(
             tmp_output,
             options=options,
         )
+        output_check = inspect_epub_structure(tmp_output)
+        expected_fonts = (
+            0
+            if options.font_mode == "remove"
+            else max(
+                0,
+                int(dict(source_check.get("counts", {})).get("fonts", 0))
+                - stats["fonts_removed"],
+            )
+        )
+        comparison = compare_epub_structure_checks(
+            source_check,
+            output_check,
+            preserve_counts=(
+                "spine",
+                "html",
+                "body_documents",
+                "nav",
+                "nav_links",
+                "ncx",
+                "ncx_links",
+                "images",
+                "css",
+            ),
+            expected_counts={"fonts": expected_fonts},
+        )
+        if comparison["status"] == "failed":
+            raise ValueError("compressed EPUB failed structure validation")
         if options.replace_original:
             os.replace(tmp_output, source)
             output = source
@@ -228,9 +280,16 @@ def compress_epub_file(
             images_compressed=stats["images_compressed"],
             images_skipped=stats["images_skipped"],
             entries_written=stats["entries_written"],
+            outcome=(
+                "success_with_warnings"
+                if comparison["status"] == "warning"
+                else "success"
+            ),
+            structure_check=output_check,
+            structure_comparison=comparison,
         )
     except Exception as exc:  # noqa: BLE001
-        if tmp_output != source and tmp_output.exists() and tmp_output.suffix == ".tmp":
+        if tmp_output != source and tmp_output.exists():
             try:
                 tmp_output.unlink()
             except OSError:
@@ -240,6 +299,7 @@ def compress_epub_file(
             source_path=str(source),
             output_path=str(output),
             status="failed",
+            outcome="failed",
             error=f"{type(exc).__name__}: {exc}",
         )
 
@@ -255,15 +315,19 @@ def build_epub_compress_report(
     rows = [result.to_dict() for result in results]
     compressed = sum(1 for row in rows if row["status"] == "compressed")
     failed = sum(1 for row in rows if row["status"] == "failed")
+    warnings = sum(1 for row in rows if row["outcome"] == "success_with_warnings")
+    outcome = "failed" if failed else ("success_with_warnings" if warnings else "success")
     return {
         "task_id": task_id,
         "generated_at": generated_at,
         "input_path": str(input_path),
         "mode": mode,
+        "outcome": outcome,
         "totals": {
             "actions": len(rows),
             "compressed": compressed,
             "failed": failed,
+            "warnings": warnings,
             "original_size_bytes": sum(
                 int(row["original_size_bytes"]) for row in rows
             ),

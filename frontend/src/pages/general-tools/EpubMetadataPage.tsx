@@ -272,7 +272,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
           <Pill
             variant="ghost"
             onClick={handleRevealOutput}
-            disabled={!result && !resolvedOutputPath}
+            disabled={!result}
           >
             {text.openOutput}
           </Pill>
@@ -296,6 +296,10 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
             <Stat
               label={text.currentCover}
               value={info.has_cover ? text.coverPresent : text.coverMissing}
+            />
+            <Stat
+              label={text.structure}
+              value={outcomeLabel(result?.outcome ?? info.structure_check.status, text)}
             />
             <Stat
               label={text.currentOutput}
@@ -485,6 +489,15 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
       ) : null}
     </>
   );
+}
+
+function outcomeLabel(
+  status: string,
+  text: { success: string; successWithWarnings: string; failed: string },
+): string {
+  if (status === "ok" || status === "success") return text.success;
+  if (status === "warning" || status === "success_with_warnings") return text.successWithWarnings;
+  return text.failed;
 }
 
 interface StatProps {

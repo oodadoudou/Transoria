@@ -131,6 +131,9 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
   }, [activeTaskId, snapshot.status]);
 
   const selectedCount = actions.filter((action) => action.selected).length;
+  const structureIssueCount = actions.filter(
+    (action) => action.structure_check?.status !== "ok",
+  ).length;
   const isRunning =
     activeTaskId !== null &&
     (snapshot.status === "running" || snapshot.status === "pending");
@@ -368,6 +371,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
                 label={text.selectedCount}
                 value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
               />
+              <Stat label={text.structure} value={NUM.format(structureIssueCount)} />
             </div>
             {actions.length > 0 ? (
               <div className={styles.tableWrap}>
@@ -377,6 +381,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
                       <th>{text.select}</th>
                       <th>{text.source}</th>
                       <th>{text.output}</th>
+                      <th>{text.structure}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -407,6 +412,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
                             copyLabel={messages.common.copyPath}
                           />
                         </td>
+                        <td>{outcomeLabel(action.structure_check?.status ?? "failed", text)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -452,6 +458,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               label={text.outputFiles}
               value={NUM.format(artifacts.output_files.length)}
             />
+            {report ? <Stat label={text.result} value={outcomeLabel(report.outcome, text)} /> : null}
           </div>
           <div className={styles.artifactActions}>
             <Pill
@@ -461,6 +468,13 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               }
             >
               {text.openOutputFolder}
+            </Pill>
+            <Pill
+              variant="ghost"
+              onClick={() => void dialogsBridge.revealFile(artifacts.output_files[0])}
+              disabled={artifacts.output_files.length === 0}
+            >
+              {text.revealOutput}
             </Pill>
             <Pill
               variant="ghost"
@@ -531,7 +545,9 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
                       <td>{row.images_compressed}</td>
                       <td>{row.fonts_removed}</td>
                       <td>
-                        {row.status === "compressed" ? text.compressed : row.error}
+                        {row.status === "compressed"
+                          ? outcomeLabel(row.outcome, text)
+                          : row.error}
                       </td>
                     </tr>
                   ))}
@@ -543,6 +559,15 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
       ) : null}
     </>
   );
+}
+
+function outcomeLabel(
+  status: string,
+  text: { success: string; successWithWarnings: string; failed: string },
+): string {
+  if (status === "ok" || status === "success") return text.success;
+  if (status === "warning" || status === "success_with_warnings") return text.successWithWarnings;
+  return text.failed;
 }
 
 async function openOutputFolder(

@@ -108,9 +108,10 @@ class EpubMergeAction:
     title_hint: str
     size_bytes: int
     selected: bool = True
+    structure_check: Mapping[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "id": self.id,
             "source_path": self.source_path,
             "order": self.order,
@@ -118,6 +119,9 @@ class EpubMergeAction:
             "size_bytes": self.size_bytes,
             "selected": self.selected,
         }
+        if self.structure_check is not None:
+            payload["structure_check"] = dict(self.structure_check)
+        return payload
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "EpubMergeAction":
@@ -128,6 +132,11 @@ class EpubMergeAction:
             title_hint=str(data.get("title_hint", "")),
             size_bytes=int(data.get("size_bytes", 0)),
             selected=bool(data.get("selected", True)),
+            structure_check=(
+                dict(raw_check)
+                if isinstance((raw_check := data.get("structure_check")), Mapping)
+                else None
+            ),
         )
 
 
@@ -168,6 +177,7 @@ class EpubMergeResult:
     images_compressed: int = 0
     output_size_bytes: int = 0
     processed_files: tuple[dict[str, object], ...] = ()
+    outcome: str = "success"
     structure_check: Mapping[str, object] | None = None
     error: str = ""
 
@@ -187,6 +197,7 @@ class EpubMergeResult:
             "images_compressed": self.images_compressed,
             "output_size_bytes": self.output_size_bytes,
             "processed_files": list(self.processed_files),
+            "outcome": self.outcome,
             "error": self.error,
         }
         if self.structure_check is not None:
@@ -236,6 +247,11 @@ def build_epub_merge_plan(
             order=index,
             title_hint=path.stem,
             size_bytes=path.stat().st_size,
+            structure_check=(
+                inspect_epub_structure(path)
+                if suffix == _EPUB_SUFFIX
+                else None
+            ),
         )
         for index, path in enumerate(files)
     )
@@ -283,17 +299,20 @@ def merge_epub_files(
             merger = _EpubMerger(options)
             stats = merger.merge([Path(action.source_path) for action in selected], output)
         tmp_output = stats.pop("_tmp_output", None)
+        structure_check = (
+            inspect_epub_structure(output)
+            if options.output_format == "epub"
+            else None
+        )
+        outcome = _merge_outcome(structure_check, stats)
         return EpubMergeResult(
             action_id=action_id,
             input_dir=str(base),
             output_path=str(output),
             status="merged",
+            outcome=outcome,
             output_size_bytes=output.stat().st_size,
-            structure_check=(
-                inspect_epub_structure(output)
-                if options.output_format == "epub"
-                else None
-            ),
+            structure_check=structure_check,
             **stats,
         )
     except Exception as exc:  # noqa: BLE001
@@ -307,8 +326,25 @@ def merge_epub_files(
             input_dir=str(base),
             output_path=str(output),
             status="failed",
+            outcome="failed",
             error=f"{type(exc).__name__}: {exc}",
         )
+
+
+def _merge_outcome(
+    structure_check: Mapping[str, object] | None,
+    stats: Mapping[str, object],
+) -> str:
+    if structure_check is None:
+        return "success"
+    if structure_check.get("status") == "failed":
+        return "failed"
+    counts = structure_check.get("counts", {})
+    spine = int(counts.get("spine", 0)) if isinstance(counts, Mapping) else 0
+    chapters = int(stats.get("chapters_written", 0))
+    if structure_check.get("status") == "warning" or spine != chapters:
+        return "success_with_warnings"
+    return "success"
 
 
 def _merge_text_files(sources: list[Path], output: Path) -> dict[str, object]:
@@ -365,6 +401,7 @@ def build_epub_merge_report(
         "task_id": task_id,
         "generated_at": generated_at,
         "input_dir": str(input_dir),
+        "outcome": result.outcome,
         "totals": {
             "actions": 1,
             "merged": 1 if result.status == "merged" else 0,
@@ -430,6 +467,8 @@ class _EpubMerger:
         try:
             self._write_epub(tmp_output)
             _validate_epub(tmp_output)
+            if inspect_epub_structure(tmp_output).get("status") == "failed":
+                raise ValueError("merged EPUB failed structure validation")
             os.replace(tmp_output, output)
         finally:
             if tmp_output.exists():

@@ -25,6 +25,7 @@ def test_build_epub_compress_plan_uses_localized_suffix(tmp_path: Path) -> None:
     )
 
     assert plan.actions[0].output_path.endswith("Book-Compressed.epub")
+    assert plan.actions[0].structure_check is not None
 
 
 def test_folder_plan_skips_already_compressed_when_not_replacing(tmp_path: Path) -> None:
@@ -69,6 +70,9 @@ def test_compress_preserves_unique_fonts_and_mimetype_order(tmp_path: Path) -> N
     )
 
     assert result.status == "compressed"
+    assert result.outcome in {"success", "success_with_warnings"}
+    assert result.structure_comparison is not None
+    assert result.structure_comparison["status"] in {"ok", "warning"}
     assert result.fonts_removed == 0
     with zipfile.ZipFile(output) as archive:
         assert archive.namelist()[0] == "mimetype"

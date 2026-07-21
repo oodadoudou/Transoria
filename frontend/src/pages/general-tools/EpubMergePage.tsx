@@ -144,6 +144,9 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
   }, [activeTaskId, snapshot.status]);
 
   const selectedCount = actions.filter((action) => action.selected).length;
+  const structureIssueCount = actions.filter(
+    (action) => action.structure_check && action.structure_check.status !== "ok",
+  ).length;
   const isRunning =
     activeTaskId !== null &&
     (snapshot.status === "running" || snapshot.status === "pending");
@@ -406,6 +409,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                 label={text.selectedCount}
                 value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
               />
+              <Stat label={text.structure} value={NUM.format(structureIssueCount)} />
               <Stat
                 label={text.outputFile}
                 value={
@@ -432,6 +436,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                       <th>{text.order}</th>
                       <th>{text.source}</th>
                       <th>{text.size}</th>
+                      <th>{text.structure}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -516,6 +521,11 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                           />
                         </td>
                         <td>{formatBytes(action.size_bytes)}</td>
+                        <td>
+                          {action.structure_check
+                            ? outcomeLabel(action.structure_check.status, text)
+                            : "-"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -547,6 +557,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                 label={text.outputFiles}
                 value={NUM.format(artifacts.output_files.length)}
               />
+              {report ? <Stat label={text.result} value={outcomeLabel(report.outcome, text)} /> : null}
             </div>
             <div className={styles.artifactActions}>
               <Pill
@@ -556,6 +567,13 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                 }
               >
                 {text.openOutputFolder}
+              </Pill>
+              <Pill
+                variant="ghost"
+                onClick={() => void dialogsBridge.revealFile(artifacts.output_files[0])}
+                disabled={artifacts.output_files.length === 0}
+              >
+                {text.revealOutput}
               </Pill>
               <Pill
                 variant="ghost"
@@ -633,6 +651,15 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
       </Panel>
     </>
   );
+}
+
+function outcomeLabel(
+  status: string,
+  text: { success: string; successWithWarnings: string; failed: string },
+): string {
+  if (status === "ok" || status === "success") return text.success;
+  if (status === "warning" || status === "success_with_warnings") return text.successWithWarnings;
+  return text.failed;
 }
 
 async function openOutputFolder(

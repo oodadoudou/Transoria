@@ -25,6 +25,10 @@ from transoria.tools.epub_compressor import (
     EpubCompressOptions,
     compress_epub_file,
 )
+from transoria.tools.epub_structure import (
+    compare_epub_structure_checks,
+    inspect_epub_structure,
+)
 
 
 CONTAINER_NS = "urn:oasis:names:tc:opendocument:xmlns:container"
@@ -45,6 +49,7 @@ class EpubMetadataInfo:
     cover_archive_path: str
     has_cover: bool
     cover_preview_data_url: str
+    structure_check: dict[str, object]
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -56,6 +61,7 @@ class EpubMetadataInfo:
             "cover_archive_path": self.cover_archive_path,
             "has_cover": self.has_cover,
             "cover_preview_data_url": self.cover_preview_data_url,
+            "structure_check": dict(self.structure_check),
         }
 
 
@@ -68,6 +74,9 @@ class EpubMetadataApplyResult:
     cover_updated: bool
     metadata_updated: bool
     compressed: bool
+    outcome: str
+    structure_check: dict[str, object]
+    structure_comparison: dict[str, object]
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -78,6 +87,9 @@ class EpubMetadataApplyResult:
             "cover_updated": self.cover_updated,
             "metadata_updated": self.metadata_updated,
             "compressed": self.compressed,
+            "outcome": self.outcome,
+            "structure_check": dict(self.structure_check),
+            "structure_comparison": dict(self.structure_comparison),
         }
 
 
@@ -111,6 +123,7 @@ def read_epub_metadata(input_path: str | Path) -> EpubMetadataInfo:
         cover_archive_path=cover.archive_path if cover else "",
         has_cover=cover is not None,
         cover_preview_data_url=cover_preview_data_url,
+        structure_check=inspect_epub_structure(epub_path),
     )
 
 
@@ -167,6 +180,7 @@ def apply_epub_metadata(
         raise ValueError("Provide at least a title, author, or cover image.")
 
     temp_paths: list[Path] = []
+    source_check = inspect_epub_structure(epub_path)
     metadata_output = _temporary_epub_path(out_path)
     temp_paths.append(metadata_output)
 
@@ -222,9 +236,21 @@ def apply_epub_metadata(
             )
             if compress_result.status != "compressed":
                 raise ValueError(f"EPUB compression failed: {compress_result.error}")
-            os.replace(compress_result.output_path, out_path)
+            final_temp = Path(compress_result.output_path)
         else:
-            os.replace(metadata_output, out_path)
+            final_temp = metadata_output
+        output_check = inspect_epub_structure(final_temp)
+        preserve_counts = ["spine", "html", "body_documents", "nav", "nav_links", "ncx", "ncx_links", "fonts", "css"]
+        if cover_source is None:
+            preserve_counts.append("images")
+        comparison = compare_epub_structure_checks(
+            source_check,
+            output_check,
+            preserve_counts=tuple(preserve_counts),
+        )
+        if comparison["status"] == "failed":
+            raise ValueError("metadata output EPUB failed structure validation")
+        os.replace(final_temp, out_path)
     finally:
         for temp_path in temp_paths:
             if temp_path.exists():
@@ -242,6 +268,13 @@ def apply_epub_metadata(
         cover_updated=cover_source is not None,
         metadata_updated=bool(next_title or next_author),
         compressed=compress,
+        outcome=(
+            "success_with_warnings"
+            if comparison["status"] == "warning"
+            else "success"
+        ),
+        structure_check=output_check,
+        structure_comparison=comparison,
     )
 
 
