@@ -485,6 +485,9 @@ export const zh: Messages = {
     successWithWarnings: "成功但有警告",
     failed: "失败",
     revealOutput: "在 Finder 中显示",
+    advancedSettings: "高级设置",
+    readyLabel: "等待扫描",
+    actionsLabel: "压缩操作",
   },
   epubMergeTool: {
     title: "文本文档合并",

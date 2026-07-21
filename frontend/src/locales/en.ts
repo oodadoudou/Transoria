@@ -498,6 +498,9 @@ export const en: Messages = {
     successWithWarnings: "Success with warnings",
     failed: "Failed",
     revealOutput: "Show in Finder",
+    advancedSettings: "Advanced settings",
+    readyLabel: "Ready to scan",
+    actionsLabel: "Compression actions",
   },
   epubMergeTool: {
     title: "Document Merger",

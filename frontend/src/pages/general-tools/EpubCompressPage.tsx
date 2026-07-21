@@ -14,7 +14,7 @@ import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { CompactPath } from "@/components/CompactPath";
-import { useMessages } from "@/locales";
+import { epubCompressDefaultSuffixes, useMessages } from "@/locales";
 import {
   hasShownCleanCompletionToast,
   markCleanCompletionToastShown,
@@ -76,9 +76,14 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
   );
 
   useEffect(() => {
-    setOptions((prev) =>
-      prev.suffix ? prev : { ...prev, suffix: text.defaultSuffix },
-    );
+    setOptions((prev) => {
+      if (prev.suffix && !epubCompressDefaultSuffixes.has(prev.suffix)) {
+        return prev;
+      }
+      return prev.suffix === text.defaultSuffix
+        ? prev
+        : { ...prev, suffix: text.defaultSuffix };
+    });
   }, [text.defaultSuffix]);
 
   useEffect(() => {
@@ -142,6 +147,15 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
     snapshot.progress.total > 0
       ? Math.floor((settled / snapshot.progress.total) * 100)
       : 0;
+  const stage = isRunning
+    ? "progress"
+    : artifacts
+      ? "result"
+      : plan
+        ? "preview"
+        : activeTaskId
+          ? "progress"
+          : "idle";
 
   const handleChooseFile = async () => {
     try {
@@ -226,8 +240,9 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
   };
 
   return (
-    <>
+    <div className={styles.workspace}>
       <Panel
+        className={styles.configuration}
         title={embedded ? undefined : text.title}
         subtitle={embedded ? undefined : text.sub}
       >
@@ -271,164 +286,162 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
             </div>
           )}
         </div>
-        <div className={styles.optionsGrid}>
-          <label className={styles.option}>
-            <input
-              type="checkbox"
-              checked={options.replace_original}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  replace_original: event.target.checked,
-                }))
-              }
-            />
-            {text.replaceOriginal}
-          </label>
-          <label className={styles.option}>
-            <input
-              type="checkbox"
-              checked={options.preserve_first_cover}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  preserve_first_cover: event.target.checked,
-                }))
-              }
-            />
-            {text.preserveCover}
-          </label>
-          <label className={styles.option}>
-            <input
-              type="checkbox"
-              checked={options.recursive}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  recursive: event.target.checked,
-                }))
-              }
-              disabled={mode === "file"}
-            />
-            {text.recursive}
-          </label>
-          <label className={styles.field}>
-            <span>{text.fontMode}</span>
-            <select
-              value={options.font_mode}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  font_mode: event.target.value,
-                }))
-              }
-            >
-              <option value="deduplicate">{text.fontModeDeduplicate}</option>
-              <option value="remove">{text.fontModeRemove}</option>
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span>{text.suffix}</span>
-            <input
-              value={options.suffix}
-              disabled={options.replace_original}
-              onBlur={() =>
-                setOptions((prev) => normalizeOptions(prev, text.defaultSuffix))
-              }
-              onChange={(event) =>
-                setOptions((prev) => ({ ...prev, suffix: event.target.value }))
-              }
-            />
-          </label>
-        </div>
-        <div className={styles.actionRow}>
-          <Pill onClick={handlePreview} disabled={!inputPath || isRunning}>
-            {text.scan}
-          </Pill>
-          <Pill
-            onClick={handleExecute}
-            disabled={!inputPath || selectedCount === 0 || isRunning}
-          >
-            {text.execute}
-          </Pill>
-          <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
-            {text.stop}
-          </Pill>
-          {actionError ? (
-            <span className={styles.actionError}>
-              <code>{actionError.code}</code> {actionError.message}
-            </span>
-          ) : null}
-        </div>
-      </Panel>
-
-      <Panel label={text.previewLabel}>
-        {plan ? (
-          <>
-            <div className={styles.summaryGrid}>
-              <Stat label={text.epubsFound} value={NUM.format(plan.totals.epub_files)} />
-              <Stat
-                label={text.selectedCount}
-                value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
+        <details className={styles.advancedSettings}>
+          <summary>{text.advancedSettings}</summary>
+          <div className={styles.optionsGrid}>
+            <label className={styles.option}>
+              <input
+                type="checkbox"
+                checked={options.replace_original}
+                onChange={(event) =>
+                  setOptions((prev) => ({
+                    ...prev,
+                    replace_original: event.target.checked,
+                  }))
+                }
               />
-              <Stat label={text.structure} value={NUM.format(structureIssueCount)} />
-            </div>
-            {actions.length > 0 ? (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>{text.select}</th>
-                      <th>{text.source}</th>
-                      <th>{text.output}</th>
-                      <th>{text.structure}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {actions.map((action) => (
-                      <tr key={action.id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={action.selected}
-                            onChange={(event) =>
-                              patchAction(action.id, {
-                                selected: event.target.checked,
-                              })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <CompactPath
-                            value={action.source_path}
-                            displayMode="filename"
-                            copyLabel={messages.common.copyPath}
-                          />
-                        </td>
-                        <td>
-                          <CompactPath
-                            value={action.output_path}
-                            displayMode="filename"
-                            copyLabel={messages.common.copyPath}
-                          />
-                        </td>
-                        <td>{outcomeLabel(action.structure_check?.status ?? "failed", text)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className={styles.empty}>{text.noActions}</div>
-            )}
-          </>
-        ) : (
-          <div className={styles.empty}>{text.noPlan}</div>
-        )}
+              {text.replaceOriginal}
+            </label>
+            <label className={styles.option}>
+              <input
+                type="checkbox"
+                checked={options.preserve_first_cover}
+                onChange={(event) =>
+                  setOptions((prev) => ({
+                    ...prev,
+                    preserve_first_cover: event.target.checked,
+                  }))
+                }
+              />
+              {text.preserveCover}
+            </label>
+            <label className={styles.option}>
+              <input
+                type="checkbox"
+                checked={options.recursive}
+                onChange={(event) =>
+                  setOptions((prev) => ({
+                    ...prev,
+                    recursive: event.target.checked,
+                  }))
+                }
+                disabled={mode === "file"}
+              />
+              {text.recursive}
+            </label>
+            <label className={styles.field}>
+              <span>{text.fontMode}</span>
+              <select
+                value={options.font_mode}
+                onChange={(event) =>
+                  setOptions((prev) => ({
+                    ...prev,
+                    font_mode: event.target.value,
+                  }))
+                }
+              >
+                <option value="deduplicate">{text.fontModeDeduplicate}</option>
+                <option value="remove">{text.fontModeRemove}</option>
+              </select>
+            </label>
+            <label className={styles.field}>
+              <span>{text.suffix}</span>
+              <input
+                value={options.suffix}
+                disabled={options.replace_original}
+                onBlur={() =>
+                  setOptions((prev) => normalizeOptions(prev, text.defaultSuffix))
+                }
+                onChange={(event) =>
+                  setOptions((prev) => ({ ...prev, suffix: event.target.value }))
+                }
+              />
+            </label>
+          </div>
+        </details>
       </Panel>
 
-      {activeTaskId ? (
-        <Panel label={text.progressLabel}>
+      <div className={styles.stageArea}>
+        {stage === "idle" || stage === "preview" ? (
+          <Panel label={stage === "preview" ? text.previewLabel : text.readyLabel}>
+            {plan ? (
+              <>
+                <div className={styles.summaryGrid}>
+                  <Stat
+                    label={text.epubsFound}
+                    value={NUM.format(plan.totals.epub_files)}
+                  />
+                  <Stat
+                    label={text.selectedCount}
+                    value={`${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`}
+                  />
+                  <Stat
+                    label={text.structure}
+                    value={NUM.format(structureIssueCount)}
+                  />
+                </div>
+                {actions.length > 0 ? (
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>{text.select}</th>
+                          <th>{text.source}</th>
+                          <th>{text.output}</th>
+                          <th>{text.structure}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {actions.map((action) => (
+                          <tr key={action.id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={action.selected}
+                                onChange={(event) =>
+                                  patchAction(action.id, {
+                                    selected: event.target.checked,
+                                  })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <CompactPath
+                                value={action.source_path}
+                                displayMode="filename"
+                                copyLabel={messages.common.copyPath}
+                              />
+                            </td>
+                            <td>
+                              <CompactPath
+                                value={action.output_path}
+                                displayMode="filename"
+                                copyLabel={messages.common.copyPath}
+                              />
+                            </td>
+                            <td>
+                              {outcomeLabel(
+                                action.structure_check?.status ?? "failed",
+                                text,
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className={styles.empty}>{text.noActions}</div>
+                )}
+              </>
+            ) : (
+              <div className={styles.empty}>{text.noPlan}</div>
+            )}
+          </Panel>
+        ) : null}
+
+        {stage === "progress" ? (
+          <Panel label={text.progressLabel}>
           <div className={styles.summaryGrid}>
             <Stat label={text.statusLabel} value={snapshot.status} />
             <Stat
@@ -440,11 +453,11 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               value={NUM.format(snapshot.progress.failed)}
             />
           </div>
-        </Panel>
-      ) : null}
+          </Panel>
+        ) : null}
 
-      {artifacts ? (
-        <Panel label={text.artifactsLabel}>
+        {stage === "result" && artifacts ? (
+          <Panel label={text.artifactsLabel}>
           <div className={styles.summaryGrid}>
             <Stat
               label={text.compressedCount}
@@ -555,9 +568,44 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               </table>
             </div>
           ) : null}
-        </Panel>
-      ) : null}
-    </>
+          </Panel>
+        ) : null}
+      </div>
+
+      <div className={styles.actionDock} role="group" aria-label={text.actionsLabel}>
+        <div className={styles.actionStatus}>
+          <span>{text.statusLabel}</span>
+          <strong>
+            {stage === "idle"
+              ? text.readyLabel
+              : stage === "preview"
+                ? `${text.selectedCount} ${NUM.format(selectedCount)} / ${NUM.format(actions.length)}`
+                : stage === "result" && report
+                  ? outcomeLabel(report.outcome, text)
+                  : `${snapshot.status} · ${percent}%`}
+          </strong>
+        </div>
+        <div className={styles.actionButtons}>
+          <Pill variant="ghost" onClick={handlePreview} disabled={!inputPath || isRunning}>
+            {text.scan}
+          </Pill>
+          <Pill
+            onClick={handleExecute}
+            disabled={!plan || selectedCount === 0 || isRunning}
+          >
+            {text.execute}
+          </Pill>
+          <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
+            {text.stop}
+          </Pill>
+        </div>
+        {actionError ? (
+          <span className={styles.actionError}>
+            <code>{actionError.code}</code> {actionError.message}
+          </span>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

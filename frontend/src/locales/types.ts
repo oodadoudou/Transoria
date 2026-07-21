@@ -1108,6 +1108,9 @@ export interface Messages {
     successWithWarnings: string;
     failed: string;
     revealOutput: string;
+    advancedSettings: string;
+    readyLabel: string;
+    actionsLabel: string;
   };
   epubMergeTool: {
     title: string;

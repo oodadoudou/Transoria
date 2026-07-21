@@ -7,6 +7,11 @@ export type Locale = "en" | "zh";
 
 const catalogues: Record<Locale, Messages> = { en, zh };
 
+export const epubCompressDefaultSuffixes: ReadonlySet<string> = new Set([
+  en.epubCompressTool.defaultSuffix,
+  zh.epubCompressTool.defaultSuffix,
+]);
+
 interface I18nState {
   locale: Locale;
   messages: Messages;
