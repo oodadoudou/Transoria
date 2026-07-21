@@ -4,7 +4,8 @@ import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
-import { useTaskStore, type GeneralToolsPage } from "@/store/useTaskStore";
+import type { GeneralToolsPage } from "@/store/useTaskStore";
+import { BatchReplacementPage } from "./BatchReplacementPage";
 import { EpubCompressPage } from "./EpubCompressPage";
 import { EpubConvertPage } from "./EpubConvertPage";
 import { EpubMergePage } from "./EpubMergePage";
@@ -13,7 +14,7 @@ import { EpubRepairPage } from "./EpubRepairPage";
 import { TxtToEpubPage } from "./TxtToEpubPage";
 import styles from "./EpubToolsPage.module.css";
 
-type EpubToolPage = Exclude<GeneralToolsPage, "batchReplacement" | "epubTools">;
+type EpubToolPage = Exclude<GeneralToolsPage, "epubTools">;
 
 interface EpubToolsPageProps {
   initialTool?: EpubToolPage | null;
@@ -22,7 +23,6 @@ interface EpubToolsPageProps {
 export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   const messages = useMessages();
   const text = messages.generalTools.epubTools;
-  const navigate = useTaskStore((state) => state.navigate);
   const [activeTool, setActiveTool] = useState<EpubToolPage | null>(initialTool);
   const tools = useMemo(
     () =>
@@ -62,11 +62,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
           title: messages.batchReplacement.title,
           sub: messages.batchReplacement.sub,
         },
-      ] satisfies Array<{
-        id: EpubToolPage | "batchReplacement";
-        title: string;
-        sub: string;
-      }>,
+      ] satisfies Array<{ id: EpubToolPage; title: string; sub: string }>,
     [messages],
   );
   const activeSpec = tools.find((tool) => tool.id === activeTool) ?? null;
@@ -85,13 +81,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
               key={tool.id}
               type="button"
               className={styles.toolButton}
-              onClick={() => {
-                if (tool.id === "batchReplacement") {
-                  navigate({ module: "general-tools", page: "batchReplacement" });
-                  return;
-                }
-                setActiveTool(tool.id);
-              }}
+              onClick={() => setActiveTool(tool.id)}
             >
               <span>{tool.title}</span>
               <small>{tool.sub}</small>
@@ -147,5 +137,7 @@ function renderTool(tool: EpubToolPage) {
       return <EpubMetadataPage embedded />;
     case "epubRepair":
       return <EpubRepairPage embedded />;
+    case "batchReplacement":
+      return <BatchReplacementPage embedded />;
   }
 }

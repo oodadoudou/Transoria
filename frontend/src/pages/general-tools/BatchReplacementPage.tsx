@@ -35,6 +35,11 @@ import { useSearchShortcut } from "@/components/useSearchShortcut";
 import { tableRowKey, uniqueRows } from "@/utils/tableDedupe";
 import { useLocalState } from "@/utils/localState";
 import { useSessionState } from "@/utils/sessionState";
+import {
+  EpubToolActionDock,
+  EpubToolStage,
+  EpubToolWorkspace,
+} from "./EpubToolWorkflow";
 import styles from "./BatchReplacementPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -68,7 +73,11 @@ function normalizeRuleFilePath(path: string): string {
   }
 }
 
-export function BatchReplacementPage() {
+export function BatchReplacementPage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const messages = useMessages();
   const moduleSettings = useModuleSettings("replacement");
   const draft = moduleSettings.draft;
@@ -223,8 +232,8 @@ export function BatchReplacementPage() {
   if (!draft) {
     return (
       <Panel
-        title={messages.batchReplacement.title}
-        subtitle={messages.batchReplacement.sub}
+        title={embedded ? undefined : messages.batchReplacement.title}
+        subtitle={embedded ? undefined : messages.batchReplacement.sub}
       />
     );
   }
@@ -337,31 +346,31 @@ export function BatchReplacementPage() {
 
   return (
     <>
-      <Panel
-        title={messages.batchReplacement.title}
-        subtitle={messages.batchReplacement.sub}
-      >
-        <div className={styles.pickerStack}>
-          <FolderPickerRow
-            label={messages.batchReplacement.inputFolder}
-            value={inputFolder}
-            variant="input"
-            onChange={setInputFolder}
-            historyKey="general_tools:batch_replacement:input_folder"
-          />
-          <FolderPickerRow
-            label={messages.batchReplacement.outputFolder}
-            value={outputFolder}
-            variant="output"
-            onChange={setOutputFolder}
-            historyKey="general_tools:batch_replacement:output_folder"
-          />
-        </div>
-      </Panel>
+      <EpubToolWorkspace>
+        <Panel
+          title={embedded ? undefined : messages.batchReplacement.title}
+          subtitle={embedded ? undefined : messages.batchReplacement.sub}
+        >
+          <div className={styles.pickerStack}>
+            <FolderPickerRow
+              label={messages.batchReplacement.inputFolder}
+              value={inputFolder}
+              variant="input"
+              onChange={setInputFolder}
+              historyKey="general_tools:batch_replacement:input_folder"
+            />
+            <FolderPickerRow
+              label={messages.batchReplacement.outputFolder}
+              value={outputFolder}
+              variant="output"
+              onChange={setOutputFolder}
+              historyKey="general_tools:batch_replacement:output_folder"
+            />
+          </div>
+        </Panel>
 
-      <Panel
-        label={messages.batchReplacement.rulesLabel}
-      >
+        <EpubToolStage>
+          <Panel label={messages.batchReplacement.rulesLabel}>
         <div className={styles.ruleImportRow}>
           <TextField
             label={messages.batchReplacement.ruleFile}
@@ -438,34 +447,7 @@ export function BatchReplacementPage() {
             ))}
           </div>
         ) : null}
-      </Panel>
-
-      <Panel>
-        <div className={styles.actionRow}>
-          <Pill
-            onClick={handleExecute}
-            disabled={
-              isRunning ||
-              rules.length === 0 ||
-              !inputFolder
-            }
-          >
-            {messages.batchReplacement.execute}
-          </Pill>
-          <Pill
-            variant="ghost"
-            onClick={handleStop}
-            disabled={!isRunning || !activeTaskId}
-          >
-            {messages.batchReplacement.stop}
-          </Pill>
-          {actionError ? (
-            <span className={styles.actionError}>
-              <code>{actionError.code}</code> {actionError.message}
-            </span>
-          ) : null}
-        </div>
-      </Panel>
+          </Panel>
 
       {activeTaskId ? (
         <Panel label={messages.batchReplacement.progressLabel}>
@@ -494,13 +476,6 @@ export function BatchReplacementPage() {
             </div>
           ) : null}
         </Panel>
-      ) : null}
-
-      {failedModalOpen ? (
-        <FailedSubtasksModal
-          failures={snapshot.failures}
-          onClose={() => setFailedModalOpen(false)}
-        />
       ) : null}
 
       {artifacts ? (
@@ -584,6 +559,48 @@ export function BatchReplacementPage() {
           ) : null}
         </Panel>
       ) : null}
+        </EpubToolStage>
+
+        <EpubToolActionDock
+          statusLabel={messages.batchReplacement.statusLabel}
+          status={
+            activeTaskId
+              ? `${snapshot.status} · ${NUM.format(completed)} / ${NUM.format(total)}`
+              : `${NUM.format(rules.length)} · ${messages.batchReplacement.rulesLabel}`
+          }
+          actions={
+            <>
+              <Pill
+                onClick={handleExecute}
+                disabled={isRunning || rules.length === 0 || !inputFolder}
+              >
+                {messages.batchReplacement.execute}
+              </Pill>
+              <Pill
+                variant="ghost"
+                onClick={handleStop}
+                disabled={!isRunning || !activeTaskId}
+              >
+                {messages.batchReplacement.stop}
+              </Pill>
+            </>
+          }
+          error={
+            actionError ? (
+              <span className={styles.actionError}>
+                <code>{actionError.code}</code> {actionError.message}
+              </span>
+            ) : null
+          }
+        />
+      </EpubToolWorkspace>
+
+      {failedModalOpen ? (
+        <FailedSubtasksModal
+          failures={snapshot.failures}
+          onClose={() => setFailedModalOpen(false)}
+        />
+      ) : null}
 
       {reportOpen && report ? (
         <BatchReplacementReportModal
@@ -591,7 +608,6 @@ export function BatchReplacementPage() {
           onClose={() => setReportOpen(false)}
         />
       ) : null}
-
     </>
   );
 }

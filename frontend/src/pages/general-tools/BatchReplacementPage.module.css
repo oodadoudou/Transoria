@@ -68,12 +68,6 @@
   margin-right: 4px;
 }
 
-.actionRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .actionError {
   color: var(--text-warn, #6b3a1f);
   font-size: 12.5px;
