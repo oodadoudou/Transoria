@@ -918,7 +918,6 @@ export const zh: Messages = {
       activePrompt: "提示词",
       switch: "切换 →",
       taskId: "任务 ID",
-      proofreadLowConfidence: "校对 {n} 条低置信",
       emptyState: {
         label: "翻译",
         title: "当前还没有加载翻译任务",

@@ -9,6 +9,11 @@
   border-radius: var(--radius-inset);
 }
 
+.reviewRequiredCard {
+  border-color: var(--text-warn, #8a4f2a);
+  background: var(--surface-warn, #fdf2ec);
+}
+
 .nextStepCopy {
   display: flex;
   flex-direction: column;
@@ -100,12 +105,6 @@
   border-radius: 6px;
   padding: 4px 7px;
   user-select: text;
-}
-
-.reviewActionRow {
-  display: flex;
-  justify-content: flex-start;
-  margin-top: 12px;
 }
 
 .statGrid {

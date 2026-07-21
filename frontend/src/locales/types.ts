@@ -539,7 +539,6 @@ export interface Messages {
       activePrompt: string;
       switch: string;
       taskId: string;
-      proofreadLowConfidence: string;
       nextStep: {
         ariaLabel: string;
         label: string;

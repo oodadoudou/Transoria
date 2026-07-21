@@ -947,7 +947,6 @@ export const en: Messages = {
       activePrompt: "Prompt",
       switch: "Switch →",
       taskId: "Task ID",
-      proofreadLowConfidence: "Proofread {n} low-confidence",
       nextStep: {
         ariaLabel: "Workflow next step",
         label: "Next step",

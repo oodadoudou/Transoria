@@ -155,7 +155,11 @@ export function RunPage() {
   // the same per-task dedupe pattern as the celebratory toast.
   useEffect(() => {
     if (!activeTaskId) return;
-    if (snapshot.status !== "completed") return;
+    if (snapshot.status !== "completed" && snapshot.status !== "failed") {
+      return;
+    }
+    if (snapshot.progress.failed > 0) return;
+    if (snapshot.progress.pending + snapshot.progress.running > 0) return;
     if (snapshot.lowConfidence.total <= 0) return;
     if (hasShownLowConfToast(activeTaskId)) return;
     markLowConfToastShown(activeTaskId);
@@ -183,6 +187,9 @@ export function RunPage() {
   }, [
     activeTaskId,
     snapshot.status,
+    snapshot.progress.failed,
+    snapshot.progress.pending,
+    snapshot.progress.running,
     snapshot.lowConfidence.total,
     snapshot.lowConfidence.sourceResidue,
     messages.runLowConfReminder,
@@ -308,9 +315,11 @@ export function RunPage() {
         : 0;
   const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
   const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
-  const showLowConfidenceAction =
+  const showReviewRequired =
     Boolean(activeTaskId) &&
-    snapshot.status === "completed" &&
+    (snapshot.status === "completed" || snapshot.status === "failed") &&
+    failed === 0 &&
+    remaining === 0 &&
     snapshot.lowConfidence.total > 0;
   const showFailures =
     snapshot.failures.length > 0 &&
@@ -326,18 +335,32 @@ export function RunPage() {
     ? null
     : !hasUsableModel
       ? "model"
-      : activeTaskId &&
-          snapshot.status === "completed" &&
-          snapshot.lowConfidence.total > 0
-        ? "proofreading"
-        : !recentTranslationTask
-          ? "start"
-          : null;
+      : !recentTranslationTask
+        ? "start"
+        : null;
   return (
     <>
       <Panel title={run.title} subtitle={run.sub} />
 
       <RunErrorBanner kind="translation" />
+
+      {showReviewRequired && activeTaskId ? (
+        <NextStepCard
+          kind="proofreading"
+          riskCount={snapshot.lowConfidence.total}
+          persistent
+          onDismiss={() => undefined}
+          onConfigureModel={() =>
+            navigate({ module: "model", page: "general" })
+          }
+          onOpenSettings={() =>
+            navigate({ module: "translation", page: "settings" })
+          }
+          onOpenProofreading={() =>
+            openProofreadingTask(activeTaskId, DEFAULT_PROOFREADING_FILTERS)
+          }
+        />
+      ) : null}
 
       {!nextStepDismissed && nextStepKind ? (
         <NextStepCard
@@ -530,21 +553,6 @@ export function RunPage() {
             ) : null}
           </>
         )}
-        {showLowConfidenceAction && activeTaskId ? (
-          <div className={styles.reviewActionRow}>
-            <Pill
-              variant="ghost"
-              onClick={() =>
-                openProofreadingTask(activeTaskId, DEFAULT_PROOFREADING_FILTERS)
-              }
-            >
-              {run.proofreadLowConfidence.replace(
-                "{n}",
-                String(snapshot.lowConfidence.total),
-              )}
-            </Pill>
-          </div>
-        ) : null}
       </Panel>
 
       <RunControls kind="translation">
@@ -561,6 +569,7 @@ export function RunPage() {
 interface NextStepCardProps {
   kind: NextStepKind;
   riskCount: number;
+  persistent?: boolean;
   onDismiss: () => void;
   onConfigureModel: () => void;
   onOpenSettings: () => void;
@@ -570,6 +579,7 @@ interface NextStepCardProps {
 function NextStepCard({
   kind,
   riskCount,
+  persistent = false,
   onDismiss,
   onConfigureModel,
   onOpenSettings,
@@ -600,7 +610,12 @@ function NextStepCard({
           };
 
   return (
-    <section className={styles.nextStepCard} aria-label={copy.ariaLabel}>
+    <section
+      className={`${styles.nextStepCard} ${
+        persistent ? styles.reviewRequiredCard : ""
+      }`}
+      aria-label={copy.ariaLabel}
+    >
       <div className={styles.nextStepCopy}>
         <div className={styles.nextStepLabel}>{copy.label}</div>
         <h3>{content.title}</h3>
@@ -610,13 +625,15 @@ function NextStepCard({
         <Pill variant="primary" onClick={content.onAction}>
           {content.action}
         </Pill>
-        <button
-          type="button"
-          className={styles.nextStepDismiss}
-          onClick={onDismiss}
-        >
-          {copy.dismiss}
-        </button>
+        {!persistent ? (
+          <button
+            type="button"
+            className={styles.nextStepDismiss}
+            onClick={onDismiss}
+          >
+            {copy.dismiss}
+          </button>
+        ) : null}
       </div>
     </section>
   );
