@@ -10,6 +10,7 @@
 }
 
 .reviewRequiredCard {
+  margin-top: 18px;
   border-color: var(--text-warn, #8a4f2a);
   background: var(--surface-warn, #fdf2ec);
 }

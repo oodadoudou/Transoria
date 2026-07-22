@@ -344,24 +344,6 @@ export function RunPage() {
 
       <RunErrorBanner kind="translation" />
 
-      {showReviewRequired && activeTaskId ? (
-        <NextStepCard
-          kind="proofreading"
-          riskCount={snapshot.lowConfidence.total}
-          persistent
-          onDismiss={() => undefined}
-          onConfigureModel={() =>
-            navigate({ module: "model", page: "general" })
-          }
-          onOpenSettings={() =>
-            navigate({ module: "translation", page: "settings" })
-          }
-          onOpenProofreading={() =>
-            openProofreadingTask(activeTaskId, DEFAULT_PROOFREADING_FILTERS)
-          }
-        />
-      ) : null}
-
       {!nextStepDismissed && nextStepKind ? (
         <NextStepCard
           kind={nextStepKind}
@@ -550,6 +532,26 @@ export function RunPage() {
                   statusLabels={messages.status}
                 />
               </>
+            ) : null}
+            {showReviewRequired && activeTaskId ? (
+              <NextStepCard
+                kind="proofreading"
+                riskCount={snapshot.lowConfidence.total}
+                persistent
+                onDismiss={() => undefined}
+                onConfigureModel={() =>
+                  navigate({ module: "model", page: "general" })
+                }
+                onOpenSettings={() =>
+                  navigate({ module: "translation", page: "settings" })
+                }
+                onOpenProofreading={() =>
+                  openProofreadingTask(
+                    activeTaskId,
+                    DEFAULT_PROOFREADING_FILTERS,
+                  )
+                }
+              />
             ) : null}
           </>
         )}
