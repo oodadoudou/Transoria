@@ -958,7 +958,7 @@ export const en: Messages = {
         startBody:
           "Set the input and output folders in Settings. For terminology consistency, run glossary extraction first when needed.",
         startAction: "Open translation settings",
-        proofreadingTitle: "Review {n} proofreading risks",
+        proofreadingTitle: "{n} items to proofread",
         proofreadingBody:
           "This translation finished with low-confidence or residue risks that need a manual pass.",
         proofreadingAction: "Open proofreading",

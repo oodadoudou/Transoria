@@ -934,7 +934,7 @@ export const zh: Messages = {
         startBody:
           "先在设置页选择输入/输出文件夹。需要术语一致性时,可以先做术语提取。",
         startAction: "打开翻译设置",
-        proofreadingTitle: "去校对处理 {n} 项风险",
+        proofreadingTitle: "待校对 {n} 项",
         proofreadingBody:
           "本次翻译已完成,还有低置信或残留风险需要人工确认。",
         proofreadingAction: "打开校对",

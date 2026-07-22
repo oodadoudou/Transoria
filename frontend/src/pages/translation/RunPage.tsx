@@ -611,13 +611,22 @@ function NextStepCard({
             onAction: onOpenSettings,
           };
 
+  if (persistent && kind === "proofreading") {
+    return (
+      <button
+        type="button"
+        className={styles.reviewRequiredButton}
+        aria-label={content.action}
+        onClick={content.onAction}
+      >
+        <span>{content.title}</span>
+        <span className={styles.reviewRequiredAction}>{content.action}</span>
+      </button>
+    );
+  }
+
   return (
-    <section
-      className={`${styles.nextStepCard} ${
-        persistent ? styles.reviewRequiredCard : ""
-      }`}
-      aria-label={copy.ariaLabel}
-    >
+    <section className={styles.nextStepCard} aria-label={copy.ariaLabel}>
       <div className={styles.nextStepCopy}>
         <div className={styles.nextStepLabel}>{copy.label}</div>
         <h3>{content.title}</h3>

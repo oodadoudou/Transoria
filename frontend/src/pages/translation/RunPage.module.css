@@ -9,10 +9,45 @@
   border-radius: var(--radius-inset);
 }
 
-.reviewRequiredCard {
-  margin-top: 18px;
-  border-color: var(--text-warn, #8a4f2a);
-  background: var(--surface-warn, #fdf2ec);
+.reviewRequiredButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  margin-top: 14px;
+  padding: 7px 11px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.reviewRequiredButton:hover {
+  background: var(--surface);
+  border-color: var(--muted);
+}
+
+.reviewRequiredButton:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.reviewRequiredAction {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.reviewRequiredAction::after {
+  content: " \2192";
 }
 
 .nextStepCopy {
