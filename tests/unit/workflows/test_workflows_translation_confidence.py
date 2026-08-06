@@ -25,6 +25,7 @@ from transoria.workflows.translation.confidence import (
     TAG_MODEL_CHATTER,
     TAG_SOURCE_RESIDUE,
     TAG_TARGET_LANGUAGE_WEAK,
+    TAG_TRUNCATED,
     TAG_VERBATIM_ECHO,
 )
 from transoria.workflows.translation.orchestrator import _collect_translations
@@ -262,6 +263,67 @@ def test_evaluate_flags_empty_translation_for_nonempty_source() -> None:
 
     assert verdict.is_low_confidence
     assert any("empty translation" in reason for reason in verdict.reasons)
+
+
+def test_evaluate_flags_truncated_translation_when_source_ends_sentence() -> None:
+    verdict = evaluate_segment_confidence(
+        "다급해진 진우가 입을 막고 있던 손을 떼어냈다.",
+        "听到这句话，镇宇慌忙摇头，但对方根本充耳不闻，反而更快地将阴茎往里面猛插。情急之下，镇宇掰",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert verdict.is_low_confidence
+    assert any("truncated" in reason for reason in verdict.reasons)
+    assert TAG_TRUNCATED in verdict.tags
+
+
+def test_evaluate_keeps_translation_that_ends_with_punctuation() -> None:
+    verdict = evaluate_segment_confidence(
+        "김진우는 몇 번째인지 모를 남자의 정액을 뒤로 받으며 절정에 달했다.",
+        "就这样，在地铁男厕所里，金镇宇被不知第几个男人的精液灌满了后面，达到了高潮。",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert not verdict.is_low_confidence
+    assert "truncated" not in " ".join(verdict.reasons)
+
+
+def test_evaluate_flags_truncated_japanese_translation() -> None:
+    verdict = evaluate_segment_confidence(
+        "彼は部屋に入った。",
+        "彼は部屋に入",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.JAPANESE,
+        target_language=Language.JAPANESE,
+    )
+
+    assert verdict.is_low_confidence
+    assert TAG_TRUNCATED in verdict.tags
+
+
+def test_evaluate_does_not_flag_truncation_when_source_ends_without_punctuation() -> None:
+    verdict = evaluate_segment_confidence(
+        "제1장 뒤로 가는 알파",
+        "第1章 倒退的阿尔法",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert not verdict.is_low_confidence
+    assert "truncated" not in " ".join(verdict.reasons)
 
 
 def test_evaluate_flags_korean_residue_when_source_is_korean() -> None:

@@ -89,6 +89,7 @@ interface ProofreadingItemMeta {
   possibleDuplicate: boolean;
   modelAnomaly: boolean;
   untranslated: boolean;
+  truncated: boolean;
   formatRescue: boolean;
 }
 
@@ -100,6 +101,7 @@ interface RiskCounts {
   possibleDuplicate: number;
   modelAnomaly: number;
   untranslated: number;
+  truncated: number;
   formatRescue: number;
   total: number;
 }
@@ -112,6 +114,7 @@ const EMPTY_RISK_COUNTS: RiskCounts = {
   possibleDuplicate: 0,
   modelAnomaly: 0,
   untranslated: 0,
+  truncated: 0,
   formatRescue: 0,
   total: 0,
 };
@@ -720,12 +723,14 @@ export function ProofreadingPage() {
         item.tags?.includes("possible_duplicate") ?? false;
       const modelAnomaly =
         item.tags?.some((tag) => MODEL_ANOMALY_TAGS.has(tag)) ?? false;
+      const truncated = item.tags?.includes("truncated") ?? false;
       const untranslated = isUntranslated(item);
       const formatRescue =
         hasReasonText(item.reasons, "format", "rescue") ||
         hasReasonText(item.reasons, "format", "fallback");
       let rank = 7;
       if (sourceResidue) rank = 0;
+      else if (truncated) rank = 1;
       else if (glossaryNotApplied) rank = 1;
       else if (termInconsistency) rank = 2;
       else if (possibleDuplicate) rank = 3;
@@ -742,6 +747,7 @@ export function ProofreadingPage() {
         possibleDuplicate,
         modelAnomaly,
         untranslated,
+        truncated,
         formatRescue,
       });
       if (item.low_confidence) riskCounts.lowConf += 1;
@@ -751,6 +757,7 @@ export function ProofreadingPage() {
       if (possibleDuplicate) riskCounts.possibleDuplicate += 1;
       if (modelAnomaly) riskCounts.modelAnomaly += 1;
       if (untranslated) riskCounts.untranslated += 1;
+      if (truncated) riskCounts.truncated += 1;
       if (formatRescue) riskCounts.formatRescue += 1;
     }
     const sortedItems = [...(snapshot?.items ?? [])].sort((left, right) => {
@@ -830,6 +837,7 @@ export function ProofreadingPage() {
           (filters.has("possible_duplicate") && meta?.possibleDuplicate) ||
           (filters.has("model_anomaly") && meta?.modelAnomaly) ||
           (filters.has("untranslated") && meta?.untranslated) ||
+          (filters.has("truncated") && meta?.truncated) ||
           (filters.has("format_rescue") && meta?.formatRescue)
         )
       ) {
@@ -1840,6 +1848,7 @@ export function ProofreadingPage() {
   const possibleDuplicateCount = proofreadingIndex.riskCounts.possibleDuplicate;
   const modelAnomalyCount = proofreadingIndex.riskCounts.modelAnomaly;
   const untranslatedCount = proofreadingIndex.riskCounts.untranslated;
+  const truncatedCount = proofreadingIndex.riskCounts.truncated;
   const formatRescueCount = proofreadingIndex.riskCounts.formatRescue;
   const batchProgressPercent =
     batchRetranslateProgress && batchRetranslateProgress.total > 0
@@ -1890,6 +1899,11 @@ export function ProofreadingPage() {
       count: untranslatedCount,
     },
     {
+      key: "truncated",
+      label: m.filterOnlyTruncated,
+      count: truncatedCount,
+    },
+    {
       key: "format_rescue",
       label: m.filterOnlyFormatRescue,
       count: formatRescueCount,
@@ -1933,6 +1947,7 @@ export function ProofreadingPage() {
       label: m.filterPresetHighRisk,
       keys: [
         "source_residue",
+        "truncated",
         "glossary_not_applied",
         "term_inconsistency",
         "possible_duplicate",
@@ -1953,6 +1968,7 @@ export function ProofreadingPage() {
         "possible_duplicate",
         "model_anomaly",
         "untranslated",
+        "truncated",
         "format_rescue",
       ],
     },
@@ -2290,6 +2306,14 @@ export function ProofreadingPage() {
             onClick={() => toggleFilter("untranslated")}
           >
             {m.filterOnlyUntranslated}
+          </button>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${filters.has("truncated") ? styles.filterChipActive : ""}`.trim()}
+            aria-pressed={filters.has("truncated")}
+            onClick={() => toggleFilter("truncated")}
+          >
+            {m.filterOnlyTruncated}
           </button>
           <button
             type="button"
@@ -2671,6 +2695,14 @@ export function ProofreadingPage() {
                             title={m.statusModelAnomalyHint}
                           >
                             {m.statusModelAnomaly}
+                          </span>
+                        ) : null}
+                        {item.tags?.includes("truncated") ? (
+                          <span
+                            className={`${styles.statusChip} ${styles.statusTruncated}`}
+                            title={m.statusTruncatedHint}
+                          >
+                            {m.statusTruncated}
                           </span>
                         ) : null}
                       </span>

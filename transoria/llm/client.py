@@ -93,6 +93,7 @@ class ChatResponse:
     content: str
     usage: TokenUsage
     raw: Mapping[str, object] | None = None
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -217,6 +218,7 @@ class HttpxChatTransport:
 
         chunks: list[str] = []
         usage: Mapping[str, object] | None = None
+        finish_reason: str | None = None
         status_code = 0
         last_progress_at = time.monotonic()
         last_progress_chars = 0
@@ -266,6 +268,9 @@ class HttpxChatTransport:
                     if isinstance(text, str):
                         chunks.append(text)
                         current_chars += len(text)
+                    fr = choice.get("finish_reason")
+                    if isinstance(fr, str) and fr:
+                        finish_reason = fr
                 # Anthropic: ``content_block_delta`` carries
                 # ``delta.text``; ``message_delta`` carries ``usage``;
                 # ``message_start`` carries an initial ``usage`` block.
@@ -277,6 +282,12 @@ class HttpxChatTransport:
                         if isinstance(text, str):
                             chunks.append(text)
                             current_chars += len(text)
+                if event_type == "message_delta":
+                    delta = event.get("delta") or {}
+                    if isinstance(delta, Mapping):
+                        sr = delta.get("stop_reason")
+                        if isinstance(sr, str) and sr:
+                            finish_reason = sr
                 if request_log is not None and current_chars > 0:
                     now = time.monotonic()
                     if not first_token_logged:
@@ -357,13 +368,20 @@ class HttpxChatTransport:
         body: dict[str, object] = {
             # OpenAI / Sakura / Custom
             "choices": [
-                {"message": {"role": "assistant", "content": accumulated}}
+                {
+                    "message": {"role": "assistant", "content": accumulated},
+                    **({"finish_reason": finish_reason} if finish_reason else {}),
+                }
             ],
             # Anthropic
             "content": [{"type": "text", "text": accumulated}],
+            **({"stop_reason": finish_reason} if finish_reason else {}),
             # Google generateContent
             "candidates": [
-                {"content": {"parts": [{"text": accumulated}]}}
+                {
+                    "content": {"parts": [{"text": accumulated}]},
+                    **({"finishReason": finish_reason} if finish_reason else {}),
+                }
             ],
         }
         if usage is not None:
@@ -438,6 +456,33 @@ def _body_to_request_log_text(body: Mapping[str, object]) -> str:
     return json.dumps(body, ensure_ascii=False, default=str)
 
 
+# Provider stop/finish reasons that indicate the response was cut short
+# rather than completing normally. ``content_filter`` / ``safety`` means the
+# provider blocked sensitive output; ``length`` / ``max_tokens`` means the
+# token budget ran out mid-generation. In both cases the response is
+# incomplete and should be treated as a failure, not silently accepted.
+_CONTENT_FILTER_FINISH_REASONS: frozenset[str] = frozenset(
+    {"content_filter", "safety"}
+)
+_LENGTH_FINISH_REASONS: frozenset[str] = frozenset(
+    {"length", "max_tokens"}
+)
+_PROBLEM_FINISH_REASONS: frozenset[str] = (
+    _CONTENT_FILTER_FINISH_REASONS | _LENGTH_FINISH_REASONS
+)
+
+
+def _is_problem_finish_reason(reason: str) -> bool:
+    return reason.lower() in _PROBLEM_FINISH_REASONS
+
+
+def _finish_reason_error_code(reason: str) -> str:
+    lowered = reason.lower()
+    if lowered in _CONTENT_FILTER_FINISH_REASONS:
+        return "llm.content_filter"
+    return "llm.length_truncated"
+
+
 def _record_request_response(
     request_log: RequestLogHandle | None,
     *,
@@ -461,6 +506,23 @@ def _record_request_response(
                 usage=response.usage,
             )
         raise LlmDegenerateOutputError(response.content, response.usage)
+    if response.finish_reason and _is_problem_finish_reason(response.finish_reason):
+        detail = (
+            f"Provider returned finish_reason={response.finish_reason!r} "
+            f"for model {request.model.id!r}."
+        )
+        if request_log is not None:
+            request_log.fail(
+                error=f"[{_finish_reason_error_code(response.finish_reason)}] {detail}",
+                status_code=status_code,
+                response_text=response.content,
+                response_chars=len(response.content),
+                usage=response.usage,
+            )
+        raise LlmRequestError(
+            detail,
+            code=_finish_reason_error_code(response.finish_reason),
+        )
     if request_log is None:
         return
     if not response.content.strip():
@@ -1339,7 +1401,13 @@ def _parse_openai_response(body: Mapping[str, object]) -> ChatResponse:
         if isinstance(usage_block, Mapping)
         else TokenUsage()
     )
-    return ChatResponse(content=str(content), usage=usage, raw=body)
+    finish_reason = first.get("finish_reason")
+    return ChatResponse(
+        content=str(content),
+        usage=usage,
+        raw=body,
+        finish_reason=str(finish_reason) if finish_reason else None,
+    )
 
 
 def _parse_anthropic_response(body: Mapping[str, object]) -> ChatResponse:
@@ -1381,7 +1449,13 @@ def _parse_anthropic_response(body: Mapping[str, object]) -> ChatResponse:
                 or usage_block.get("estimated")
             ),
         )
-    return ChatResponse(content="".join(text_parts), usage=usage, raw=body)
+    stop_reason = body.get("stop_reason")
+    return ChatResponse(
+        content="".join(text_parts),
+        usage=usage,
+        raw=body,
+        finish_reason=str(stop_reason) if stop_reason else None,
+    )
 
 
 def _parse_google_response(body: Mapping[str, object]) -> ChatResponse:
@@ -1432,7 +1506,13 @@ def _parse_google_response(body: Mapping[str, object]) -> ChatResponse:
                 or usage_meta.get("transoriaEstimated")
             ),
         )
-    return ChatResponse(content="".join(text_parts), usage=usage, raw=body)
+    finish_reason = first.get("finishReason")
+    return ChatResponse(
+        content="".join(text_parts),
+        usage=usage,
+        raw=body,
+        finish_reason=str(finish_reason) if finish_reason else None,
+    )
 
 
 __all__ = [

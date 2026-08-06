@@ -52,6 +52,7 @@ TAG_MODEL_CHATTER = "model_chatter"
 TAG_VERBATIM_ECHO = "verbatim_echo"
 TAG_LENGTH_RATIO_ANOMALY = "length_ratio_anomaly"
 TAG_PUNCTUATION_ANOMALY = "punctuation_anomaly"
+TAG_TRUNCATED = "truncated"
 
 MODEL_ANOMALY_TAGS = frozenset(
     {
@@ -112,6 +113,15 @@ def evaluate_segment_confidence(
         )
         tags.append(TAG_PUNCTUATION_ANOMALY)
 
+    if not preserved_title_or_identifier and _looks_truncated(
+        source_text, translated_text
+    ):
+        reasons.append(
+            "translation appears truncated; source ends a sentence but "
+            "the translation ends mid-text"
+        )
+        tags.append(TAG_TRUNCATED)
+
     residue_reason = _source_language_residue(translated_text, source_language)
     if residue_reason:
         reasons.append(residue_reason)
@@ -154,6 +164,54 @@ def evaluate_segment_confidence(
 
 def _count_punctuation(text: str) -> int:
     return sum(1 for char in text if char in _PUNCTUATION_CHARS)
+
+
+# Sentence-ending punctuation a completed translation should normally keep.
+# These terminators are universal across CJK and Latin scripts, so the check
+# works for any source/target language pair without per-language tables.
+_TRUNCATION_SENTENCE_END = frozenset("。！？!?….")
+# Closing quotes that may follow the sentence terminator.
+_TRUNCATION_CLOSING_QUOTES = frozenset("”’』」〉》】》）»›")
+_TRUNCATION_MIN_SOURCE_LENGTH = 6
+_TRUNCATION_MIN_TARGET_LENGTH = 6
+
+
+def _strip_trailing_closing_quotes(text: str) -> str:
+    stripped = text.rstrip()
+    while stripped and stripped[-1] in _TRUNCATION_CLOSING_QUOTES:
+        stripped = stripped[:-1].rstrip()
+    return stripped
+
+
+def _looks_truncated(source_text: str, translated_text: str) -> bool:
+    """True when the model cut the translation mid-word while the source
+    finished a sentence.
+
+    Length-ratio checks cannot catch this: Korean->Chinese legitimately
+    compresses to ~0.4-0.7, so a truncated line stays inside the band. The
+    reliable cross-language signal is that the source ends with a sentence
+    terminator while the translation ends on a dangling word character (a
+    Unicode letter or digit) instead of any terminator.
+
+    ``str.isalnum`` is a built-in Unicode property that returns True for
+    CJK ideographs, Japanese kana, Korean Hangul, Latin letters, and digits
+    across all scripts - so the check needs no per-language character tables.
+    """
+
+    source = _strip_trailing_closing_quotes(source_text.strip())
+    if (
+        len(source) < _TRUNCATION_MIN_SOURCE_LENGTH
+        or source[-1] not in _TRUNCATION_SENTENCE_END
+    ):
+        return False
+    translated = _strip_trailing_closing_quotes(translated_text.strip())
+    if (
+        len(translated) < _TRUNCATION_MIN_TARGET_LENGTH
+        or translated[-1] in _TRUNCATION_SENTENCE_END
+        or not translated[-1].isalnum()
+    ):
+        return False
+    return True
 
 
 # CJK ideographs (kanji / \u6f22\u5b57 / \u6c49\u5b57). Used as proof that the model

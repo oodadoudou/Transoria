@@ -714,6 +714,12 @@
   border: 1px dashed var(--danger, #b04038);
 }
 
+.statusTruncated {
+  background: color-mix(in srgb, var(--danger, #b04038) 14%, var(--panel));
+  color: var(--danger, #b04038);
+  border: 1px solid color-mix(in srgb, var(--danger, #b04038) 45%, var(--hairline));
+}
+
 .editor {
   border: 1px solid var(--hairline);
   border-radius: 10px;

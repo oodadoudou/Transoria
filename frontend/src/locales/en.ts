@@ -1116,6 +1116,9 @@ export const en: Messages = {
       statusModelAnomaly: "Model anomaly",
       statusModelAnomalyHint:
         "Translation has signals such as model chatter, weak target-language script, function-word leakage, or source echo.",
+      statusTruncated: "Truncated",
+      statusTruncatedHint:
+        "Source ends a complete sentence but the translation ends mid-word; the model likely cut this line short. Retranslate or edit manually.",
       editorEmpty: "Pick a row on the left to edit.",
       editorSrcLabel: "Source",
       editorDstLabel: "Translation",
@@ -1164,6 +1167,7 @@ export const en: Messages = {
       filterOnlyPossibleDuplicate: "Possible duplicate",
       filterOnlyModelAnomaly: "Model anomaly",
       filterOnlyUntranslated: "Untranslated",
+      filterOnlyTruncated: "Truncated",
       filterOnlyFormatRescue: "Format rescue",
       termAuditTitle: "Term consistency",
       termAuditSub:

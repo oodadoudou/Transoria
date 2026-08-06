@@ -192,6 +192,7 @@ export type ProofreadingFilterKey =
   | "possible_duplicate"
   | "model_anomaly"
   | "untranslated"
+  | "truncated"
   | "format_rescue";
 
 export const DEFAULT_PROOFREADING_FILTERS: ProofreadingFilterKey[] = [

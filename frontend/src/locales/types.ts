@@ -683,6 +683,8 @@ export interface Messages {
       statusStructureDriftHint: string;
       statusModelAnomaly: string;
       statusModelAnomalyHint: string;
+      statusTruncated: string;
+      statusTruncatedHint: string;
       editorEmpty: string;
       editorSrcLabel: string;
       editorDstLabel: string;
@@ -728,6 +730,7 @@ export interface Messages {
       filterOnlyPossibleDuplicate: string;
       filterOnlyModelAnomaly: string;
       filterOnlyUntranslated: string;
+      filterOnlyTruncated: string;
       filterOnlyFormatRescue: string;
       termAuditTitle: string;
       termAuditSub: string;

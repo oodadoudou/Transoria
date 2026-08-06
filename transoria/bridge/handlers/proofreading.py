@@ -919,6 +919,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         # Lazy import to avoid pulling the workflow stack into the bridge
         # entry point at module load time.
         from transoria.workflows.translation.config import (  # noqa: PLC0415
+            BILINGUAL_OUTPUT_FOLDER_EN,
             TranslationConfig,
         )
         from transoria.workflows.translation.orchestrator import (  # noqa: PLC0415
@@ -995,6 +996,13 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 record_metadata.get("pre_replacements", [])
             ),
             bilingual_enabled=export_bilingual,
+            bilingual_subfolder=str(
+                record_metadata.get("bilingual_subfolder") or ""
+            ) or BILINGUAL_OUTPUT_FOLDER_EN,
+            bilingual_dedup_when_same=_coerce_cached_bool(
+                record_metadata.get("bilingual_dedup_when_same", True),
+                default=True,
+            ),
         )
 
         try:

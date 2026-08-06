@@ -485,3 +485,69 @@ def test_chat_omits_sampling_overrides_when_unset() -> None:
     assert "temperature" not in payload
     assert "presence_penalty" not in payload
     assert "frequency_penalty" not in payload
+
+
+def _body_with_finish_reason(
+    content: str = "hello", finish_reason: str = "stop"
+) -> dict[str, object]:
+    return {
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": finish_reason,
+            }
+        ],
+        "usage": {"prompt_tokens": 11, "completion_tokens": 22},
+    }
+
+
+def test_chat_passes_through_normal_finish_reason() -> None:
+    transport = FakeTransport(
+        responses=[TransportResult(200, _body_with_finish_reason("ok", "stop"))]
+    )
+    client = LlmClient(transport=transport)
+
+    response = asyncio.run(
+        client.chat(
+            ChatRequest(model=_model(), system_prompt="sys", user_prompt="user")
+        )
+    )
+
+    assert response.finish_reason == "stop"
+    assert response.content == "ok"
+
+
+def test_chat_raises_on_content_filter_finish_reason() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _body_with_finish_reason("partial", "content_filter"))
+        ]
+    )
+    client = LlmClient(transport=transport)
+
+    with pytest.raises(LlmRequestError) as exc_info:
+        asyncio.run(
+            client.chat(
+                ChatRequest(model=_model(), system_prompt="sys", user_prompt="user")
+            )
+        )
+
+    assert exc_info.value.code == "llm.content_filter"
+
+
+def test_chat_raises_on_length_finish_reason() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _body_with_finish_reason("partial", "length"))
+        ]
+    )
+    client = LlmClient(transport=transport)
+
+    with pytest.raises(LlmRequestError) as exc_info:
+        asyncio.run(
+            client.chat(
+                ChatRequest(model=_model(), system_prompt="sys", user_prompt="user")
+            )
+        )
+
+    assert exc_info.value.code == "llm.length_truncated"

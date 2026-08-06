@@ -1093,6 +1093,9 @@ export const zh: Messages = {
       statusModelAnomaly: "模型异常",
       statusModelAnomalyHint:
         "译文存在模型废话、目标语言不足、功能词混入或原文回声等信号。",
+      statusTruncated: "疑似截断",
+      statusTruncatedHint:
+        "原文是完整句末标点收尾，但译文停在句中字符上；模型可能在此行中途截断了输出。建议重译或手动修正。",
       editorEmpty: "在左侧表格点选一条以编辑。",
       editorSrcLabel: "原文",
       editorDstLabel: "译文",
@@ -1129,6 +1132,7 @@ export const zh: Messages = {
       filterOnlyPossibleDuplicate: "疑似重复",
       filterOnlyModelAnomaly: "模型异常",
       filterOnlyUntranslated: "未译",
+      filterOnlyTruncated: "疑似截断",
       filterOnlyFormatRescue: "格式兜底",
       termAuditTitle: "术语一致性",
       termAuditSub: "按本次翻译任务的术语表条目聚合。仅本地审计，不调用模型。",

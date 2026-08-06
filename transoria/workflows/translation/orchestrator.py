@@ -247,6 +247,8 @@ class TranslationOrchestrator:
                         }
                         for r in config.post_replacements
                     ],
+                    "bilingual_subfolder": config.bilingual_subfolder,
+                    "bilingual_dedup_when_same": config.bilingual_dedup_when_same,
                 },
             )
 

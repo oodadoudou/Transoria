@@ -31,7 +31,10 @@ from transoria.runtime.cache import TaskCache
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskRecord
 from transoria.settings import SettingsStore
-from transoria.workflows.translation.confidence import TAG_FUNCTION_WORD_RESIDUE
+from transoria.workflows.translation.confidence import (
+    TAG_FUNCTION_WORD_RESIDUE,
+    TAG_TRUNCATED,
+)
 
 
 def _make_service(tmp_path: Path) -> TaskService:
@@ -417,6 +420,33 @@ def test_load_snapshot_refreshes_model_anomaly_tags_for_cached_translation(
         "English function-word residue remains in Chinese translation"
         in item["reasons"]
     )
+
+
+def test_load_snapshot_tags_truncated_cached_translation(router_and_service):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-truncated",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[
+            (
+                "0:0",
+                "들려오는 말에 진우가 다급히 고개를 가로저었지만 상대는 전혀 들어먹질 않았다.",
+                "听到这句话，镇宇慌忙摇头，但对方根本充耳不闻，反而更快地将阴茎往里面猛插。情急之下，镇宇掰",
+            )
+        ],
+    )
+
+    response = router.call(
+        "proofreading.load_snapshot",
+        {"task_id": "translation-pf-truncated"},
+    )
+
+    item = response["items"][0]
+    assert item["low_confidence"] is True
+    assert TAG_TRUNCATED in item["tags"]
+    assert any("truncated" in reason for reason in item["reasons"])
 
 
 def test_load_snapshot_keeps_similar_source_and_translation_unflagged(
