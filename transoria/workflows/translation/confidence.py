@@ -113,14 +113,11 @@ def evaluate_segment_confidence(
         )
         tags.append(TAG_PUNCTUATION_ANOMALY)
 
-    if not preserved_title_or_identifier and _looks_truncated(
-        source_text, translated_text
-    ):
-        reasons.append(
-            "translation appears truncated; source ends a sentence but "
-            "the translation ends mid-text"
-        )
-        tags.append(TAG_TRUNCATED)
+    if not preserved_title_or_identifier:
+        truncation_reason = _detect_truncation(source_text, translated_text)
+        if truncation_reason:
+            reasons.append(truncation_reason)
+            tags.append(TAG_TRUNCATED)
 
     residue_reason = _source_language_residue(translated_text, source_language)
     if residue_reason:
@@ -174,6 +171,14 @@ _TRUNCATION_SENTENCE_END = frozenset("。！？!?….")
 _TRUNCATION_CLOSING_QUOTES = frozenset("”’』」〉》】》）»›")
 _TRUNCATION_MIN_SOURCE_LENGTH = 6
 _TRUNCATION_MIN_TARGET_LENGTH = 6
+# Sentence-level truncation: when the source has at least this many
+# sentence-ending marks but the translation has fewer than half, entire
+# sentences were likely dropped. Require a minimum source length so that
+# short exclamations with stacked punctuation (e.g. ``……!!``) don't
+# inflate the count.
+_TRUNCATION_MIN_SOURCE_SENTENCES = 3
+_TRUNCATION_MIN_SOURCE_CHARS_FOR_SENTENCE_CHECK = 30
+_TRUNCATION_SENTENCE_RATIO_THRESHOLD = 0.5
 
 
 def _strip_trailing_closing_quotes(text: str) -> str:
@@ -183,35 +188,56 @@ def _strip_trailing_closing_quotes(text: str) -> str:
     return stripped
 
 
-def _looks_truncated(source_text: str, translated_text: str) -> bool:
-    """True when the model cut the translation mid-word while the source
-    finished a sentence.
+def _count_sentence_enders(text: str) -> int:
+    return sum(1 for char in text if char in _TRUNCATION_SENTENCE_END)
 
-    Length-ratio checks cannot catch this: Korean->Chinese legitimately
-    compresses to ~0.4-0.7, so a truncated line stays inside the band. The
-    reliable cross-language signal is that the source ends with a sentence
-    terminator while the translation ends on a dangling word character (a
-    Unicode letter or digit) instead of any terminator.
 
-    ``str.isalnum`` is a built-in Unicode property that returns True for
-    CJK ideographs, Japanese kana, Korean Hangul, Latin letters, and digits
-    across all scripts - so the check needs no per-language character tables.
+def _detect_truncation(source_text: str, translated_text: str) -> str | None:
+    """Return a reason string when the translation appears truncated.
+
+    Two complementary signals, both language-agnostic:
+
+    1. **Word-level**: the source ends with a sentence terminator but the
+       translation ends on a dangling word character (``str.isalnum`` covers
+       CJK ideographs, kana, hangul, Latin letters, and digits across all
+       scripts). The model cut mid-generation.
+
+    2. **Sentence-level**: the source has multiple sentence-ending marks but
+       the translation has fewer than half as many. The model stopped after
+       translating only part of the source and added a period to make the
+       output look complete. Length-ratio checks miss this because the ratio
+       can stay barely above the minimum threshold.
     """
 
     source = _strip_trailing_closing_quotes(source_text.strip())
-    if (
-        len(source) < _TRUNCATION_MIN_SOURCE_LENGTH
-        or source[-1] not in _TRUNCATION_SENTENCE_END
-    ):
-        return False
-    translated = _strip_trailing_closing_quotes(translated_text.strip())
-    if (
-        len(translated) < _TRUNCATION_MIN_TARGET_LENGTH
-        or translated[-1] in _TRUNCATION_SENTENCE_END
-        or not translated[-1].isalnum()
-    ):
-        return False
-    return True
+    if source and source[-1] in _TRUNCATION_SENTENCE_END:
+        translated = _strip_trailing_closing_quotes(translated_text.strip())
+        if (
+            len(source) >= _TRUNCATION_MIN_SOURCE_LENGTH
+            and len(translated) >= _TRUNCATION_MIN_TARGET_LENGTH
+            and translated[-1] not in _TRUNCATION_SENTENCE_END
+            and translated[-1].isalnum()
+        ):
+            return (
+                "translation appears truncated; source ends a sentence "
+                "but the translation ends mid-text"
+            )
+
+    if len(source) >= _TRUNCATION_MIN_SOURCE_CHARS_FOR_SENTENCE_CHECK:
+        source_count = _count_sentence_enders(source_text)
+        if source_count >= _TRUNCATION_MIN_SOURCE_SENTENCES:
+            translated_count = _count_sentence_enders(translated_text)
+            if (
+                translated_count
+                < source_count * _TRUNCATION_SENTENCE_RATIO_THRESHOLD
+            ):
+                return (
+                    f"translation appears truncated; source has "
+                    f"{source_count} sentence-ending marks but translation "
+                    f"has only {translated_count}"
+                )
+
+    return None
 
 
 # CJK ideographs (kanji / \u6f22\u5b57 / \u6c49\u5b57). Used as proof that the model

@@ -311,6 +311,28 @@ def test_evaluate_flags_truncated_japanese_translation() -> None:
     assert TAG_TRUNCATED in verdict.tags
 
 
+def test_evaluate_flags_sentence_level_truncation_with_clean_ending() -> None:
+    """Model dropped sentences but added a period to look complete."""
+
+    verdict = evaluate_segment_confidence(
+        "남자의 다리 사이로 두툼한 허벅지가 들어왔다. "
+        "무릎이 바지 안에 갇힌 불알을 꾹 짓눌렀다. "
+        "참을 수 없는 통증에 남자가 어깨를 흔들며 씩씩거렸다. "
+        "신음 안 내? 이강이 귓가에 낮게 속삭이더니, "
+        "이번엔 바지 지퍼를 내리고 자지를 꽉 움켜쥐었다.",
+        "男人的双腿之间，挤进了粗壮的大腿。膝盖隔着裤子，狠狠压住了被夹住的睾丸。",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert verdict.is_low_confidence
+    assert TAG_TRUNCATED in verdict.tags
+    assert any("sentence-ending" in r for r in verdict.reasons)
+
+
 def test_evaluate_does_not_flag_truncation_when_source_ends_without_punctuation() -> None:
     verdict = evaluate_segment_confidence(
         "제1장 뒤로 가는 알파",
