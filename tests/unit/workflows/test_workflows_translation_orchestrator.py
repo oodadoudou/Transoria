@@ -821,7 +821,7 @@ def test_continue_recovers_only_completed_source_fallback_rows(
         assert f"补救译文-{index}" in recovered_body
 
 
-def test_split_failed_payload_clears_context_lines() -> None:
+def test_split_failed_payload_preserves_context_lines() -> None:
     payload = {
         "segments": [
             {"segment_id": "0:0", "chunk_index": 0, "prompt_text": "a"},
@@ -835,7 +835,9 @@ def test_split_failed_payload_clears_context_lines() -> None:
     )
 
     assert len(children) == 2
-    assert all(child["context_lines"] == [] for child in children)
+    assert all(
+        child["context_lines"] == ["previous sentence."] for child in children
+    )
 
 
 def test_split_failed_subtask_requires_explicit_source_residue() -> None:

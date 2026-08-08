@@ -102,6 +102,7 @@ from transoria.workflows.translation.statistics import (
 _SPLIT_ROUNDS = 1
 _SOURCE_RESIDUE_RECOVERY_REASONS = {
     "fell_back_to_source_after_max_retries",
+    "line_count_mismatch_after_max_retries",
     "missing_translation_fell_back_to_source",
     "mass_source_residue_after_retry",
 }
@@ -703,12 +704,14 @@ def _segment_recovery_candidates(subtasks: tuple[Subtask, ...]) -> set[str]:
             SubtaskStatus.FAILED,
         }:
             continue
+        payload = _decode_subtask_payload(subtask)
         if (
             subtask.status is SubtaskStatus.FAILED
             and _is_model_or_request_failure(subtask.last_error)
+            and not subtask.last_error.startswith("[llm.line_count_mismatch]")
         ):
             continue
-        candidates.update(_source_residue_segment_ids(_decode_subtask_payload(subtask)))
+        candidates.update(_source_residue_segment_ids(payload))
     return candidates - accepted
 
 
@@ -851,7 +854,6 @@ def _split_failed_payload(
             continue
         child_payload = dict(payload)
         child_payload["segments"] = child_segments
-        child_payload["context_lines"] = []
         child_payload["parent_subtask_id"] = parent_subtask_id
         child_payload["split_round"] = split_round + 1
         child_payload["split_index"] = split_index

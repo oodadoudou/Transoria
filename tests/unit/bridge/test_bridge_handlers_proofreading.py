@@ -929,6 +929,54 @@ def test_load_snapshot_shows_source_fallback_for_missing_translation(
     assert item["reasons"] == ["missing_translation_fell_back_to_source"]
 
 
+def test_load_snapshot_keeps_marked_partial_rows_from_failed_subtask(
+    router_and_service,
+):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-partial-failed-response",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "你好"), ("0:1", "산", "산")],
+        status=TaskStatus.FAILED,
+    )
+    subtask = service.cache.load_subtasks(
+        "translation-pf-partial-failed-response"
+    )[0]
+    payload = {
+        "version": 2,
+        "translations": {"0:0": "你好", "0:1": "산"},
+        "low_confidence": [
+            {
+                "segment_id": "0:1",
+                "reasons": ["line_count_mismatch_after_max_retries"],
+                "tags": ["source_residue"],
+            }
+        ],
+        "accepted_overrides": ["0:0"],
+    }
+    service.cache.save_subtask(
+        replace(
+            subtask,
+            status=SubtaskStatus.FAILED,
+            response_content=json.dumps(payload, ensure_ascii=False),
+        )
+    )
+
+    response = router.call(
+        "proofreading.load_snapshot",
+        {"task_id": "translation-pf-partial-failed-response"},
+    )
+
+    assert response["task_status"] == "failed"
+    assert response["items"][0]["dst"] == "你好"
+    assert response["items"][0]["low_confidence"] is False
+    assert response["items"][1]["dst"] == "산"
+    assert response["items"][1]["low_confidence"] is True
+    assert response["items"][1]["tags"] == ["source_residue"]
+
+
 def test_failed_task_load_snapshot_shows_missing_translation_fallback(
     router_and_service,
 ):

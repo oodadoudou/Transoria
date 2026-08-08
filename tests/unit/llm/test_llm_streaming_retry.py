@@ -10,13 +10,12 @@ import pytest
 from transoria.domain import Language
 from transoria.llm import (
     LlmClient,
-    LlmDegenerateOutputError,
     ModelConfig,
     ProviderFormat,
 )
 from transoria.llm.client import TransportResult
 from transoria.prompts import PromptKind, default_preset
-from transoria.runtime import Subtask
+from transoria.runtime import Subtask, SubtaskFailedWithResult
 from transoria.workflows.translation import (
     Glossary,
     PreparedSegment,
@@ -118,7 +117,7 @@ def test_streaming_request_retries_after_transient_5xx_then_succeeds() -> None:
     assert transport.seen_stream_flags == [True, True]
 
 
-def test_translation_aborts_degenerate_output_without_transport_retry() -> None:
+def test_translation_preserves_failed_result_after_degenerate_quality_retries() -> None:
     @dataclass
     class DegenerateTransport:
         call_count: int = 0
@@ -159,7 +158,10 @@ def test_translation_aborts_degenerate_output_without_transport_retry() -> None:
         transport_retry_attempts=3,
     )
 
-    with pytest.raises(LlmDegenerateOutputError):
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
         asyncio.run(runner.run(_make_subtask()))
 
-    assert transport.call_count == 1
+    response = json.loads(exc_info.value.result.response_content)
+    assert response["translations"] == {"0:0": "hello"}
+    assert response["low_confidence"][0]["segment_id"] == "0:0"
+    assert transport.call_count == 3

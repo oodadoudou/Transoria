@@ -465,10 +465,12 @@ def test_runner_falls_back_when_returned_line_count_does_not_match(
         target_language=Language.KOREAN,
     )
 
-    result = asyncio.run(runner.run(_make_subtask()))
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_make_subtask()))
 
-    payload = json.loads(result.response_content)
+    payload = json.loads(exc_info.value.result.response_content)
     assert payload["translations"] == {"0:0": "only one", "0:1": "world"}
+    assert payload["accepted_overrides"] == ["0:0"]
     assert payload["low_confidence"] == [
         {
             "segment_id": "0:1",
@@ -623,6 +625,98 @@ def test_runner_accumulates_rows_across_repeated_length_truncation() -> None:
         "0:2": "译文 2",
     }
     assert len(transport.requests) == 3
+
+
+def test_runner_keeps_complete_rows_before_degenerate_tail() -> None:
+    degenerate = '{"0":"译文 0"}\n{"1":"译文 1"}\n{"2":"' + ("哈" * 600)
+    transport = FakeTransport(
+        responses=[TransportResult(200, _ok_body(degenerate))]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask(sources=("source 0", "source 1")))
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {"0:0": "译文 0", "0:1": "译文 1"}
+    assert len(transport.requests) == 1
+
+
+def test_runner_retries_only_missing_rows_after_degenerate_tail_with_context() -> None:
+    degenerate = '{"0":"译文 0"}\n{"1":"' + ("哈" * 600)
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body(degenerate)),
+            TransportResult(200, _ok_body('{"1":"译文 1"}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(
+        runner.run(
+            _make_subtask_with_context(
+                context=("previous context",),
+                sources=("source 0", "source 1"),
+            )
+        )
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {"0:0": "译文 0", "0:1": "译文 1"}
+    first_prompt = transport.requests[0]["payload"]["messages"][-1]["content"]
+    retry_prompt = transport.requests[1]["payload"]["messages"][-1]["content"]
+    assert "previous context" not in first_prompt
+    assert "previous context" in retry_prompt
+    assert "source 0" not in retry_prompt
+    assert "source 1" in retry_prompt
+
+
+def test_runner_failed_degenerate_chunk_preserves_accepted_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "transoria.workflows.translation.runner._PARTIAL_ACCEPT_MAX_RETRIES", 0
+    )
+    degenerate = '{"0":"译文 0"}\n{"1":"' + ("哈" * 600)
+    transport = FakeTransport(
+        responses=[TransportResult(200, _ok_body(degenerate))]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(
+            runner.run(_make_subtask(sources=("source 0", "source 1")))
+        )
+
+    payload = json.loads(exc_info.value.result.response_content)
+    assert payload["translations"] == {"0:0": "译文 0", "0:1": "source 1"}
+    assert payload["accepted_overrides"] == ["0:0"]
+    assert payload["low_confidence"] == [
+        {
+            "segment_id": "0:1",
+            "reasons": ["line_count_mismatch_after_max_retries"],
+            "tags": ["source_residue"],
+        }
+    ]
 
 
 def test_runner_retries_dense_prefix_response_instead_of_shifting_lines() -> None:
@@ -922,10 +1016,12 @@ def test_runner_falls_back_after_exhausting_retries_on_persistent_mismatch(
         target_language=Language.KOREAN,
     )
 
-    result = asyncio.run(runner.run(_make_subtask()))
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_make_subtask()))
 
-    payload = json.loads(result.response_content)
+    payload = json.loads(exc_info.value.result.response_content)
     assert payload["translations"] == {"0:0": "x", "0:1": "world"}
+    assert payload["accepted_overrides"] == ["0:0"]
     assert payload["low_confidence"] == [
         {
             "segment_id": "0:1",
@@ -1013,17 +1109,19 @@ def test_runner_partial_accept_falls_back_after_retry_attempts_exhausted() -> No
         target_language=Language.KOREAN,
     )
 
-    result = asyncio.run(runner.run(_make_subtask(sources=sources)))
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_make_subtask(sources=sources)))
     # 1 initial + 2 partial retries; positional rescue rejects JSON-shaped
     # candidates, so no silent recovery.
     assert len(transport.requests) == 3
-    payload = json.loads(result.response_content)
+    payload = json.loads(exc_info.value.result.response_content)
     assert payload["translations"] == {
         "0:0": "x",
         "0:1": "y",
         "0:2": "z",
         "0:3": "d",
     }
+    assert payload["accepted_overrides"] == ["0:0", "0:1", "0:2"]
     assert payload["low_confidence"] == [
         {
             "segment_id": "0:3",
@@ -2378,7 +2476,7 @@ def test_runner_partial_retries_duplicate_drift_then_succeeds() -> None:
     assert len(transport.requests) == 2
 
 
-def test_runner_retries_near_duplicate_drift_without_context() -> None:
+def test_runner_retries_near_duplicate_drift_with_context() -> None:
     context = ("previous paragraph.",)
     sources = (
         "Martin Heidegger was right.",
@@ -2421,8 +2519,9 @@ def test_runner_retries_near_duplicate_drift_without_context() -> None:
         "0:2": "他听见身旁传来动静。",
     }
     retry_prompt = transport.requests[1]["payload"]["messages"][-1]["content"]
-    assert "[Context" not in retry_prompt
-    assert "previous paragraph." not in retry_prompt
+    assert "[Context" in retry_prompt
+    assert "previous paragraph." in retry_prompt
+    assert "He heard a sound beside him." not in retry_prompt
 
 
 def test_runner_retries_adjacent_medium_near_duplicate_drift() -> None:
@@ -2710,12 +2809,7 @@ def test_runner_debug_log_filename_uses_subtask_id(tmp_path) -> None:
     assert expected.exists(), list(debug_dir.iterdir())
 
 
-def test_runner_low_conf_retry_uses_single_item_focused_calls() -> None:
-    """When N segments fail confidence, the runner does N×R solo
-    retries (1 segment per call). Each solo call uses chunk_index=0
-    and empty context (mirroring the proofreading "retranslate" path);
-    the response is decoded positionally so a stray JSON key from the
-    model can't land on the wrong segment."""
+def test_runner_low_conf_retry_uses_contextual_single_item_calls() -> None:
 
     transport = FakeTransport(
         responses=[
@@ -2742,7 +2836,10 @@ def test_runner_low_conf_retry_uses_single_item_focused_calls() -> None:
 
     result = asyncio.run(
         runner.run(
-            _make_subtask(sources=("안녕하세요친구야", "네 알겠습니다", "응 그래요"))
+            _make_subtask_with_context(
+                context=("앞선 문맥",),
+                sources=("안녕하세요친구야", "네 알겠습니다", "응 그래요"),
+            )
         )
     )
 
@@ -2751,16 +2848,12 @@ def test_runner_low_conf_retry_uses_single_item_focused_calls() -> None:
     assert payload["translations"]["0:1"] == "是的。"
     assert payload["translations"]["0:2"] == "嗯。"
     assert len(transport.requests) == 3
-    # Each solo retry's user prompt has exactly one [Translate] source
-    # line, indexed as 0 (clean isolated request).
     solo_prompts = [
         req["payload"]["messages"][-1]["content"]
         for req in transport.requests[1:]
     ]
     for p in solo_prompts:
-        # Each solo prompt is one segment: contains the index-0 key
-        # and nothing matching index 1 or 2 (those are the original
-        # chunk indices we explicitly avoid in solo prompts).
+        assert "앞선 문맥" in p
         assert '"0": "' in p
         assert '"1": "' not in p
         assert '"2": "' not in p

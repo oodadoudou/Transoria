@@ -113,7 +113,10 @@ def test_recovery_runner_batches_and_merges_only_requested_segments() -> None:
     payload = json.loads(result.response_content)
 
     assert [len(call.request_payload["segments"]) for call in inner.calls] == [5, 1]
-    assert all(call.request_payload["context_lines"] == [] for call in inner.calls)
+    assert all(
+        call.request_payload["context_lines"] == ["旧上下文"]
+        for call in inner.calls
+    )
     assert payload["translations"]["0:0"] == "保留的正常译文"
     assert payload["translations"]["0:1"] == "译文-0:1"
     assert payload["low_confidence"] == []
@@ -365,6 +368,51 @@ def test_prepare_segment_recovery_retries_http_400_as_whole_chunk(tmp_path) -> N
     assert [
         segment["segment_id"] for segment in updated.request_payload["segments"]
     ] == ["0:0", "0:1"]
+
+
+def test_prepare_segment_recovery_retries_only_line_count_fallback(tmp_path) -> None:
+    cache = TaskCache(tmp_path)
+    task_id = "translation-line-count-recovery"
+    failed = Subtask(
+        id="chunk-00000",
+        task_id=task_id,
+        status=SubtaskStatus.FAILED,
+        request_payload={
+            "segments": [_segment(0), _segment(1)],
+            "context_lines": ["旧上下文"],
+        },
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "正常译文", "0:1": "짧은 문장"},
+                "low_confidence": [
+                    {
+                        "segment_id": "0:1",
+                        "reasons": ["line_count_mismatch_after_max_retries"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        last_error=(
+            "[llm.line_count_mismatch] SubtaskFailedWithResult: "
+            "1 translation line fell back to source"
+        ),
+    )
+    cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.FAILED),
+        [failed],
+    )
+
+    snapshot = cache.load(task_id)
+    assert _segment_recovery_candidates(snapshot.subtasks) == {"0:1"}
+    _prepare_segment_recovery(cache, task_id, snapshot.subtasks)
+    updated = cache.load_subtasks(task_id)[0]
+
+    assert updated.status is SubtaskStatus.PENDING
+    assert updated.request_payload[RECOVERY_SEGMENT_IDS_KEY] == ["0:1"]
+    assert updated.request_payload["context_lines"] == ["旧上下文"]
 
 
 @pytest.mark.parametrize(
