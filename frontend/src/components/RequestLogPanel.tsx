@@ -83,10 +83,12 @@ export function RequestLogPanel({
   kind,
   taskId,
   taskStatus,
+  launcherVariant = "default",
 }: {
   kind: RequestLogKind;
   taskId: string | null;
   taskStatus?: TaskStatus | null;
+  launcherVariant?: "default" | "bare";
 }) {
   const messages = useMessages();
   const copy = messages.requestLog;
@@ -226,7 +228,12 @@ export function RequestLogPanel({
 
   return (
     <>
-      <section className={styles.launcher} aria-label={copy.title}>
+      <section
+        className={`${styles.launcher} ${
+          launcherVariant === "bare" ? styles.launcherBare : ""
+        }`.trim()}
+        aria-label={copy.title}
+      >
         <ToggleSwitch
           label={copy.toggle}
           checked={visible}

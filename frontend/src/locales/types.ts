@@ -727,6 +727,7 @@ export interface Messages {
       filterPresetHighRisk: string;
       filterPresetCompletion: string;
       filterPresetAll: string;
+      selectionSummary: string;
       filterClear: string;
       filterClearDisabled: string;
       riskReasonPrefix: string;

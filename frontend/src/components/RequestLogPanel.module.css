@@ -10,6 +10,12 @@
   align-items: center;
 }
 
+.launcherBare {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
 .overlay {
   position: fixed;
   inset: 0;

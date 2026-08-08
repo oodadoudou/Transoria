@@ -27,15 +27,16 @@
   gap: 8px;
 }
 
-.outputPathHint {
-  display: inline-flex;
-  min-width: 72px;
-  max-width: min(34vw, 520px);
-  align-items: baseline;
-  gap: 4px;
+.outputLocation {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 0;
   color: var(--muted);
   font-size: 12px;
-  white-space: nowrap;
 }
 
 .outputPathLabel {
@@ -43,10 +44,12 @@
 }
 
 .outputPathValue {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: min(62vw, 760px);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .copyPathButton {
@@ -54,6 +57,7 @@
 }
 
 .inlineFeedback {
+  grid-column: 1 / -1;
   flex: 1 1 240px;
   min-width: 180px;
   color: var(--muted);
@@ -90,43 +94,44 @@
   font-size: 12.5px;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid var(--hairline-strong);
-  background: var(--panel);
+  border: 0;
+  background: transparent;
   color: var(--ink);
   max-width: 100%;
+  font-weight: 600;
 }
 
 .retranslateConfigRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
   margin-bottom: 10px;
 }
 
 .retranslateConfigButton {
   display: inline-grid;
-  grid-template-columns: auto minmax(64px, 150px) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
-  max-width: min(100%, 300px);
+  gap: 5px;
+  width: min(100%, 220px);
   padding: 5px 8px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 8px;
-  background: var(--panel);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   cursor: pointer;
 }
 
 .retranslateConfigButton:hover {
-  border-color: var(--action);
+  background: var(--panel);
 }
 
 .retranslateConfigLabel {
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -140,8 +145,9 @@
 }
 
 .retranslateConfigSwitch {
+  display: inline-flex;
+  align-items: center;
   color: var(--muted);
-  font-size: 11px;
 }
 
 .searchInput {
@@ -163,6 +169,20 @@
   margin-bottom: 8px;
 }
 
+.listToolbarActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.selectionSummary {
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .filterPanel {
   display: flex;
   flex-direction: column;
@@ -170,99 +190,11 @@
   margin-bottom: 10px;
 }
 
-.filterPanelTop {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-}
-
 .filterChips {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-}
-
-.reviewOverview {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 8px;
-  border: 1px solid color-mix(in srgb, var(--action) 24%, var(--hairline));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--action) 6%, var(--panel));
-  color: var(--ink);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.reviewOverviewGood {
-  border-color: var(--hairline);
-  background: var(--panel-soft);
-  color: var(--muted);
-}
-
-.reviewOverviewText {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.reviewMetricList {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
-}
-
-.reviewMetric {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: 140px;
-  padding: 2px 7px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-}
-
-.reviewMetric:hover {
-  border-color: var(--action);
-  color: var(--ink);
-}
-
-.reviewMetric span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.reviewMetric strong {
-  color: var(--ink);
-  font-weight: 650;
-}
-
-.reviewMetricMore {
-  color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.filterPanelActions {
-  display: inline-flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
 }
 
 .filterPresetRow {
@@ -320,10 +252,8 @@
   flex-direction: column;
   gap: 7px;
   margin: 0 0 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: var(--panel-soft);
+  padding: 7px 0;
+  border-top: 1px solid var(--hairline-soft);
 }
 
 .retranslateProgressHeader {
@@ -360,15 +290,14 @@
   flex-direction: column;
   gap: 8px;
   margin: 0 0 10px;
-  padding: 10px;
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: var(--panel-soft);
+  padding: 8px 0;
+  border-top: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline-soft);
+  background: transparent;
 }
 
 .termAuditPanelCollapsed {
-  padding: 8px 10px;
-  background: var(--panel);
+  padding: 7px 0;
 }
 
 .termAuditHeaderButton {
@@ -843,17 +772,24 @@
 }
 
 @media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .taskToolbar,
-  .filterPanelTop,
   .listToolbar {
     grid-template-columns: 1fr;
   }
 
   .taskActions,
   .taskIdentity,
-  .reviewOverview,
-  .reviewMetricList {
+  .listToolbarActions {
     flex-wrap: wrap;
+  }
+
+  .taskActions,
+  .listToolbarActions {
+    justify-content: flex-start;
   }
 
   .filterPresetRow {

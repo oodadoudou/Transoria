@@ -1899,16 +1899,6 @@ export function ProofreadingPage() {
     );
   }
 
-  const lowConfCount = proofreadingIndex.riskCounts.lowConf;
-  const residueCount = proofreadingIndex.riskCounts.residue;
-  const glossaryNotAppliedCount =
-    proofreadingIndex.riskCounts.glossaryNotApplied;
-  const termInconsistencyCount = proofreadingIndex.riskCounts.termInconsistency;
-  const possibleDuplicateCount = proofreadingIndex.riskCounts.possibleDuplicate;
-  const modelAnomalyCount = proofreadingIndex.riskCounts.modelAnomaly;
-  const untranslatedCount = proofreadingIndex.riskCounts.untranslated;
-  const truncatedCount = proofreadingIndex.riskCounts.truncated;
-  const formatRescueCount = proofreadingIndex.riskCounts.formatRescue;
   const batchProgressPercent =
     batchRetranslateProgress && batchRetranslateProgress.total > 0
       ? Math.round(
@@ -1917,83 +1907,6 @@ export function ProofreadingPage() {
             100,
         )
       : 0;
-  const riskSummaries: Array<{
-    key: ProofreadingFilterKey;
-    label: string;
-    count: number;
-  }> = [
-    {
-      key: "low_conf",
-      label: m.filterOnlyLowConfidence,
-      count: lowConfCount,
-    },
-    {
-      key: "source_residue",
-      label: m.filterOnlySourceResidue,
-      count: residueCount,
-    },
-    {
-      key: "glossary_not_applied",
-      label: m.filterOnlyGlossaryNotApplied,
-      count: glossaryNotAppliedCount,
-    },
-    {
-      key: "term_inconsistency",
-      label: m.filterOnlyTermInconsistency,
-      count: termInconsistencyCount,
-    },
-    {
-      key: "possible_duplicate",
-      label: m.filterOnlyPossibleDuplicate,
-      count: possibleDuplicateCount,
-    },
-    {
-      key: "model_anomaly",
-      label: m.filterOnlyModelAnomaly,
-      count: modelAnomalyCount,
-    },
-    {
-      key: "untranslated",
-      label: m.filterOnlyUntranslated,
-      count: untranslatedCount,
-    },
-    {
-      key: "truncated",
-      label: m.filterOnlyTruncated,
-      count: truncatedCount,
-    },
-    {
-      key: "format_rescue",
-      label: m.filterOnlyFormatRescue,
-      count: formatRescueCount,
-    },
-  ];
-  const riskIssueSummaries = riskSummaries.filter((item) => item.count > 0);
-  const visibleRiskSummaries = riskIssueSummaries.slice(0, 4);
-  const hiddenRiskSummaryCount =
-    riskIssueSummaries.length - visibleRiskSummaries.length;
-  const riskIssueTotal = proofreadingIndex.sortedItems.reduce((count, item) => {
-    const meta = proofreadingIndex.metaBySegmentId.get(item.segment_id);
-    return meta &&
-      (meta.rank <= REVIEW_RISK_MAX_RANK || meta.formatRescue)
-      ? count + 1
-      : count;
-  }, 0);
-  const qualitySummary =
-    riskIssueTotal === 0
-      ? m.qualitySummaryClean
-      : format(m.qualitySummaryNeedsReview, {
-          n: riskIssueTotal,
-          focus: riskIssueSummaries
-            .slice(0, 3)
-            .map((card) =>
-              format(m.qualitySummaryFocus, {
-                label: card.label,
-                n: card.count,
-              }),
-            )
-            .join(" · "),
-        });
   const filterPresets: Array<{
     label: string;
     keys: ProofreadingFilterKey[];
@@ -2086,38 +1999,13 @@ export function ProofreadingPage() {
               {m.copyTaskId}
             </button>
           ) : null}
-          {snapshot?.output_dir ? (
-            <span className={styles.outputPathHint}>
-              <span className={styles.outputPathLabel}>
-                {m.taskFolderLabel}
-              </span>
-              <span
-                className={styles.outputPathValue}
-                title={snapshot.output_dir}
-              >
-                {snapshot.output_dir}
-              </span>
-            </span>
-          ) : null}
-          {snapshot?.output_dir ? (
-            <button
-              type="button"
-              className={`${styles.copyButton} ${styles.copyPathButton}`}
-              onClick={() =>
-                void copyToClipboard(snapshot.output_dir, m.copyOutputPathDone)
-              }
-              aria-label={m.copyOutputPath}
-              title={m.copyOutputPath}
-            >
-              {m.copyOutputPath}
-            </button>
-          ) : null}
         </div>
         <div className={styles.taskActions}>
           <RequestLogPanel
             kind="translation"
             taskId={activeTaskId}
             taskStatus={hasActiveRetranslate ? "running" : activeTaskStatus}
+            launcherVariant="bare"
           />
           <Pill
             onClick={() => void handleRegenerate(false)}
@@ -2137,6 +2025,28 @@ export function ProofreadingPage() {
               : m.regenerateBilingualAction}
           </Pill>
         </div>
+        {snapshot?.output_dir ? (
+          <div className={styles.outputLocation}>
+            <span className={styles.outputPathLabel}>{m.taskFolderLabel}</span>
+            <span
+              className={styles.outputPathValue}
+              title={snapshot.output_dir}
+            >
+              {snapshot.output_dir}
+            </span>
+            <button
+              type="button"
+              className={`${styles.copyButton} ${styles.copyPathButton}`}
+              onClick={() =>
+                void copyToClipboard(snapshot.output_dir, m.copyOutputPathDone)
+              }
+              aria-label={m.copyOutputPath}
+              title={m.copyOutputPath}
+            >
+              {m.copyOutputPath}
+            </button>
+          </div>
+        ) : null}
         {regenerateFeedback ? (
           <span
             className={`${styles.inlineFeedback} ${
@@ -2164,8 +2074,8 @@ export function ProofreadingPage() {
           <span className={styles.retranslateConfigName}>
             {activeProofreadingPreset?.name ?? messages.runConfig.customPreset}
           </span>
-          <span className={styles.retranslateConfigSwitch}>
-            {m.switchModelPrompt}
+          <span className={styles.retranslateConfigSwitch} aria-hidden="true">
+            <ChevronDownIcon size={13} />
           </span>
         </button>
         <button
@@ -2179,8 +2089,8 @@ export function ProofreadingPage() {
           <span className={styles.retranslateConfigName}>
             {selectedProofreadingModel?.display_name ?? "—"}
           </span>
-          <span className={styles.retranslateConfigSwitch}>
-            {m.switchModelPrompt}
+          <span className={styles.retranslateConfigSwitch} aria-hidden="true">
+            <ChevronDownIcon size={13} />
           </span>
         </button>
         <button
@@ -2194,8 +2104,8 @@ export function ProofreadingPage() {
           <span className={styles.retranslateConfigName}>
             {selectedProofreadingPrompt?.name ?? "—"}
           </span>
-          <span className={styles.retranslateConfigSwitch}>
-            {m.switchModelPrompt}
+          <span className={styles.retranslateConfigSwitch} aria-hidden="true">
+            <ChevronDownIcon size={13} />
           </span>
         </button>
       </div>
@@ -2247,69 +2157,25 @@ export function ProofreadingPage() {
       ) : null}
 
       <div className={styles.filterPanel}>
-        <div className={styles.filterPanelTop}>
-          {snapshot ? (
-            <div
-              className={`${styles.reviewOverview} ${
-                riskIssueTotal === 0 ? styles.reviewOverviewGood : ""
-              }`.trim()}
-            >
-              <span className={styles.reviewOverviewText}>
-                {qualitySummary}
-              </span>
-              {visibleRiskSummaries.length > 0 ? (
-                <span className={styles.reviewMetricList}>
-                  {visibleRiskSummaries.map((item) => (
-                    <button
-                      type="button"
-                      key={item.key}
-                      className={styles.reviewMetric}
-                      onClick={() => setFilters(new Set([item.key]))}
-                    >
-                      <span>{item.label}</span>
-                      <strong>{item.count}</strong>
-                    </button>
-                  ))}
-                  {hiddenRiskSummaryCount > 0 ? (
-                    <span className={styles.reviewMetricMore}>
-                      +{hiddenRiskSummaryCount}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          <span className={styles.filterPanelActions}>
-            <span className={styles.filterPresetRow}>
-              {filterPresets.map((preset) => {
-                const active = isPresetActive(preset.keys);
-                return (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    className={`${styles.filterChip} ${
-                      active ? styles.filterChipActive : ""
-                    }`.trim()}
-                    aria-pressed={active}
-                    onClick={() => setFilterPreset(preset.keys)}
-                  >
-                    {preset.label}
-                  </button>
-                );
-              })}
-            </span>
-            <button
-              type="button"
-              className={`${styles.filterChip} ${styles.filterActionChip}`.trim()}
-              onClick={() => setFilters(new Set())}
-              disabled={filters.size === 0}
-              title={filters.size === 0 ? m.filterClearDisabled : undefined}
-            >
-              {m.filterClear}
-            </button>
+        <div className={styles.filterChips}>
+          <span className={styles.filterPresetRow}>
+            {filterPresets.map((preset) => {
+              const active = isPresetActive(preset.keys);
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className={`${styles.filterChip} ${
+                    active ? styles.filterChipActive : ""
+                  }`.trim()}
+                  aria-pressed={active}
+                  onClick={() => setFilterPreset(preset.keys)}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
           </span>
-        </div>
-        <span className={styles.filterChips}>
           <button
             type="button"
             className={`${styles.filterChip} ${filters.has("low_conf") ? styles.filterChipActive : ""}`.trim()}
@@ -2408,7 +2274,16 @@ export function ProofreadingPage() {
                   n: filteredItems.length,
                 })}
           </button>
-        </span>
+          <button
+            type="button"
+            className={`${styles.filterChip} ${styles.filterActionChip}`.trim()}
+            onClick={() => setFilters(new Set())}
+            disabled={filters.size === 0}
+            title={filters.size === 0 ? m.filterClearDisabled : undefined}
+          >
+            {m.filterClear}
+          </button>
+        </div>
       </div>
 
       {batchRetranslateProgress ? (
@@ -2552,14 +2427,23 @@ export function ProofreadingPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder={m.filterPlaceholder}
         />
-        <label className={styles.checkLabel}>
-          <input
-            type="checkbox"
-            checked={replacementEnabled}
-            onChange={(e) => setReplacementEnabled(e.target.checked)}
-          />
-          <span>{m.replacementToggle}</span>
-        </label>
+        <div className={styles.listToolbarActions}>
+          <span className={styles.selectionSummary} aria-live="polite">
+            {format(m.selectionSummary, {
+              selected: selectedCount,
+              visible: filteredItems.length,
+              total: proofreadingIndex.sortedItems.length,
+            })}
+          </span>
+          <label className={styles.checkLabel}>
+            <input
+              type="checkbox"
+              checked={replacementEnabled}
+              onChange={(e) => setReplacementEnabled(e.target.checked)}
+            />
+            <span>{m.replacementToggle}</span>
+          </label>
+        </div>
       </div>
 
       <div className={styles.replacementWrap}>
