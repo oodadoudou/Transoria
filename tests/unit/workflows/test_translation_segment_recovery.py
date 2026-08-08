@@ -23,6 +23,9 @@ from transoria.workflows.translation.runner import (
     TranslationRecoveryRunner,
     split_segment_payload_batches,
 )
+from transoria.workflows.translation.segment_state import (
+    PRESERVED_CANDIDATE_SEGMENTS_KEY,
+)
 
 
 def _segment(index: int, text: str = "짧은 문장") -> dict[str, object]:
@@ -171,6 +174,93 @@ class ResidueRunner:
         )
 
 
+def test_recovery_runner_keeps_historical_mixed_candidate_over_source_fallback() -> None:
+    runner = TranslationRecoveryRunner(ResidueRunner())  # type: ignore[arg-type]
+    subtask = Subtask(
+        id="chunk-00001",
+        task_id="translation-test",
+        request_payload={
+            "segments": [_segment(0, "원문")],
+            RECOVERY_SEGMENT_IDS_KEY: ["0:0"],
+        },
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "[全体]닉네임：已经翻译的正文"},
+                "accepted_overrides": ["0:0"],
+                PRESERVED_CANDIDATE_SEGMENTS_KEY: ["0:0"],
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["mass_source_residue_after_retry"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    result = asyncio.run(runner.run(subtask))
+    payload = json.loads(result.response_content)
+
+    assert payload["translations"]["0:0"] == "[全体]닉네임：已经翻译的正文"
+    assert payload[PRESERVED_CANDIDATE_SEGMENTS_KEY] == ["0:0"]
+    assert payload["accepted_overrides"] == []
+    assert payload["low_confidence"][0]["segment_id"] == "0:0"
+
+
+@dataclass
+class CleanRecoveryRunner:
+    async def run(self, subtask: Subtask) -> SubtaskResult:
+        segment_id = str(subtask.request_payload["segments"][0]["segment_id"])
+        return SubtaskResult(
+            response_content=json.dumps(
+                {
+                    "version": 2,
+                    "translations": {segment_id: "完全正常的中文译文"},
+                    "low_confidence": [],
+                },
+                ensure_ascii=False,
+            )
+        )
+
+
+def test_recovery_runner_replaces_preserved_candidate_with_clean_translation() -> None:
+    runner = TranslationRecoveryRunner(CleanRecoveryRunner())  # type: ignore[arg-type]
+    subtask = Subtask(
+        id="chunk-00001",
+        task_id="translation-test",
+        request_payload={
+            "segments": [_segment(0)],
+            RECOVERY_SEGMENT_IDS_KEY: ["0:0"],
+        },
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "[全体]닉네임：部分中文"},
+                PRESERVED_CANDIDATE_SEGMENTS_KEY: ["0:0"],
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["mass_source_residue_after_retry"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    result = asyncio.run(runner.run(subtask))
+    payload = json.loads(result.response_content)
+
+    assert payload["translations"]["0:0"] == "完全正常的中文译文"
+    assert payload[PRESERVED_CANDIDATE_SEGMENTS_KEY] == []
+    assert payload["low_confidence"] == []
+    assert payload["accepted_overrides"] == ["0:0"]
+
+
 def test_recovery_runner_completes_when_quality_warning_has_usable_text() -> None:
     runner = TranslationRecoveryRunner(ResidueRunner())  # type: ignore[arg-type]
     subtask = Subtask(
@@ -206,6 +296,49 @@ class MissingTranslationRunner:
                 {"version": 2, "translations": {}, "low_confidence": []}
             )
         )
+
+
+@dataclass
+class FailingRecoveryRunner:
+    async def run(self, subtask: Subtask) -> SubtaskResult:
+        raise RuntimeError("HTTP 429 from provider")
+
+
+def test_recovery_runner_request_failure_keeps_preserved_candidate() -> None:
+    runner = TranslationRecoveryRunner(  # type: ignore[arg-type]
+        FailingRecoveryRunner()
+    )
+    subtask = Subtask(
+        id="chunk-00001",
+        task_id="translation-test",
+        request_payload={
+            "segments": [_segment(0)],
+            RECOVERY_SEGMENT_IDS_KEY: ["0:0"],
+        },
+        response_content=json.dumps(
+            {
+                "version": 2,
+                "translations": {"0:0": "[全体]닉네임：已有中文译文"},
+                PRESERVED_CANDIDATE_SEGMENTS_KEY: ["0:0"],
+                "low_confidence": [
+                    {
+                        "segment_id": "0:0",
+                        "reasons": ["mass_source_residue_after_retry"],
+                        "tags": ["source_residue"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    with pytest.raises(SubtaskFailedWithResult) as caught:
+        asyncio.run(runner.run(subtask))
+
+    payload = json.loads(caught.value.result.response_content)
+    assert payload["translations"]["0:0"] == "[全体]닉네임：已有中文译文"
+    assert payload[PRESERVED_CANDIDATE_SEGMENTS_KEY] == ["0:0"]
+    assert payload["low_confidence"][0]["segment_id"] == "0:0"
 
 
 def test_recovery_runner_fails_only_missing_row_and_preserves_existing_text() -> None:

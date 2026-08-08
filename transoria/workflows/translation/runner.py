@@ -67,12 +67,13 @@ from transoria.workflows.translation.rules import (
 )
 from transoria.workflows.translation.segment_state import (
     ACCEPTED_OVERRIDE_SEGMENTS_KEY,
+    PRESERVED_CANDIDATE_SEGMENTS_KEY,
+    low_confidence_by_segment,
 )
 
 
 SUBTASK_PAYLOAD_VERSION = 1
 SUBTASK_RESPONSE_VERSION = 2
-_SOURCE_FALLBACK_RESIDUE_RATIO = 0.15
 _RESCUE_TRANSPORT_RETRY_BUDGET = 1
 # Hard cap on transport-level retries (timeout / 429 / 5xx / read error) for the
 # batch call. Transport retries are cheap (a failed connection or 5xx produces
@@ -235,6 +236,13 @@ class TranslationRecoveryRunner:
         if not isinstance(accepted, list):
             accepted = []
             merged["accepted_overrides"] = accepted
+        preserved = merged.setdefault(PRESERVED_CANDIDATE_SEGMENTS_KEY, [])
+        if not isinstance(preserved, list):
+            preserved = []
+            merged[PRESERVED_CANDIDATE_SEGMENTS_KEY] = preserved
+        for segment_id in recovery_ids:
+            if segment_id in accepted:
+                accepted.remove(segment_id)
 
         # A recovery request owns only ``recovery_ids``. If a later request
         # fails, the already translated rows from the original chunk must
@@ -289,27 +297,66 @@ class TranslationRecoveryRunner:
                 failures.append(f"batch {batch_index} returned invalid payload")
                 continue
             batch_translations = batch_payload.get("translations", {})
+            raw_batch_preserved = batch_payload.get(
+                PRESERVED_CANDIDATE_SEGMENTS_KEY, []
+            )
+            batch_preserved = (
+                {str(item) for item in raw_batch_preserved}
+                if isinstance(raw_batch_preserved, list)
+                else set()
+            )
+            existing_low_confidence = low_confidence_by_segment(merged)
+            batch_low_confidence = low_confidence_by_segment(batch_payload)
+            batch_segments = {
+                str(segment.get("segment_id", "")): segment
+                for segment in batch
+                if segment.get("segment_id") not in (None, "")
+            }
             if isinstance(batch_translations, Mapping):
                 for segment_id, text in batch_translations.items():
                     sid = str(segment_id)
-                    if sid in batch_ids:
-                        translations[sid] = str(text)
-            batch_low_confidence = batch_payload.get("low_confidence", [])
-            low_confidence[:] = [
-                entry
-                for entry in low_confidence
-                if not (
-                    isinstance(entry, Mapping)
-                    and str(entry.get("segment_id", "")) in batch_ids
-                )
-            ]
-            if isinstance(batch_low_confidence, list):
-                low_confidence.extend(
-                    entry
-                    for entry in batch_low_confidence
-                    if isinstance(entry, Mapping)
-                    and str(entry.get("segment_id", "")) in batch_ids
-                )
+                    if sid not in batch_ids:
+                        continue
+                    current_text = translations.get(sid)
+                    current_record = existing_low_confidence.get(sid, {})
+                    retry_record = batch_low_confidence.get(sid, {})
+                    segment = batch_segments.get(sid, {})
+                    if current_text is not None and not (
+                        _should_replace_recovery_candidate(
+                            self.runner,
+                            source_text=str(segment.get("original_text", "")),
+                            current_text=str(current_text),
+                            current_record=current_record,
+                            retry_text=str(text),
+                            retry_record=retry_record,
+                        )
+                    ):
+                        continue
+                    translations[sid] = str(text)
+                    low_confidence[:] = [
+                        entry
+                        for entry in low_confidence
+                        if not (
+                            isinstance(entry, Mapping)
+                            and str(entry.get("segment_id", "")) == sid
+                        )
+                    ]
+                    raw_retry_entry = next(
+                        (
+                            entry
+                            for entry in batch_payload.get("low_confidence", [])
+                            if isinstance(entry, Mapping)
+                            and str(entry.get("segment_id", "")) == sid
+                        ),
+                        None,
+                    )
+                    if raw_retry_entry is not None:
+                        low_confidence.append(raw_retry_entry)
+                    if sid in batch_preserved:
+                        if sid not in preserved:
+                            preserved.append(sid)
+                    elif sid in preserved:
+                        preserved.remove(sid)
             batch_unresolved = _recovery_candidate_ids(merged) & batch_ids
             for segment_id in batch_ids - batch_unresolved:
                 if (
@@ -317,6 +364,8 @@ class TranslationRecoveryRunner:
                     and segment_id not in accepted
                 ):
                     accepted.append(segment_id)
+                if segment_id in preserved:
+                    preserved.remove(segment_id)
 
         missing = {
             segment_id
@@ -352,6 +401,47 @@ def _has_usable_translation(
         return False
     value = translations[segment_id]
     return isinstance(value, str) and bool(value.strip())
+
+
+def _should_replace_recovery_candidate(
+    runner: SubtaskRunner,
+    *,
+    source_text: str,
+    current_text: str,
+    current_record: Mapping[str, object],
+    retry_text: str,
+    retry_record: Mapping[str, object],
+) -> bool:
+    current_reasons = tuple(
+        str(reason) for reason in current_record.get("reasons", [])
+    )
+    retry_reasons = tuple(str(reason) for reason in retry_record.get("reasons", []))
+    source_language = getattr(runner, "source_language", None)
+    target_language = getattr(runner, "target_language", None)
+    if isinstance(source_language, Language) and isinstance(target_language, Language):
+        meta = _SegmentPayload(
+            segment_id="",
+            chunk_index=0,
+            prompt_text=source_text,
+            original_text=source_text,
+            protection_spans=(),
+            leading_whitespace="",
+            trailing_whitespace="",
+        )
+        return _should_replace_low_confidence_candidate(
+            meta,
+            current_text,
+            current_reasons,
+            retry_text,
+            retry_reasons,
+            source_language,
+            target_language,
+        )
+    current_is_source = current_text.strip() == source_text.strip()
+    retry_is_source = retry_text.strip() == source_text.strip()
+    if current_is_source != retry_is_source:
+        return not retry_is_source
+    return True
 
 
 def _recovery_candidate_ids(payload: Mapping[str, object]) -> set[str]:
@@ -741,6 +831,7 @@ class TranslationSubtaskRunner:
         finalized: dict[str, str] = {}
         finalized_reasons: dict[str, tuple[str, ...]] = {}
         low_confidence: list[dict[str, object]] = []
+        preserved_candidates: set[str] = set()
         retry_round = 0
         terminal_error: BaseException | None = None
 
@@ -921,12 +1012,17 @@ class TranslationSubtaskRunner:
                     fallback_reason = fallback_reasons_by_index.get(
                         meta.chunk_index
                     )
-                    if fallback_reason:
+                    candidate_text = self._postprocess(
+                        meta,
+                        accumulated.get(meta.chunk_index, meta.prompt_text),
+                    )
+                    if fallback_reason and not _has_target_language_candidate(
+                        candidate_text,
+                        self.target_language,
+                    ):
                         final_text = meta.original_text
                     else:
-                        final_text = self._postprocess(
-                            meta, accumulated[meta.chunk_index]
-                        )
+                        final_text = candidate_text
                     verdict = self._evaluate_confidence(
                         meta.original_text, final_text
                     )
@@ -1074,8 +1170,28 @@ class TranslationSubtaskRunner:
                         rescue_chunk.context_lines,
                     )
                 for idx, text in rescued_translations.items():
-                    accumulated[idx] = text
-                    fallback_reasons_by_index.pop(idx, None)
+                    meta = metadata_by_index.get(idx)
+                    if meta is None:
+                        continue
+                    current_text = self._postprocess(meta, accumulated[idx])
+                    current_verdict = self._evaluate_confidence(
+                        meta.original_text, current_text
+                    )
+                    retry_text = self._postprocess(meta, text)
+                    retry_verdict = self._evaluate_confidence(
+                        meta.original_text, retry_text
+                    )
+                    if _should_replace_low_confidence_candidate(
+                        meta,
+                        current_text,
+                        current_verdict.reasons,
+                        retry_text,
+                        retry_verdict.reasons,
+                        self.source_language,
+                        self.target_language,
+                    ):
+                        accumulated[idx] = text
+                        fallback_reasons_by_index.pop(idx, None)
 
             # Low-confidence rows share one paid rescue budget for the chunk
             # lifecycle. Runtime subtask retries get only one rescue call,
@@ -1436,30 +1552,20 @@ class TranslationSubtaskRunner:
                 echoes_source = (
                     last_text.strip() == meta.original_text.strip()
                 )
-                residue_ratio = _residue_score(last_text, self.source_language)
-                # Three terminal modes:
-                # - Model echoed source: source-passthrough (same effect,
-                #   clearer reason for the user).
-                # - Model's last attempt is mostly source-language residue:
-                #   source-passthrough. A mostly translated sentence with a
-                #   small residue leak is kept and tagged; it is easier to
-                #   fix than the raw source line.
-                # - Model produced a target-language guess that's flawed but not
-                #   residue: keep it. A questionable translated line is
-                #   easier to fix than re-translating from scratch.
                 tags = list(final_verdict.tags)
                 if has_residue or echoes_source:
                     if "source_residue" not in tags:
                         tags.append("source_residue")
-                if (
-                    echoes_source
-                    or (has_residue and residue_ratio >= _SOURCE_FALLBACK_RESIDUE_RATIO)
+                if echoes_source or not _has_target_language_candidate(
+                    last_text,
+                    self.target_language,
                 ):
                     finalized[meta.segment_id] = meta.original_text
                     extra_reason = "fell_back_to_source_after_max_retries"
                 else:
                     finalized[meta.segment_id] = last_text
                     extra_reason = "force_accepted_after_max_retries"
+                    preserved_candidates.add(meta.segment_id)
                 finalized_reasons[meta.segment_id] = (
                     tuple(last_reasons) + (extra_reason,)
                 )
@@ -1553,6 +1659,27 @@ class TranslationSubtaskRunner:
                 "translations": finalized,
                 "low_confidence": low_confidence,
             }
+            low_confidence_ids = {
+                str(entry.get("segment_id", ""))
+                for entry in low_confidence
+                if isinstance(entry, Mapping)
+            }
+            preserved_candidates.update(
+                meta.segment_id
+                for meta in metadata
+                if meta.segment_id in low_confidence_ids
+                and meta.segment_id in finalized
+                and finalized[meta.segment_id].strip()
+                != meta.original_text.strip()
+                and _has_target_language_candidate(
+                    finalized[meta.segment_id],
+                    self.target_language,
+                )
+            )
+            if preserved_candidates:
+                payload[PRESERVED_CANDIDATE_SEGMENTS_KEY] = sorted(
+                    preserved_candidates
+                )
             unresolved_line_count = _line_count_fallback_segment_ids(
                 low_confidence
             )
@@ -2050,6 +2177,10 @@ def _target_language_score(text: str, target_language: Language) -> float:
     if target_language is Language.THAI:
         return _script_ratio(text, _THAI_TARGET_RE)
     return _script_ratio(text, _LATIN_TARGET_RE)
+
+
+def _has_target_language_candidate(text: str, target_language: Language) -> bool:
+    return bool(text.strip()) and _target_language_score(text, target_language) > 0.0
 
 
 def _low_confidence_candidate_rank(

@@ -35,6 +35,9 @@ from transoria.workflows.translation.confidence import (
     TAG_FUNCTION_WORD_RESIDUE,
     TAG_TRUNCATED,
 )
+from transoria.workflows.translation.segment_state import (
+    PRESERVED_CANDIDATE_SEGMENTS_KEY,
+)
 
 
 def _make_service(tmp_path: Path) -> TaskService:
@@ -975,6 +978,47 @@ def test_load_snapshot_keeps_marked_partial_rows_from_failed_subtask(
     assert response["items"][1]["dst"] == "산"
     assert response["items"][1]["low_confidence"] is True
     assert response["items"][1]["tags"] == ["source_residue"]
+
+
+def test_load_snapshot_keeps_preserved_mixed_candidate_from_failed_subtask(
+    router_and_service,
+):
+    router, service, tmp_path = router_and_service
+    task_id = "translation-pf-preserved-candidate"
+    _seed_translation_task(
+        service,
+        task_id=task_id,
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "これは原文です。", "これは原文です。")],
+        status=TaskStatus.FAILED,
+    )
+    subtask = service.cache.load_subtasks(task_id)[0]
+    payload = {
+        "version": 2,
+        "translations": {"0:0": "Переведенный текст かな"},
+        PRESERVED_CANDIDATE_SEGMENTS_KEY: ["0:0"],
+        "low_confidence": [
+            {
+                "segment_id": "0:0",
+                "reasons": ["force_accepted_after_max_retries"],
+                "tags": ["source_residue"],
+            }
+        ],
+    }
+    service.cache.save_subtask(
+        replace(
+            subtask,
+            status=SubtaskStatus.FAILED,
+            response_content=json.dumps(payload, ensure_ascii=False),
+        )
+    )
+
+    response = router.call("proofreading.load_snapshot", {"task_id": task_id})
+
+    assert response["items"][0]["dst"] == "Переведенный текст かな"
+    assert response["items"][0]["low_confidence"] is True
+    assert "source_residue" in response["items"][0]["tags"]
 
 
 def test_failed_task_load_snapshot_shows_missing_translation_fallback(

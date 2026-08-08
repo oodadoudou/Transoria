@@ -30,6 +30,7 @@ from transoria.workflows.translation.confidence import (
 )
 from transoria.workflows.translation.orchestrator import _collect_translations
 from transoria.workflows.translation.segment_state import (
+    PRESERVED_CANDIDATE_SEGMENTS_KEY,
     collect_segment_state_from_authoritative_subtasks,
     mark_accepted_override,
 )
@@ -189,6 +190,40 @@ def test_authoritative_state_keeps_accepted_failed_override() -> None:
     assert translations == {"0:0": "你好"}
     assert low_confidence == {
         "0:0": {"reasons": ["manual review accepted"], "tags": ["manual_review"]}
+    }
+
+
+def test_authoritative_state_keeps_preserved_failed_candidate_for_proofreading() -> None:
+    failed = _translation_subtask(
+        "chunk-00000",
+        SubtaskStatus.FAILED,
+        {
+            "version": 2,
+            "translations": {
+                "0:0": "[全体]닉네임：已经翻译的正文",
+                "0:1": "아직 원문",
+            },
+            PRESERVED_CANDIDATE_SEGMENTS_KEY: ["0:0"],
+            "low_confidence": [
+                {
+                    "segment_id": "0:0",
+                    "reasons": ["force_accepted_after_max_retries"],
+                    "tags": ["source_residue"],
+                }
+            ],
+        },
+    )
+
+    translations, low_confidence = collect_segment_state_from_authoritative_subtasks(
+        (failed,)
+    )
+
+    assert translations == {"0:0": "[全体]닉네임：已经翻译的正文"}
+    assert low_confidence == {
+        "0:0": {
+            "reasons": ["force_accepted_after_max_retries"],
+            "tags": ["source_residue"],
+        }
     }
 
 

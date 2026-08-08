@@ -15,6 +15,7 @@ class TranslationSubtaskLike(Protocol):
 
 LowConfidenceMap = dict[str, dict[str, list[str]]]
 ACCEPTED_OVERRIDE_SEGMENTS_KEY = "accepted_overrides"
+PRESERVED_CANDIDATE_SEGMENTS_KEY = "preserved_candidates"
 
 
 def mark_accepted_override(payload: dict[str, object], segment_id: str) -> None:
@@ -31,10 +32,39 @@ def mark_accepted_override(payload: dict[str, object], segment_id: str) -> None:
 def accepted_override_payload(
     payload: Mapping[str, object],
 ) -> dict[str, object] | None:
-    raw_segment_ids = payload.get(ACCEPTED_OVERRIDE_SEGMENTS_KEY)
-    if not isinstance(raw_segment_ids, list):
-        return None
-    segment_ids = [str(item) for item in raw_segment_ids if item not in (None, "")]
+    return _selected_translation_payload(
+        payload,
+        (ACCEPTED_OVERRIDE_SEGMENTS_KEY,),
+    )
+
+
+def authoritative_failed_payload(
+    payload: Mapping[str, object],
+) -> dict[str, object] | None:
+    return _selected_translation_payload(
+        payload,
+        (
+            ACCEPTED_OVERRIDE_SEGMENTS_KEY,
+            PRESERVED_CANDIDATE_SEGMENTS_KEY,
+        ),
+    )
+
+
+def _selected_translation_payload(
+    payload: Mapping[str, object],
+    keys: tuple[str, ...],
+) -> dict[str, object] | None:
+    segment_ids: list[str] = []
+    for key in keys:
+        raw_segment_ids = payload.get(key)
+        if not isinstance(raw_segment_ids, list):
+            continue
+        for item in raw_segment_ids:
+            if item in (None, ""):
+                continue
+            segment_id = str(item)
+            if segment_id not in segment_ids:
+                segment_ids.append(segment_id)
     if not segment_ids:
         return None
 
@@ -146,12 +176,12 @@ def collect_segment_state_from_completed_subtasks(
 def collect_segment_state_from_authoritative_subtasks(
     subtasks: Iterable[TranslationSubtaskLike],
 ) -> tuple[dict[str, str], LowConfidenceMap]:
-    """Collect accepted output while ignoring diagnostic failed payloads.
+    """Collect authoritative output while ignoring diagnostic failed payloads.
 
     Completed subtasks are workflow-authoritative. Non-completed subtasks can
-    still contain user-accepted edits or retranslation results after the user
-    proofreads a failed/stopped task; only those explicitly marked segments are
-    allowed to participate in final output.
+    still contain user-accepted edits, retranslation results, or useful mixed
+    target-language candidates. Only explicitly marked segments participate in
+    final output; unmarked diagnostic text remains excluded.
     """
 
     payloads: list[Mapping[str, object]] = []
@@ -167,7 +197,7 @@ def collect_segment_state_from_authoritative_subtasks(
         if subtask.status is SubtaskStatus.COMPLETED:
             payloads.append(payload)
             continue
-        accepted_payload = accepted_override_payload(payload)
-        if accepted_payload is not None:
-            payloads.append(accepted_payload)
+        failed_payload = authoritative_failed_payload(payload)
+        if failed_payload is not None:
+            payloads.append(failed_payload)
     return collect_segment_state_from_payloads(payloads)

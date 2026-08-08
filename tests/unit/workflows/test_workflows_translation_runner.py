@@ -31,6 +31,9 @@ from transoria.workflows.translation import (
     preprocess_segment,
 )
 from transoria.workflows.translation.runner import _decode_subtask_payload
+from transoria.workflows.translation.segment_state import (
+    PRESERVED_CANDIDATE_SEGMENTS_KEY,
+)
 
 
 @dataclass
@@ -1802,6 +1805,80 @@ def test_runner_keeps_mostly_translated_text_when_minor_residue_persists() -> No
     assert flagged["segment_id"] == "0:0"
     assert "force_accepted_after_max_retries" in flagged["reasons"]
     assert "source_residue" in flagged.get("tags", [])
+    assert payload[PRESERVED_CANDIDATE_SEGMENTS_KEY] == ["0:0"]
+
+
+def test_runner_preserves_mixed_candidate_for_configured_language_pair() -> None:
+    mixed_candidate = "Переведенный текст с японским именем かな"
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                200,
+                _ok_body(json.dumps({"0": mixed_candidate}, ensure_ascii=False)),
+            )
+            for _ in range(4)
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.JAPANESE,
+        target_language=Language.RUSSIAN,
+        enable_confidence_check=True,
+        low_confidence_max_retries=3,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask(sources=("これは翻訳対象の長い日本語文です。",)))
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"]["0:0"] == mixed_candidate
+    assert payload[PRESERVED_CANDIDATE_SEGMENTS_KEY] == ["0:0"]
+    assert "source_residue" in payload["low_confidence"][0].get("tags", [])
+
+
+def test_runner_keeps_mixed_candidate_after_systemic_residue_retry_exhausts() -> None:
+    sources = tuple(f"긴 한국어 원문 문장 {idx}" for idx in range(8))
+    mixed = tuple(f"已经翻译的正文 {idx} 닉네임" for idx in range(8))
+    initial = "\n".join(
+        json.dumps({str(idx): text}, ensure_ascii=False)
+        for idx, text in enumerate(mixed)
+    )
+    source_retry = "\n".join(
+        json.dumps({str(idx): text}, ensure_ascii=False)
+        for idx, text in enumerate(sources)
+    )
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body(initial + "\n")),
+            TransportResult(200, _ok_body(source_retry + "\n")),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=0,
+    )
+
+    result = asyncio.run(runner.run(_make_subtask(sources=sources)))
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {
+        f"0:{idx}": text for idx, text in enumerate(mixed)
+    }
+    assert set(payload[PRESERVED_CANDIDATE_SEGMENTS_KEY]) == {
+        f"0:{idx}" for idx in range(8)
+    }
+    assert all(
+        "source_residue" in entry.get("tags", [])
+        for entry in payload["low_confidence"]
+    )
 
 
 def test_runner_force_accepts_target_language_low_conf_when_no_residue() -> None:

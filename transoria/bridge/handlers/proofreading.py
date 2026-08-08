@@ -36,7 +36,7 @@ from transoria.workflows.translation import evaluate_segment_confidence
 from transoria.workflows.translation.glossary_report import target_term_present
 from transoria.workflows.translation.rules import Glossary, GlossaryEntry
 from transoria.workflows.translation.segment_state import (
-    accepted_override_payload,
+    authoritative_failed_payload,
     collect_segment_state_from_payloads,
     mark_accepted_override,
 )
@@ -128,9 +128,9 @@ def _collect_segment_state_from_responses(
         if getattr(subtask, "status", None) is SubtaskStatus.COMPLETED:
             payloads.append(payload)
             continue
-        accepted_payload = accepted_override_payload(payload)
-        if accepted_payload is not None:
-            payloads.append(accepted_payload)
+        failed_payload = authoritative_failed_payload(payload)
+        if failed_payload is not None:
+            payloads.append(failed_payload)
     return collect_segment_state_from_payloads(payloads)
 
 
@@ -148,7 +148,8 @@ def _collect_translations_from_cache(snapshot) -> dict[str, str]:
 
     Failed/running/skipped subtasks may retain old response payloads from
     retries or split parents. Those payloads are diagnostic unless a segment
-    was explicitly accepted by manual proofreading or single-row retranslation.
+    was explicitly accepted or marked as the best preserved translation
+    candidate for proofreading.
     """
 
     return _collect_translations_from_responses(_decoded_subtask_responses(snapshot))
