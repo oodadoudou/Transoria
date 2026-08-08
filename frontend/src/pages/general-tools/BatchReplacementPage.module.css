@@ -1,6 +1,6 @@
 .pickerStack {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 420px));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: end;
 }
@@ -11,6 +11,37 @@
   gap: 8px;
   align-items: end;
   margin-bottom: 10px;
+}
+
+.ruleField {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ruleField span {
+  color: var(--muted, #7a7166);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ruleField input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--hairline, #ece8e2);
+  border-radius: 8px;
+  background: var(--panel, #fffaf3);
+  color: var(--ink, #2a2620);
+  font: inherit;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12.5px;
+  padding: 6px 10px;
+}
+
+.ruleImportRow > :global(button) {
+  min-height: 36px;
 }
 
 .empty {
@@ -97,9 +128,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
-  background: var(--panel-soft, #f5f0e9);
-  border-radius: var(--radius-inset, 10px);
+  padding: 4px 0;
 }
 
 .statLabel {

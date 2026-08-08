@@ -1,44 +1,41 @@
 .root {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   min-width: 0;
   max-width: 100%;
   vertical-align: middle;
 }
 
+.copyTarget {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: copy;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.copyTarget:hover .value {
+  color: var(--action, #2f281f);
+}
+
+.copyTarget:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--action, #2f281f);
+  outline-offset: 3px;
+}
+
 .value {
   display: block;
   min-width: 0;
-  max-width: min(100%, 56ch);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .code {
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.04);
   color: var(--ink, #2a2620);
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-  padding: 1px 4px;
-}
-
-.copyButton {
-  flex-shrink: 0;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 650;
-  padding: 2px 7px;
-  white-space: nowrap;
-}
-
-.copyButton:hover {
-  border-color: var(--action);
-  color: var(--action);
+  padding: 0;
 }

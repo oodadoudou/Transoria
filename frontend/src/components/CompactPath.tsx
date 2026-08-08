@@ -41,22 +41,31 @@ export function CompactPath({
     void navigator.clipboard.writeText(value);
   };
 
+  if (!value) {
+    return (
+      <span className={`${styles.root} ${className}`.trim()}>
+        {asCode ? (
+          <code className={valueClass}>{display}</code>
+        ) : (
+          <span className={valueClass}>{display}</span>
+        )}
+      </span>
+    );
+  }
+
   return (
-    <span className={`${styles.root} ${className}`.trim()} title={value || display}>
+    <button
+      type="button"
+      className={`${styles.root} ${styles.copyTarget} ${className}`.trim()}
+      title={`${copyLabel}: ${value}`}
+      aria-label={`${copyLabel}: ${display}`}
+      onClick={handleCopy}
+    >
       {asCode ? (
         <code className={valueClass}>{display}</code>
       ) : (
         <span className={valueClass}>{display}</span>
       )}
-      {value ? (
-        <button
-          type="button"
-          className={styles.copyButton}
-          onClick={handleCopy}
-        >
-          {copyLabel}
-        </button>
-      ) : null}
-    </span>
+    </button>
   );
 }

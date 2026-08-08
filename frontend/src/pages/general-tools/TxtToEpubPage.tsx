@@ -14,6 +14,7 @@ import {
 } from "@/bridge";
 import { CompactPath } from "@/components/CompactPath";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
+import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
 import { useMessages } from "@/locales";
@@ -614,17 +615,19 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
         subtitle={embedded ? undefined : pageText.sub}
       >
         <div className={styles.grid2}>
-          <div className={styles.fileRow}>
+          <div className={styles.fileField}>
             <span className={styles.label}>{text.inputTxt}</span>
-            <input
-              className={styles.input}
-              value={inputPath}
-              onChange={(event) => updateInputPath(event.target.value)}
-              placeholder={text.inputPlaceholder}
-            />
-            <Pill variant="ghost" onClick={handleChooseTxt}>
-              {text.chooseTxt}
-            </Pill>
+            <div className={styles.fileRow}>
+              <input
+                className={styles.input}
+                value={inputPath}
+                onChange={(event) => updateInputPath(event.target.value)}
+                placeholder={text.inputPlaceholder}
+              />
+              <Pill variant="ghost" onClick={handleChooseTxt}>
+                {text.chooseTxt}
+              </Pill>
+            </div>
           </div>
           <FolderPickerRow
             label={text.outputDir}
@@ -690,7 +693,10 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                 });
               }}
             />
-            <span>{text.syncFilenameWithTitle}</span>
+            <span className={styles.labelWithHelp}>
+              {text.syncFilenameWithTitle}
+              <HelpTip>{text.outputHint}</HelpTip>
+            </span>
           </label>
           {!syncOutputFilename ? (
             <label className={styles.field}>
@@ -712,7 +718,15 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
       </Panel>
 
       <EpubToolStage>
-      <EpubToolAdvancedSettings label={text.chapterRecognition}>
+      <EpubToolAdvancedSettings
+        ariaLabel={text.chapterRecognition}
+        label={
+          <span className={styles.labelWithHelp}>
+            {text.chapterRecognition}
+            <HelpTip>{text.scanHint}</HelpTip>
+          </span>
+        }
+      >
         <div className={styles.modeRow}>
           {(["preset", "simple", "advanced"] as const).map((mode) => (
             <button
@@ -731,7 +745,17 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
         </div>
         {draft.regexMode === "preset" ? (
           <label className={styles.selectBlock}>
-            <span>{text.modePreset}</span>
+            <span className={styles.labelWithHelp}>
+              {text.modePreset}
+              {tocPresets.length > 0 ? (
+                <HelpTip>
+                  {displayPreset(
+                    selectedPreset ?? tocPresets[0],
+                    englishUi,
+                  ).description}
+                </HelpTip>
+              ) : null}
+            </span>
             <select
               value={draft.presetId}
               onChange={(event) =>
@@ -747,14 +771,6 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                 );
               })}
             </select>
-            {tocPresets.length > 0 ? (
-              <small className={styles.selectedSummary}>
-                {displayPreset(
-                  selectedPreset ?? tocPresets[0],
-                  englishUi,
-                ).description}
-              </small>
-            ) : null}
           </label>
         ) : draft.regexMode === "simple" ? (
           <div className={styles.ruleGrid}>
@@ -784,14 +800,14 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             />
           </label>
         )}
-        <div className={styles.sectionHint}>
-            {scanInfo
-              ? text.scanSummary
-                  .replace("{candidates}", NUM.format(tocEntries.length))
-                  .replace("{selected}", NUM.format(selectedCount))
-                  .replace("{lines}", NUM.format(scanInfo.lineCount))
-              : text.scanHint}
-        </div>
+        {scanInfo ? (
+          <div className={styles.sectionHint}>
+            {text.scanSummary
+              .replace("{candidates}", NUM.format(tocEntries.length))
+              .replace("{selected}", NUM.format(selectedCount))
+              .replace("{lines}", NUM.format(scanInfo.lineCount))}
+          </div>
+        ) : null}
         <div className={styles.tocEditorBar}>
           <label className={styles.addTocField}>
             <span>{text.addTocText}</span>
@@ -966,7 +982,16 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
 
       <EpubToolAdvancedSettings label={text.epubStyle}>
         <label className={styles.selectBlock}>
-          <span>{text.epubStyle}</span>
+          <span className={styles.labelWithHelp}>
+            {text.epubStyle}
+            <HelpTip>
+              {draft.styleId === "custom"
+                ? text.customCssHint
+                : selectedStyle
+                  ? displayStyle(selectedStyle, englishUi).groupLabel
+                  : text.customCssHint}
+            </HelpTip>
+          </span>
           <select
             value={draft.styleId}
             onChange={(event) =>
@@ -985,13 +1010,6 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
               {text.customCss} - {text.customCssHint}
             </option>
           </select>
-          <small className={styles.selectedSummary}>
-            {draft.styleId === "custom"
-              ? text.customCssHint
-              : selectedStyle
-                ? displayStyle(selectedStyle, englishUi).groupLabel
-                : ""}
-          </small>
         </label>
         <div className={styles.cssGrid}>
           <div>
@@ -1136,7 +1154,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                     .replace("{candidates}", NUM.format(tocEntries.length))
                     .replace("{selected}", NUM.format(selectedCount))
                     .replace("{lines}", NUM.format(scanInfo.lineCount))
-                : text.scanHint
+                : text.noToc
         }
         actions={
           <>

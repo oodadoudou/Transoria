@@ -22,6 +22,12 @@
   margin: 0;
 }
 
+.labelGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .labelExtra {
   color: var(--muted);
   font-size: 12px;

@@ -533,6 +533,7 @@ export function RunPage() {
           kind="glossary_review"
           taskId={activeTaskId}
           taskStatus={snapshot.status}
+          launcherVariant="bare"
         />
       </RunControls>
 

@@ -314,10 +314,8 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             onChange={setOutputDir}
             historyKey="general_tools:epub_merge:output_folder"
             compact
+            help={<HelpTip>{text.outputFolderHint}</HelpTip>}
           />
-        </div>
-        <div className={styles.folderHelp}>
-          <HelpTip>{text.outputFolderHint}</HelpTip>
         </div>
         <div className={styles.fileRow}>
           <label className={`${styles.field} ${styles.compactField}`}>
@@ -397,7 +395,10 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
 
       <EpubToolStage>
       {stage === "idle" || stage === "preview" ? (
-      <Panel label={text.previewLabel}>
+      <Panel
+        label={text.previewLabel}
+        labelHelp={!plan ? text.noPlan : undefined}
+      >
         {plan ? (
           <>
             <div className={styles.summaryGrid}>
@@ -534,7 +535,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             )}
           </>
         ) : (
-          <p className={styles.empty}>{text.noPlan}</p>
+          <p className={styles.empty}>-</p>
         )}
       </Panel>
       ) : null}

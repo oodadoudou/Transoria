@@ -50,6 +50,11 @@ export function HelpTip({ children, ariaLabel = "Help" }: HelpTipProps) {
         className={styles.trigger}
         aria-label={ariaLabel}
         aria-describedby={open ? id : undefined}
+        aria-expanded={open}
+        onClick={(event) => {
+          updatePosition(event.currentTarget);
+          setOpen(true);
+        }}
         onFocus={(event) => {
           updatePosition(event.currentTarget);
           setOpen(true);

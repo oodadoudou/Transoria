@@ -6,6 +6,12 @@
   min-height: 500px;
 }
 
+.workspaceCompact {
+  grid-template-rows: auto minmax(120px, auto) auto;
+  height: auto;
+  min-height: 360px;
+}
+
 .stage {
   min-height: 0;
   overflow: auto;
@@ -14,13 +20,12 @@
 
 .advanced {
   margin-top: 10px;
-  border-top: 1px solid var(--hairline, #ece8e2);
 }
 
 .advancedTitle {
   display: flex;
   align-items: center;
-  min-height: 34px;
+  min-height: 30px;
   color: var(--muted, #7a7166);
   font-size: 10.5px;
   font-weight: 700;

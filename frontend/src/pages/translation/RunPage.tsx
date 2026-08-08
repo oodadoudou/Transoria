@@ -562,6 +562,7 @@ export function RunPage() {
           kind="translation"
           taskId={activeTaskId}
           taskStatus={snapshot.status}
+          launcherVariant="bare"
         />
       </RunControls>
     </>

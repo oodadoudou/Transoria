@@ -24,7 +24,6 @@ import { Pill } from "@/components/Pill";
 import { CompactPath } from "@/components/CompactPath";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
-import { TextField } from "@/components/TextField";
 import {
   EMPTY_SELECTION,
   RuleTable,
@@ -358,6 +357,7 @@ export function BatchReplacementPage({
               variant="input"
               onChange={setInputFolder}
               historyKey="general_tools:batch_replacement:input_folder"
+              compact
             />
             <FolderPickerRow
               label={messages.batchReplacement.outputFolder}
@@ -365,20 +365,28 @@ export function BatchReplacementPage({
               variant="output"
               onChange={setOutputFolder}
               historyKey="general_tools:batch_replacement:output_folder"
+              compact
             />
           </div>
         </Panel>
 
         <EpubToolStage>
-          <Panel label={messages.batchReplacement.rulesLabel}>
+          <Panel
+            label={messages.batchReplacement.rulesLabel}
+            labelHelp={
+              rules.length === 0 ? messages.batchReplacement.noRules : undefined
+            }
+          >
         <div className={styles.ruleImportRow}>
-          <TextField
-            label={messages.batchReplacement.ruleFile}
-            value={ruleFilePath}
-            onChange={setRuleFilePath}
-            placeholder={messages.batchReplacement.ruleFilePlaceholder}
-            mono
-          />
+          <label className={styles.ruleField}>
+            <span>{messages.batchReplacement.ruleFile}</span>
+            <input
+              value={ruleFilePath}
+              onChange={(event) => setRuleFilePath(event.target.value)}
+              placeholder={messages.batchReplacement.ruleFilePlaceholder}
+              spellCheck={false}
+            />
+          </label>
           <Pill variant="ghost" onClick={handleChooseRuleFile}>
             {messages.batchReplacement.chooseRuleFile}
           </Pill>
@@ -390,9 +398,7 @@ export function BatchReplacementPage({
           </Pill>
         </div>
         {rules.length === 0 ? (
-          <div className={styles.empty}>
-            {messages.batchReplacement.noRules}
-          </div>
+          <div className={styles.empty}>-</div>
         ) : (
           <>
             {searchOpen ? (

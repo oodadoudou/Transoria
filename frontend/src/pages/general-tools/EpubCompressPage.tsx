@@ -368,7 +368,10 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
 
       <EpubToolStage>
         {stage === "idle" || stage === "preview" ? (
-          <Panel label={stage === "preview" ? text.previewLabel : text.readyLabel}>
+          <Panel
+            label={stage === "preview" ? text.previewLabel : text.readyLabel}
+            labelHelp={!plan ? text.noPlan : undefined}
+          >
             {plan ? (
               <>
                 <div className={styles.summaryGrid}>
@@ -440,7 +443,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
                 )}
               </>
             ) : (
-              <div className={styles.empty}>{text.noPlan}</div>
+              <div className={styles.empty}>-</div>
             )}
           </Panel>
         ) : null}

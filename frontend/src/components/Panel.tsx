@@ -8,6 +8,7 @@ interface PanelProps extends HTMLAttributes<HTMLElement> {
   subtitle?: string;
   subtitleSingleLine?: boolean;
   labelExtra?: ReactNode;
+  labelHelp?: string;
   children?: ReactNode;
 }
 
@@ -17,6 +18,7 @@ export function Panel({
   subtitle,
   subtitleSingleLine = false,
   labelExtra,
+  labelHelp,
   children,
   className,
   ...rest
@@ -32,7 +34,10 @@ export function Panel({
     <section className={composed} {...rest}>
       {label ? (
         <div className={styles.labelRow}>
-          <h3 className={styles.label}>{label}</h3>
+          <div className={styles.labelGroup}>
+            <h3 className={styles.label}>{label}</h3>
+            {labelHelp ? <HelpTip>{labelHelp}</HelpTip> : null}
+          </div>
           {labelExtra ? <div className={styles.labelExtra}>{labelExtra}</div> : null}
         </div>
       ) : null}

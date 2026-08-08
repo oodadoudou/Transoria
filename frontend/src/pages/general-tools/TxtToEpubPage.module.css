@@ -7,7 +7,7 @@
 }
 
 .grid2 {
-  grid-template-columns: repeat(2, minmax(220px, 420px));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .metaGrid {
@@ -17,9 +17,14 @@
 
 .fileRow {
   display: grid;
-  grid-template-columns: minmax(80px, auto) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  align-items: end;
+  align-items: center;
+}
+
+.fileField {
+  display: grid;
+  gap: 5px;
 }
 
 .label,
@@ -31,18 +36,30 @@
   text-transform: uppercase;
 }
 
+.labelWithHelp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .input,
 .field input,
 .field select,
 .tableInput,
 .cssEditor {
   width: 100%;
-  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border: 1px solid var(--hairline, #ece8e2);
   border-radius: 8px;
   background: var(--panel, #fffaf3);
   color: var(--ink, #2a2620);
   font: inherit;
   padding: 8px 10px;
+  min-height: 36px;
+}
+
+.fileRow > :global(button),
+.inlinePicker > :global(button) {
+  min-height: 36px;
 }
 
 .field {
@@ -87,7 +104,7 @@
 
 .modeButton,
 .modeActive {
-  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border: 1px solid var(--hairline, #ece8e2);
   border-radius: 999px;
   background: var(--panel, #fffaf3);
   color: var(--muted, #7a7166);
@@ -119,12 +136,13 @@
 
 .selectBlock select {
   width: 100%;
-  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border: 1px solid var(--hairline, #ece8e2);
   border-radius: 8px;
   background: var(--panel, #fffaf3);
   color: var(--ink, #2a2620);
   font: inherit;
   padding: 8px 10px;
+  min-height: 36px;
 }
 
 .selectedSummary {
@@ -169,12 +187,13 @@
 
 .addTocField input,
 .compactSelect select {
-  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border: 1px solid var(--hairline, #ece8e2);
   border-radius: 8px;
   background: var(--panel, #fffaf3);
   color: var(--ink, #2a2620);
   font: inherit;
   padding: 7px 9px;
+  min-height: 36px;
 }
 
 .compactSelect {
@@ -202,8 +221,6 @@
 .tableWrap {
   margin-top: 10px;
   overflow-x: auto;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
 }
 
 .table {

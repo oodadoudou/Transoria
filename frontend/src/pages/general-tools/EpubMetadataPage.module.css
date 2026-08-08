@@ -9,7 +9,7 @@
 
 .pathGridSingle {
   display: grid;
-  grid-template-columns: minmax(220px, 620px);
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
   gap: 10px;
 }
 
@@ -32,12 +32,13 @@
 .field input {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border: 1px solid var(--hairline, #e8dfd4);
   border-radius: 8px;
   background: var(--panel, #fffaf3);
   color: var(--ink, #2a2620);
   font: inherit;
   padding: 7px 10px;
+  min-height: 36px;
 }
 
 .fileRow {
@@ -45,6 +46,10 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+}
+
+.fileRow > :global(button) {
+  min-height: 36px;
 }
 
 .feedback {
@@ -67,9 +72,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 10px;
-  background: var(--panel-soft, #f5f0e9);
-  border-radius: var(--radius-inset, 10px);
+  padding: 4px 0;
 }
 
 .statValue {
@@ -130,12 +133,11 @@
 .confirmDialog code {
   display: block;
   overflow-wrap: anywhere;
-  border: 1px solid var(--hairline, #e8dfd4);
-  border-radius: 8px;
-  background: var(--panel-soft, #f5f0e9);
+  border: 0;
+  background: transparent;
   color: var(--ink, #2a2620);
   font-size: 12px;
-  padding: 8px 10px;
+  padding: 4px 0;
 }
 
 .dialogHeader {
@@ -222,8 +224,10 @@
 
 .generatedOutput {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 .generatedOutput span {
@@ -236,12 +240,11 @@
 
 .generatedPath,
 .generatedOutput code {
-  border: 1px solid var(--hairline, #e8dfd4);
-  border-radius: 8px;
-  background: var(--panel-soft, #f5f0e9);
+  border: 0;
+  background: transparent;
   color: var(--ink, #2a2620);
   font-size: 12px;
-  padding: 8px 10px;
+  padding: 0;
 }
 
 .generatedOutput code {
@@ -274,6 +277,7 @@
 
 @media (max-width: 1050px) {
   .pathGrid,
+  .pathGridSingle,
   .dialogBody {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useMessages } from "@/locales";
 import { dialogsBridge, BridgeError } from "@/bridge";
 import styles from "./FolderPickerRow.module.css";
@@ -14,6 +14,7 @@ interface FolderPickerRowProps {
   onError?: (error: BridgeError) => void;
   compact?: boolean;
   historyKey?: string;
+  help?: ReactNode;
 }
 
 /**
@@ -34,6 +35,7 @@ export function FolderPickerRow({
   onError,
   compact = false,
   historyKey,
+  help,
 }: FolderPickerRowProps) {
   const messages = useMessages();
   const buttonLabel = messages.folderPicker.choose;
@@ -95,7 +97,10 @@ export function FolderPickerRow({
   return (
     <div className={compact ? `${styles.row} ${styles.compact}` : styles.row}>
       <div className={styles.field}>
-        <span className={styles.label}>{label}</span>
+        <span className={styles.label}>
+          {label}
+          {help}
+        </span>
         <input
           type="text"
           className={styles.input}

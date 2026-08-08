@@ -273,7 +273,10 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
       </Panel>
 
       <EpubToolStage>
-      <Panel label={text.currentLabel}>
+      <Panel
+        label={text.currentLabel}
+        labelHelp={!info ? text.noMetadata : undefined}
+      >
         {info ? (
           <div className={styles.summaryGrid}>
             <Stat label={text.currentTitle} value={info.title || "-"} />
@@ -301,7 +304,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
             />
           </div>
         ) : (
-          <div className={styles.empty}>{text.noMetadata}</div>
+          <div className={styles.empty}>-</div>
         )}
       </Panel>
       </EpubToolStage>
@@ -315,7 +318,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
               ? outcomeLabel(result.outcome, text)
               : info
                 ? info.title || text.currentLabel
-                : text.noMetadata
+                : "-"
         }
         actions={
           <>

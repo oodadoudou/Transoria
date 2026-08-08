@@ -11,6 +11,7 @@ import {
   type EpubConvertReport,
 } from "@/bridge";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
+import { HelpTip } from "@/components/HelpTip";
 import { CompactPath } from "@/components/CompactPath";
 import { Panel } from "@/components/Panel";
 import { Pill } from "@/components/Pill";
@@ -279,31 +280,32 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               {text.fileMode}
             </button>
           </div>
-          {mode === "folder" ? (
-            <FolderPickerRow
-              label={text.inputFolder}
-              value={inputPath}
-              variant="input"
-              onChange={handleInputPathChange}
-              historyKey="general_tools:epub_convert:input_folder"
-              compact
-            />
-          ) : (
-            <div className={styles.fileRow}>
-              <input
-                className={styles.pathInput}
+          <div className={styles.pathGrid}>
+            {mode === "folder" ? (
+              <FolderPickerRow
+                label={text.inputFolder}
                 value={inputPath}
-                onChange={(event) => handleInputPathChange(event.target.value)}
-                placeholder={text.filePlaceholder}
+                variant="input"
+                onChange={handleInputPathChange}
+                historyKey="general_tools:epub_convert:input_folder"
+                compact
               />
-              <Pill variant="ghost" onClick={handleChooseFile}>
-                {text.chooseFile}
-              </Pill>
-            </div>
-          )}
-        </div>
-        <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
-          <div className={styles.optionsGrid}>
+            ) : (
+              <label className={styles.fileField}>
+                <span>{text.fileMode}</span>
+                <div className={styles.fileRow}>
+                  <input
+                    className={styles.pathInput}
+                    value={inputPath}
+                    onChange={(event) => handleInputPathChange(event.target.value)}
+                    placeholder={text.filePlaceholder}
+                  />
+                  <Pill variant="ghost" onClick={handleChooseFile}>
+                    {text.chooseFile}
+                  </Pill>
+                </div>
+              </label>
+            )}
             <FolderPickerRow
               label={text.outputFolder}
               value={options.output_dir}
@@ -313,9 +315,11 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               }
               historyKey="general_tools:epub_convert:output_folder"
               compact
+              help={<HelpTip>{text.outputHint}</HelpTip>}
             />
-            <span className={styles.hint}>{text.outputHint}</span>
           </div>
+        </div>
+        <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
           {mode === "folder" ? (
             <div className={styles.optionsGrid}>
               <label className={styles.option}>
@@ -338,7 +342,10 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
 
       <EpubToolStage>
       {stage === "preview" ? (
-        <Panel label={text.previewLabel}>
+        <Panel
+          label={text.previewLabel}
+          labelHelp={!plan ? text.noPlan : undefined}
+        >
           {plan ? (
             <>
               <div className={styles.summaryGrid}>
@@ -396,7 +403,7 @@ export function EpubConvertPage({ embedded = false }: { embedded?: boolean } = {
               )}
             </>
           ) : (
-            <div className={styles.empty}>{text.noPlan}</div>
+            <div className={styles.empty}>-</div>
           )}
         </Panel>
       ) : null}

@@ -3,7 +3,28 @@
   flex-direction: column;
   gap: 10px;
   align-items: flex-start;
-  max-width: 620px;
+  width: 100%;
+}
+
+.pathGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.fileField {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fileField > span {
+  color: var(--muted, #7a7166);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .modeRow {
@@ -20,7 +41,7 @@
 
 .modeButton,
 .modeActive {
-  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border: 1px solid var(--hairline, #ece8e2);
   border-radius: 999px;
   background: var(--panel, #fffaf3);
   color: var(--muted, #7a7166);
@@ -41,17 +62,22 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  width: min(100%, 520px);
+  width: 100%;
 }
 
 .pathInput {
   width: 100%;
-  border: 1px solid var(--hairline-strong, #d8d0c5);
+  border: 1px solid var(--hairline, #ece8e2);
   border-radius: 8px;
   background: var(--panel, #fffaf3);
   color: var(--ink, #2a2620);
   font: inherit;
   padding: 7px 10px;
+  min-height: 36px;
+}
+
+.fileRow > :global(button) {
+  min-height: 36px;
 }
 
 .optionsGrid {
@@ -91,9 +117,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 10px;
-  background: var(--panel-soft, #f5f0e9);
-  border-radius: var(--radius-inset, 10px);
+  padding: 4px 0;
 }
 
 .statLabel {
@@ -121,8 +145,6 @@
 .tableWrap {
   margin-top: 10px;
   overflow-x: auto;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
 }
 
 .table {
@@ -178,6 +200,7 @@
 }
 
 @media (max-width: 640px) {
+  .pathGrid,
   .fileRow {
     width: 100%;
     grid-template-columns: minmax(0, 1fr);

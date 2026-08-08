@@ -14,7 +14,6 @@ import { useMessages } from "@/locales";
 import { useLocalState } from "@/utils/localState";
 import {
   EpubToolActionDock,
-  EpubToolAdvancedSettings,
   EpubToolStage,
   EpubToolWorkspace,
 } from "./EpubToolWorkflow";
@@ -150,17 +149,13 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
   };
 
   return (
-    <EpubToolWorkspace>
+    <EpubToolWorkspace compact>
       <Panel
         title={embedded ? undefined : text.title}
         subtitle={embedded ? undefined : text.sub}
       >
         <div className={styles.pathGridSingle}>
-        </div>
-
-        <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
-          <div className={styles.pathGridSingle}>
-            <label className={styles.field}>
+          <label className={styles.field}>
             <span>{text.inputFile}</span>
             <div className={styles.fileRow}>
               <input
@@ -197,75 +192,78 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
                 {text.chooseOutputFolder}
               </Pill>
             </div>
-            </label>
-          </div>
+          </label>
+        </div>
 
-          <div className={styles.generatedOutput}>
-            <span>{text.generatedOutput}</span>
-            <CompactPath
-              value={resolvedOutputPath}
-              copyLabel={messages.common.copyPath}
-              className={styles.generatedPath}
-              emptyLabel="-"
-            />
-          </div>
-        </EpubToolAdvancedSettings>
+        <div className={styles.generatedOutput}>
+          <span>{text.generatedOutput}</span>
+          <CompactPath
+            value={resolvedOutputPath}
+            copyLabel={messages.common.copyPath}
+            className={styles.generatedPath}
+            emptyLabel="-"
+          />
+        </div>
       </Panel>
 
       <EpubToolStage>
-      {!result ? (
-      <Panel label={text.previewLabel}>
-        {preview ? (
-          <div className={styles.summaryGrid}>
-            <Stat label={text.scanned} value={String(preview.documents_scanned)} />
-            <Stat label={text.toRepair} value={String(preview.documents_to_repair)} />
-            <Stat
-              label={text.structure}
-              value={outcomeLabel(preview.structure_check.status, text)}
-            />
-            <Stat
-              label={text.currentOutput}
-              value={<CompactPath value={preview.output_path} copyLabel={messages.common.copyPath} />}
-            />
-          </div>
-        ) : (
-          <div className={styles.empty}>{text.noResult}</div>
-        )}
-      </Panel>
-      ) : null}
-
-      {result ? (
-      <Panel label={text.currentLabel}>
-        {result ? (
-          <div className={styles.summaryGrid}>
-            <Stat label={text.currentLabel} value={outcomeLabel(result.outcome, text)} />
-            <Stat label={text.scanned} value={String(result.documents_scanned)} />
-            <Stat label={text.repairedFiles} value={String(result.documents_repaired)} />
-            <Stat label={text.htmlScanned} value={String(result.html_files_scanned)} />
-            <Stat label={text.xmlRepaired} value={String(result.xml_files_repaired)} />
-            <Stat
-              label={text.voidContainers}
-              value={String(result.void_containers_repaired)}
-            />
-            <Stat
-              label={text.wrappersAdded}
-              value={String(result.document_wrappers_added)}
-            />
-            <Stat
-              label={text.currentOutput}
-              value={
-                <CompactPath
-                  value={result.output_path}
-                  copyLabel={messages.common.copyPath}
+        {!result ? (
+          <Panel
+            label={text.previewLabel}
+            labelHelp={!preview ? text.noResult : undefined}
+          >
+            {preview ? (
+              <div className={styles.summaryGrid}>
+                <Stat label={text.scanned} value={String(preview.documents_scanned)} />
+                <Stat label={text.toRepair} value={String(preview.documents_to_repair)} />
+                <Stat
+                  label={text.structure}
+                  value={outcomeLabel(preview.structure_check.status, text)}
                 />
-              }
-            />
-          </div>
-        ) : (
-          <div className={styles.empty}>{text.noResult}</div>
-        )}
-      </Panel>
-      ) : null}
+                <Stat
+                  label={text.currentOutput}
+                  value={
+                    <CompactPath
+                      value={preview.output_path}
+                      copyLabel={messages.common.copyPath}
+                    />
+                  }
+                />
+              </div>
+            ) : (
+              <div className={styles.empty}>-</div>
+            )}
+          </Panel>
+        ) : null}
+
+        {result ? (
+          <Panel label={text.currentLabel}>
+            <div className={styles.summaryGrid}>
+              <Stat label={text.currentLabel} value={outcomeLabel(result.outcome, text)} />
+              <Stat label={text.scanned} value={String(result.documents_scanned)} />
+              <Stat label={text.repairedFiles} value={String(result.documents_repaired)} />
+              <Stat label={text.htmlScanned} value={String(result.html_files_scanned)} />
+              <Stat label={text.xmlRepaired} value={String(result.xml_files_repaired)} />
+              <Stat
+                label={text.voidContainers}
+                value={String(result.void_containers_repaired)}
+              />
+              <Stat
+                label={text.wrappersAdded}
+                value={String(result.document_wrappers_added)}
+              />
+              <Stat
+                label={text.currentOutput}
+                value={
+                  <CompactPath
+                    value={result.output_path}
+                    copyLabel={messages.common.copyPath}
+                  />
+                }
+              />
+            </div>
+          </Panel>
+        ) : null}
       </EpubToolStage>
 
       <EpubToolActionDock
