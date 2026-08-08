@@ -42,9 +42,10 @@ class ModelConfig:
     HTTP request headers per call. Useful for vendor-specific auth schemes,
     request-id propagation, or feature flags.
 
-    ``input_token_limit`` is ``0`` by default = unbounded. When > 0, callers
-    may use it to truncate user prompts before sending; the limit is informational
-    on the client itself.
+    ``input_token_limit`` is ``0`` by default = unbounded. Translation uses a
+    positive value as an estimated budget for dynamic user input (source,
+    context, matched glossary, and formatting), excluding the fixed system
+    prompt. The client itself does not truncate requests.
     """
 
     id: str

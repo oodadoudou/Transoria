@@ -1609,9 +1609,9 @@ export const zh: Messages = {
       "API 期望的精确模型 ID(如 `gpt-4o-mini`、`deepseek-v3-2-251201`)。请参照所选服务商文档。",
     limits: "限制",
     limitsHint: "请求时施加的软上限。0 表示自动 / 不限,沿用服务商默认。",
-    inputTokenLimit: "输入token上限",
+    inputTokenLimit: "分块输入 token 上限",
     inputTokenLimitHelp:
-      "每次任务的最大输入token数。0 = 不限。建议设得高于最大分块,避免被截断。",
+      "每次翻译请求中原文、上下文、命中术语及动态格式的估算 token 上限。固定 Prompt 不计入，因此服务商显示的总输入可能更高。0 = 不限。",
     outputTokenLimit: "输出token上限",
     outputTokenLimitHelp:
       "模型每次任务可生成的最大token数。新建配置默认 8192；0 = 自动(沿用服务商对该模型的默认值)。",

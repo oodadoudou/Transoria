@@ -1165,6 +1165,24 @@ def test_translation_glossary_threads_into_config(tmp_path: Path):
     assert entry.enabled is True
 
 
+def test_translation_input_limit_threads_into_dynamic_prompt_budget(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "sample.txt").write_text("안녕", encoding="utf-8")
+    _seed_translation_settings(service, input_dir=input_dir, output_dir=output_dir)
+    profile_id = service.settings_store.load_all().app.active_translation_model_id
+    service.profile_store.update(profile_id, {"input_token_limit": 2048})
+
+    config, _model, _preset = service._build_translation_config()
+
+    assert config.dynamic_input_token_limit == 2048
+    assert config.dynamic_input_token_counter is not None
+    assert config.chunk_token_limit == 0
+    assert config.token_counter is None
+
+
 def test_translation_glossary_regex_setting_threads_and_matches(tmp_path: Path):
     """Regex glossary rows persisted by the frontend must stay active at run start."""
 
@@ -3224,6 +3242,15 @@ def test_snapshot_elapsed_uses_accumulated_runtime_metadata():
 
     assert _task_elapsed_seconds(record) == 95.5
 # _derive_chunk_size
+
+
+def test_estimate_dynamic_input_tokens_is_conservative_for_cjk_text():
+    from transoria.bridge.task_service import _estimate_dynamic_input_tokens
+
+    assert _estimate_dynamic_input_tokens("abcd") == 1
+    assert _estimate_dynamic_input_tokens("한국어") == 3
+    assert _estimate_dynamic_input_tokens("abc한글") == 3
+    assert _estimate_dynamic_input_tokens("") == 0
 
 
 def test_derive_chunk_size_falls_back_when_unbounded():

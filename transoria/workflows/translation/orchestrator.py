@@ -178,6 +178,8 @@ class TranslationOrchestrator:
             chunk_size=config.chunk_size,
             chunk_token_limit=config.chunk_token_limit,
             token_counter=config.token_counter,
+            dynamic_input_token_limit=config.dynamic_input_token_limit,
+            dynamic_input_token_counter=config.dynamic_input_token_counter,
             context_line_count=config.context_line_count,
             glossary=config.glossary,
         )

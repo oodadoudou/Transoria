@@ -65,6 +65,71 @@ def test_build_chunks_splits_by_token_limit_when_counter_is_supplied() -> None:
     )
 
 
+def test_build_chunks_dynamic_budget_counts_the_assembled_user_prompt() -> None:
+    items = (_prep("0:0", "first"), _prep("0:1", "second"))
+    single = build_chunks(
+        items[:1],
+        chunk_size=10,
+        context_line_count=0,
+        glossary=Glossary.empty(),
+    )[0]
+
+    chunks = build_chunks(
+        items,
+        chunk_size=10,
+        dynamic_input_token_limit=len(assemble_user_prompt(single)),
+        dynamic_input_token_counter=len,
+        context_line_count=0,
+        glossary=Glossary.empty(),
+    )
+
+    assert tuple(tuple(seg.segment_id for seg in chunk.segments) for chunk in chunks) == (
+        ("0:0",),
+        ("0:1",),
+    )
+
+
+def test_build_chunks_dynamic_budget_drops_oldest_context_first() -> None:
+    items = (
+        _prep("0:0", "Far context."),
+        _prep("0:1", "Near context."),
+        _prep("0:2", "Translate this."),
+    )
+
+    def count_prompt(text: str) -> int:
+        return 2 if "Far context." in text and "Translate this." in text else 1
+
+    chunks = build_chunks(
+        items,
+        chunk_size=1,
+        dynamic_input_token_limit=1,
+        dynamic_input_token_counter=count_prompt,
+        context_line_count=2,
+        glossary=Glossary.empty(),
+    )
+
+    assert chunks[2].context_lines == ("Near context.",)
+
+
+def test_build_chunks_dynamic_budget_keeps_oversized_segment_and_glossary() -> None:
+    items = (_prep("0:0", "신해범 entered a very long passage"),)
+    glossary = Glossary(entries=(GlossaryEntry(src="신해범", dst="申海范"),))
+
+    chunks = build_chunks(
+        items,
+        chunk_size=10,
+        dynamic_input_token_limit=1,
+        dynamic_input_token_counter=lambda text: len(text),
+        context_line_count=0,
+        glossary=glossary,
+    )
+
+    assert tuple(segment.prompt_text for segment in chunks[0].segments) == (
+        "신해범 entered a very long passage",
+    )
+    assert tuple(entry.src for entry in chunks[0].glossary_entries) == ("신해범",)
+
+
 def test_build_chunks_never_crosses_file_boundaries() -> None:
     items = (
         _prep("0:0", "file zero"),

@@ -1669,9 +1669,9 @@ export const en: Messages = {
     limits: "Limits",
     limitsHint:
       "Soft caps applied per request. 0 means automatic / unlimited per the provider's defaults.",
-    inputTokenLimit: "Input token limit",
+    inputTokenLimit: "Dynamic input token limit",
     inputTokenLimitHelp:
-      "Maximum tokens accepted per task input. 0 = unbounded. Set higher than your largest chunk to avoid truncation.",
+      "Estimated per-request limit for source text, context, matched glossary entries, and dynamic formatting. The fixed Prompt is excluded, so provider-reported total input can be higher. 0 = unbounded.",
     outputTokenLimit: "Output token limit",
     outputTokenLimitHelp:
       "Maximum tokens the model is allowed to produce per task. New profiles default to 8192; 0 = automatic (the provider's default for this model).",

@@ -49,6 +49,8 @@ class TranslationConfig:
     chunk_size: int = 24
     chunk_token_limit: int = 0
     token_counter: Callable[[str], int] | None = None
+    dynamic_input_token_limit: int = 0
+    dynamic_input_token_counter: Callable[[str], int] | None = None
 
     enable_confidence_check: bool = True
     # Length-ratio bounds widened for cross-language asymmetry. EN→CJK

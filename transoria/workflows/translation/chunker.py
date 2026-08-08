@@ -67,12 +67,17 @@ def build_chunks(
     chunk_size: int,
     chunk_token_limit: int = 0,
     token_counter: Callable[[str], int] | None = None,
+    dynamic_input_token_limit: int = 0,
+    dynamic_input_token_counter: Callable[[str], int] | None = None,
     context_line_count: int,
     glossary: Glossary,
 ) -> tuple[TranslationChunk, ...]:
     if chunk_size <= 0:
         raise ValueError("chunk_size must be a positive integer")
     use_tokens = token_counter is not None and chunk_token_limit > 0
+    use_dynamic_budget = (
+        dynamic_input_token_counter is not None and dynamic_input_token_limit > 0
+    )
     chunks: list[TranslationChunk] = []
     cursor = 0
     while cursor < len(prepared):
@@ -84,30 +89,115 @@ def build_chunks(
             token_counter=token_counter,
             use_tokens=use_tokens,
         )
-        window = prepared[cursor:window_end]
-        segments = tuple(
-            ChunkSegment(
-                segment_id=item.segment_id,
-                chunk_index=index,
-                prompt_text=item.preprocessed.prompt_text,
-            )
-            for index, item in enumerate(window)
-        )
         context = _context_window(prepared, cursor, context_line_count)
-        matched = (
-            glossary.match_many(item.preprocessed.prompt_text for item in window)
-            if glossary.entries
-            else ()
-        )
-        chunks.append(
-            TranslationChunk(
-                segments=segments,
-                context_lines=context,
-                glossary_entries=matched,
+        if use_dynamic_budget:
+            assert dynamic_input_token_counter is not None
+            chunk, window_end = _fit_dynamic_input_chunk(
+                prepared,
+                cursor,
+                window_end,
+                context=context,
+                glossary=glossary,
+                token_limit=dynamic_input_token_limit,
+                token_counter=dynamic_input_token_counter,
             )
-        )
+        else:
+            chunk = _build_chunk(
+                prepared[cursor:window_end],
+                context=context,
+                glossary=glossary,
+            )
+        chunks.append(chunk)
         cursor = window_end
     return tuple(chunks)
+
+
+def _fit_dynamic_input_chunk(
+    prepared: Sequence[PreparedSegment],
+    cursor: int,
+    window_end: int,
+    *,
+    context: tuple[str, ...],
+    glossary: Glossary,
+    token_limit: int,
+    token_counter: Callable[[str], int],
+) -> tuple[TranslationChunk, int]:
+    accepted: tuple[TranslationChunk, int] | None = None
+    low = cursor + 1
+    high = window_end
+    while low <= high:
+        candidate_end = (low + high) // 2
+        candidate = _build_chunk(
+            prepared[cursor:candidate_end],
+            context=(),
+            glossary=glossary,
+        )
+        if token_counter(assemble_user_prompt(candidate)) <= token_limit:
+            accepted = (candidate, candidate_end)
+            low = candidate_end + 1
+            continue
+        high = candidate_end - 1
+
+    if accepted is None:
+        accepted_end = cursor + 1
+    else:
+        accepted_end = accepted[1]
+    chunk = _build_chunk(
+        prepared[cursor:accepted_end],
+        context=context,
+        glossary=glossary,
+    )
+    return (
+        _trim_context_to_budget(
+            chunk,
+            token_limit=token_limit,
+            token_counter=token_counter,
+        ),
+        accepted_end,
+    )
+
+
+def _trim_context_to_budget(
+    chunk: TranslationChunk,
+    *,
+    token_limit: int,
+    token_counter: Callable[[str], int],
+) -> TranslationChunk:
+    context = chunk.context_lines
+    while context and token_counter(assemble_user_prompt(chunk)) > token_limit:
+        context = context[1:]
+        chunk = TranslationChunk(
+            segments=chunk.segments,
+            context_lines=context,
+            glossary_entries=chunk.glossary_entries,
+        )
+    return chunk
+
+
+def _build_chunk(
+    window: Sequence[PreparedSegment],
+    *,
+    context: tuple[str, ...],
+    glossary: Glossary,
+) -> TranslationChunk:
+    segments = tuple(
+        ChunkSegment(
+            segment_id=item.segment_id,
+            chunk_index=index,
+            prompt_text=item.preprocessed.prompt_text,
+        )
+        for index, item in enumerate(window)
+    )
+    matched = (
+        glossary.match_many(item.preprocessed.prompt_text for item in window)
+        if glossary.entries
+        else ()
+    )
+    return TranslationChunk(
+        segments=segments,
+        context_lines=context,
+        glossary_entries=matched,
+    )
 
 
 def _next_window_end(

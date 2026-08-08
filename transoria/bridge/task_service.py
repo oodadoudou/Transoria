@@ -357,7 +357,6 @@ def _utc_now_iso() -> str:
 
 _CHUNK_SIZE_FLOOR = 8
 _CHUNK_SIZE_FALLBACK_WHEN_UNBOUNDED = 32
-_TRANSLATION_CHUNK_CHAR_BUDGET = 12_000
 _GLOSSARY_LEGACY_DEFAULT_CHUNK_TOKEN_LIMIT = 4_000
 _GLOSSARY_DEFAULT_CHUNK_TOKEN_LIMIT = 2_000
 
@@ -368,8 +367,12 @@ def _derive_chunk_size(input_token_limit: int) -> int:
     return max(_CHUNK_SIZE_FLOOR, input_token_limit // 16)
 
 
-def _count_source_chars(text: str) -> int:
-    return max(1, len(text))
+def _estimate_dynamic_input_tokens(text: str) -> int:
+    if not text:
+        return 0
+    ascii_chars = sum(1 for char in text if ord(char) < 128)
+    non_ascii_chars = len(text) - ascii_chars
+    return max(1, (ascii_chars + 3) // 4 + non_ascii_chars)
 
 
 def _effective_glossary_chunk_token_limit(value: int) -> int:
@@ -2812,8 +2815,8 @@ class TaskService:
             ),
             context_line_count=max(0, int(translation.context_lines)),
             chunk_size=_derive_chunk_size(model.input_token_limit),
-            chunk_token_limit=_TRANSLATION_CHUNK_CHAR_BUDGET,
-            token_counter=_count_source_chars,
+            dynamic_input_token_limit=max(0, int(model.input_token_limit)),
+            dynamic_input_token_counter=_estimate_dynamic_input_tokens,
             low_confidence_max_retries=max(
                 0, int(translation.low_confidence_max_retries)
             ),

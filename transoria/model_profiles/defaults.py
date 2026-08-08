@@ -29,12 +29,9 @@ def default_profiles() -> tuple[ModelConfig, ...]:
     per-key/concurrency limits to match their plan.
     """
 
-    # ``input_token_limit`` is sized so the derived chunk_size fits
-    # comfortably under each preset's ``max_output_tokens`` (chunk × 36
-    # tokens/line for output + 1024 thinking budget headroom). Users
-    # can raise this in their model config to trade per-line cost for
-    # bigger batches; we ship conservative values that work even with
-    # thinking enabled at the highest tier.
+    # ``input_token_limit`` budgets the dynamic translation payload. The
+    # fixed system prompt is excluded, while source, context, and matched
+    # glossary entries determine chunk boundaries.
     return (
         ModelConfig(
             id=DEEPSEEK_ID,
@@ -47,7 +44,7 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             rpm_limit=60,
             tpm_limit=0,
             max_output_tokens=8192,
-            input_token_limit=1024,  # → 64-line chunks
+            input_token_limit=1024,
             temperature=0.3,
         ),
         ModelConfig(
@@ -61,7 +58,7 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             rpm_limit=50,
             tpm_limit=0,
             max_output_tokens=8192,
-            input_token_limit=2048,  # → 128-line chunks
+            input_token_limit=2048,
             temperature=1.0,
         ),
         ModelConfig(
@@ -75,7 +72,7 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             rpm_limit=60,
             tpm_limit=0,
             max_output_tokens=8192,
-            input_token_limit=2048,  # → 128-line chunks
+            input_token_limit=2048,
             temperature=0.7,
             top_p=0.95,
         ),
@@ -90,7 +87,7 @@ def default_profiles() -> tuple[ModelConfig, ...]:
             rpm_limit=60,
             tpm_limit=0,
             max_output_tokens=8192,
-            input_token_limit=1024,  # → 64-line chunks
+            input_token_limit=1024,
             temperature=0.3,
         ),
     )
