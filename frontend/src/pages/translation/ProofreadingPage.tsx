@@ -826,6 +826,7 @@ export function ProofreadingPage() {
     const q = search.trim().toLowerCase();
     if (!q && filters.size === 0) return proofreadingIndex.sortedItems;
     return proofreadingIndex.sortedItems.filter((item) => {
+      if (q && item.segment_id.toLowerCase() === q) return true;
       const meta = proofreadingIndex.metaBySegmentId.get(item.segment_id);
       if (
         filters.size > 0 &&
@@ -845,7 +846,9 @@ export function ProofreadingPage() {
       }
       if (!q) return true;
       return (
-        item.src.toLowerCase().includes(q) || item.dst.toLowerCase().includes(q)
+        item.segment_id.toLowerCase().includes(q) ||
+        item.src.toLowerCase().includes(q) ||
+        item.dst.toLowerCase().includes(q)
       );
     });
   }, [proofreadingIndex, search, filters]);

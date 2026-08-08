@@ -498,6 +498,14 @@ export interface RequestLogResult {
   truncated?: boolean;
 }
 
+export type RequestLogSegmentCacheStatus = "matched" | "different" | "missing";
+
+export interface RequestLogSegmentRef {
+  request_index: string;
+  segment_id: string;
+  cache_status: RequestLogSegmentCacheStatus;
+}
+
 export interface RequestLogEvent {
   schema_version: number;
   request_id: string;
@@ -526,6 +534,7 @@ export interface RequestLogEvent {
   partial_response_text?: string;
   response_text?: string;
   error?: string;
+  segment_refs?: RequestLogSegmentRef[];
 }
 
 export interface TaskOutcome {

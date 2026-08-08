@@ -97,6 +97,15 @@ export interface Messages {
     copySubtaskId: string;
     copyResponse: string;
     copyError: string;
+    segmentId: string;
+    requestIndex: string;
+    modelReply: string;
+    currentCache: string;
+    cacheMatched: string;
+    cacheDifferent: string;
+    cacheMissing: string;
+    rawResponse: string;
+    copySegmentId: string;
     copyDone: string;
     copyFailed: string;
   };

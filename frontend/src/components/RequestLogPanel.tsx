@@ -54,6 +54,31 @@ function formatTime(value: string): string {
   });
 }
 
+function mappedResponseRows(event: RequestLogEvent) {
+  if (!event.segment_refs?.length) return [];
+  const responseText = event.response_text || event.partial_response_text || "";
+  const replies = new Map<string, string>();
+  responseText.split(/\r?\n/).forEach((line) => {
+    const candidate = line.trim();
+    if (!candidate.startsWith("{") || !candidate.endsWith("}")) return;
+    try {
+      const decoded = JSON.parse(candidate) as Record<string, unknown>;
+      Object.entries(decoded).forEach(([requestIndex, value]) => {
+        replies.set(
+          requestIndex,
+          typeof value === "string" ? value : JSON.stringify(value),
+        );
+      });
+    } catch {
+      // Provider errors and diagnostic text remain available in the raw view.
+    }
+  });
+  return event.segment_refs.flatMap((ref) => {
+    const reply = replies.get(ref.request_index);
+    return reply === undefined ? [] : [{ ...ref, reply }];
+  });
+}
+
 export function RequestLogPanel({
   kind,
   taskId,
@@ -310,6 +335,7 @@ export function RequestLogPanel({
                           const errorText = event.error || "";
                           const response =
                             responseText || errorText;
+                          const mappedRows = mappedResponseRows(event);
                           const expandedText = event.response_text
                             ? event.response_text
                             : event.partial_response_text
@@ -485,7 +511,74 @@ export function RequestLogPanel({
                                         </span>
                                       ) : null}
                                     </div>
-                                    <pre>{expandedText}</pre>
+                                    {mappedRows.length > 0 ? (
+                                      <>
+                                        <div className={styles.mappedTableWrap}>
+                                          <table className={styles.mappedTable}>
+                                            <thead>
+                                              <tr>
+                                                <th>{copy.segmentId}</th>
+                                                <th>{copy.requestIndex}</th>
+                                                <th>{copy.modelReply}</th>
+                                                <th>{copy.currentCache}</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {mappedRows.map((row) => (
+                                                <tr
+                                                  key={`${event.request_id}:${row.request_index}`}
+                                                >
+                                                  <td>
+                                                    <button
+                                                      type="button"
+                                                      className={styles.segmentIdButton}
+                                                      title={copy.copySegmentId}
+                                                      onClick={() =>
+                                                        void copyText(
+                                                          event.request_id,
+                                                          row.segment_id,
+                                                        )
+                                                      }
+                                                    >
+                                                      {row.segment_id}
+                                                    </button>
+                                                  </td>
+                                                  <td className={styles.requestIndex}>
+                                                    {row.request_index}
+                                                  </td>
+                                                  <td className={styles.modelReply}>
+                                                    {row.reply}
+                                                  </td>
+                                                  <td>
+                                                    <span
+                                                      className={`${styles.cacheStatus} ${
+                                                        row.cache_status === "matched"
+                                                          ? styles.cacheMatched
+                                                          : row.cache_status === "different"
+                                                            ? styles.cacheDifferent
+                                                            : styles.cacheMissing
+                                                      }`.trim()}
+                                                    >
+                                                      {row.cache_status === "matched"
+                                                        ? copy.cacheMatched
+                                                        : row.cache_status === "different"
+                                                          ? copy.cacheDifferent
+                                                          : copy.cacheMissing}
+                                                    </span>
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                        <details className={styles.rawResponse}>
+                                          <summary>{copy.rawResponse}</summary>
+                                          <pre>{expandedText}</pre>
+                                        </details>
+                                      </>
+                                    ) : (
+                                      <pre>{expandedText}</pre>
+                                    )}
                                   </td>
                                 </tr>
                               ) : null}

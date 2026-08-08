@@ -801,6 +801,81 @@ def _format_request_events(
     return rows, total
 
 
+def _translation_request_segment_refs(
+    events: Sequence[Mapping[str, object]],
+    snapshot: TaskSnapshot,
+) -> list[dict[str, object]]:
+    index_maps: dict[str, dict[str, str]] = {}
+    for subtask in snapshot.subtasks:
+        segments = subtask.request_payload.get("segments", [])
+        if not isinstance(segments, list):
+            continue
+        index_map: dict[str, str] = {}
+        for segment in segments:
+            if not isinstance(segment, Mapping):
+                continue
+            segment_id = segment.get("segment_id")
+            chunk_index = segment.get("chunk_index")
+            if segment_id in (None, "") or chunk_index in (None, ""):
+                continue
+            index_map[str(chunk_index)] = str(segment_id)
+        if index_map:
+            index_maps[subtask.id] = index_map
+
+    translations, _low_confidence = collect_segment_state_from_authoritative_subtasks(
+        snapshot.subtasks
+    )
+    enriched: list[dict[str, object]] = []
+    for raw_event in events:
+        event = dict(raw_event)
+        index_map = index_maps.get(str(event.get("subtask_id", "")))
+        response_text = event.get("response_text") or event.get(
+            "partial_response_text"
+        )
+        if not index_map or not isinstance(response_text, str):
+            enriched.append(event)
+            continue
+
+        response_rows: dict[str, str] = {}
+        for line in response_text.splitlines():
+            candidate = line.strip()
+            if not candidate.startswith("{") or not candidate.endswith("}"):
+                continue
+            try:
+                decoded = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(decoded, Mapping):
+                continue
+            for request_index, model_text in decoded.items():
+                key = str(request_index)
+                if key in index_map:
+                    response_rows[key] = str(model_text)
+
+        segment_refs: list[dict[str, str]] = []
+        for request_index, model_text in response_rows.items():
+            segment_id = index_map[request_index]
+            current_text = translations.get(segment_id)
+            cache_status = (
+                "missing"
+                if current_text is None
+                else "matched"
+                if current_text == model_text
+                else "different"
+            )
+            segment_refs.append(
+                {
+                    "request_index": request_index,
+                    "segment_id": segment_id,
+                    "cache_status": cache_status,
+                }
+            )
+        if segment_refs:
+            event["segment_refs"] = segment_refs
+        enriched.append(event)
+    return enriched
+
+
 def _cancel_stale_running_request_event(
     row: Mapping[str, object],
     *,
@@ -4742,6 +4817,8 @@ class TaskService:
             else {},
             live_subtask_ids=live_retranslate_subtasks,
         )
+        if snapshot is not None and record_kind is TaskKind.TRANSLATION:
+            formatted = _translation_request_segment_refs(formatted, snapshot)
         return {
             "events": formatted,
             "total": total,

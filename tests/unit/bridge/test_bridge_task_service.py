@@ -383,6 +383,90 @@ def test_read_request_events_filters_and_offsets(tmp_path: Path) -> None:
     assert paged["total"] == 3
 
 
+def test_read_request_events_maps_translation_rows_to_proofreading_ids(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path, transport=QueuedTransport())
+    service.cache.write_seed(
+        TaskRecord(
+            id="task-1",
+            kind=TaskKind.TRANSLATION,
+            status=TaskStatus.FAILED,
+        ),
+        (
+            Subtask(
+                id="chunk-00001",
+                task_id="task-1",
+                status=SubtaskStatus.FAILED,
+                request_payload={
+                    "segments": [
+                        {"segment_id": "0:42", "chunk_index": 0},
+                        {"segment_id": "0:43", "chunk_index": 1},
+                        {"segment_id": "0:44", "chunk_index": 2},
+                    ]
+                },
+                response_content=json.dumps(
+                    {
+                        "version": 2,
+                        "translations": {
+                            "0:42": "你好",
+                            "0:43": "当前译文",
+                            "0:44": "원문",
+                        },
+                        "accepted_overrides": ["0:42", "0:43"],
+                    },
+                    ensure_ascii=False,
+                ),
+            ),
+        ),
+    )
+    service.cache.append_request_event(
+        "task-1",
+        {
+            "schema_version": 1,
+            "request_id": "r1",
+            "status": "failed",
+            "timestamp": "2026-06-18T00:00:00+00:00",
+            "task_id": "task-1",
+            "subtask_id": "chunk-00001",
+            "subtask_attempt": 1,
+            "response_text": (
+                "validation failed\n\n"
+                '{"0":"你好"}\n'
+                '{"1":"较早译文"}\n'
+                '{"2":"새 응답"}'
+            ),
+        },
+    )
+
+    result = service.read_request_events(
+        kind="translation",
+        task_id="task-1",
+        limit=10,
+    )
+
+    event = next(
+        row for row in result["events"] if row["request_id"] == "r1"
+    )
+    assert event["segment_refs"] == [
+        {
+            "request_index": "0",
+            "segment_id": "0:42",
+            "cache_status": "matched",
+        },
+        {
+            "request_index": "1",
+            "segment_id": "0:43",
+            "cache_status": "different",
+        },
+        {
+            "request_index": "2",
+            "segment_id": "0:44",
+            "cache_status": "missing",
+        },
+    ]
+
+
 def test_read_request_events_marks_orphan_running_request_cancelled(
     tmp_path: Path,
 ) -> None:
