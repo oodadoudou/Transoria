@@ -19,7 +19,13 @@ from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from transoria.domain import Language, language_prompt_label, normalize_target_script
-from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
+from transoria.llm.client import (
+    ChatRequest,
+    ChatResponse,
+    LlmClient,
+    LlmRequestError,
+    LlmTruncatedResponseError,
+)
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import decode_translation_jsonl
 from transoria.llm.retry import is_transient_llm_error, retry_async
@@ -385,6 +391,49 @@ def _looks_truncated_jsonl_response(raw_content: str) -> bool:
     return not lines[-1].endswith("}")
 
 
+def _decode_explicit_truncated_rows(
+    raw_content: str,
+    expected_indices: set[int],
+) -> dict[int, str]:
+    """Keep only unambiguous complete JSONL rows from a truncated response.
+
+    Positional recovery is intentionally disabled here. Only an explicit,
+    in-range index proves which source segment a surviving row translates.
+    Duplicate indices are discarded so conflicting output is retried.
+    """
+
+    candidates: dict[int, str] = {}
+    duplicate_indices: set[int] = set()
+    for raw_line in raw_content.splitlines():
+        line = raw_line.strip().rstrip(",")
+        if not line or line.startswith("```"):
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict) or len(parsed) != 1:
+            continue
+        raw_index, raw_text = next(iter(parsed.items()))
+        try:
+            index = int(str(raw_index).strip())
+        except (TypeError, ValueError):
+            continue
+        if (
+            index not in expected_indices
+            or not isinstance(raw_text, str)
+            or not raw_text.strip()
+        ):
+            continue
+        if index in candidates:
+            duplicate_indices.add(index)
+            continue
+        candidates[index] = raw_text
+    for index in duplicate_indices:
+        candidates.pop(index, None)
+    return candidates
+
+
 def _all_segments_fell_back_after_line_count_mismatch(
     metadata: Sequence["_SegmentPayload"],
     finalized: Mapping[str, str],
@@ -724,6 +773,7 @@ class TranslationSubtaskRunner:
                         model=request_model,
                     )
 
+                response_was_truncated = False
                 try:
                     response = await asyncio.wait_for(
                         retry_async(
@@ -742,6 +792,13 @@ class TranslationSubtaskRunner:
                             ),
                         ),
                         timeout=request_model.timeout_seconds,
+                    )
+                except LlmTruncatedResponseError as exc:
+                    response_was_truncated = True
+                    response = ChatResponse(
+                        content=exc.partial_response,
+                        usage=exc.usage,
+                        finish_reason=exc.finish_reason,
                     )
                 except BaseException as exc:
                     if phase == "batch" or not is_transient_llm_error(exc):
@@ -780,12 +837,29 @@ class TranslationSubtaskRunner:
                         "user_prompt": user_prompt,
                         "timeout_seconds": request_model.timeout_seconds,
                         "raw_response": raw_content,
+                        **(
+                            {"finish_reason": response.finish_reason}
+                            if response_was_truncated
+                            else {}
+                        ),
                     }
                 )
 
-                translations, missing = self._decode_partial(
-                    raw_content, pending_meta, sub_chunk.context_lines
-                )
+                if response_was_truncated:
+                    expected_indices = {
+                        meta.chunk_index for meta in pending_meta
+                    }
+                    translations = _decode_explicit_truncated_rows(
+                        raw_content,
+                        expected_indices,
+                    )
+                    missing = frozenset(
+                        expected_indices - translations.keys()
+                    )
+                else:
+                    translations, missing = self._decode_partial(
+                        raw_content, pending_meta, sub_chunk.context_lines
+                    )
                 for idx, text in translations.items():
                     accumulated[idx] = text
                 pending_indices = set(missing)
@@ -914,6 +988,7 @@ class TranslationSubtaskRunner:
                         model=rescue_request_model,
                     )
 
+                rescue_was_truncated = False
                 try:
                     rescue_response = await asyncio.wait_for(
                         retry_async(
@@ -928,6 +1003,13 @@ class TranslationSubtaskRunner:
                             ),
                         ),
                         timeout=rescue_request_model.timeout_seconds,
+                    )
+                except LlmTruncatedResponseError as exc:
+                    rescue_was_truncated = True
+                    rescue_response = ChatResponse(
+                        content=exc.partial_response,
+                        usage=exc.usage,
+                        finish_reason=exc.finish_reason,
                     )
                 except BaseException as exc:
                     debug_attempts.append(
@@ -958,13 +1040,24 @@ class TranslationSubtaskRunner:
                         "user_prompt": rescue_user_prompt,
                         "timeout_seconds": rescue_request_model.timeout_seconds,
                         "raw_response": rescue_raw,
+                        **(
+                            {"finish_reason": rescue_response.finish_reason}
+                            if rescue_was_truncated
+                            else {}
+                        ),
                     }
                 )
-                rescued_translations, _missing = self._decode_partial(
-                    rescue_raw,
-                    mass_source_residue_meta,
-                    rescue_chunk.context_lines,
-                )
+                if rescue_was_truncated:
+                    rescued_translations = _decode_explicit_truncated_rows(
+                        rescue_raw,
+                        {meta.chunk_index for meta in mass_source_residue_meta},
+                    )
+                else:
+                    rescued_translations, _missing = self._decode_partial(
+                        rescue_raw,
+                        mass_source_residue_meta,
+                        rescue_chunk.context_lines,
+                    )
                 for idx, text in rescued_translations.items():
                     accumulated[idx] = text
                     fallback_reasons_by_index.pop(idx, None)
@@ -1019,6 +1112,7 @@ class TranslationSubtaskRunner:
                             model=micro_request_model,
                         )
 
+                    micro_was_truncated = False
                     try:
                         micro_response = await asyncio.wait_for(
                             retry_async(
@@ -1033,6 +1127,13 @@ class TranslationSubtaskRunner:
                                 ),
                             ),
                             timeout=micro_request_model.timeout_seconds,
+                        )
+                    except LlmTruncatedResponseError as exc:
+                        micro_was_truncated = True
+                        micro_response = ChatResponse(
+                            content=exc.partial_response,
+                            usage=exc.usage,
+                            finish_reason=exc.finish_reason,
                         )
                     except (LlmRequestError, TimeoutError) as exc:
                         if not is_transient_llm_error(exc):
@@ -1074,13 +1175,24 @@ class TranslationSubtaskRunner:
                                 meta.segment_id for meta in micro_meta
                             ],
                             "timeout_seconds": micro_request_model.timeout_seconds,
+                            **(
+                                {"finish_reason": micro_response.finish_reason}
+                                if micro_was_truncated
+                                else {}
+                            ),
                         }
                     )
-                    micro_translations, _missing = self._decode_partial(
-                        micro_raw,
-                        micro_meta,
-                        micro_chunk.context_lines,
-                    )
+                    if micro_was_truncated:
+                        micro_translations = _decode_explicit_truncated_rows(
+                            micro_raw,
+                            {meta.chunk_index for meta in micro_meta},
+                        )
+                    else:
+                        micro_translations, _missing = self._decode_partial(
+                            micro_raw,
+                            micro_meta,
+                            micro_chunk.context_lines,
+                        )
                     for meta, last_text, last_reasons in micro_batch:
                         current_text = last_text
                         current_reasons = last_reasons
@@ -1161,6 +1273,7 @@ class TranslationSubtaskRunner:
                             model=solo_request_model,
                         )
 
+                    solo_was_truncated = False
                     try:
                         if self.solo_retry_limiter is None:
                             solo_response = await asyncio.wait_for(
@@ -1193,6 +1306,13 @@ class TranslationSubtaskRunner:
                                     ),
                                     timeout=solo_request_model.timeout_seconds,
                                 )
+                    except LlmTruncatedResponseError as exc:
+                        solo_was_truncated = True
+                        solo_response = ChatResponse(
+                            content=exc.partial_response,
+                            usage=exc.usage,
+                            finish_reason=exc.finish_reason,
+                        )
                     except (LlmRequestError, TimeoutError) as exc:
                         if not is_transient_llm_error(exc):
                             raise
@@ -1220,18 +1340,28 @@ class TranslationSubtaskRunner:
                             "raw_response": solo_raw,
                             "segment_id": meta.segment_id,
                             "timeout_seconds": solo_request_model.timeout_seconds,
+                            **(
+                                {"finish_reason": solo_response.finish_reason}
+                                if solo_was_truncated
+                                else {}
+                            ),
                         }
                     )
-                    decoded = decode_translation_jsonl(solo_raw)
-                    # Single-segment response: take the first parsed
-                    # value regardless of its JSON key. Models
-                    # occasionally emit a wrong key (e.g. echoing the
-                    # original chunk_index even when we asked with
-                    # chunk_index=0); positional acceptance keeps the
-                    # content from landing under the wrong segment.
-                    retry_text = (
-                        decoded.lines[0].text if decoded.lines else None
-                    )
+                    if solo_was_truncated:
+                        retry_text = _decode_explicit_truncated_rows(
+                            solo_raw, {0}
+                        ).get(0)
+                    else:
+                        decoded = decode_translation_jsonl(solo_raw)
+                        # Single-segment response: take the first parsed
+                        # value regardless of its JSON key. Models
+                        # occasionally emit a wrong key (e.g. echoing the
+                        # original chunk_index even when we asked with
+                        # chunk_index=0); positional acceptance keeps the
+                        # content from landing under the wrong segment.
+                        retry_text = (
+                            decoded.lines[0].text if decoded.lines else None
+                        )
                     if retry_text is None:
                         continue
                     retry_final = self._postprocess(meta, retry_text)

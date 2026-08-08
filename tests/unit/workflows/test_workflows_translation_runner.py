@@ -539,6 +539,92 @@ def test_runner_retries_on_line_count_mismatch_then_succeeds() -> None:
     assert second_user_message.startswith("FORMAT RETRY:")
 
 
+def test_runner_keeps_explicit_complete_rows_from_length_truncation() -> None:
+    sources = tuple(f"source {idx}" for idx in range(5))
+    truncated = (
+        "```jsonline\n"
+        '{"0":"译文 0"}\n'
+        '{"1":"冲突版本 A"}\n'
+        '{"1":"冲突版本 B"}\n'
+        '{"2":"译文 2"}\n'
+        '{"99":"越界内容"}\n'
+        '{"3":"被截断的尾行'
+    )
+    first_body = _ok_body(truncated)
+    first_body["choices"][0]["finish_reason"] = "length"  # type: ignore[index]
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, first_body),
+            TransportResult(
+                200,
+                _ok_body(
+                    '{"1":"译文 1"}\n'
+                    '{"3":"译文 3"}\n'
+                    '{"4":"译文 4"}\n'
+                ),
+            ),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(runner.run(_make_subtask(sources=sources)))
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {
+        f"0:{idx}": f"译文 {idx}" for idx in range(5)
+    }
+    assert len(transport.requests) == 2
+    retry_prompt = transport.requests[1]["payload"]["messages"][-1]["content"]
+    assert "source 0" not in retry_prompt
+    assert "source 2" not in retry_prompt
+    assert "source 1" in retry_prompt
+    assert "source 3" in retry_prompt
+    assert "source 4" in retry_prompt
+    assert result.input_tokens == 100
+    assert result.output_tokens == 60
+
+
+def test_runner_accumulates_rows_across_repeated_length_truncation() -> None:
+    first_body = _ok_body('{"0":"译文 0"}\n{"1":"截断')
+    first_body["choices"][0]["finish_reason"] = "length"  # type: ignore[index]
+    second_body = _ok_body('{"1":"译文 1"}\n{"2":"截断')
+    second_body["choices"][0]["finish_reason"] = "max_tokens"  # type: ignore[index]
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, first_body),
+            TransportResult(200, second_body),
+            TransportResult(200, _ok_body('{"2":"译文 2"}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(
+        runner.run(
+            _make_subtask(sources=("source 0", "source 1", "source 2"))
+        )
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {
+        "0:0": "译文 0",
+        "0:1": "译文 1",
+        "0:2": "译文 2",
+    }
+    assert len(transport.requests) == 3
+
+
 def test_runner_retries_dense_prefix_response_instead_of_shifting_lines() -> None:
     sources = tuple(f"source {idx}" for idx in range(8))
     first_response = "\n".join(

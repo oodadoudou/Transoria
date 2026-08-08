@@ -8,6 +8,7 @@ from transoria.llm.client import (
     LlmClient,
     LlmDegenerateOutputError,
     LlmRequestError,
+    LlmTruncatedResponseError,
     NoApiKeyError,
 )
 from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
@@ -33,6 +34,7 @@ __all__ = [
     "LlmClient",
     "LlmDegenerateOutputError",
     "LlmRequestError",
+    "LlmTruncatedResponseError",
     "NoApiKeyError",
     "ModelConfig",
     "ProviderFormat",

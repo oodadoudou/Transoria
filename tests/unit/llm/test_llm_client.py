@@ -10,6 +10,7 @@ from transoria.llm import (
     ChatRequest,
     LlmClient,
     LlmRequestError,
+    LlmTruncatedResponseError,
     ModelConfig,
     NoApiKeyError,
     ProviderFormat,
@@ -551,3 +552,8 @@ def test_chat_raises_on_length_finish_reason() -> None:
         )
 
     assert exc_info.value.code == "llm.length_truncated"
+    assert isinstance(exc_info.value, LlmTruncatedResponseError)
+    assert exc_info.value.partial_response == "partial"
+    assert exc_info.value.usage.input_tokens == 11
+    assert exc_info.value.usage.output_tokens == 22
+    assert exc_info.value.finish_reason == "length"

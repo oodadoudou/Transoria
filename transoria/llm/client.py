@@ -59,6 +59,29 @@ class LlmDegenerateOutputError(LlmRequestError):
         self.usage = usage
 
 
+class LlmTruncatedResponseError(LlmRequestError):
+    """Raised when a provider returns usable content cut off by its token cap."""
+
+    code: str = "llm.length_truncated"
+
+    def __init__(
+        self,
+        partial_response: str,
+        usage: TokenUsage,
+        *,
+        finish_reason: str,
+        model_id: str,
+    ) -> None:
+        super().__init__(
+            f"Provider returned finish_reason={finish_reason!r} "
+            f"for model {model_id!r}.",
+            code=self.code,
+        )
+        self.partial_response = partial_response
+        self.usage = usage
+        self.finish_reason = finish_reason
+
+
 @dataclass(frozen=True)
 class ChatMessage:
     role: str
@@ -518,6 +541,13 @@ def _record_request_response(
                 response_text=response.content,
                 response_chars=len(response.content),
                 usage=response.usage,
+            )
+        if response.finish_reason.lower() in _LENGTH_FINISH_REASONS:
+            raise LlmTruncatedResponseError(
+                response.content,
+                response.usage,
+                finish_reason=response.finish_reason,
+                model_id=request.model.id,
             )
         raise LlmRequestError(
             detail,
@@ -1523,6 +1553,7 @@ __all__ = [
     "HttpxChatTransport",
     "LlmClient",
     "LlmRequestError",
+    "LlmTruncatedResponseError",
     "NoApiKeyError",
     "TransportResult",
 ]
