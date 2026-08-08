@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { format, useI18n, useMessages } from "@/locales";
 import {
   BridgeError,
@@ -27,6 +27,13 @@ import { useModelProfiles } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { useWorkflowPresets } from "@/store/useWorkflowPresetsStore";
+import {
+  EMPTY_PROOFREADING_RETRANSLATE_SESSION,
+  useProofreadingRetranslateStore,
+  type BatchRetranslateProgress,
+  type RetranslateActivity,
+  type RetranslateValueUpdater,
+} from "@/store/useProofreadingRetranslateStore";
 import styles from "./ProofreadingPage.module.css";
 
 type FeedbackKind = "info" | "error" | "success";
@@ -60,23 +67,6 @@ interface RetranslateOutcome {
 
 interface RetranslateUndo {
   entries: Array<{ segmentId: string; dst: string }>;
-}
-
-interface BatchRetranslateProgress {
-  total: number;
-  processed: number;
-  completed: number;
-  unresolved: number;
-  stale: number;
-  failed: number;
-  submitted: number;
-  active: number;
-  longestSeconds: number;
-}
-
-interface RetranslateActivity {
-  status: "pending" | "running";
-  elapsedSeconds: number;
 }
 
 interface ProofreadingItemMeta {
@@ -461,18 +451,58 @@ export function ProofreadingPage() {
     null,
   );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [inflightRetranslates, setInflightRetranslates] = useState<
-    Record<string, string>
-  >({});
-  const [retranslateActivities, setRetranslateActivities] = useState<
-    Record<string, RetranslateActivity>
-  >({});
+  const retranslateSession = useProofreadingRetranslateStore((state) =>
+    activeTaskId
+      ? (state.sessions[activeTaskId] ??
+        EMPTY_PROOFREADING_RETRANSLATE_SESSION)
+      : EMPTY_PROOFREADING_RETRANSLATE_SESSION,
+  );
+  const setStoredInflightRetranslates = useProofreadingRetranslateStore(
+    (state) => state.setInflightRetranslates,
+  );
+  const setStoredRetranslateActivities = useProofreadingRetranslateStore(
+    (state) => state.setRetranslateActivities,
+  );
+  const setStoredBatchRetranslating = useProofreadingRetranslateStore(
+    (state) => state.setBatchRetranslating,
+  );
+  const setStoredBatchRetranslateProgress = useProofreadingRetranslateStore(
+    (state) => state.setBatchRetranslateProgress,
+  );
+  const markRetranslateCompleted = useProofreadingRetranslateStore(
+    (state) => state.markRetranslateCompleted,
+  );
+  const {
+    inflightRetranslates,
+    retranslateActivities,
+    batchRetranslating,
+    batchRetranslateProgress,
+    completedRevision,
+  } = retranslateSession;
+  const setInflightRetranslates = (
+    updater: RetranslateValueUpdater<Record<string, string>>,
+  ) => {
+    if (activeTaskId) setStoredInflightRetranslates(activeTaskId, updater);
+  };
+  const setRetranslateActivities = (
+    updater: RetranslateValueUpdater<Record<string, RetranslateActivity>>,
+  ) => {
+    if (activeTaskId) setStoredRetranslateActivities(activeTaskId, updater);
+  };
+  const setBatchRetranslating = (running: boolean) => {
+    if (activeTaskId) setStoredBatchRetranslating(activeTaskId, running);
+  };
+  const setBatchRetranslateProgress = (
+    progress: BatchRetranslateProgress | null,
+  ) => {
+    if (activeTaskId) {
+      setStoredBatchRetranslateProgress(activeTaskId, progress);
+    }
+  };
+  const appliedCompletedRevisionRef = useRef<Record<string, number>>({});
   const [resumeStartedForTask, setResumeStartedForTask] = useState<
     string | null
   >(null);
-  const [batchRetranslating, setBatchRetranslating] = useState(false);
-  const [batchRetranslateProgress, setBatchRetranslateProgress] =
-    useState<BatchRetranslateProgress | null>(null);
   const [retranslateUndo, setRetranslateUndo] =
     useState<RetranslateUndo | null>(null);
   const [undoingRetranslate, setUndoingRetranslate] = useState(false);
@@ -1197,6 +1227,7 @@ export function ProofreadingPage() {
             } else {
               patchCompletedRetranslateResult(segmentId, status.result_dst);
             }
+            if (activeTaskId) markRetranslateCompleted(activeTaskId);
             finish(true);
             resolve({ status: "completed" });
             return;
@@ -1296,6 +1327,7 @@ export function ProofreadingPage() {
           }
           if (status.status === "completed") {
             const outcomes = new Map<string, RetranslateOutcome>();
+            let completedAny = false;
             for (const item of status.results) {
               const outcome: RetranslateOutcome = {
                 status: item.status,
@@ -1303,8 +1335,12 @@ export function ProofreadingPage() {
               };
               outcomes.set(item.segment_id, outcome);
               if (item.status === "completed" && item.result_dst !== undefined) {
+                completedAny = true;
                 patchCompletedRetranslateResult(item.segment_id, item.result_dst);
               }
+            }
+            if (completedAny && activeTaskId) {
+              markRetranslateCompleted(activeTaskId);
             }
             for (const segmentId of segmentIds) {
               if (!outcomes.has(segmentId)) {
@@ -1383,6 +1419,17 @@ export function ProofreadingPage() {
     });
 
   useEffect(() => {
+    if (!activeTaskId || !snapshot || completedRevision <= 0) return;
+    if (
+      appliedCompletedRevisionRef.current[activeTaskId] === completedRevision
+    ) {
+      return;
+    }
+    appliedCompletedRevisionRef.current[activeTaskId] = completedRevision;
+    void reloadProofreadingSnapshot();
+  }, [activeTaskId, completedRevision, snapshot]);
+
+  useEffect(() => {
     if (!activeTaskId || !snapshot || resumeStartedForTask === activeTaskId) {
       return;
     }
@@ -1394,6 +1441,14 @@ export function ProofreadingPage() {
       );
       if (storedIds.length === 0) {
         forgetRetranslateRequest(entry.requestId);
+        continue;
+      }
+      if (
+        storedIds.every(
+          (segmentId) =>
+            inflightRetranslates[segmentId] === entry.requestId,
+        )
+      ) {
         continue;
       }
       setInflightRetranslates((prev) => {
@@ -1421,6 +1476,7 @@ export function ProofreadingPage() {
     }
   }, [
     activeTaskId,
+    inflightRetranslates,
     pollRetranslate,
     pollRetranslateBatch,
     resumeStartedForTask,
