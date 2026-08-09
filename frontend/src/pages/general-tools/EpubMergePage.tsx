@@ -29,6 +29,7 @@ import { useSessionState } from "@/utils/sessionState";
 import {
   EpubToolActionDock,
   EpubToolAdvancedSettings,
+  EpubToolSelectField,
   EpubToolStage,
   EpubToolWorkspace,
 } from "./EpubToolWorkflow";
@@ -318,21 +319,19 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
           />
         </div>
         <div className={styles.fileRow}>
-          <label className={`${styles.field} ${styles.compactField}`}>
-            <span>{text.outputFormat}</span>
-            <select
-              value={outputFormat}
-              onChange={(event) =>
-                setOptions((prev) => ({
-                  ...prev,
-                  output_format: event.target.value === "txt" ? "txt" : "epub",
-                }))
-              }
-            >
-              <option value="epub">{text.outputFormatEpub}</option>
-              <option value="txt">{text.outputFormatTxt}</option>
-            </select>
-          </label>
+          <EpubToolSelectField
+            label={text.outputFormat}
+            value={outputFormat}
+            onChange={(event) =>
+              setOptions((prev) => ({
+                ...prev,
+                output_format: event.target.value === "txt" ? "txt" : "epub",
+              }))
+            }
+          >
+            <option value="epub">{text.outputFormatEpub}</option>
+            <option value="txt">{text.outputFormatTxt}</option>
+          </EpubToolSelectField>
           <label className={`${styles.field} ${styles.compactField}`}>
             <span className={styles.labelWithHelp}>
               {text.outputFilename}

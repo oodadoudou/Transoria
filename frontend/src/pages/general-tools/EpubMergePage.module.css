@@ -6,8 +6,9 @@
 
 .fileRow {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 420px));
+  grid-template-columns: max-content minmax(280px, 420px);
   gap: 8px;
+  align-items: end;
   margin-top: 12px;
 }
 
@@ -219,4 +220,9 @@
   .folderGrid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .fileRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
 }

@@ -31,6 +31,7 @@ import { useSessionState } from "@/utils/sessionState";
 import {
   EpubToolActionDock,
   EpubToolAdvancedSettings,
+  EpubToolSelectField,
   EpubToolStage,
   EpubToolWorkspace,
 } from "./EpubToolWorkflow";
@@ -744,34 +745,35 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
           ))}
         </div>
         {draft.regexMode === "preset" ? (
-          <label className={styles.selectBlock}>
-            <span className={styles.labelWithHelp}>
-              {text.modePreset}
-              {tocPresets.length > 0 ? (
-                <HelpTip>
-                  {displayPreset(
-                    selectedPreset ?? tocPresets[0],
-                    englishUi,
-                  ).description}
-                </HelpTip>
-              ) : null}
-            </span>
-            <select
-              value={draft.presetId}
-              onChange={(event) =>
-                setDraft((prev) => ({ ...prev, presetId: event.target.value }))
-              }
-            >
-              {tocPresets.map((preset) => {
-                const display = displayPreset(preset, englishUi);
-                return (
-                  <option key={preset.id} value={preset.id}>
-                    {display.label} - {display.description}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
+          <EpubToolSelectField
+            className={styles.selectBlock}
+            label={
+              <span className={styles.labelWithHelp}>
+                {text.modePreset}
+                {tocPresets.length > 0 ? (
+                  <HelpTip>
+                    {displayPreset(
+                      selectedPreset ?? tocPresets[0],
+                      englishUi,
+                    ).description}
+                  </HelpTip>
+                ) : null}
+              </span>
+            }
+            value={draft.presetId}
+            onChange={(event) =>
+              setDraft((prev) => ({ ...prev, presetId: event.target.value }))
+            }
+          >
+            {tocPresets.map((preset) => {
+              const display = displayPreset(preset, englishUi);
+              return (
+                <option key={preset.id} value={preset.id}>
+                  {display.label} - {display.description}
+                </option>
+              );
+            })}
+          </EpubToolSelectField>
         ) : draft.regexMode === "simple" ? (
           <div className={styles.ruleGrid}>
             {SIMPLE_RULE_LEVELS.map((level) => (
@@ -823,18 +825,17 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
               placeholder={text.addTocPlaceholder}
             />
           </label>
-          <label className={styles.compactSelect}>
-            <span>{text.level}</span>
-            <select
-              value={manualTocLevel}
-              onChange={(event) => setManualTocLevel(Number(event.target.value))}
-            >
-              <option value={1}>1</option>
-              <option value={2}>2</option>
-              <option value={3}>3</option>
-              <option value={4}>4</option>
-            </select>
-          </label>
+          <EpubToolSelectField
+            className={styles.compactSelect}
+            label={text.level}
+            value={manualTocLevel}
+            onChange={(event) => setManualTocLevel(Number(event.target.value))}
+          >
+            <option value={1}>1</option>
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+          </EpubToolSelectField>
           <Pill variant="ghost" onClick={() => void handleAddTocEntry()}>
             {text.addToc}
           </Pill>
@@ -843,18 +844,17 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
           <span className={styles.hint}>
             {text.selectedRows.replace("{count}", NUM.format(selectedTocCount))}
           </span>
-          <label className={styles.compactSelect}>
-            <span>{text.batchSetLevel}</span>
-            <select
-              value={batchLevel}
-              onChange={(event) => setBatchLevel(Number(event.target.value))}
-            >
-              <option value={1}>1</option>
-              <option value={2}>2</option>
-              <option value={3}>3</option>
-              <option value={4}>4</option>
-            </select>
-          </label>
+          <EpubToolSelectField
+            className={styles.compactSelect}
+            label={text.batchSetLevel}
+            value={batchLevel}
+            onChange={(event) => setBatchLevel(Number(event.target.value))}
+          >
+            <option value={1}>1</option>
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+          </EpubToolSelectField>
           <Pill
             variant="ghost"
             onClick={() => patchSelectedEntries({ level: batchLevel })}
@@ -981,36 +981,37 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
       </EpubToolAdvancedSettings>
 
       <EpubToolAdvancedSettings label={text.epubStyle}>
-        <label className={styles.selectBlock}>
-          <span className={styles.labelWithHelp}>
-            {text.epubStyle}
-            <HelpTip>
-              {draft.styleId === "custom"
-                ? text.customCssHint
-                : selectedStyle
-                  ? displayStyle(selectedStyle, englishUi).groupLabel
-                  : text.customCssHint}
-            </HelpTip>
-          </span>
-          <select
-            value={draft.styleId}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, styleId: event.target.value }))
-            }
-          >
-            {styleOptions.map((style) => {
-              const display = displayStyle(style, englishUi);
-              return (
-                <option key={style.id} value={style.id}>
-                  {display.label} - {display.groupLabel}
-                </option>
-              );
-            })}
-            <option value="custom">
-              {text.customCss} - {text.customCssHint}
-            </option>
-          </select>
-        </label>
+        <EpubToolSelectField
+          className={styles.selectBlock}
+          label={
+            <span className={styles.labelWithHelp}>
+              {text.epubStyle}
+              <HelpTip>
+                {draft.styleId === "custom"
+                  ? text.customCssHint
+                  : selectedStyle
+                    ? displayStyle(selectedStyle, englishUi).groupLabel
+                    : text.customCssHint}
+              </HelpTip>
+            </span>
+          }
+          value={draft.styleId}
+          onChange={(event) =>
+            setDraft((prev) => ({ ...prev, styleId: event.target.value }))
+          }
+        >
+          {styleOptions.map((style) => {
+            const display = displayStyle(style, englishUi);
+            return (
+              <option key={style.id} value={style.id}>
+                {display.label} - {display.groupLabel}
+              </option>
+            );
+          })}
+          <option value="custom">
+            {text.customCss} - {text.customCssHint}
+          </option>
+        </EpubToolSelectField>
         <div className={styles.cssGrid}>
           <div>
             <div className={styles.actionRow}>

@@ -28,6 +28,7 @@ import { useSessionState } from "@/utils/sessionState";
 import {
   EpubToolActionDock,
   EpubToolAdvancedSettings,
+  EpubToolSelectField,
   EpubToolStage,
   EpubToolWorkspace,
 } from "./EpubToolWorkflow";
@@ -334,21 +335,19 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               />
               {text.recursive}
             </label>
-            <label className={styles.field}>
-              <span>{text.fontMode}</span>
-              <select
-                value={options.font_mode}
-                onChange={(event) =>
-                  setOptions((prev) => ({
-                    ...prev,
-                    font_mode: event.target.value,
-                  }))
-                }
-              >
-                <option value="deduplicate">{text.fontModeDeduplicate}</option>
-                <option value="remove">{text.fontModeRemove}</option>
-              </select>
-            </label>
+            <EpubToolSelectField
+              label={text.fontMode}
+              value={options.font_mode}
+              onChange={(event) =>
+                setOptions((prev) => ({
+                  ...prev,
+                  font_mode: event.target.value,
+                }))
+              }
+            >
+              <option value="deduplicate">{text.fontModeDeduplicate}</option>
+              <option value="remove">{text.fontModeRemove}</option>
+            </EpubToolSelectField>
             <label className={styles.field}>
               <span>{text.suffix}</span>
               <input

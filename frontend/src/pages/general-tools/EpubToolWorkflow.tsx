@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, SelectHTMLAttributes } from "react";
 
 import styles from "./EpubToolWorkflow.module.css";
 
@@ -20,6 +20,24 @@ export function EpubToolWorkspace({
 
 export function EpubToolStage({ children }: { children: ReactNode }) {
   return <div className={styles.stage}>{children}</div>;
+}
+
+export function EpubToolSelectField({
+  label,
+  className,
+  children,
+  ...selectProps
+}: {
+  label: ReactNode;
+  className?: string;
+  children: ReactNode;
+} & SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <label className={`${styles.selectField} ${className ?? ""}`.trim()}>
+      <span className={styles.selectFieldLabel}>{label}</span>
+      <select {...selectProps}>{children}</select>
+    </label>
+  );
 }
 
 export function EpubToolAdvancedSettings({
