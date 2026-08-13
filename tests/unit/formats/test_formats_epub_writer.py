@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 import unicodedata
 import zipfile
 
@@ -45,6 +46,110 @@ class EpubWriterTests(TestCase):
             self.assertIn("第一句<span>加重</span>结束", chapter)
             self.assertIn("<p>第二句</p>", chapter)
             self.assertEqual(cover_bytes, b"\xff\xd8binary-cover\xff\xd9")
+
+    def test_write_translated_epub_removes_only_xml_forbidden_characters(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = _write_minimal_epub(Path(temp_dir) / "Novel Name.epub")
+            document = parse_epub_file(source)
+            output_dir = Path(temp_dir) / "out"
+
+            written = write_translated_epub(
+                document,
+                {_first_body_text_index(document, "둘째 문장"): "第二\x00句\t保留"},
+                output_dir,
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(written) as archive:
+                chapter = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+
+            self.assertIn("第二句\t保留", chapter)
+            self.assertNotIn("\x00", chapter)
+
+    def test_write_translated_epub_failure_preserves_existing_output_and_cleans_temp(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = _write_minimal_epub(Path(temp_dir) / "Novel Name.epub")
+            document = parse_epub_file(source)
+            output_dir = Path(temp_dir) / "out"
+            output_dir.mkdir()
+            output = output_dir / "Novel Name-zh.epub"
+            output.write_bytes(b"existing output")
+
+            with patch(
+                "transoria.formats.epub_writer._validate_output_archive",
+                side_effect=ValueError("invalid output"),
+            ):
+                with self.assertRaisesRegex(ValueError, "invalid output"):
+                    write_translated_epub(
+                        document,
+                        {_first_body_text_index(document, "둘째 문장"): "第二句"},
+                        output_dir,
+                        target_language=Language.CHINESE_SIMPLIFIED,
+                    )
+
+            self.assertEqual(output.read_bytes(), b"existing output")
+            self.assertEqual(list(output_dir.glob(".*.tmp")), [])
+
+            output.unlink()
+            with patch(
+                "transoria.formats.epub_writer._validate_output_archive",
+                side_effect=ValueError("invalid output"),
+            ):
+                with self.assertRaisesRegex(ValueError, "invalid output"):
+                    write_translated_epub(
+                        document,
+                        {_first_body_text_index(document, "둘째 문장"): "第二句"},
+                        output_dir,
+                        target_language=Language.CHINESE_SIMPLIFIED,
+                    )
+
+            self.assertFalse(output.exists())
+            self.assertEqual(list(output_dir.glob(".*.tmp")), [])
+
+    def test_write_translated_epub_preserves_package_entries_after_chapter(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original = _write_minimal_epub(root / "original.epub")
+            source = root / "late-package.epub"
+            _reorder_archive_entries(
+                original,
+                source,
+                [
+                    "mimetype",
+                    "OEBPS/Text/chapter.xhtml",
+                    "OEBPS/toc.ncx",
+                    "OEBPS/Images/cover.jpg",
+                    "OEBPS/content.opf",
+                    "META-INF/container.xml",
+                ],
+            )
+            document = parse_epub_file(source)
+
+            written = write_translated_epub(
+                document,
+                {_first_body_text_index(document, "둘째 문장"): "第二句"},
+                root / "out",
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(source) as source_archive:
+                source_names = source_archive.namelist()
+            with zipfile.ZipFile(written) as output_archive:
+                self.assertEqual(output_archive.namelist(), source_names)
+                self.assertIsNone(output_archive.testzip())
+                self.assertIn("OEBPS/content.opf", output_archive.namelist())
+                self.assertIn("META-INF/container.xml", output_archive.namelist())
+                chapter = output_archive.read("OEBPS/Text/chapter.xhtml").decode(
+                    "utf-8"
+                )
+
+            self.assertLess(
+                source_names.index("OEBPS/Text/chapter.xhtml"),
+                source_names.index("OEBPS/content.opf"),
+            )
+            self.assertIn("<p>第二句</p>", chapter)
 
     def test_write_translated_epub_replaces_chapter_with_orphan_markup_prefix(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -243,6 +348,18 @@ def _first_body_text_index(document, text: str) -> int:
         for segment in document.segments
         if segment.kind == EpubTextKind.BODY and segment.text == text
     )
+
+
+def _reorder_archive_entries(source: Path, output: Path, names: list[str]) -> None:
+    with zipfile.ZipFile(source) as source_archive:
+        entries = {
+            info.filename: (info, source_archive.read(info.filename))
+            for info in source_archive.infolist()
+        }
+    with zipfile.ZipFile(output, "w") as output_archive:
+        for name in names:
+            info, raw = entries[name]
+            output_archive.writestr(info, raw)
 
 
 def _write_custom_inline_epub(path: Path) -> Path:

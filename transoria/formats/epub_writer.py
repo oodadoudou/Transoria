@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import copy
+import os
 from pathlib import Path
+import re
+import tempfile
 import zipfile
 
 from lxml import etree
@@ -15,7 +18,9 @@ from transoria.formats.epub_parser import (
     local_name,
     normalize_slot_text,
     parse_ncx_xml,
+    parse_package,
     parse_xhtml_or_html,
+    read_archive_entry,
     sha1_with_null_separator,
 )
 from transoria.formats.epub_paths import decode_epub_href
@@ -103,22 +108,57 @@ def _write_epub(
         source_handle = zipfile.ZipFile(io.BytesIO(document.archive_bytes), "r")
     else:
         source_handle = zipfile.ZipFile(document.path, "r")
-    with source_handle as source_archive:
-        with zipfile.ZipFile(output_path, "w") as output_archive:
-            for info in source_archive.infolist():
-                raw = source_archive.read(info.filename)
-                doc_key = _segments_doc_key(info.filename, segments_by_doc)
-                if doc_key:
-                    raw = _apply_doc_segments(
-                        raw,
-                        doc_key,
-                        segments_by_doc[doc_key],
-                        translations,
-                        bilingual,
-                        dedup_when_same=dedup_when_same,
-                    )
+    temp_path = _temporary_output_path(output_path)
+    try:
+        with source_handle as source_archive:
+            source_names = source_archive.namelist()
+            with zipfile.ZipFile(temp_path, "w") as output_archive:
+                for info in source_archive.infolist():
+                    raw = source_archive.read(info.filename)
+                    doc_key = _segments_doc_key(info.filename, segments_by_doc)
+                    if doc_key:
+                        raw = _apply_doc_segments(
+                            raw,
+                            doc_key,
+                            segments_by_doc[doc_key],
+                            translations,
+                            bilingual,
+                            dedup_when_same=dedup_when_same,
+                        )
 
-                output_archive.writestr(_clone_zip_info(info), raw)
+                    output_archive.writestr(_clone_zip_info(info), raw)
+        _validate_output_archive(temp_path, source_names)
+        os.replace(temp_path, output_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _temporary_output_path(output_path: Path) -> Path:
+    handle = tempfile.NamedTemporaryFile(
+        dir=output_path.parent,
+        prefix=f".{output_path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    handle.close()
+    return Path(handle.name)
+
+
+def _validate_output_archive(path: Path, expected_names: list[str]) -> None:
+    with zipfile.ZipFile(path, "r") as archive:
+        if archive.namelist() != expected_names:
+            raise ValueError("EPUB output does not preserve the source archive entries")
+        corrupt_entry = archive.testzip()
+        if corrupt_entry is not None:
+            raise ValueError(f"EPUB output contains a corrupt entry: {corrupt_entry}")
+        package = parse_package(archive)
+        read_archive_entry(archive, package.opf_path)
+        for doc_path in package.spine_paths:
+            read_archive_entry(archive, doc_path)
+        if package.nav_path:
+            read_archive_entry(archive, package.nav_path)
+        if package.ncx_path:
+            read_archive_entry(archive, package.ncx_path)
 
 
 def _segments_by_doc(document: EpubDocument, translations: dict[int, str]):
@@ -161,7 +201,7 @@ def _apply_doc_segments(
     allow_bilingual = bilingual and not _is_nav_or_metadata_doc(doc_path, root, segments)
 
     for segment in segments:
-        translation = translations[segment.index]
+        translation = _xml_compatible_text(translations[segment.index])
         translated_lines = translation.split("\n")
 
         resolved: list[tuple[str, etree._Element]] = []
@@ -288,3 +328,12 @@ def _clone_zip_info(info: zipfile.ZipInfo) -> zipfile.ZipInfo:
     clone.create_system = info.create_system
     clone.compress_type = zipfile.ZIP_STORED if info.filename == "mimetype" else info.compress_type
     return clone
+
+
+_INVALID_XML_CHARACTERS = re.compile(
+    "[^\x09\x0a\x0d\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
+)
+
+
+def _xml_compatible_text(text: str) -> str:
+    return _INVALID_XML_CHARACTERS.sub("", text)
