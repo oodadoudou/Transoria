@@ -131,7 +131,9 @@ class GlossaryReviewOrchestrator:
             selected_reference_paths=config.selected_reference_paths,
         )
         loaded = review_input.glossary
-        rows = attach_reference_contexts(loaded.rows, review_input.reference_text)
+        rows_with_context = attach_reference_contexts(
+            loaded.rows, review_input.reference_text
+        )
 
         if not self.cache.has_task(task_id) or not self.cache.load_subtasks(task_id):
             self._seed_initial_task(
@@ -140,15 +142,16 @@ class GlossaryReviewOrchestrator:
                 config=config,
                 loaded=loaded,
                 reference_files=review_input.reference_files,
-                rows=rows,
+                rows=rows_with_context,
             )
 
         final_snapshot: TaskSnapshot | None = None
         total_rounds = config.review_rounds + 1
         for round_index in range(1, total_rounds + 1):
             is_consistency_round = round_index > config.review_rounds
-            rows, _report_rows = self._replay_completed(loaded.rows, self.cache.load(task_id))
-            rows = attach_reference_contexts(rows, review_input.reference_text)
+            rows, _report_rows = self._replay_completed(
+                rows_with_context, self.cache.load(task_id)
+            )
             history = self._review_history(loaded.rows, self.cache.load(task_id))
             self._ensure_round_seeded(
                 task_id,
@@ -261,7 +264,7 @@ class GlossaryReviewOrchestrator:
 
         snapshot = self._complete_if_no_open_subtasks(task_id)
         rows, report_rows = self._replay_completed(
-            attach_reference_contexts(loaded.rows, review_input.reference_text),
+            rows_with_context,
             snapshot,
         )
         output_path = write_reviewed_xlsx(
