@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
@@ -23,6 +24,7 @@ from transoria.workflows.translation import (
 from transoria.workflows.translation.confidence import (
     TAG_FUNCTION_WORD_RESIDUE,
     TAG_MODEL_CHATTER,
+    TAG_PUNCTUATION_ANOMALY,
     TAG_SOURCE_RESIDUE,
     TAG_TARGET_LANGUAGE_WEAK,
     TAG_TRUNCATED,
@@ -410,6 +412,230 @@ def test_evaluate_flags_japanese_kana_residue_when_source_is_japanese() -> None:
 
     assert verdict.is_low_confidence
     assert any("Japanese kana residue" in reason for reason in verdict.reasons)
+
+
+def test_evaluate_keeps_korean_punctuation_limit_unchanged() -> None:
+    verdict = evaluate_segment_confidence(
+        "문장," * 20,
+        "译文，" * 5,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=12,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_PUNCTUATION_ANOMALY in verdict.tags
+
+
+def test_evaluate_scales_punctuation_limit_for_latin_source_to_chinese() -> None:
+    verdict = evaluate_segment_confidence(
+        "clause," * 20,
+        "译文，" * 5,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=12,
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_PUNCTUATION_ANOMALY not in verdict.tags
+
+
+@pytest.mark.parametrize(
+    ("source_language", "source", "translated"),
+    [
+        (
+            Language.ENGLISH,
+            "He knew this should never have happened before they arrived.",
+            "他知道 this should never have happened before，但为时已晚。",
+        ),
+        (
+            Language.FRENCH,
+            "Il savait que cette histoire ne pouvait pas continuer ainsi.",
+            "他知道 cette histoire ne pouvait pas continuer ainsi，必须结束了。",
+        ),
+    ],
+)
+def test_evaluate_flags_shared_latin_source_phrase_in_chinese(
+    source_language: Language,
+    source: str,
+    translated: str,
+) -> None:
+    verdict = evaluate_segment_confidence(
+        source,
+        translated,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=source_language,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_SOURCE_RESIDUE in verdict.tags
+
+
+def test_evaluate_flags_latin_source_phrase_in_traditional_chinese() -> None:
+    verdict = evaluate_segment_confidence(
+        "He knew this should never have happened before they arrived.",
+        "他知道 this should never have happened before，但為時已晚。",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_TRADITIONAL,
+    )
+
+    assert TAG_SOURCE_RESIDUE in verdict.tags
+
+
+def test_evaluate_normalizes_decomposed_latin_source_phrase() -> None:
+    source = unicodedata.normalize(
+        "NFD",
+        "Tôi biết câu chuyện này không thể tiếp tục như vậy.",
+    )
+    translated = unicodedata.normalize(
+        "NFD",
+        "他说 câu chuyện này không thể tiếp tục như vậy，必须结束。",
+    )
+    verdict = evaluate_segment_confidence(
+        source,
+        translated,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.VIETNAMESE,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_SOURCE_RESIDUE in verdict.tags
+
+
+def test_evaluate_allows_latin_name_and_title_in_chinese_translation() -> None:
+    verdict = evaluate_segment_confidence(
+        "Alice returned to New York after reading Five by Five.",
+        "Alice读完《Five by Five》后回到了纽约。",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_SOURCE_RESIDUE not in verdict.tags
+
+
+def test_evaluate_allows_unchanged_short_camelcase_product_name() -> None:
+    verdict = evaluate_segment_confidence(
+        "iPhone 15 Pro Max",
+        "iPhone 15 Pro Max",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert not verdict.is_low_confidence
+
+
+def test_evaluate_flags_unchanged_generic_english_title() -> None:
+    verdict = evaluate_segment_confidence(
+        "The Exiled Queen",
+        "The Exiled Queen",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert verdict.is_low_confidence
+    assert TAG_SOURCE_RESIDUE in verdict.tags
+
+
+@pytest.mark.parametrize(
+    ("source_language", "source", "translated", "reason_fragment"),
+    [
+        (
+            Language.RUSSIAN,
+            "Он медленно вошёл в комнату и закрыл за собой дверь.",
+            "Он медленно вошёл в комнату и закрыл за собой дверь.",
+            "Cyrillic",
+        ),
+        (
+            Language.ARABIC,
+            "دخل الغرفة ببطء ثم أغلق الباب خلفه.",
+            "دخل الغرفة ببطء ثم أغلق الباب خلفه.",
+            "Arabic",
+        ),
+    ],
+)
+def test_evaluate_flags_conservative_script_residue_for_chinese_target(
+    source_language: Language,
+    source: str,
+    translated: str,
+    reason_fragment: str,
+) -> None:
+    verdict = evaluate_segment_confidence(
+        source,
+        translated,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=source_language,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_SOURCE_RESIDUE in verdict.tags
+    assert any(reason_fragment in reason for reason in verdict.reasons)
+
+
+@pytest.mark.parametrize(
+    ("source_language", "source", "translated"),
+    [
+        (
+            Language.RUSSIAN,
+            "Он встретил Анну у вокзала.",
+            "他在车站遇见了Анна。",
+        ),
+        (
+            Language.ARABIC,
+            "قابل ليلى عند المحطة.",
+            "他在车站遇见了ليلى。",
+        ),
+    ],
+)
+def test_evaluate_allows_short_preserved_names_from_non_latin_scripts(
+    source_language: Language,
+    source: str,
+    translated: str,
+) -> None:
+    verdict = evaluate_segment_confidence(
+        source,
+        translated,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=source_language,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_SOURCE_RESIDUE not in verdict.tags
+
+
+def test_evaluate_does_not_apply_new_script_residue_to_non_chinese_target() -> None:
+    verdict = evaluate_segment_confidence(
+        "Он медленно вошёл в комнату.",
+        "He entered the room with the name Анна beside him.",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.RUSSIAN,
+        target_language=Language.ENGLISH,
+    )
+
+    assert TAG_SOURCE_RESIDUE not in verdict.tags
 
 
 def test_evaluate_flags_identical_source_and_translation() -> None:

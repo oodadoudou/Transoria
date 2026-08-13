@@ -26,7 +26,7 @@ Transoria 是一个本地小说翻译桌面应用。导入 EPUB / TXT，完成�
 ### 核心能力
 
 - **翻译工作流**：EPUB / TXT 分块翻译、同结构输出、术语注入、文本保护、替换规则和中断续跑。
-- **质量检查与校对**：识别低置信度、原文残留、术语异常、疑似重复和模型异常；支持单条、批量及筛选结果重译。
+- **质量检查与校对**：按源语言识别低置信度、原文残留、术语异常、疑似重复和模型异常；支持单条、批量及筛选结果重译。
 - **模型、Prompt 与预设**：支持主流供应商及 OpenAI 兼容接口，并可将模型、Prompt 和语言组合成一键切换的工作流预设。
 - **术语提取与审查**：生成术语 XLSX 和参考文本，执行多轮审查、表格编辑并导入翻译术语表。
 - **请求记录与恢复**：查看耗时、token、回复和失败原因；任务停止、失败或应用重启后可继续处理剩余内容。
@@ -89,7 +89,7 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 ### Core Capabilities
 
 - **Translation workflow**: chunked EPUB / TXT translation, structure-preserving output, glossary injection, protected text, replacement rules, and resumable tasks.
-- **Quality review**: detect low-confidence output, source residue, terminology issues, possible repetition, and model anomalies; retranslate one row, a selection, or filtered results.
+- **Quality review**: detect low-confidence output, source residue, terminology issues, possible repetition, and model anomalies with source-language-aware checks; retranslate one row, a selection, or filtered results.
 - **Models, prompts, and presets**: use major providers or OpenAI-compatible endpoints, and bundle model, prompt, and language settings into switchable workflow presets.
 - **Glossary extraction and review**: generate glossary XLSX and reference text, run multi-round review, edit the final table, and import it into Translation.
 - **Request logs and recovery**: inspect latency, token usage, responses, and failures; continue unfinished work after stopping, failure, or application restart.

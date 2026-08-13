@@ -18,6 +18,7 @@ expands further) don't trip the check. The flag itself is opt-in via
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from transoria.domain import Language
@@ -107,9 +108,15 @@ def evaluate_segment_confidence(
     source_punct = _count_punctuation(source_text)
     translated_punct = _count_punctuation(translated_text)
     delta = abs(translated_punct - source_punct)
-    if not preserved_title_or_identifier and delta > max_punctuation_delta:
+    punctuation_limit = _punctuation_delta_limit(
+        source_punct,
+        max_punctuation_delta,
+        source_language=source_language,
+        target_language=target_language,
+    )
+    if not preserved_title_or_identifier and delta > punctuation_limit:
         reasons.append(
-            f"punctuation delta {delta} > max {max_punctuation_delta}"
+            f"punctuation delta {delta} > max {punctuation_limit}"
         )
         tags.append(TAG_PUNCTUATION_ANOMALY)
 
@@ -119,7 +126,14 @@ def evaluate_segment_confidence(
             reasons.append(truncation_reason)
             tags.append(TAG_TRUNCATED)
 
-    residue_reason = _source_language_residue(translated_text, source_language)
+    residue_reason = None
+    if not preserved_title_or_identifier:
+        residue_reason = _source_language_residue(
+            source_text,
+            translated_text,
+            source_language=source_language,
+            target_language=target_language,
+        )
     if residue_reason:
         reasons.append(residue_reason)
         tags.append(TAG_SOURCE_RESIDUE)
@@ -161,6 +175,21 @@ def evaluate_segment_confidence(
 
 def _count_punctuation(text: str) -> int:
     return sum(1 for char in text if char in _PUNCTUATION_CHARS)
+
+
+def _punctuation_delta_limit(
+    source_punctuation: int,
+    configured_limit: int,
+    *,
+    source_language: Language | None,
+    target_language: Language | None,
+) -> int:
+    if (
+        source_language in _LATIN_SOURCE_LANGUAGES
+        and target_language in _CHINESE_TARGET_LANGUAGES
+    ):
+        return max(configured_limit, round(source_punctuation * 0.75))
+    return configured_limit
 
 
 # Sentence-ending punctuation a completed translation should normally keep.
@@ -308,7 +337,46 @@ _CHINESE_TARGET_LANGUAGES = {
     Language.CHINESE_SIMPLIFIED,
     Language.CHINESE_TRADITIONAL,
 }
+_LATIN_SOURCE_LANGUAGES = frozenset(
+    {
+        Language.ENGLISH,
+        Language.FRENCH,
+        Language.GERMAN,
+        Language.HUNGARIAN,
+        Language.INDONESIAN,
+        Language.ITALIAN,
+        Language.POLISH,
+        Language.PORTUGUESE,
+        Language.SPANISH,
+        Language.TURKISH,
+        Language.VIETNAMESE,
+    }
+)
 _LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
+_LATIN_SCRIPT_PATTERN = re.compile(
+    r"[A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]"
+)
+_LATIN_WORD_PATTERN = re.compile(
+    r"[A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]+"
+    r"(?:['\u2019-][A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]+)*"
+)
+_CYRILLIC_SCRIPT_PATTERN = re.compile(
+    r"[\u0400-\u052f\u1c80-\u1c8f\u2de0-\u2dff\ua640-\ua69f]"
+)
+_CYRILLIC_WORD_PATTERN = re.compile(
+    r"[\u0400-\u052f\u1c80-\u1c8f\u2de0-\u2dff\ua640-\ua69f]+"
+    r"(?:['\u2019-][\u0400-\u052f\u1c80-\u1c8f\u2de0-\u2dff\ua640-\ua69f]+)*"
+)
+_ARABIC_SCRIPT_PATTERN = re.compile(
+    r"[\u0620-\u063f\u0641-\u064a\u066e-\u066f\u0671-\u06d3\u06d5"
+    r"\u06e5-\u06e6\u06ee-\u06ef\u06fa-\u06fc\u06ff\u0750-\u077f"
+    r"\u0870-\u0887\u08a0-\u08c9\ufb50-\ufdff\ufe70-\ufefc]"
+)
+_ARABIC_WORD_PATTERN = re.compile(
+    r"[\u0620-\u063f\u0641-\u064a\u066e-\u066f\u0671-\u06d3\u06d5"
+    r"\u06e5-\u06e6\u06ee-\u06ef\u06fa-\u06fc\u06ff\u0750-\u077f"
+    r"\u0870-\u0887\u08a0-\u08c9\ufb50-\ufdff\ufe70-\ufefc]+"
+)
 _ASCII_WORD_PATTERN = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 _ENGLISH_FUNCTION_WORDS = frozenset(
     """
@@ -352,6 +420,45 @@ _PRESERVED_TITLE_MAX_TARGET_CHARS = 160
 _PRESERVED_TITLE_MAX_LATIN_TOKENS = 6
 _PRESERVED_TITLE_MAX_SOURCE_SCRIPT_RATIO = 0.25
 _PRESERVED_TITLE_MIN_TARGET_TOKEN_COVERAGE = 0.60
+_SCRIPT_RESIDUE_MIN_PURE_CHARS = 12
+_SCRIPT_RESIDUE_MIN_PURE_LETTERS = 8
+_SCRIPT_RESIDUE_MIN_PURE_RATIO = 0.35
+_SCRIPT_RESIDUE_MAX_TARGET_RATIO = 0.10
+
+
+@dataclass(frozen=True)
+class _ScriptResiduePolicy:
+    name: str
+    character_pattern: re.Pattern[str]
+    word_pattern: re.Pattern[str]
+    shared_word_count: int
+    shared_character_count: int
+
+
+_LATIN_RESIDUE_POLICY = _ScriptResiduePolicy(
+    name="Latin-script",
+    character_pattern=_LATIN_SCRIPT_PATTERN,
+    word_pattern=_LATIN_WORD_PATTERN,
+    shared_word_count=4,
+    shared_character_count=20,
+)
+_SOURCE_SCRIPT_POLICIES: dict[Language, _ScriptResiduePolicy] = {
+    **{language: _LATIN_RESIDUE_POLICY for language in _LATIN_SOURCE_LANGUAGES},
+    Language.RUSSIAN: _ScriptResiduePolicy(
+        name="Cyrillic",
+        character_pattern=_CYRILLIC_SCRIPT_PATTERN,
+        word_pattern=_CYRILLIC_WORD_PATTERN,
+        shared_word_count=3,
+        shared_character_count=18,
+    ),
+    Language.ARABIC: _ScriptResiduePolicy(
+        name="Arabic",
+        character_pattern=_ARABIC_SCRIPT_PATTERN,
+        word_pattern=_ARABIC_WORD_PATTERN,
+        shared_word_count=3,
+        shared_character_count=18,
+    ),
+}
 
 
 def _looks_like_preserved_title_or_identifier(
@@ -363,13 +470,38 @@ def _looks_like_preserved_title_or_identifier(
 ) -> bool:
     """Allow short title/identifier lines to keep Latin tokens in output."""
 
-    if source_language is Language.ENGLISH:
-        return False
     source = source_text.strip()
     translated = translated_text.strip()
     if not source or not translated:
         return False
-    if _source_language_residue(translated, source_language):
+    if (
+        source_language in _LATIN_SOURCE_LANGUAGES
+        and target_language in _CHINESE_TARGET_LANGUAGES
+    ):
+        if _CLASSIC_IDENTIFIER_PATTERN.search(source):
+            return True
+        if (
+            len(source) <= _PRESERVED_TITLE_MAX_SOURCE_CHARS
+            and len(translated) <= _PRESERVED_TITLE_MAX_TARGET_CHARS
+            and _looks_like_short_latin_title_text(source)
+            and _looks_like_short_latin_title_text(translated)
+            and (
+                _CJK_IDEOGRAPH_PATTERN.search(translated) is not None
+                or (
+                    _normalize_for_similarity(source)
+                    == _normalize_for_similarity(translated)
+                    and _looks_like_latin_product_identifier(source)
+                )
+            )
+        ):
+            return True
+        return False
+    if _source_language_residue(
+        source,
+        translated,
+        source_language=source_language,
+        target_language=target_language,
+    ):
         return False
     if _CLASSIC_IDENTIFIER_PATTERN.search(source) or _CLASSIC_IDENTIFIER_PATTERN.search(
         translated
@@ -415,7 +547,11 @@ def _looks_like_short_latin_title_text(text: str) -> bool:
             continue
         if folded in _TITLE_CONNECTOR_WORDS:
             continue
-        if token.isupper() or token[:1].isupper():
+        if (
+            token.isupper()
+            or token[:1].isupper()
+            or any(char.isupper() for char in token[1:])
+        ):
             has_title_token = True
             continue
         if not token[:1].isalpha():
@@ -424,11 +560,27 @@ def _looks_like_short_latin_title_text(text: str) -> bool:
     return has_title_token
 
 
+def _looks_like_latin_product_identifier(text: str) -> bool:
+    tokens = [
+        match.group(0) for match in _LATIN_NUMBER_TOKEN_PATTERN.finditer(text)
+    ]
+    return bool(tokens) and (
+        any(char.isdigit() for token in tokens for char in token)
+        or any(
+            any(char.isupper() for char in token[1:]) and not token.isupper()
+            for token in tokens
+        )
+    )
+
+
 def _source_script_ratio(text: str, source_language: Language | None) -> float:
     if source_language is Language.KOREAN:
         return _ratio(_KOREAN_SOURCE_SCRIPT_PATTERN, text)
     if source_language is Language.JAPANESE:
         return _ratio(_JAPANESE_KANA_PATTERN, text)
+    policy = _SOURCE_SCRIPT_POLICIES.get(source_language)
+    if policy is not None:
+        return _ratio(policy.character_pattern, text)
     return 0.0
 
 
@@ -440,7 +592,11 @@ def _latin_number_tokens(text: str) -> list[str]:
 
 
 def _source_language_residue(
-    translated_text: str, source_language: Language | None
+    source_text: str,
+    translated_text: str,
+    *,
+    source_language: Language | None,
+    target_language: Language | None,
 ) -> str | None:
     if source_language is Language.KOREAN:
         # Hard residue (real Korean words / halfwidth legacy) is always
@@ -464,7 +620,59 @@ def _source_language_residue(
     elif source_language is Language.JAPANESE:
         if _JAPANESE_KANA_PATTERN.search(translated_text):
             return "Japanese kana residue remains in translation"
+    elif target_language in _CHINESE_TARGET_LANGUAGES:
+        policy = _SOURCE_SCRIPT_POLICIES.get(source_language)
+        if policy is not None and _has_script_residue(
+            source_text,
+            translated_text,
+            policy,
+        ):
+            return f"{policy.name} source residue remains in Chinese translation"
     return None
+
+
+def _has_script_residue(
+    source_text: str,
+    translated_text: str,
+    policy: _ScriptResiduePolicy,
+) -> bool:
+    text = translated_text.strip()
+    if len(text) >= _SCRIPT_RESIDUE_MIN_PURE_CHARS:
+        script_letters = len(policy.character_pattern.findall(text))
+        if (
+            script_letters >= _SCRIPT_RESIDUE_MIN_PURE_LETTERS
+            and script_letters / len(text) >= _SCRIPT_RESIDUE_MIN_PURE_RATIO
+            and _ratio(_CJK_IDEOGRAPH_PATTERN, text)
+            < _SCRIPT_RESIDUE_MAX_TARGET_RATIO
+        ):
+            return True
+
+    source_tokens = _script_tokens(source_text, policy.word_pattern)
+    translated_tokens = _script_tokens(translated_text, policy.word_pattern)
+    size = policy.shared_word_count
+    if len(source_tokens) < size or len(translated_tokens) < size:
+        return False
+    source_windows = {
+        tuple(source_tokens[index : index + size])
+        for index in range(len(source_tokens) - size + 1)
+    }
+    for index in range(len(translated_tokens) - size + 1):
+        window = tuple(translated_tokens[index : index + size])
+        if (
+            window in source_windows
+            and sum(len(token) for token in window)
+            >= policy.shared_character_count
+        ):
+            return True
+    return False
+
+
+def _script_tokens(text: str, pattern: re.Pattern[str]) -> list[str]:
+    normalized = unicodedata.normalize("NFC", text)
+    return [
+        match.group(0).casefold()
+        for match in pattern.finditer(normalized)
+    ]
 
 
 def _allows_mixed_jamo_retention(soft_jamo: list[str]) -> bool:
