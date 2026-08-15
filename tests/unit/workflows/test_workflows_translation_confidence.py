@@ -684,6 +684,31 @@ def test_evaluate_flags_single_english_function_word_in_chinese_prose() -> None:
     assert TAG_FUNCTION_WORD_RESIDUE in verdict.tags
 
 
+def test_evaluate_allows_latin_role_markers_preserved_from_korean_source() -> None:
+    source = (
+        "A는 B로 위장해 서커스단에 잠입했다. "
+        "보조 곡예사 C에게 오인당해 B로서 무대에 올랐다. "
+        "A는 그대로 추락했다."
+    )
+    translated = (
+        "A伪装成B潜入马戏团。被助理杂技演员C误认后，以B的身份登台。"
+        "A就这样坠落了。"
+    )
+
+    verdict = evaluate_segment_confidence(
+        source,
+        translated,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_FUNCTION_WORD_RESIDUE not in verdict.tags
+    assert TAG_SOURCE_RESIDUE not in verdict.tags
+
+
 def test_evaluate_allows_latin_proper_name_in_chinese_target() -> None:
     verdict = evaluate_segment_confidence(
         "레가스 2권",

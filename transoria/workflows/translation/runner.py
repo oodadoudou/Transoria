@@ -1546,14 +1546,12 @@ class TranslationSubtaskRunner:
                 final_verdict = self._evaluate_confidence(
                     meta.original_text, last_text
                 )
-                has_residue = any(
-                    "residue" in str(r).lower() for r in last_reasons
-                )
+                has_source_residue = "source_residue" in final_verdict.tags
                 echoes_source = (
                     last_text.strip() == meta.original_text.strip()
                 )
                 tags = list(final_verdict.tags)
-                if has_residue or echoes_source:
+                if has_source_residue or echoes_source:
                     if "source_residue" not in tags:
                         tags.append("source_residue")
                 if echoes_source or not _has_target_language_candidate(

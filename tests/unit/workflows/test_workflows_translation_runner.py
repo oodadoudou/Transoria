@@ -1924,6 +1924,41 @@ def test_runner_force_accepts_target_language_low_conf_when_no_residue() -> None
     assert "source_residue" not in flagged.get("tags", [])
 
 
+def test_runner_does_not_promote_foreign_language_leak_to_source_residue() -> None:
+    candidate = "士兵们 and 乌修勒看着再次走向森林的艾布尔。"
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                200,
+                _ok_body(json.dumps({"0": candidate}, ensure_ascii=False)),
+            ),
+            TransportResult(
+                200,
+                _ok_body(json.dumps({"0": candidate}, ensure_ascii=False)),
+            ),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=1,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask(sources=("군인들은 숲으로 향하는 에이블을 보았다.",)))
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"]["0:0"] == candidate
+    flagged = payload["low_confidence"][0]
+    assert "function_word_residue" in flagged.get("tags", [])
+    assert "source_residue" not in flagged.get("tags", [])
+
+
 def test_runner_prefers_target_language_retry_over_source_echo_when_low_confidence() -> None:
     transport = FakeTransport(
         responses=[

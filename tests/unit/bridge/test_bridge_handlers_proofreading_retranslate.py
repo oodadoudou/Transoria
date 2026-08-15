@@ -289,6 +289,46 @@ def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):
     assert payload["translations"]["0:0"] == "重翻译文0"
 
 
+def test_retranslate_preserved_role_markers_replace_truncated_existing(
+    tmp_path: Path,
+):
+    source = (
+        "A는 B로 위장해 서커스단에 잠입했고, 동생을 살해하는 데 성공했다. "
+        "그러나 현장에서 도주하던 중 보조 곡예사 C에게 오인당해 B로서 "
+        "무대에 오르게 되었다. 동생과 달리 곡예를 배우지 못한 A는 그대로 "
+        "추락해…」"
+    )
+    candidate = (
+        "A伪装成B潜入马戏团，成功杀害了弟弟。然而在逃离现场途中，被助理"
+        "杂技演员C误认，以B的身份登上了舞台。与弟弟不同，从未学过杂技的A"
+        "就这样坠落……」"
+    )
+    transport = _StubTransport(translations_by_key={"0": candidate})
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:1089", source, "男人就那样坠落了下去。"),),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:1089"},
+    )
+    final = _wait_for_status(
+        service,
+        response["request_id"],
+        {"completed", "failed", "unresolved"},
+    )
+
+    assert final["status"] == "completed", final
+    assert final["result_dst"] == candidate
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:1089"] == candidate
+
+
 def test_retranslate_writes_live_and_completed_request_log_events(tmp_path: Path):
     release = threading.Event()
     transport = _StubTransport(block_event=release)

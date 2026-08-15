@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass
 
 from transoria.domain import Language
@@ -138,6 +139,7 @@ def evaluate_segment_confidence(
         reasons.append(residue_reason)
         tags.append(TAG_SOURCE_RESIDUE)
     english_leak_reason = _english_function_word_leak(
+        source_text,
         translated_text,
         source_language=source_language,
         target_language=target_language,
@@ -684,6 +686,7 @@ def _allows_mixed_jamo_retention(soft_jamo: list[str]) -> bool:
 
 
 def _english_function_word_leak(
+    source_text: str,
     translated_text: str,
     *,
     source_language: Language | None,
@@ -697,6 +700,20 @@ def _english_function_word_leak(
         match.group(0).casefold()
         for match in _ASCII_WORD_PATTERN.finditer(translated_text)
     ]
+    # Translation prompts explicitly preserve Latin names, abbreviations, and
+    # role markers such as A/B/C. Remove only the occurrences already present
+    # in the source before looking for newly introduced English prose.
+    source_counts = Counter(
+        match.group(0).casefold()
+        for match in _ASCII_WORD_PATTERN.finditer(source_text)
+    )
+    introduced_words: list[str] = []
+    for word in words:
+        if source_counts[word] > 0:
+            source_counts[word] -= 1
+        else:
+            introduced_words.append(word)
+    words = introduced_words
     if _CJK_IDEOGRAPH_PATTERN.search(translated_text) and any(
         word in _ENGLISH_SINGLE_LEAK_WORDS for word in words
     ):
