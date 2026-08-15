@@ -357,6 +357,8 @@ def _normalize_html_document_root(root: etree._Element) -> tuple[etree._Element,
 
 def _find_first_child(root: etree._Element, name: str) -> etree._Element | None:
     for child in root.iter():
+        if not isinstance(child.tag, str):
+            continue
         if local_name(child.tag) == name:
             return child
     return None
@@ -365,6 +367,8 @@ def _find_first_child(root: etree._Element, name: str) -> etree._Element | None:
 def _repair_void_containers(root: etree._Element) -> int:
     repaired = 0
     for elem in reversed(list(root.iter())):
+        if not isinstance(elem.tag, str):
+            continue
         if local_name(elem.tag) not in _VOID_CONTAINER_TAGS:
             continue
         if not elem.text and len(elem) == 0:
