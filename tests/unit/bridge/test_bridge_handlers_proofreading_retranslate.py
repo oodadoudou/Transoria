@@ -42,6 +42,9 @@ class _StubTransport:
     fail: bool = False
     scripted_translations: list[str] = field(default_factory=list)
     translations_by_key: dict[str, str] = field(default_factory=dict)
+    judge_decisions: list[str] = field(default_factory=list)
+    judge_invalid_response: bool = False
+    judge_fail: bool = False
     requests: list[dict[str, object]] = field(default_factory=list)
 
     async def execute(
@@ -57,6 +60,38 @@ class _StubTransport:
             self.block_event.wait(timeout=5.0)
         if self.fail:
             return TransportResult(500, {"error": "boom"})
+        messages = payload["messages"]
+        system_message = messages[0]["content"]
+        if "translation quality comparator" in system_message:
+            if self.judge_fail:
+                return TransportResult(500, {"error": "judge boom"})
+            if self.judge_invalid_response:
+                content = "not-json"
+            else:
+                comparison = json.loads(messages[-1]["content"])
+                if self.judge_decisions:
+                    decision = self.judge_decisions.pop(0)
+                elif (
+                    comparison["new_candidate"].strip()
+                    == comparison["source"].strip()
+                    and comparison["existing_translation"].strip()
+                    != comparison["source"].strip()
+                ):
+                    decision = "keep_existing"
+                else:
+                    decision = "accept_new"
+                content = json.dumps(
+                    {"decision": decision, "reason": "stub quality decision"}
+                )
+            return TransportResult(
+                200,
+                {
+                    "choices": [
+                        {"message": {"role": "assistant", "content": content}}
+                    ],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 7},
+                },
+            )
         user_message = payload["messages"][-1]["content"]
         translate_section = user_message.rsplit("[Translate]\n", 1)[-1]
         lines: list[str] = []
@@ -481,12 +516,111 @@ def test_retranslate_single_source_echo_is_unresolved_and_not_written(
         {
             "segment_id": "0:0",
             "status": "unresolved",
-            "error": "retranslation did not improve source-language residue.",
+            "error": (
+                "quality review kept the existing translation: "
+                "stub quality decision"
+            ),
         }
     ]
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == "已有的较好译文"
+
+
+def test_single_retranslate_quality_review_accepts_exact_symbol_preservation(
+    tmp_path: Path,
+):
+    transport = _StubTransport(
+        translations_by_key={"0": "ㅋㅋㅋㅋ!!"},
+        judge_decisions=["accept_new"],
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 0, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:0", "ㅋㅋㅋㅋ!!", "一个与原文无关的句子。"),),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0"],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed", final
+    assert final["result_dst"] == "ㅋㅋㅋㅋ!!"
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "ㅋㅋㅋㅋ!!"
+
+
+def test_single_retranslate_quality_review_rejects_unrelated_target_prose(
+    tmp_path: Path,
+):
+    transport = _StubTransport(
+        translations_by_key={"0": "男人就那样坠落了下去。"},
+        judge_decisions=["keep_existing"],
+    )
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:0", "ㅋㅋㅋㅋ!!", "ㅋㅋㅋㅋ!!"),),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(service, response["request_id"], {"unresolved", "failed"})
+
+    assert final["status"] == "unresolved", final
+    assert "quality review kept" in final["error"]
+    assert final["last_translation"] == "男人就那样坠落了下去。"
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "ㅋㅋㅋㅋ!!"
+
+
+@pytest.mark.parametrize("judge_failure", ["request", "invalid_response"])
+def test_single_retranslate_quality_review_failure_keeps_existing(
+    tmp_path: Path,
+    judge_failure: str,
+):
+    transport = _StubTransport(
+        translations_by_key={"0": "新的候选译文。"},
+        judge_fail=judge_failure == "request",
+        judge_invalid_response=judge_failure == "invalid_response",
+    )
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:0", "원문", "现有译文。"),),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(service, response["request_id"], {"unresolved", "failed"})
+
+    assert final["status"] == "unresolved", final
+    assert "could not verify" in final["error"]
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == "现有译文。"
 
 
 def test_retranslate_batch_keeps_user_edited_segment_stale(tmp_path: Path):
@@ -604,7 +738,7 @@ def test_retranslate_uses_low_confidence_retry_to_prefer_target_language(
 
     assert final["status"] == "completed", final
     assert final["result_dst"] == "你好"
-    assert len(transport.requests) == 2
+    assert len(transport.requests) == 3
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == "你好"
@@ -639,7 +773,7 @@ def test_retranslate_uses_current_active_translation_model(router_and_service):
 
     assert final["status"] == "completed", final
     assert transport.requests
-    assert transport.requests[-1]["model"] == "current-model"
+    assert transport.requests[0]["model"] == "current-model"
 
 
 def test_retranslate_uses_current_active_translation_prompt(router_and_service):
@@ -671,7 +805,7 @@ def test_retranslate_uses_current_active_translation_prompt(router_and_service):
     )
 
     assert final["status"] == "completed", final
-    messages = transport.requests[-1]["messages"]
+    messages = transport.requests[0]["messages"]
     assert any(
         isinstance(message, Mapping)
         and "Current prompt from translation settings." in str(message.get("content", ""))
@@ -723,8 +857,8 @@ def test_retranslate_accepts_local_model_and_prompt_overrides(router_and_service
     )
 
     assert final["status"] == "completed", final
-    assert transport.requests[-1]["model"] == "override-model"
-    messages = transport.requests[-1]["messages"]
+    assert transport.requests[0]["model"] == "override-model"
+    messages = transport.requests[0]["messages"]
     assert any(
         isinstance(message, Mapping)
         and "Proofread translate." in str(message.get("content", ""))
@@ -1088,7 +1222,7 @@ def test_resume_failed_retranslate_from_disk_retries_unfinished(tmp_path: Path):
     final = _wait_for_status(service, request_id, {"completed", "failed", "stale"})
     assert final["status"] == "completed", final
     assert final["attempts"] == 2
-    assert len(transport.requests) == 2
+    assert len(transport.requests) == 3
 
 
 def test_resume_failed_retranslate_uses_persisted_model_snapshot(tmp_path: Path):

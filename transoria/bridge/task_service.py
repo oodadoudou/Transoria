@@ -40,7 +40,7 @@ from transoria.domain import (
     TaskStatus,
 )
 from transoria.formats.scanner import scan_input_directory
-from transoria.llm.client import HttpxChatTransport, LlmClient
+from transoria.llm.client import ChatRequest, HttpxChatTransport, LlmClient
 from transoria.llm.config import ModelConfig, effective_concurrency_limit
 from transoria.model_profiles import ModelProfileStore
 from transoria.prompts import (
@@ -349,6 +349,36 @@ def _retranslate_log_subtask_id(request_id: str) -> str:
 class _RetranslateRunnerResult:
     translations: dict[str, str]
     low_confidence: dict[str, dict[str, list[str]]]
+
+
+@dataclass(frozen=True)
+class _RetranslateQualityDecision:
+    decision: str
+    reason: str
+
+
+_RETRANSLATE_QUALITY_DECISIONS = {"accept_new", "keep_existing", "uncertain"}
+
+
+def _decode_retranslate_quality_decision(raw: str) -> _RetranslateQualityDecision:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("quality review returned no JSON object")
+    payload = json.loads(text[start : end + 1])
+    if not isinstance(payload, Mapping):
+        raise ValueError("quality review JSON must be an object")
+    decision = str(payload.get("decision", "")).strip()
+    if decision not in _RETRANSLATE_QUALITY_DECISIONS:
+        raise ValueError(f"quality review returned invalid decision {decision!r}")
+    reason = str(payload.get("reason", "")).strip()
+    if not reason:
+        reason = "no reason provided"
+    return _RetranslateQualityDecision(decision, reason[:500])
 
 
 def _utc_now_iso() -> str:
@@ -2279,10 +2309,76 @@ class TaskService:
             self._save_retranslate_job(job)
             return
 
+        new_dst = runner_result.translations[job.segment_id]
+        job.last_translation = new_dst
+        try:
+            pre_review_snapshot = self.cache.load(job.task_id)
+        except (TaskNotFoundError, OSError, ValueError):
+            job.error = "task cache disappeared during retranslate."
+            job.last_error = job.error
+            job.status = "failed"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+        pre_review_segment = _find_segment_payload(
+            pre_review_snapshot, job.segment_id
+        )
+        if pre_review_segment is None:
+            job.error = "segment disappeared during retranslate."
+            job.last_error = job.error
+            job.status = "skipped"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+        if (
+            job.source_hash
+            and _hash_text(_retranslate_source_text(pre_review_segment))
+            != job.source_hash
+        ):
+            job.error = "source segment changed during retranslate."
+            job.last_error = job.error
+            job.status = "skipped"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+        if _read_segment_dst(pre_review_snapshot, job.segment_id) != job.original_dst:
+            job.status = "stale"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+        try:
+            quality_decision = asyncio.run(
+                self._review_single_retranslation_candidate(
+                    source_text=_retranslate_source_text(job.seg_data),
+                    existing_dst=job.original_dst,
+                    candidate_dst=new_dst,
+                    metadata=job.metadata,
+                    model_id=job.model_id,
+                    model_snapshot=job.model_snapshot,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            job.error = (
+                "quality review could not verify the new translation; "
+                f"kept the existing translation ({type(exc).__name__}: {exc})."
+            )
+            job.last_error = job.error
+            job.status = "unresolved"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+        if quality_decision.decision != "accept_new":
+            job.error = (
+                "quality review kept the existing translation: "
+                f"{quality_decision.reason}"
+            )
+            job.last_error = job.error
+            job.status = "unresolved"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
+
         with self._retranslate_lock:
-            new_dst = runner_result.translations[job.segment_id]
-            confidence_entry = runner_result.low_confidence.get(job.segment_id)
-            job.last_translation = new_dst
             try:
                 snapshot = self.cache.load(job.task_id)
             except (TaskNotFoundError, OSError, ValueError):
@@ -2316,19 +2412,6 @@ class TaskService:
                 job.updated_at_wall = _utc_now_iso()
                 self._save_retranslate_job(job)
                 return
-            if _should_keep_existing_retranslation(
-                snapshot,
-                job.segment_id,
-                current_dst,
-                new_dst,
-                confidence_entry,
-            ):
-                job.error = "retranslation did not improve source-language residue."
-                job.last_error = job.error
-                job.status = "unresolved"
-                job.updated_at_wall = _utc_now_iso()
-                self._save_retranslate_job(job)
-                return
             try:
                 _patch_segment_dst(self.cache, snapshot, job.segment_id, new_dst)
             except (TaskNotFoundError, OSError) as exc:
@@ -2342,6 +2425,68 @@ class TaskService:
             job.status = "completed"
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
+
+    async def _review_single_retranslation_candidate(
+        self,
+        *,
+        source_text: str,
+        existing_dst: str,
+        candidate_dst: str,
+        metadata: Mapping[str, object],
+        model_id: str | None,
+        model_snapshot: Mapping[str, object] | None,
+    ) -> _RetranslateQualityDecision:
+        settings = self.settings_store.load_all()
+        model = self._model_for_retranslate(
+            model_id or settings.app.active_translation_model_id,
+            model_snapshot=model_snapshot,
+            field=(
+                "proofreading_model_id"
+                if model_id
+                else "active_translation_model_id"
+            ),
+        )
+        source_language = str(metadata.get("source_language", ""))
+        target_language = str(metadata.get("target_language", ""))
+        system_prompt = (
+            "You are a conservative translation quality comparator. "
+            "Do not translate, rewrite, or improve either candidate. Compare the "
+            "existing translation and the new candidate against the source and "
+            "choose whether the new candidate is safe to store. Exact preservation "
+            "can be correct for symbols, emoticons, sound effects, names, codes, "
+            "and other non-prose content. Do not prefer a candidate merely because "
+            "it contains more target-language characters. Reject unrelated prose, "
+            "hallucination, omission, or a semantic/function mismatch. Choose "
+            "accept_new only when the new candidate is clearly faithful and at "
+            "least as suitable as the existing translation. Choose keep_existing "
+            "when the existing translation is safer. Choose uncertain when the "
+            "evidence is insufficient. Return exactly one JSON object with keys "
+            '"decision" and "reason". The decision must be one of '
+            '"accept_new", "keep_existing", or "uncertain".'
+        )
+        user_prompt = json.dumps(
+            {
+                "source_language": source_language,
+                "target_language": target_language,
+                "source": source_text,
+                "existing_translation": existing_dst,
+                "new_candidate": candidate_dst,
+            },
+            ensure_ascii=False,
+        )
+        client = self.llm_client_factory()
+        try:
+            response = await client.chat(
+                ChatRequest(
+                    model=model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    log_label="proofreading single retranslation quality review",
+                )
+            )
+        finally:
+            await client.aclose()
+        return _decode_retranslate_quality_decision(response.content)
 
     def _retranslate_concurrency(self, job: RetranslateJob) -> tuple[str, int]:
         snapshot = job.model_snapshot
