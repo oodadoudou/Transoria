@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import copy
 import os
-from pathlib import Path
 import re
 import tempfile
+import unicodedata
 import zipfile
+from pathlib import Path
 
 from lxml import etree
 
@@ -25,6 +26,12 @@ from transoria.formats.epub_parser import (
 )
 from transoria.formats.epub_paths import decode_epub_href
 from transoria.formats.text import BILINGUAL_OUTPUT_FOLDER_EN
+
+
+_DROP_CAP_CLASS_PATTERN = re.compile(
+    r"(?:^|[\s_-])drop[\s_-]?caps?(?:$|[\s_-])",
+    re.I,
+)
 
 
 def write_translated_epub(
@@ -232,6 +239,9 @@ def _apply_doc_segments(
 
             if len(translated_lines) == len(resolved):
                 replacements = translated_lines
+            elif _uses_drop_cap_prefix(resolved, current_texts):
+                first, remainder = _split_first_display_character(translation)
+                replacements = [first, remainder] + [""] * (len(resolved) - 2)
             else:
                 replacements = [translation] + [""] * (len(resolved) - 1)
 
@@ -255,6 +265,35 @@ def _apply_doc_segments(
             clone.tail = clone.tail or "\n"
 
     return _serialize_doc(root, doc_path)
+
+
+def _uses_drop_cap_prefix(
+    resolved: list[tuple[str, etree._Element]],
+    current_texts: list[str],
+) -> bool:
+    if len(resolved) < 2 or len(current_texts) < 2:
+        return False
+    first_slot, first_elem = resolved[0]
+    second_slot, second_elem = resolved[1]
+    if first_slot != "text" or second_slot != "tail" or second_elem is not first_elem:
+        return False
+    if len(current_texts[0].strip()) != 1 or not current_texts[1].strip():
+        return False
+    class_name = first_elem.get("class", "")
+    return _DROP_CAP_CLASS_PATTERN.search(class_name) is not None
+
+
+def _split_first_display_character(text: str) -> tuple[str, str]:
+    if not text:
+        return "", ""
+    split_at = 1
+    while split_at < len(text):
+        char = text[split_at]
+        if unicodedata.combining(char) or char in {"\ufe0e", "\ufe0f"}:
+            split_at += 1
+            continue
+        break
+    return text[:split_at], text[split_at:]
 
 
 def _parse_doc(raw: bytes, doc_path: str) -> etree._Element:

@@ -222,6 +222,39 @@ class EpubWriterTests(TestCase):
             self.assertNotIn("첫 문장", chapter)
             self.assertNotIn("강조", chapter)
 
+    def test_write_translated_epub_preserves_drop_cap_scope(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = _write_minimal_epub(
+                Path(temp_dir) / "Novel Name.epub",
+                chapter_body=(
+                    '<p class="noindent"><span class="dropcaps">M</span>'
+                    "aybe this is the last time.</p>"
+                ),
+            )
+            document = parse_epub_file(source)
+            output_dir = Path(temp_dir) / "out"
+
+            written = write_translated_epub(
+                document,
+                {
+                    _first_body_text_index(
+                        document, "M\naybe this is the last time."
+                    ): "也许这是最后一次。"
+                },
+                output_dir,
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(written) as archive:
+                chapter = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+
+            self.assertIn(
+                '<span class="dropcaps">也</span>许这是最后一次。', chapter
+            )
+            self.assertNotIn(
+                '<span class="dropcaps">也许这是最后一次。</span>', chapter
+            )
+
     def test_write_translated_epub_collapses_custom_inline_tags(self) -> None:
         with TemporaryDirectory() as temp_dir:
             source = _write_custom_inline_epub(Path(temp_dir) / "Novel Name.epub")
