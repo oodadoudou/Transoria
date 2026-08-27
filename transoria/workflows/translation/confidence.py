@@ -362,6 +362,12 @@ _LATIN_WORD_PATTERN = re.compile(
     r"[A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]+"
     r"(?:['\u2019-][A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]+)*"
 )
+_PROTECTED_LATIN_LITERAL_PATTERN = re.compile(
+    r"(?:https?|ftp)://[^\s<>()]+|www\.[^\s<>()]+|"
+    r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|"
+    r"\b(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?:/[^\s<>()]*)?",
+    re.I,
+)
 _CYRILLIC_SCRIPT_PATTERN = re.compile(
     r"[\u0400-\u052f\u1c80-\u1c8f\u2de0-\u2dff\ua640-\ua69f]"
 )
@@ -435,6 +441,7 @@ class _ScriptResiduePolicy:
     word_pattern: re.Pattern[str]
     shared_word_count: int
     shared_character_count: int
+    single_lowercase_word_min_chars: int | None = None
 
 
 _LATIN_RESIDUE_POLICY = _ScriptResiduePolicy(
@@ -443,6 +450,7 @@ _LATIN_RESIDUE_POLICY = _ScriptResiduePolicy(
     word_pattern=_LATIN_WORD_PATTERN,
     shared_word_count=4,
     shared_character_count=20,
+    single_lowercase_word_min_chars=8,
 )
 _SOURCE_SCRIPT_POLICIES: dict[Language, _ScriptResiduePolicy] = {
     **{language: _LATIN_RESIDUE_POLICY for language in _LATIN_SOURCE_LANGUAGES},
@@ -651,6 +659,17 @@ def _has_script_residue(
 
     source_tokens = _script_tokens(source_text, policy.word_pattern)
     translated_tokens = _script_tokens(translated_text, policy.word_pattern)
+    if (
+        policy.single_lowercase_word_min_chars is not None
+        and _CJK_IDEOGRAPH_PATTERN.search(text)
+        and _has_shared_lowercase_content_word(
+            source_tokens,
+            text,
+            policy.word_pattern,
+            policy.single_lowercase_word_min_chars,
+        )
+    ):
+        return True
     size = policy.shared_word_count
     if len(source_tokens) < size or len(translated_tokens) < size:
         return False
@@ -666,6 +685,32 @@ def _has_script_residue(
             >= policy.shared_character_count
         ):
             return True
+    return False
+
+
+def _has_shared_lowercase_content_word(
+    source_tokens: list[str],
+    translated_text: str,
+    word_pattern: re.Pattern[str],
+    min_chars: int,
+) -> bool:
+    source_token_set = set(source_tokens)
+    normalized = unicodedata.normalize("NFC", translated_text)
+    protected_spans = [
+        match.span() for match in _PROTECTED_LATIN_LITERAL_PATTERN.finditer(normalized)
+    ]
+    for match in word_pattern.finditer(normalized):
+        token = match.group(0)
+        if len(token) < min_chars or not token.islower():
+            continue
+        if token.casefold() not in source_token_set:
+            continue
+        if any(
+            match.start() < end and match.end() > start
+            for start, end in protected_spans
+        ):
+            continue
+        return True
     return False
 
 

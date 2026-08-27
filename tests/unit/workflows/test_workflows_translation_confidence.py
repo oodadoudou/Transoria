@@ -489,6 +489,53 @@ def test_evaluate_flags_latin_source_phrase_in_traditional_chinese() -> None:
     assert TAG_SOURCE_RESIDUE in verdict.tags
 
 
+@pytest.mark.parametrize(
+    ("source_language", "source", "translated"),
+    [
+        (
+            Language.ENGLISH,
+            "The sheets carried the unmistakable smell of home.",
+            "床单上带着 unmistakable 的家的气息。",
+        ),
+        (
+            Language.FRENCH,
+            "Cette journée était particulièrement épuisante pour elle.",
+            "这一天对她来说格外 épuisante。",
+        ),
+    ],
+)
+def test_evaluate_flags_single_long_latin_source_word_in_chinese(
+    source_language: Language,
+    source: str,
+    translated: str,
+) -> None:
+    verdict = evaluate_segment_confidence(
+        source,
+        translated,
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=source_language,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_SOURCE_RESIDUE in verdict.tags
+
+
+def test_evaluate_allows_url_inside_latin_source_translation() -> None:
+    verdict = evaluate_segment_confidence(
+        "For more information, visit newvesselpress.com.",
+        "欲了解更多信息，请访问 newvesselpress.com。",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert TAG_SOURCE_RESIDUE not in verdict.tags
+
+
 def test_evaluate_normalizes_decomposed_latin_source_phrase() -> None:
     source = unicodedata.normalize(
         "NFD",
