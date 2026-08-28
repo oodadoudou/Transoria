@@ -22,7 +22,7 @@ import re
 import threading
 import time
 import traceback
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -204,6 +204,8 @@ _RETRANSLATE_TERMINAL_TTL_SECONDS = 300.0
 _RETRANSLATE_TERMINAL_STATUSES = frozenset(
     {"completed", "failed", "stale", "skipped", "unresolved"}
 )
+_RETRANSLATE_QUALITY_BATCH_MAX_ITEMS = 5
+_RETRANSLATE_QUALITY_BATCH_WAIT_SECONDS = 0.2
 
 
 def _metadata_timeout_seconds(metadata: Mapping[str, object]) -> float | None:
@@ -357,7 +359,41 @@ class _RetranslateQualityDecision:
     reason: str
 
 
+@dataclass
+class _RetranslateQualityReviewItem:
+    source_text: str
+    existing_dst: str
+    candidate_dst: str
+    source_language: str
+    target_language: str
+    model_id: str
+    model_snapshot: dict[str, object] | None
+    estimated_tokens: int
+    result: _RetranslateQualityDecision | None = None
+    error: Exception | None = None
+    done: threading.Event = field(default_factory=threading.Event)
+
+
+@dataclass
+class _RetranslateQualityReviewGroup:
+    items: list[_RetranslateQualityReviewItem] = field(default_factory=list)
+
+
 _RETRANSLATE_QUALITY_DECISIONS = {"accept_new", "keep_existing", "uncertain"}
+_RETRANSLATE_QUALITY_COMPARATOR_PROMPT = (
+    "You are a conservative translation quality comparator. "
+    "Do not translate, rewrite, or improve either candidate. Compare the "
+    "existing translation and the new candidate against the source and "
+    "choose whether the new candidate is safe to store. Exact preservation "
+    "can be correct for symbols, emoticons, sound effects, names, codes, "
+    "and other non-prose content. Do not prefer a candidate merely because "
+    "it contains more target-language characters. Reject unrelated prose, "
+    "hallucination, omission, or a semantic/function mismatch. Choose "
+    "accept_new only when the new candidate is clearly faithful and at "
+    "least as suitable as the existing translation. Choose keep_existing "
+    "when the existing translation is safer. Choose uncertain when the "
+    "evidence is insufficient."
+)
 
 
 def _decode_retranslate_quality_decision(raw: str) -> _RetranslateQualityDecision:
@@ -379,6 +415,40 @@ def _decode_retranslate_quality_decision(raw: str) -> _RetranslateQualityDecisio
     if not reason:
         reason = "no reason provided"
     return _RetranslateQualityDecision(decision, reason[:500])
+
+
+def _decode_retranslate_quality_decisions(
+    raw: str,
+    expected_ids: Sequence[str],
+) -> dict[str, _RetranslateQualityDecision]:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("quality review returned no JSON object")
+    payload = json.loads(text[start : end + 1])
+    if not isinstance(payload, Mapping):
+        raise ValueError("quality review JSON must be an object")
+    decisions = payload.get("decisions")
+    if not isinstance(decisions, Mapping):
+        raise ValueError("quality review JSON is missing decisions")
+    decoded: dict[str, _RetranslateQualityDecision] = {}
+    for item_id in expected_ids:
+        entry = decisions.get(item_id)
+        if not isinstance(entry, Mapping):
+            raise ValueError(f"quality review is missing item {item_id!r}")
+        decision = str(entry.get("decision", "")).strip()
+        if decision not in _RETRANSLATE_QUALITY_DECISIONS:
+            raise ValueError(
+                f"quality review returned invalid decision {decision!r} "
+                f"for item {item_id!r}"
+            )
+        reason = str(entry.get("reason", "")).strip() or "no reason provided"
+        decoded[item_id] = _RetranslateQualityDecision(decision, reason[:500])
+    return decoded
 
 
 def _utc_now_iso() -> str:
@@ -1705,6 +1775,10 @@ class TaskService:
         self._retranslate_lock = threading.Lock()
         self._retranslate_gate = threading.Condition()
         self._active_retranslates_by_model: dict[str, int] = {}
+        self._retranslate_quality_gate = threading.Condition()
+        self._retranslate_quality_groups: dict[
+            str, _RetranslateQualityReviewGroup
+        ] = {}
 
     # All task records live under a single central root
     # (``<cache_root>/tasks/<task_id>/``). Records carry their kind
@@ -2347,15 +2421,13 @@ class TaskService:
             self._save_retranslate_job(job)
             return
         try:
-            quality_decision = asyncio.run(
-                self._review_single_retranslation_candidate(
-                    source_text=_retranslate_source_text(job.seg_data),
-                    existing_dst=job.original_dst,
-                    candidate_dst=new_dst,
-                    metadata=job.metadata,
-                    model_id=job.model_id,
-                    model_snapshot=job.model_snapshot,
-                )
+            quality_decision = self._review_retranslation_candidate_batched(
+                source_text=_retranslate_source_text(job.seg_data),
+                existing_dst=job.original_dst,
+                candidate_dst=new_dst,
+                metadata=job.metadata,
+                model_id=job.model_id,
+                model_snapshot=job.model_snapshot,
             )
         except Exception as exc:  # noqa: BLE001
             job.error = (
@@ -2426,6 +2498,205 @@ class TaskService:
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
 
+    def _review_retranslation_candidate_batched(
+        self,
+        *,
+        source_text: str,
+        existing_dst: str,
+        candidate_dst: str,
+        metadata: Mapping[str, object],
+        model_id: str | None,
+        model_snapshot: Mapping[str, object] | None,
+    ) -> _RetranslateQualityDecision:
+        settings = self.settings_store.load_all()
+        effective_model_id = model_id or settings.app.active_translation_model_id
+        snapshot = dict(model_snapshot) if model_snapshot is not None else None
+        model = self._model_for_retranslate(
+            effective_model_id,
+            model_snapshot=snapshot,
+            field=(
+                "proofreading_model_id"
+                if model_id
+                else "active_translation_model_id"
+            ),
+        )
+        group_key = _hash_text(
+            json.dumps(
+                {
+                    "model_id": effective_model_id,
+                    "model_snapshot": snapshot or {},
+                },
+                sort_keys=True,
+                ensure_ascii=True,
+            )
+        )
+        estimated_tokens = _estimate_dynamic_input_tokens(
+            json.dumps(
+                {
+                    "source": source_text,
+                    "existing_translation": existing_dst,
+                    "new_candidate": candidate_dst,
+                },
+                ensure_ascii=False,
+            )
+        )
+        item = _RetranslateQualityReviewItem(
+            source_text=source_text,
+            existing_dst=existing_dst,
+            candidate_dst=candidate_dst,
+            source_language=str(metadata.get("source_language", "")),
+            target_language=str(metadata.get("target_language", "")),
+            model_id=effective_model_id,
+            model_snapshot=snapshot,
+            estimated_tokens=estimated_tokens,
+        )
+        with self._retranslate_quality_gate:
+            group = self._retranslate_quality_groups.get(group_key)
+            is_leader = group is None
+            if group is None:
+                group = _RetranslateQualityReviewGroup()
+                self._retranslate_quality_groups[group_key] = group
+            group.items.append(item)
+            self._retranslate_quality_gate.notify_all()
+
+        if is_leader:
+            self._drain_retranslate_quality_group(
+                group_key,
+                group,
+                token_limit=max(0, int(model.input_token_limit)),
+            )
+        else:
+            item.done.wait()
+        if item.error is not None:
+            raise item.error
+        if item.result is None:
+            raise RuntimeError("quality review completed without a decision")
+        return item.result
+
+    def _drain_retranslate_quality_group(
+        self,
+        group_key: str,
+        group: _RetranslateQualityReviewGroup,
+        *,
+        token_limit: int,
+    ) -> None:
+        wait_for_more = True
+        while True:
+            with self._retranslate_quality_gate:
+                if wait_for_more:
+                    deadline = (
+                        time.monotonic() + _RETRANSLATE_QUALITY_BATCH_WAIT_SECONDS
+                    )
+                    while (
+                        len(group.items) < _RETRANSLATE_QUALITY_BATCH_MAX_ITEMS
+                        and time.monotonic() < deadline
+                    ):
+                        self._retranslate_quality_gate.wait(
+                            timeout=max(0.0, deadline - time.monotonic())
+                        )
+                batch: list[_RetranslateQualityReviewItem] = []
+                batch_tokens = 0
+                while (
+                    group.items
+                    and len(batch) < _RETRANSLATE_QUALITY_BATCH_MAX_ITEMS
+                ):
+                    next_item = group.items[0]
+                    if (
+                        batch
+                        and token_limit > 0
+                        and batch_tokens + next_item.estimated_tokens > token_limit
+                    ):
+                        break
+                    batch.append(group.items.pop(0))
+                    batch_tokens += next_item.estimated_tokens
+
+            try:
+                if len(batch) == 1:
+                    only = batch[0]
+                    decisions = {
+                        "0": asyncio.run(
+                            self._review_single_retranslation_candidate(
+                                source_text=only.source_text,
+                                existing_dst=only.existing_dst,
+                                candidate_dst=only.candidate_dst,
+                                metadata={
+                                    "source_language": only.source_language,
+                                    "target_language": only.target_language,
+                                },
+                                model_id=only.model_id,
+                                model_snapshot=only.model_snapshot,
+                            )
+                        )
+                    }
+                else:
+                    decisions = asyncio.run(
+                        self._review_retranslation_candidates_batch(batch)
+                    )
+            except Exception as exc:  # noqa: BLE001
+                for queued_item in batch:
+                    queued_item.error = exc
+            else:
+                for item_index, queued_item in enumerate(batch):
+                    queued_item.result = decisions[str(item_index)]
+            finally:
+                for queued_item in batch:
+                    queued_item.done.set()
+
+            with self._retranslate_quality_gate:
+                if not group.items:
+                    self._retranslate_quality_groups.pop(group_key, None)
+                    return
+            wait_for_more = False
+
+    async def _review_retranslation_candidates_batch(
+        self,
+        items: Sequence[_RetranslateQualityReviewItem],
+    ) -> dict[str, _RetranslateQualityDecision]:
+        if not items:
+            return {}
+        first = items[0]
+        model = self._model_for_retranslate(
+            first.model_id,
+            model_snapshot=first.model_snapshot,
+            field="proofreading_model_id",
+        )
+        item_payloads = [
+            {
+                "id": str(index),
+                "source_language": item.source_language,
+                "target_language": item.target_language,
+                "source": item.source_text,
+                "existing_translation": item.existing_dst,
+                "new_candidate": item.candidate_dst,
+            }
+            for index, item in enumerate(items)
+        ]
+        system_prompt = (
+            _RETRANSLATE_QUALITY_COMPARATOR_PROMPT
+            + " Review every item independently. Return exactly one JSON object "
+            'matching {"decisions":{"<id>":{"decision":"accept_new|'
+            'keep_existing|uncertain","reason":"..."}}}. Return every supplied '
+            "id exactly once and no additional ids."
+        )
+        client = self.llm_client_factory()
+        try:
+            response = await client.chat(
+                ChatRequest(
+                    model=model,
+                    system_prompt=system_prompt,
+                    user_prompt=json.dumps(
+                        {"items": item_payloads}, ensure_ascii=False
+                    ),
+                    log_label="proofreading retranslation quality review batch",
+                )
+            )
+        finally:
+            await client.aclose()
+        return _decode_retranslate_quality_decisions(
+            response.content,
+            tuple(str(index) for index in range(len(items))),
+        )
+
     async def _review_single_retranslation_candidate(
         self,
         *,
@@ -2449,18 +2720,8 @@ class TaskService:
         source_language = str(metadata.get("source_language", ""))
         target_language = str(metadata.get("target_language", ""))
         system_prompt = (
-            "You are a conservative translation quality comparator. "
-            "Do not translate, rewrite, or improve either candidate. Compare the "
-            "existing translation and the new candidate against the source and "
-            "choose whether the new candidate is safe to store. Exact preservation "
-            "can be correct for symbols, emoticons, sound effects, names, codes, "
-            "and other non-prose content. Do not prefer a candidate merely because "
-            "it contains more target-language characters. Reject unrelated prose, "
-            "hallucination, omission, or a semantic/function mismatch. Choose "
-            "accept_new only when the new candidate is clearly faithful and at "
-            "least as suitable as the existing translation. Choose keep_existing "
-            "when the existing translation is safer. Choose uncertain when the "
-            "evidence is insufficient. Return exactly one JSON object with keys "
+            _RETRANSLATE_QUALITY_COMPARATOR_PROMPT
+            + " Return exactly one JSON object with keys "
             '"decision" and "reason". The decision must be one of '
             '"accept_new", "keep_existing", or "uncertain".'
         )

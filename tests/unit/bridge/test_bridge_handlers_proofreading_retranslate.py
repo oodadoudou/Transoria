@@ -69,20 +69,40 @@ class _StubTransport:
                 content = "not-json"
             else:
                 comparison = json.loads(messages[-1]["content"])
-                if self.judge_decisions:
-                    decision = self.judge_decisions.pop(0)
-                elif (
-                    comparison["new_candidate"].strip()
-                    == comparison["source"].strip()
-                    and comparison["existing_translation"].strip()
-                    != comparison["source"].strip()
-                ):
-                    decision = "keep_existing"
+                if "items" in comparison:
+                    decisions = {}
+                    for item in comparison["items"]:
+                        if self.judge_decisions:
+                            decision = self.judge_decisions.pop(0)
+                        elif (
+                            item["new_candidate"].strip()
+                            == item["source"].strip()
+                            and item["existing_translation"].strip()
+                            != item["source"].strip()
+                        ):
+                            decision = "keep_existing"
+                        else:
+                            decision = "accept_new"
+                        decisions[item["id"]] = {
+                            "decision": decision,
+                            "reason": "stub quality decision",
+                        }
+                    content = json.dumps({"decisions": decisions})
                 else:
-                    decision = "accept_new"
-                content = json.dumps(
-                    {"decision": decision, "reason": "stub quality decision"}
-                )
+                    if self.judge_decisions:
+                        decision = self.judge_decisions.pop(0)
+                    elif (
+                        comparison["new_candidate"].strip()
+                        == comparison["source"].strip()
+                        and comparison["existing_translation"].strip()
+                        != comparison["source"].strip()
+                    ):
+                        decision = "keep_existing"
+                    else:
+                        decision = "accept_new"
+                    content = json.dumps(
+                        {"decision": decision, "reason": "stub quality decision"}
+                    )
             return TransportResult(
                 200,
                 {
@@ -153,6 +173,7 @@ def _make_service(
     *,
     transport: _StubTransport | None = None,
     concurrency_limit: int = 0,
+    input_token_limit: int = 0,
 ) -> TaskService:
     cache_root = tmp_path / "cache"
     cache_root.mkdir()
@@ -166,6 +187,7 @@ def _make_service(
         api_keys=("test-key",),
         thinking_level=ThinkingLevel.OFF,
         concurrency_limit=concurrency_limit,
+        input_token_limit=input_token_limit,
         rpm_limit=0,
     )
     profile_store.create(profile)
@@ -621,6 +643,178 @@ def test_single_retranslate_quality_review_failure_keeps_existing(
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == "现有译文。"
+
+
+def test_single_retranslate_quality_reviews_share_dynamic_batch(tmp_path: Path):
+    transport = _StubTransport(
+        translations_by_key={"0": "候选译文。"},
+        judge_decisions=["accept_new", "keep_existing", "accept_new"],
+    )
+    service = _make_service(tmp_path, transport=transport, concurrency_limit=3)
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = tuple(
+        (f"0:{index}", f"원문 {index}", f"旧译文 {index}") for index in range(3)
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    request_ids = [
+        router.call(
+            "proofreading.retranslate_segment",
+            {"task_id": "translation-pf-rt-1", "segment_id": segment_id},
+        )["request_id"]
+        for segment_id, _src, _dst in segments
+    ]
+    finals = [
+        _wait_for_status(
+            service,
+            request_id,
+            {"completed", "unresolved", "failed"},
+        )
+        for request_id in request_ids
+    ]
+
+    assert [item["status"] for item in finals] == [
+        "completed",
+        "unresolved",
+        "completed",
+    ]
+    quality_requests = [
+        request
+        for request in transport.requests
+        if "translation quality comparator"
+        in request["messages"][0]["content"]
+    ]
+    assert len(quality_requests) == 1
+    quality_payload = json.loads(quality_requests[0]["messages"][-1]["content"])
+    assert len(quality_payload["items"]) == 3
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"] == {
+        "0:0": "候选译文。",
+        "0:1": "旧译文 1",
+        "0:2": "候选译文。",
+    }
+
+
+def test_single_retranslate_quality_batch_caps_at_five_items(tmp_path: Path):
+    transport = _StubTransport(translations_by_key={"0": "候选译文。"})
+    service = _make_service(tmp_path, transport=transport, concurrency_limit=6)
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = tuple(
+        (f"0:{index}", f"원문 {index}", f"旧译文 {index}") for index in range(6)
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    request_ids = [
+        router.call(
+            "proofreading.retranslate_segment",
+            {"task_id": "translation-pf-rt-1", "segment_id": segment_id},
+        )["request_id"]
+        for segment_id, _src, _dst in segments
+    ]
+    finals = [
+        _wait_for_status(service, request_id, {"completed", "failed"})
+        for request_id in request_ids
+    ]
+
+    assert [item["status"] for item in finals] == ["completed"] * 6
+    quality_payloads = [
+        json.loads(request["messages"][-1]["content"])
+        for request in transport.requests
+        if "translation quality comparator"
+        in request["messages"][0]["content"]
+    ]
+    batch_sizes = sorted(
+        len(payload.get("items", [payload])) for payload in quality_payloads
+    )
+    assert batch_sizes == [1, 5]
+
+
+def test_single_retranslate_quality_batch_honors_model_input_budget(
+    tmp_path: Path,
+):
+    transport = _StubTransport(translations_by_key={"0": "候选译文。"})
+    service = _make_service(
+        tmp_path,
+        transport=transport,
+        concurrency_limit=2,
+        input_token_limit=1,
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = (
+        ("0:0", "较长的韩语原文一", "旧译文一"),
+        ("0:1", "较长的韩语原文二", "旧译文二"),
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    request_ids = [
+        router.call(
+            "proofreading.retranslate_segment",
+            {"task_id": "translation-pf-rt-1", "segment_id": segment_id},
+        )["request_id"]
+        for segment_id, _src, _dst in segments
+    ]
+    finals = [
+        _wait_for_status(service, request_id, {"completed", "failed"})
+        for request_id in request_ids
+    ]
+
+    assert [item["status"] for item in finals] == ["completed"] * 2
+    quality_payloads = [
+        json.loads(request["messages"][-1]["content"])
+        for request in transport.requests
+        if "translation quality comparator"
+        in request["messages"][0]["content"]
+    ]
+    assert len(quality_payloads) == 2
+    assert all("items" not in payload for payload in quality_payloads)
+
+
+def test_single_retranslate_invalid_quality_batch_keeps_existing(
+    tmp_path: Path,
+):
+    transport = _StubTransport(
+        translations_by_key={"0": "候选译文。"},
+        judge_invalid_response=True,
+    )
+    service = _make_service(tmp_path, transport=transport, concurrency_limit=2)
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = (
+        ("0:0", "원문 0", "旧译文 0"),
+        ("0:1", "원문 1", "旧译文 1"),
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    request_ids = [
+        router.call(
+            "proofreading.retranslate_segment",
+            {"task_id": "translation-pf-rt-1", "segment_id": segment_id},
+        )["request_id"]
+        for segment_id, _src, _dst in segments
+    ]
+    finals = [
+        _wait_for_status(service, request_id, {"unresolved", "failed"})
+        for request_id in request_ids
+    ]
+
+    assert [item["status"] for item in finals] == ["unresolved"] * 2
+    quality_requests = [
+        request
+        for request in transport.requests
+        if "translation quality comparator"
+        in request["messages"][0]["content"]
+    ]
+    assert len(quality_requests) == 1
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"] == {
+        "0:0": "旧译文 0",
+        "0:1": "旧译文 1",
+    }
 
 
 def test_retranslate_batch_keeps_user_edited_segment_stale(tmp_path: Path):
