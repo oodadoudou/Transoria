@@ -450,6 +450,7 @@ def test_retranslate_batch_sends_five_segments_in_one_request_and_patches_all(
 
     assert final["status"] == "completed", final
     assert len(transport.requests) == 1
+    assert transport.requests[0]["stream"] is True
     assert [item["status"] for item in final["results"]] == ["completed"] * 5
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)

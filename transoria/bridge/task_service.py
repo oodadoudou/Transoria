@@ -3115,6 +3115,7 @@ class TaskService:
             target_language=target_language,
             post_replacements=post_replacements,
             enable_confidence_check=True,
+            stream=True,
             low_confidence_max_retries=max(
                 0, int(settings.translation.low_confidence_max_retries)
             ),
