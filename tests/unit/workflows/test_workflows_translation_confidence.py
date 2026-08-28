@@ -798,6 +798,49 @@ def test_evaluate_allows_unchanged_short_latin_title_without_target_content() ->
     assert not verdict.is_low_confidence
 
 
+def test_evaluate_allows_unchanged_numbered_latin_notation_title() -> None:
+    verdict = evaluate_segment_confidence(
+        "∥8. Moderato piano p.",
+        "∥8. Moderato piano p.",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert not verdict.is_low_confidence
+
+
+def test_evaluate_allows_exact_compact_symbolic_jamo() -> None:
+    verdict = evaluate_segment_confidence(
+        "<ㅇ",
+        "<ㅇ",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert not verdict.is_low_confidence
+
+
+def test_evaluate_flags_numbered_unchanged_latin_prose() -> None:
+    verdict = evaluate_segment_confidence(
+        "∥8. This sentence should still be translated.",
+        "∥8. This sentence should still be translated.",
+        min_length_ratio=0.0,
+        max_length_ratio=10.0,
+        max_punctuation_delta=20,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    assert verdict.is_low_confidence
+    assert TAG_VERBATIM_ECHO in verdict.tags
+
+
 def test_evaluate_flags_ordinary_unchanged_latin_sentence() -> None:
     verdict = evaluate_segment_confidence(
         "this should not come back unchanged",

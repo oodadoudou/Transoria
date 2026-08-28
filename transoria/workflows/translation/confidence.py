@@ -420,6 +420,9 @@ _CLASSIC_IDENTIFIER_PATTERN = re.compile(
     r"\b(?:ISBN(?:-1[03])?|ISSN|DOI|EAN|ASIN)\b", re.I
 )
 _LATIN_NUMBER_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:[xX][A-Za-z0-9]+)?")
+_NUMBERED_LATIN_NOTATION_PREFIX_PATTERN = re.compile(
+    r"^[^\w\s]{0,3}\s*\d{1,4}\s*[.)\-:：、]\s*"
+)
 _TITLE_CONNECTOR_WORDS = frozenset(
     "a an and at by for from in of on or the to vs with".split()
 )
@@ -428,6 +431,7 @@ _PRESERVED_TITLE_MAX_TARGET_CHARS = 160
 _PRESERVED_TITLE_MAX_LATIN_TOKENS = 6
 _PRESERVED_TITLE_MAX_SOURCE_SCRIPT_RATIO = 0.25
 _PRESERVED_TITLE_MIN_TARGET_TOKEN_COVERAGE = 0.60
+_SYMBOLIC_JAMO_MAX_CHARS = 4
 _SCRIPT_RESIDUE_MIN_PURE_CHARS = 12
 _SCRIPT_RESIDUE_MIN_PURE_LETTERS = 8
 _SCRIPT_RESIDUE_MIN_PURE_RATIO = 0.35
@@ -484,6 +488,12 @@ def _looks_like_preserved_title_or_identifier(
     translated = translated_text.strip()
     if not source or not translated:
         return False
+    if _looks_like_exact_symbolic_jamo(
+        source,
+        translated,
+        source_language=source_language,
+    ):
+        return True
     if (
         source_language in _LATIN_SOURCE_LANGUAGES
         and target_language in _CHINESE_TARGET_LANGUAGES
@@ -513,6 +523,11 @@ def _looks_like_preserved_title_or_identifier(
         target_language=target_language,
     ):
         return False
+    if (
+        _normalize_for_similarity(source) == _normalize_for_similarity(translated)
+        and _looks_like_numbered_latin_notation_title(source)
+    ):
+        return True
     if _CLASSIC_IDENTIFIER_PATTERN.search(source) or _CLASSIC_IDENTIFIER_PATTERN.search(
         translated
     ):
@@ -568,6 +583,67 @@ def _looks_like_short_latin_title_text(text: str) -> bool:
             return False
         return False
     return has_title_token
+
+
+def _looks_like_numbered_latin_notation_title(text: str) -> bool:
+    """Recognize concise numbered titles such as musical movement labels.
+
+    A declared Korean or Japanese source can contain a short Latin heading that
+    is intentionally unchanged. Requiring a numbered marker, a title-like token,
+    and at most one ordinary lowercase word keeps prose echoes out of this path.
+    """
+
+    if not _NUMBERED_LATIN_NOTATION_PREFIX_PATTERN.match(text):
+        return False
+    tokens = [
+        match.group(0) for match in _LATIN_NUMBER_TOKEN_PATTERN.finditer(text)
+    ]
+    if not tokens or len(tokens) > _PRESERVED_TITLE_MAX_LATIN_TOKENS:
+        return False
+    has_title_token = False
+    lowercase_words: list[str] = []
+    for token in tokens:
+        if any(char.isdigit() for char in token):
+            continue
+        folded = token.casefold()
+        if folded in _TITLE_CONNECTOR_WORDS:
+            continue
+        if (
+            token.isupper()
+            or token[:1].isupper()
+            or any(char.isupper() for char in token[1:])
+        ):
+            has_title_token = True
+            continue
+        lowercase_words.append(token)
+    long_lowercase_words = [token for token in lowercase_words if len(token) > 2]
+    short_notation_tokens = [token for token in lowercase_words if len(token) <= 2]
+    return (
+        has_title_token
+        and len(long_lowercase_words) <= 1
+        and len(short_notation_tokens) <= 2
+    )
+
+
+def _looks_like_exact_symbolic_jamo(
+    source: str,
+    translated: str,
+    *,
+    source_language: Language | None,
+) -> bool:
+    """Allow a single compatibility Jamo framed as a compact emoticon."""
+
+    if source_language is not Language.KOREAN or source != translated:
+        return False
+    compact = "".join(source.split())
+    if not compact or len(compact) > _SYMBOLIC_JAMO_MAX_CHARS:
+        return False
+    soft_jamo = _KOREAN_SOFT_RESIDUE_PATTERN.findall(compact)
+    if len(soft_jamo) != 1 or not _KOREAN_COMPATIBILITY_CONSONANT_PATTERN.fullmatch(
+        soft_jamo[0]
+    ):
+        return False
+    return any(not char.isalnum() for char in compact)
 
 
 def _looks_like_latin_product_identifier(text: str) -> bool:

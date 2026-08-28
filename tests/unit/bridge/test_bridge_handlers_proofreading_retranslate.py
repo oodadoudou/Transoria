@@ -507,6 +507,44 @@ def test_retranslate_batch_keeps_successes_and_preserves_unresolved_segment(
     assert payload["translations"]["0:4"] == "旧译文 4"
 
 
+def test_retranslate_batch_applies_exact_non_prose_content(tmp_path: Path):
+    title = "∥8. Moderato piano p."
+    transport = _StubTransport(
+        translations_by_key={"0": title, "1": "<ㅇ"}
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 0, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(
+            ("0:0", title, "与标题无关的旧译文。"),
+            ("0:1", "<ㅇ", "与表情无关的旧译文。"),
+        ),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed", final
+    assert [item["status"] for item in final["results"]] == ["completed"] * 2
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"]["0:0"] == title
+    assert payload["translations"]["0:1"] == "<ㅇ"
+
+
 def test_retranslate_single_source_echo_is_unresolved_and_not_written(
     tmp_path: Path,
 ):
