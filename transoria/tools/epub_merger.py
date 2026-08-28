@@ -560,6 +560,8 @@ class _EpubMerger:
                     for itemref in root.findall(".//{*}spine/{*}itemref")
                     if itemref.get("idref")
                 ]
+                pending_html: list[tuple[str, str, str, bool, str]] = []
+                reserved_html_hrefs: set[str] = set()
                 for idref in spine_refs:
                     item = item_by_id.get(idref)
                     if not item:
@@ -587,7 +589,21 @@ class _EpubMerger:
                         index=sum(1 for item in copied_html if not item.is_cover) + 1,
                         is_cover=is_cover_page,
                     )
-                    new_href = _unique_href(f"Text/epub_{epub_index:03d}/{safe_name}", self.files.keys())
+                    new_href = _unique_href(
+                        f"Text/epub_{epub_index:03d}/{safe_name}",
+                        (*self.files.keys(), *reserved_html_hrefs),
+                    )
+                    normalized_href = _normalize_path(href, opf_dir)
+                    html_href_map[normalized_href] = new_href
+                    resource_map[normalized_href] = new_href
+                    reserved_html_hrefs.add(new_href)
+                    pending_html.append((href, html_text, title, is_cover_page, new_href))
+
+                # Rewrite documents only after every spine target has been mapped.
+                # TOC pages and chapter-end links often point forward to a later
+                # document; processing them during the discovery loop left those
+                # links pointing at paths that no longer existed in the merged EPUB.
+                for href, html_text, title, is_cover_page, new_href in pending_html:
                     html_text = _process_html(
                         html_text,
                         epub_index=epub_index,
@@ -609,7 +625,6 @@ class _EpubMerger:
                     if is_cover_page and not self.cover_page_href:
                         self.cover_page_href = new_href
                     normalized_href = _normalize_path(href, opf_dir)
-                    html_href_map[normalized_href] = new_href
                     copied_html.append(
                         _CopiedHtml(
                             original_href=normalized_href,

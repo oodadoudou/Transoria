@@ -513,6 +513,39 @@ def test_merge_rewrites_css_and_image_links_and_deduplicates_images(tmp_path: Pa
         assert "@font-face" not in css
 
 
+def test_merge_rewrites_forward_links_between_spine_documents(tmp_path: Path) -> None:
+    source = tmp_path / "Linked.epub"
+    output = tmp_path / "merged.epub"
+    _write_epub(
+        source,
+        title="Linked",
+        chapter="Contents",
+        chapter_body='<a href="../Other/chapter2.xhtml">Second</a>',
+        chapter_href="Text/chapter1.xhtml",
+        extra_html={"Other/chapter2.xhtml": "<h1>Second</h1>"},
+    )
+
+    result = merge_epub_files(
+        action_id="merge-0000",
+        input_dir=tmp_path,
+        output_path=output,
+        actions=_actions(source),
+        options=EpubMergeOptions(),
+    )
+
+    assert result.status == "merged"
+    with zipfile.ZipFile(output) as archive:
+        first_name = next(
+            name
+            for name in archive.namelist()
+            if name.startswith("OEBPS/Text/epub_000/")
+            and b"Contents" in archive.read(name)
+        )
+        first = archive.read(first_name).decode("utf-8")
+        assert 'href="../Other/chapter2.xhtml"' not in first
+        assert 'href="Linked_1.xhtml"' in first
+
+
 def test_merge_decodes_percent_encoded_resource_and_ncx_hrefs(tmp_path: Path) -> None:
     source = tmp_path / "Encoded.epub"
     output = tmp_path / "merged.epub"
@@ -788,6 +821,7 @@ def _write_epub(
     *,
     title: str,
     chapter: str,
+    chapter_body: str = "",
     author: str = "Author",
     image: bytes | None = None,
     toc_title: str | None = None,
@@ -855,7 +889,7 @@ def _write_epub(
     html = f"""{chapter_prefix}<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><title>{chapter}</title><link href="{css_href}" rel="stylesheet"/></head>
-<body><h1>{chapter}</h1><img src="{image_href}"/></body>
+<body><h1>{chapter}</h1><img src="{image_href}"/>{chapter_body}</body>
 </html>"""
     css = f"@font-face {{ src: url('{font_href}'); }}\nbody {{ background: url('{image_href}'); }}"
     toc_label = toc_title or chapter
