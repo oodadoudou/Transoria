@@ -426,6 +426,42 @@ def test_retranslate_writes_live_and_completed_request_log_events(tmp_path: Path
     assert completed["events"][0]["phase"] == "completed"
 
 
+def test_retranslate_status_does_not_wait_for_task_cache_updates(
+    router_and_service,
+):
+    _router, service, _transport = router_and_service
+    job = RetranslateJob(
+        request_id="retranslate-status-readable",
+        task_id="translation-pf-rt-1",
+        segment_id="0:0",
+        original_dst="旧译文",
+        status="running",
+        created_at_wall="2026-05-04T00:00:00+00:00",
+        updated_at_wall="2026-05-04T00:00:01+00:00",
+    )
+    with service._retranslate_lock:
+        service._retranslate_jobs[job.request_id] = job
+
+    task_lock = service._retranslate_task_lock(job.task_id)
+    task_lock.acquire()
+    finished = threading.Event()
+    result: dict[str, object] = {}
+
+    def read_status() -> None:
+        result.update(service.read_retranslate_status(request_id=job.request_id))
+        finished.set()
+
+    reader = threading.Thread(target=read_status)
+    reader.start()
+    try:
+        assert finished.wait(timeout=0.5)
+    finally:
+        task_lock.release()
+        reader.join(timeout=1.0)
+
+    assert result["status"] == "running"
+
+
 def test_retranslate_batch_sends_five_segments_in_one_request_and_patches_all(
     router_and_service,
 ):

@@ -106,6 +106,7 @@ export function RequestLogPanel({
     message: string;
   } | null>(null);
   const eventCountRef = useRef(0);
+  const loadSequenceRef = useRef(0);
   const copyFeedbackTimerRef = useRef<number | null>(null);
 
   const statusLabels = useMemo(
@@ -148,6 +149,7 @@ export function RequestLogPanel({
       setError("");
       return;
     }
+    const loadSequence = ++loadSequenceRef.current;
     setLoading(true);
     try {
       const result = await BRIDGES[kind].readRequestEvents(taskId, {
@@ -155,6 +157,7 @@ export function RequestLogPanel({
         offset: append ? eventCountRef.current : 0,
         status: statusFilter,
       });
+      if (loadSequence !== loadSequenceRef.current) return;
       setEvents((current) =>
         append ? [...current, ...result.events] : result.events,
       );
@@ -162,9 +165,10 @@ export function RequestLogPanel({
       setTruncated(Boolean(result.truncated));
       setError("");
     } catch (err) {
+      if (loadSequence !== loadSequenceRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (loadSequence === loadSequenceRef.current) setLoading(false);
     }
   }, [kind, statusFilter, taskId]);
 
@@ -174,6 +178,7 @@ export function RequestLogPanel({
 
   useEffect(
     () => () => {
+      loadSequenceRef.current += 1;
       if (copyFeedbackTimerRef.current !== null) {
         window.clearTimeout(copyFeedbackTimerRef.current);
       }
@@ -199,10 +204,18 @@ export function RequestLogPanel({
 
   const handleToggle = (next: boolean) => {
     setVisible(next);
-    if (next) void loadEvents();
+    if (!next) loadSequenceRef.current += 1;
   };
 
   const handleStatusFilter = (next: RequestLogStatusFilter) => {
+    if (next === statusFilter) return;
+    loadSequenceRef.current += 1;
+    eventCountRef.current = 0;
+    setEvents([]);
+    setTotal(0);
+    setTruncated(false);
+    setError("");
+    setLoading(true);
     setStatusFilter(next);
     setExpanded({});
   };

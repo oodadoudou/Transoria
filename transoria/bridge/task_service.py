@@ -524,15 +524,29 @@ def _patch_segment_dst(
     segment_id: str,
     new_dst: str,
 ) -> None:
-    confidence_entry = _confidence_entry_for_segment(snapshot, segment_id, new_dst)
+    _patch_segment_dsts(cache, snapshot, {segment_id: new_dst})
+
+
+def _patch_segment_dsts(
+    cache: TaskCache,
+    snapshot: TaskSnapshot,
+    updates: Mapping[str, str],
+) -> None:
+    confidence_entries = {
+        segment_id: _confidence_entry_for_segment(snapshot, segment_id, new_dst)
+        for segment_id, new_dst in updates.items()
+    }
     for subtask in snapshot.subtasks:
         segments = subtask.request_payload.get("segments")
         if not isinstance(segments, list):
             continue
-        if not any(
-            isinstance(s, Mapping) and s.get("segment_id") == segment_id
-            for s in segments
-        ):
+        matched_ids = {
+            str(segment.get("segment_id"))
+            for segment in segments
+            if isinstance(segment, Mapping)
+            and segment.get("segment_id") in updates
+        }
+        if not matched_ids:
             continue
         try:
             payload = json.loads(subtask.response_content) if subtask.response_content else {}
@@ -545,9 +559,14 @@ def _patch_segment_dst(
         if not isinstance(translations, dict):
             translations = {}
             payload["translations"] = translations
-        translations[segment_id] = new_dst
-        mark_accepted_override(payload, segment_id)
-        _replace_low_confidence_entry(payload, segment_id, confidence_entry)
+        for segment_id in matched_ids:
+            translations[segment_id] = updates[segment_id]
+            mark_accepted_override(payload, segment_id)
+            _replace_low_confidence_entry(
+                payload,
+                segment_id,
+                confidence_entries[segment_id],
+            )
         cache.save_subtask(
             replace(subtask, response_content=json.dumps(payload, ensure_ascii=False))
         )
@@ -1773,12 +1792,17 @@ class TaskService:
         }
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
+        self._retranslate_task_locks: dict[str, threading.Lock] = {}
         self._retranslate_gate = threading.Condition()
         self._active_retranslates_by_model: dict[str, int] = {}
         self._retranslate_quality_gate = threading.Condition()
         self._retranslate_quality_groups: dict[
             str, _RetranslateQualityReviewGroup
         ] = {}
+
+    def _retranslate_task_lock(self, task_id: str) -> threading.Lock:
+        with self._retranslate_lock:
+            return self._retranslate_task_locks.setdefault(task_id, threading.Lock())
 
     # All task records live under a single central root
     # (``<cache_root>/tasks/<task_id>/``). Records carry their kind
@@ -2450,7 +2474,7 @@ class TaskService:
             self._save_retranslate_job(job)
             return
 
-        with self._retranslate_lock:
+        with self._retranslate_task_lock(job.task_id):
             try:
                 snapshot = self.cache.load(job.task_id)
             except (TaskNotFoundError, OSError, ValueError):
@@ -2795,14 +2819,15 @@ class TaskService:
 
         ready: list[dict[str, object]] = []
         results: list[dict[str, object]] = []
-        try:
-            snapshot = self.cache.load(job.task_id)
-        except (TaskNotFoundError, OSError, ValueError):
-            job.error = "task cache disappeared during retranslate."
-            job.last_error = job.error
-            job.status = "failed"
-            self._save_retranslate_job(job)
-            return
+        with self._retranslate_task_lock(job.task_id):
+            try:
+                snapshot = self.cache.load(job.task_id)
+            except (TaskNotFoundError, OSError, ValueError):
+                job.error = "task cache disappeared during retranslate."
+                job.last_error = job.error
+                job.status = "failed"
+                self._save_retranslate_job(job)
+                return
         for item in items:
             segment_id = str(item.get("segment_id", ""))
             seg_data = item.get("seg_data")
@@ -2875,18 +2900,9 @@ class TaskService:
             self._save_retranslate_job(job)
             return
 
-        for item in ready:
-            segment_id = str(item["segment_id"])
-            new_dst = runner_result.translations[segment_id]
-            confidence_entry = runner_result.low_confidence.get(segment_id)
-            results.append(
-                self._apply_retranslate_batch_candidate(
-                    job,
-                    item,
-                    new_dst,
-                    confidence_entry,
-                )
-            )
+        results.extend(
+            self._apply_retranslate_batch_candidates(job, ready, runner_result)
+        )
 
         job.batch_results = results
         primary = next(
@@ -2900,69 +2916,96 @@ class TaskService:
         job.updated_at_wall = _utc_now_iso()
         self._save_retranslate_job(job)
 
-    def _apply_retranslate_batch_candidate(
+    def _apply_retranslate_batch_candidates(
         self,
         job: RetranslateJob,
-        item: Mapping[str, object],
-        new_dst: str,
-        confidence_entry: Mapping[str, object] | None,
-    ) -> dict[str, object]:
-        segment_id = str(item["segment_id"])
-        original_dst = str(item.get("original_dst", ""))
-        with self._retranslate_lock:
+        items: Sequence[Mapping[str, object]],
+        runner_result: _RetranslateRunnerResult,
+    ) -> list[dict[str, object]]:
+        results: list[dict[str, object]] = []
+        updates: dict[str, str] = {}
+        with self._retranslate_task_lock(job.task_id):
             try:
                 snapshot = self.cache.load(job.task_id)
             except (TaskNotFoundError, OSError, ValueError) as exc:
-                return {
-                    "segment_id": segment_id,
-                    "status": "failed",
-                    "error": f"failed to read cache: {exc}",
-                }
-            current_seg = _find_segment_payload(snapshot, segment_id)
-            if current_seg is None or (
-                str(item.get("source_hash", ""))
-                and _hash_text(_retranslate_source_text(current_seg))
-                != str(item.get("source_hash", ""))
-            ):
-                return {
-                    "segment_id": segment_id,
-                    "status": "skipped",
-                    "error": "source segment changed during retranslate.",
-                }
-            if _read_segment_dst(snapshot, segment_id) != original_dst:
-                return {"segment_id": segment_id, "status": "stale"}
-            if _should_keep_existing_retranslation(
-                snapshot,
-                segment_id,
-                original_dst,
-                new_dst,
-                confidence_entry,
-            ):
-                return {
-                    "segment_id": segment_id,
-                    "status": "unresolved",
-                    "result_dst": new_dst,
-                    "error": "retranslation did not improve source-language residue.",
-                    "reasons": list((confidence_entry or {}).get("reasons", [])),
-                    "tags": list((confidence_entry or {}).get("tags", [])),
-                }
+                return [
+                    {
+                        "segment_id": str(item.get("segment_id", "")),
+                        "status": "failed",
+                        "error": f"failed to read cache: {exc}",
+                    }
+                    for item in items
+                ]
+            for item in items:
+                segment_id = str(item["segment_id"])
+                original_dst = str(item.get("original_dst", ""))
+                new_dst = runner_result.translations[segment_id]
+                confidence_entry = runner_result.low_confidence.get(segment_id)
+                current_seg = _find_segment_payload(snapshot, segment_id)
+                if current_seg is None or (
+                    str(item.get("source_hash", ""))
+                    and _hash_text(_retranslate_source_text(current_seg))
+                    != str(item.get("source_hash", ""))
+                ):
+                    results.append(
+                        {
+                            "segment_id": segment_id,
+                            "status": "skipped",
+                            "error": "source segment changed during retranslate.",
+                        }
+                    )
+                    continue
+                if _read_segment_dst(snapshot, segment_id) != original_dst:
+                    results.append({"segment_id": segment_id, "status": "stale"})
+                    continue
+                if _should_keep_existing_retranslation(
+                    snapshot,
+                    segment_id,
+                    original_dst,
+                    new_dst,
+                    confidence_entry,
+                ):
+                    results.append(
+                        {
+                            "segment_id": segment_id,
+                            "status": "unresolved",
+                            "result_dst": new_dst,
+                            "error": "retranslation did not improve source-language residue.",
+                            "reasons": list(
+                                (confidence_entry or {}).get("reasons", [])
+                            ),
+                            "tags": list((confidence_entry or {}).get("tags", [])),
+                        }
+                    )
+                    continue
+                updates[segment_id] = new_dst
+                results.append(
+                    {
+                        "segment_id": segment_id,
+                        "status": "completed",
+                        "result_dst": new_dst,
+                        "original_dst": original_dst,
+                    }
+                )
             try:
-                _patch_segment_dst(self.cache, snapshot, segment_id, new_dst)
+                _patch_segment_dsts(self.cache, snapshot, updates)
             except (TaskNotFoundError, OSError) as exc:
-                return {
-                    "segment_id": segment_id,
-                    "status": "failed",
-                    "error": f"failed to write cache: {exc}",
-                }
-        return {
-            "segment_id": segment_id,
-            "status": "completed",
-            "result_dst": new_dst,
-            "original_dst": original_dst,
-        }
+                for result in results:
+                    segment_id = str(result.get("segment_id", ""))
+                    if segment_id not in updates:
+                        continue
+                    result.clear()
+                    result.update(
+                        {
+                            "segment_id": segment_id,
+                            "status": "failed",
+                            "error": f"failed to write cache: {exc}",
+                        }
+                    )
+        return results
 
     def _finish_retranslate_if_cache_changed(self, job: RetranslateJob) -> bool:
-        with self._retranslate_lock:
+        with self._retranslate_task_lock(job.task_id):
             try:
                 snapshot = self.cache.load(job.task_id)
             except (TaskNotFoundError, OSError, ValueError):
