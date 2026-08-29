@@ -22,6 +22,8 @@ import re
 import threading
 import time
 import traceback
+import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -684,6 +686,11 @@ def _should_keep_existing_retranslation(
     candidate_dst: str,
     candidate_entry: Mapping[str, object] | None,
 ) -> bool:
+    source_segment = _find_segment_payload(snapshot, segment_id)
+    if source_segment is not None and _is_preserved_nonprose_retranslation(
+        _retranslate_source_text(source_segment), candidate_dst
+    ):
+        return False
     candidate_tags = set(_string_values((candidate_entry or {}).get("tags")))
     if "source_residue" not in candidate_tags:
         return False
@@ -694,6 +701,78 @@ def _should_keep_existing_retranslation(
     )
     return _retranslation_quality_rank(candidate_entry) >= _retranslation_quality_rank(
         existing_entry
+    )
+
+
+def _is_preserved_nonprose_retranslation(
+    source_text: str, candidate_text: str
+) -> bool:
+    source = source_text.strip()
+    candidate = candidate_text.strip()
+    if not source or not candidate or not _looks_like_compact_nonprose(source):
+        return False
+    if source == candidate:
+        return True
+    if not _looks_like_compact_nonprose(candidate):
+        return False
+    if len(candidate) > max(80, len(source) * 3):
+        return False
+    source_structure = _nonprose_structure(source)
+    candidate_structure = Counter(_nonprose_structure(candidate))
+    if not source_structure:
+        return False
+    remaining = Counter(source_structure)
+    overlap = sum(
+        min(count, candidate_structure.get(char, 0))
+        for char, count in remaining.items()
+    )
+    return overlap / len(source_structure) >= 0.6
+
+
+def _looks_like_compact_nonprose(text: str) -> bool:
+    compact = "".join(text.split())
+    if not compact or len(compact) > 80:
+        return False
+    jamo_count = sum(_is_korean_jamo(char) for char in compact)
+    letter_count = sum(unicodedata.category(char).startswith("L") for char in compact)
+    lexical_letter_count = letter_count - jamo_count
+    expressive_count = sum(
+        unicodedata.category(char)[0] in {"P", "S"}
+        and char not in "[](){}<>【】（）"
+        for char in compact
+    )
+    if jamo_count and (
+        lexical_letter_count == 0
+        or (
+            compact[0] in "[({<【（"
+            and expressive_count > 0
+            and lexical_letter_count <= 4
+        )
+    ):
+        return True
+    return (
+        expressive_count >= 2
+        and expressive_count / len(compact) >= 0.15
+        and lexical_letter_count <= max(4, len(compact) // 3)
+    )
+
+
+def _nonprose_structure(text: str) -> list[str]:
+    return [
+        char
+        for char in text
+        if _is_korean_jamo(char) or unicodedata.category(char)[0] in {"P", "S"}
+    ]
+
+
+def _is_korean_jamo(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        0x1100 <= codepoint <= 0x11FF
+        or 0x3130 <= codepoint <= 0x318F
+        or 0xA960 <= codepoint <= 0xA97F
+        or 0xD7B0 <= codepoint <= 0xD7FF
+        or 0xFFA0 <= codepoint <= 0xFFDC
     )
 
 
@@ -2540,35 +2619,37 @@ class TaskService:
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
             return
-        try:
-            quality_decision = self._review_retranslation_candidate_batched(
-                source_text=_retranslate_source_text(job.seg_data),
-                existing_dst=job.original_dst,
-                candidate_dst=new_dst,
-                metadata=job.metadata,
-                model_id=job.model_id,
-                model_snapshot=job.model_snapshot,
-            )
-        except Exception as exc:  # noqa: BLE001
-            job.error = (
-                "quality review could not verify the new translation; "
-                f"kept the existing translation ({type(exc).__name__}: {exc})."
-            )
-            job.last_error = job.error
-            job.status = "unresolved"
-            job.updated_at_wall = _utc_now_iso()
-            self._save_retranslate_job(job)
-            return
-        if quality_decision.decision != "accept_new":
-            job.error = (
-                "quality review kept the existing translation: "
-                f"{quality_decision.reason}"
-            )
-            job.last_error = job.error
-            job.status = "unresolved"
-            job.updated_at_wall = _utc_now_iso()
-            self._save_retranslate_job(job)
-            return
+        source_text = _retranslate_source_text(job.seg_data)
+        if not _is_preserved_nonprose_retranslation(source_text, new_dst):
+            try:
+                quality_decision = self._review_retranslation_candidate_batched(
+                    source_text=source_text,
+                    existing_dst=job.original_dst,
+                    candidate_dst=new_dst,
+                    metadata=job.metadata,
+                    model_id=job.model_id,
+                    model_snapshot=job.model_snapshot,
+                )
+            except Exception as exc:  # noqa: BLE001
+                job.error = (
+                    "quality review could not verify the new translation; "
+                    f"kept the existing translation ({type(exc).__name__}: {exc})."
+                )
+                job.last_error = job.error
+                job.status = "unresolved"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return
+            if quality_decision.decision != "accept_new":
+                job.error = (
+                    "quality review kept the existing translation: "
+                    f"{quality_decision.reason}"
+                )
+                job.last_error = job.error
+                job.status = "unresolved"
+                job.updated_at_wall = _utc_now_iso()
+                self._save_retranslate_job(job)
+                return
 
         with self._retranslate_task_lock(job.task_id):
             try:

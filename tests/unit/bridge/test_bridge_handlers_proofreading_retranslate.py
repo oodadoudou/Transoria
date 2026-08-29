@@ -17,6 +17,7 @@ from transoria.bridge.task_registry import RunningTask, TaskRegistry
 from transoria.bridge.task_service import (
     RetranslateJob,
     TaskService,
+    _is_preserved_nonprose_retranslation,
     _read_segment_dst,
 )
 from transoria.domain import (
@@ -615,7 +616,13 @@ def test_retranslate_batch_keeps_successes_and_preserves_unresolved_segment(
 def test_retranslate_batch_applies_exact_non_prose_content(tmp_path: Path):
     title = "∥8. Moderato piano p."
     transport = _StubTransport(
-        translations_by_key={"0": title, "1": "<ㅇ"}
+        translations_by_key={
+            "0": title,
+            "1": "<ㅇ",
+            "2": "[（＾∀＾●）ﾉ]",
+            "3": "[(∪.∪ )...zzz]",
+            "4": "[姓名：ㄲ ㅣ 우]",
+        }
     )
     service = _make_service(tmp_path, transport=transport)
     service.settings_store.save_partial(
@@ -629,6 +636,9 @@ def test_retranslate_batch_applies_exact_non_prose_content(tmp_path: Path):
         segments=(
             ("0:0", title, "与标题无关的旧译文。"),
             ("0:1", "<ㅇ", "与表情无关的旧译文。"),
+            ("0:2", "[（＾∀＾●）ﾉ]", "与表情无关的旧译文。"),
+            ("0:3", "[(∪.∪ )...zzz]", "与表情无关的旧译文。"),
+            ("0:4", "[이름: ㄲ ㅣ 우", "与符号无关的旧译文。"),
         ),
     )
 
@@ -637,17 +647,27 @@ def test_retranslate_batch_applies_exact_non_prose_content(tmp_path: Path):
         {
             "task_id": "translation-pf-rt-1",
             "segment_id": "0:0",
-            "segment_ids": ["0:0", "0:1"],
+            "segment_ids": ["0:0", "0:1", "0:2", "0:3", "0:4"],
         },
     )
     final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
 
     assert final["status"] == "completed", final
-    assert [item["status"] for item in final["results"]] == ["completed"] * 2
+    assert [item["status"] for item in final["results"]] == ["completed"] * 5
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == title
     assert payload["translations"]["0:1"] == "<ㅇ"
+    assert payload["translations"]["0:2"] == "[（＾∀＾●）ﾉ]"
+    assert payload["translations"]["0:3"] == "[(∪.∪ )...zzz]"
+    assert payload["translations"]["0:4"] == "[姓名：ㄲ ㅣ 우]"
+
+
+@pytest.mark.parametrize("source", ["안녕하세요^^", "안녕ㅋㅋ", "Hello!!!"])
+def test_nonprose_quality_rule_rejects_ordinary_text_with_decoration(
+    source: str,
+):
+    assert _is_preserved_nonprose_retranslation(source, source) is False
 
 
 def test_retranslate_single_source_echo_is_unresolved_and_not_written(
@@ -697,7 +717,7 @@ def test_single_retranslate_quality_review_accepts_exact_symbol_preservation(
 ):
     transport = _StubTransport(
         translations_by_key={"0": "ㅋㅋㅋㅋ!!"},
-        judge_decisions=["accept_new"],
+        judge_decisions=["keep_existing"],
     )
     service = _make_service(tmp_path, transport=transport)
     service.settings_store.save_partial(
@@ -726,6 +746,7 @@ def test_single_retranslate_quality_review_accepts_exact_symbol_preservation(
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == "ㅋㅋㅋㅋ!!"
+    assert len(transport.requests) == 1
 
 
 def test_single_retranslate_quality_review_rejects_unrelated_target_prose(
