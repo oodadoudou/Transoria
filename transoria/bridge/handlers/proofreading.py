@@ -1136,6 +1136,25 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             request_id=expect_string(payload, "request_id"),
         )
 
+    def retranslate_statuses(payload: Mapping[str, object]) -> dict[str, object]:
+        raw_request_ids = payload.get("request_ids")
+        if (
+            not isinstance(raw_request_ids, list)
+            or not raw_request_ids
+            or len(raw_request_ids) > 200
+            or not all(
+                isinstance(item, str) and item.strip()
+                for item in raw_request_ids
+            )
+        ):
+            raise BridgeError.invalid_argument(
+                "request_ids must contain between 1 and 200 non-empty strings.",
+                field="request_ids",
+            )
+        return service.read_retranslate_statuses(
+            request_ids=[item.strip() for item in raw_request_ids],
+        )
+
     def resume_retranslate(payload: Mapping[str, object]) -> dict[str, object]:
         return service.resume_retranslate(
             request_id=expect_string(payload, "request_id"),
@@ -1148,6 +1167,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         "proofreading.regenerate_outputs": regenerate_outputs,
         "proofreading.retranslate_segment": retranslate_segment,
         "proofreading.retranslate_status": retranslate_status,
+        "proofreading.retranslate_statuses": retranslate_statuses,
         "proofreading.resume_retranslate": resume_retranslate,
     }
 

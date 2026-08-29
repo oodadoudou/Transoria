@@ -35,6 +35,22 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
     assert tuple(s.id for s in snapshot.subtasks) == ("a", "b")
 
 
+def test_load_subtask_reads_only_requested_record(tmp_path: Path) -> None:
+    cache = TaskCache(root=tmp_path)
+    cache.write_seed(
+        _record(),
+        [
+            _subtask("task-1", "a"),
+            _subtask("task-1", "b", status=SubtaskStatus.COMPLETED),
+        ],
+    )
+
+    assert cache.load_subtask("task-1", "b").status is SubtaskStatus.COMPLETED
+
+    with pytest.raises(TaskNotFoundError):
+        cache.load_subtask("task-1", "missing")
+
+
 def test_write_seed_crash_before_header_leaves_no_loadable_record(tmp_path: Path) -> None:
     cache = TaskCache(root=tmp_path)
     record = _record("crash")

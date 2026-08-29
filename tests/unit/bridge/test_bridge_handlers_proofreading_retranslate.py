@@ -322,6 +322,11 @@ def test_read_segment_dst_matches_proofreading_latest_subtask_wins(
     snapshot = service.cache.load("translation-pf-rt-1")
 
     assert _read_segment_dst(snapshot, "0:0") == "最新译文"
+    with service._retranslate_task_lock("translation-pf-rt-1"):
+        indexed_snapshot = service._load_retranslate_snapshot(
+            "translation-pf-rt-1", ("0:0",)
+        )
+    assert _read_segment_dst(indexed_snapshot, "0:0") == "最新译文"
 
 
 def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):
@@ -344,6 +349,9 @@ def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == "重翻译文0"
+    persisted = service._load_retranslate_job(request_id)  # type: ignore[attr-defined]
+    assert persisted is not None
+    assert persisted.cache_applied is True
 
 
 def test_retranslate_preserved_role_markers_replace_truncated_existing(
@@ -460,6 +468,66 @@ def test_retranslate_status_does_not_wait_for_task_cache_updates(
         reader.join(timeout=1.0)
 
     assert result["status"] == "running"
+
+
+def test_retranslate_statuses_returns_multiple_jobs(router_and_service):
+    router, service, _transport = router_and_service
+    jobs = [
+        RetranslateJob(
+            request_id=f"retranslate-status-{index}",
+            task_id="translation-pf-rt-1",
+            segment_id=f"0:{index}",
+            original_dst="旧译文",
+            status="running",
+            created_at_wall="2026-05-04T00:00:00+00:00",
+            updated_at_wall="2026-05-04T00:00:01+00:00",
+        )
+        for index in range(2)
+    ]
+    with service._retranslate_lock:
+        for job in jobs:
+            service._retranslate_jobs[job.request_id] = job
+
+    result = router.call(
+        "proofreading.retranslate_statuses",
+        {"request_ids": [job.request_id for job in jobs]},
+    )
+
+    assert [status["request_id"] for status in result["statuses"]] == [
+        job.request_id for job in jobs
+    ]
+    assert all(status["status"] == "running" for status in result["statuses"])
+
+
+def test_retranslate_snapshot_index_avoids_reloading_all_subtasks(
+    router_and_service, monkeypatch: pytest.MonkeyPatch
+):
+    _router, service, _transport = router_and_service
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:0", "첫째", "第一"), ("0:1", "둘째", "第二")),
+    )
+    original_load_subtasks = TaskCache.load_subtasks
+    full_loads = 0
+
+    def tracked_load_subtasks(cache: TaskCache, task_id: str):
+        nonlocal full_loads
+        full_loads += 1
+        return original_load_subtasks(cache, task_id)
+
+    monkeypatch.setattr(TaskCache, "load_subtasks", tracked_load_subtasks)
+
+    with service._retranslate_task_lock("translation-pf-rt-1"):
+        first = service._load_retranslate_snapshot(
+            "translation-pf-rt-1", ("0:0",)
+        )
+        second = service._load_retranslate_snapshot(
+            "translation-pf-rt-1", ("0:1",)
+        )
+
+    assert _read_segment_dst(first, "0:0") == "第一"
+    assert _read_segment_dst(second, "0:1") == "第二"
+    assert full_loads == 1
 
 
 def test_retranslate_batch_sends_five_segments_in_one_request_and_patches_all(

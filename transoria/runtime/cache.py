@@ -145,6 +145,12 @@ class TaskCache:
         ]
         return tuple(subtasks)
 
+    def load_subtask(self, task_id: str, subtask_id: str) -> Subtask:
+        path = self.subtask_path(task_id, subtask_id)
+        if not path.exists():
+            raise TaskNotFoundError(f"{task_id}/{subtask_id}")
+        return Subtask.from_dict(_read_json_mapping(path))
+
     def list_tasks(self) -> tuple[TaskRecord, ...]:
         if not self.root.exists():
             return ()

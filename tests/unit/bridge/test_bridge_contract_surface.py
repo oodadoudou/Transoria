@@ -131,6 +131,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "proofreading.regenerate_outputs",
     "proofreading.retranslate_segment",
     "proofreading.retranslate_status",
+    "proofreading.retranslate_statuses",
     "proofreading.resume_retranslate",
     # replacement
     "replacement.import_rules",
@@ -233,7 +234,7 @@ def test_backend_registers_full_contract(router):
     # 2 added 2026-05-04 (tasks.summarize_caches / purge_caches) +
     # 4 added 2026-05-04 (proofreading.{list_tasks, load_snapshot,
     # update_segment, regenerate_outputs}) +
-    # 3 added 2026-05-04/06-14 (proofreading retranslate queue surface) +
+    # 4 added 2026-05-04/06-14/08-29 (proofreading retranslate queue surface) +
     # 10 added 2026-05-04 (glossary_review task/report surface) +
     # 2 added 2026-05-04 (glossary_review final XLSX editor) +
     # 1 added 2026-05-04 (glossary_review input discovery) +
@@ -244,7 +245,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 154
+    assert len(actual) == 155
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -412,6 +413,9 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
         "segment_id": "0:0",
     },
     "proofreading.retranslate_status": {"request_id": "retranslate-missing"},
+    "proofreading.retranslate_statuses": {
+        "request_ids": ["retranslate-missing"]
+    },
     "proofreading.resume_retranslate": {"request_id": "retranslate-missing"},
     "replacement.import_rules": {"path": "/nonexistent-rule-file"},
     "replacement.validate_rules": {"rules": []},

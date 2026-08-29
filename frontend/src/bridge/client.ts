@@ -109,6 +109,77 @@ type RetranslateStatusResponse = {
   }>;
 };
 
+type RetranslateStatusWaiter = {
+  resolve: (status: RetranslateStatusResponse) => void;
+  reject: (reason?: unknown) => void;
+};
+
+const retranslateStatusWaiters = new Map<string, RetranslateStatusWaiter[]>();
+let retranslateStatusFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushRetranslateStatuses(): void {
+  retranslateStatusFlushTimer = null;
+  const pending = new Map(retranslateStatusWaiters);
+  retranslateStatusWaiters.clear();
+  const requestIds = [...pending.keys()];
+  if (requestIds.length === 0) return;
+  const request =
+    requestIds.length === 1
+      ? call<RetranslateStatusResponse>("proofreading.retranslate_status", {
+          request_id: requestIds[0],
+        }).then((status) => ({ statuses: [status] }))
+      : call<{ statuses: RetranslateStatusResponse[] }>(
+          "proofreading.retranslate_statuses",
+          { request_ids: requestIds },
+        );
+  void request.then(
+    ({ statuses }) => {
+      const byRequestId = new Map(
+        statuses.map((status) => [status.request_id, status]),
+      );
+      for (const [requestId, waiters] of pending) {
+        const status = byRequestId.get(requestId);
+        if (status) {
+          for (const waiter of waiters) waiter.resolve(status);
+          continue;
+        }
+        const error = new Error(
+          `Missing retranslation status for ${requestId}`,
+        );
+        for (const waiter of waiters) waiter.reject(error);
+      }
+    },
+    () => {
+      for (const [requestId, waiters] of pending) {
+        void call<RetranslateStatusResponse>(
+          "proofreading.retranslate_status",
+          { request_id: requestId },
+        ).then(
+          (status) => {
+            for (const waiter of waiters) waiter.resolve(status);
+          },
+          (error) => {
+            for (const waiter of waiters) waiter.reject(error);
+          },
+        );
+      }
+    },
+  );
+}
+
+function readRetranslateStatus(
+  requestId: string,
+): Promise<RetranslateStatusResponse> {
+  return new Promise((resolve, reject) => {
+    const waiters = retranslateStatusWaiters.get(requestId) ?? [];
+    waiters.push({ resolve, reject });
+    retranslateStatusWaiters.set(requestId, waiters);
+    if (retranslateStatusFlushTimer === null) {
+      retranslateStatusFlushTimer = setTimeout(flushRetranslateStatuses, 10);
+    }
+  });
+}
+
 export const appBridge = {
   getMetadata(): Promise<AppMetadata> {
     return call("app.get_metadata");
@@ -459,7 +530,7 @@ export const proofreadingBridge = {
     });
   },
   retranslateStatus(requestId: string): Promise<RetranslateStatusResponse> {
-    return call("proofreading.retranslate_status", { request_id: requestId });
+    return readRetranslateStatus(requestId);
   },
   resumeRetranslate(requestId: string): Promise<RetranslateStatusResponse> {
     return call("proofreading.resume_retranslate", { request_id: requestId });

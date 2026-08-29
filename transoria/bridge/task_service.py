@@ -242,6 +242,7 @@ class RetranslateJob:
     prompt_snapshot: dict[str, object] | None = None
     batch_items: list[dict[str, object]] | None = None
     batch_results: list[dict[str, object]] | None = None
+    cache_applied: bool = False
     created_at_wall: str = ""
     updated_at_wall: str = ""
     schema_version: int = 1
@@ -270,6 +271,7 @@ class RetranslateJob:
             "prompt_snapshot": self.prompt_snapshot or {},
             "batch_items": self.batch_items or [],
             "batch_results": self.batch_results or [],
+            "cache_applied": self.cache_applied,
             "created_at_wall": self.created_at_wall,
             "updated_at_wall": self.updated_at_wall,
         }
@@ -327,6 +329,7 @@ class RetranslateJob:
             prompt_snapshot=mapping_or_none("prompt_snapshot"),
             batch_items=mappings("batch_items"),
             batch_results=mappings("batch_results"),
+            cache_applied=bool(data.get("cache_applied", False)),
             created_at_wall=str(data.get("created_at_wall", "")),
             updated_at_wall=str(data.get("updated_at_wall", "")),
             schema_version=schema_version_int,
@@ -351,6 +354,12 @@ def _retranslate_log_subtask_id(request_id: str) -> str:
 class _RetranslateRunnerResult:
     translations: dict[str, str]
     low_confidence: dict[str, dict[str, list[str]]]
+
+
+@dataclass(frozen=True)
+class _RetranslateTaskIndex:
+    task_updated_at: str
+    owner_subtask_ids: dict[str, tuple[str, ...]]
 
 
 @dataclass(frozen=True)
@@ -507,6 +516,31 @@ def _find_segment_payload(
             if isinstance(seg, Mapping) and seg.get("segment_id") == segment_id:
                 return seg
     return None
+
+
+def _build_retranslate_task_index(snapshot: TaskSnapshot) -> _RetranslateTaskIndex:
+    owner_subtask_ids: dict[str, list[str]] = {}
+    for subtask in snapshot.subtasks:
+        segments = subtask.request_payload.get("segments")
+        if not isinstance(segments, list):
+            continue
+        for segment in segments:
+            if not isinstance(segment, Mapping):
+                continue
+            segment_id = segment.get("segment_id")
+            if segment_id in (None, ""):
+                continue
+            key = str(segment_id)
+            owners = owner_subtask_ids.setdefault(key, [])
+            if subtask.id not in owners:
+                owners.append(subtask.id)
+    return _RetranslateTaskIndex(
+        task_updated_at=snapshot.record.updated_at,
+        owner_subtask_ids={
+            segment_id: tuple(owner_ids)
+            for segment_id, owner_ids in owner_subtask_ids.items()
+        },
+    )
 
 
 def _read_segment_dst(snapshot: TaskSnapshot, segment_id: str) -> str:
@@ -1793,6 +1827,7 @@ class TaskService:
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
         self._retranslate_task_locks: dict[str, threading.Lock] = {}
+        self._retranslate_task_indices: dict[str, _RetranslateTaskIndex] = {}
         self._retranslate_gate = threading.Condition()
         self._active_retranslates_by_model: dict[str, int] = {}
         self._retranslate_quality_gate = threading.Condition()
@@ -1803,6 +1838,48 @@ class TaskService:
     def _retranslate_task_lock(self, task_id: str) -> threading.Lock:
         with self._retranslate_lock:
             return self._retranslate_task_locks.setdefault(task_id, threading.Lock())
+
+    def _load_retranslate_snapshot(
+        self, task_id: str, segment_ids: Sequence[str]
+    ) -> TaskSnapshot:
+        record = self.cache.load_record(task_id)
+        index = self._retranslate_task_indices.get(task_id)
+        if index is None or index.task_updated_at != record.updated_at:
+            full_snapshot = self.cache.load(task_id)
+            index = _build_retranslate_task_index(full_snapshot)
+            self._retranslate_task_indices[task_id] = index
+            available = {subtask.id: subtask for subtask in full_snapshot.subtasks}
+        else:
+            available = {}
+
+        owner_ids: set[str] = set()
+        for segment_id in segment_ids:
+            owner_ids.update(index.owner_subtask_ids.get(segment_id, ()))
+        if not owner_ids:
+            return TaskSnapshot(record=record, subtasks=())
+
+        try:
+            subtasks = tuple(
+                available.get(owner_id)
+                or self.cache.load_subtask(task_id, owner_id)
+                for owner_id in sorted(owner_ids)
+            )
+        except (TaskNotFoundError, OSError, ValueError):
+            full_snapshot = self.cache.load(task_id)
+            index = _build_retranslate_task_index(full_snapshot)
+            self._retranslate_task_indices[task_id] = index
+            owner_ids = {
+                owner_id
+                for segment_id in segment_ids
+                for owner_id in index.owner_subtask_ids.get(segment_id, ())
+            }
+            subtasks = tuple(
+                subtask
+                for subtask in full_snapshot.subtasks
+                if subtask.id in owner_ids
+            )
+            record = full_snapshot.record
+        return TaskSnapshot(record=record, subtasks=subtasks)
 
     # All task records live under a single central root
     # (``<cache_root>/tasks/<task_id>/``). Records carry their kind
@@ -2004,8 +2081,15 @@ class TaskService:
         model_id: str | None = None,
         prompt_preset_id: str | None = None,
     ) -> dict[str, object]:
+        requested_ids = list(dict.fromkeys(segment_ids or (segment_id,)))
+        if not requested_ids or len(requested_ids) > 5:
+            raise BridgeError.invalid_argument(
+                "retranslate accepts between 1 and 5 segment ids.",
+                field="segment_ids",
+            )
         try:
-            snapshot = self.cache.load(task_id)
+            with self._retranslate_task_lock(task_id):
+                snapshot = self._load_retranslate_snapshot(task_id, requested_ids)
         except TaskNotFoundError as exc:
             raise BridgeError.not_found(
                 f"task {task_id!r} not found.",
@@ -2023,7 +2107,13 @@ class TaskService:
                     "cannot retranslate while the task is running.",
                     details={"task_id": task_id, "status": snapshot.record.status.value},
                 )
-            snapshot = self._reconcile_zombie(snapshot, self.cache)
+            with self._retranslate_task_lock(task_id):
+                snapshot = self._reconcile_zombie(
+                    self.cache.load(task_id), self.cache
+                )
+                self._retranslate_task_indices[task_id] = (
+                    _build_retranslate_task_index(snapshot)
+                )
         if snapshot.record.status not in {
             TaskStatus.COMPLETED,
             TaskStatus.FAILED,
@@ -2034,12 +2124,6 @@ class TaskService:
                 details={"task_id": task_id, "status": snapshot.record.status.value},
             )
 
-        requested_ids = list(dict.fromkeys(segment_ids or (segment_id,)))
-        if not requested_ids or len(requested_ids) > 5:
-            raise BridgeError.invalid_argument(
-                "retranslate accepts between 1 and 5 segment ids.",
-                field="segment_ids",
-            )
         batch_items: list[dict[str, object]] = []
         for requested_id in requested_ids:
             seg_data = _find_segment_payload(snapshot, requested_id)
@@ -2102,7 +2186,7 @@ class TaskService:
                 ),
                 batch_items=batch_items,
                 batch_results=[],
-                schema_version=2,
+                schema_version=3,
                 created_at_wall=_utc_now_iso(),
                 updated_at_wall=_utc_now_iso(),
             )
@@ -2128,6 +2212,16 @@ class TaskService:
             )
         self._sync_completed_retranslate_result(job)
         return self._retranslate_status_payload(job)
+
+    def read_retranslate_statuses(
+        self, *, request_ids: Sequence[str]
+    ) -> dict[str, object]:
+        return {
+            "statuses": [
+                self.read_retranslate_status(request_id=request_id)
+                for request_id in dict.fromkeys(request_ids)
+            ]
+        }
 
     def resume_retranslate(self, *, request_id: str) -> dict[str, object]:
         with self._retranslate_lock:
@@ -2244,47 +2338,46 @@ class TaskService:
         }
 
     def _sync_completed_retranslate_result(self, job: RetranslateJob) -> None:
-        if job.status != "completed":
+        if job.status != "completed" or job.cache_applied:
             return
-        if job.batch_results:
-            for result in job.batch_results:
-                if result.get("status") != "completed":
-                    continue
-                segment_id = str(result.get("segment_id", ""))
-                result_dst = str(result.get("result_dst", ""))
-                original_dst = str(result.get("original_dst", ""))
-                try:
-                    snapshot = self.cache.load(job.task_id)
-                except (TaskNotFoundError, OSError, ValueError):
-                    return
-                if _read_segment_dst(snapshot, segment_id) == original_dst:
-                    _patch_segment_dst(
-                        self.cache, snapshot, segment_id, result_dst
-                    )
-            return
-        if not job.result_dst:
-            return
-        try:
-            snapshot = self.cache.load(job.task_id)
-        except (TaskNotFoundError, OSError, ValueError):
-            return
-        current_seg = _find_segment_payload(snapshot, job.segment_id)
-        if current_seg is None:
-            return
-        if (
-            job.source_hash
-            and _hash_text(_retranslate_source_text(current_seg)) != job.source_hash
-        ):
-            return
-        current_dst = _read_segment_dst(snapshot, job.segment_id)
-        if current_dst == job.result_dst:
-            return
-        if current_dst != job.original_dst:
-            return
-        try:
-            _patch_segment_dst(self.cache, snapshot, job.segment_id, job.result_dst)
-        except (TaskNotFoundError, OSError):
-            return
+        completed_results = [
+            result
+            for result in job.batch_results or []
+            if result.get("status") == "completed"
+        ]
+        segment_ids = tuple(
+            str(result.get("segment_id", "")) for result in completed_results
+        ) or (job.segment_id,)
+        with self._retranslate_task_lock(job.task_id):
+            try:
+                snapshot = self._load_retranslate_snapshot(
+                    job.task_id, segment_ids
+                )
+            except (TaskNotFoundError, OSError, ValueError):
+                return
+            updates: dict[str, str] = {}
+            if job.batch_results:
+                for result in completed_results:
+                    segment_id = str(result.get("segment_id", ""))
+                    original_dst = str(result.get("original_dst", ""))
+                    if _read_segment_dst(snapshot, segment_id) == original_dst:
+                        updates[segment_id] = str(result.get("result_dst", ""))
+            elif job.result_dst:
+                current_seg = _find_segment_payload(snapshot, job.segment_id)
+                if current_seg is not None and not (
+                    job.source_hash
+                    and _hash_text(_retranslate_source_text(current_seg))
+                    != job.source_hash
+                ):
+                    current_dst = _read_segment_dst(snapshot, job.segment_id)
+                    if current_dst == job.original_dst:
+                        updates[job.segment_id] = job.result_dst
+            try:
+                _patch_segment_dsts(self.cache, snapshot, updates)
+            except (TaskNotFoundError, OSError):
+                return
+        job.cache_applied = True
+        self._save_retranslate_job(job)
 
     def _model_snapshot_for_retranslate(
         self, model_id: str | None
@@ -2410,7 +2503,10 @@ class TaskService:
         new_dst = runner_result.translations[job.segment_id]
         job.last_translation = new_dst
         try:
-            pre_review_snapshot = self.cache.load(job.task_id)
+            with self._retranslate_task_lock(job.task_id):
+                pre_review_snapshot = self._load_retranslate_snapshot(
+                    job.task_id, (job.segment_id,)
+                )
         except (TaskNotFoundError, OSError, ValueError):
             job.error = "task cache disappeared during retranslate."
             job.last_error = job.error
@@ -2476,7 +2572,9 @@ class TaskService:
 
         with self._retranslate_task_lock(job.task_id):
             try:
-                snapshot = self.cache.load(job.task_id)
+                snapshot = self._load_retranslate_snapshot(
+                    job.task_id, (job.segment_id,)
+                )
             except (TaskNotFoundError, OSError, ValueError):
                 job.error = "task cache disappeared during retranslate."
                 job.last_error = job.error
@@ -2518,6 +2616,7 @@ class TaskService:
                 self._save_retranslate_job(job)
                 return
             job.result_dst = new_dst
+            job.cache_applied = True
             job.status = "completed"
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
@@ -2821,7 +2920,10 @@ class TaskService:
         results: list[dict[str, object]] = []
         with self._retranslate_task_lock(job.task_id):
             try:
-                snapshot = self.cache.load(job.task_id)
+                snapshot = self._load_retranslate_snapshot(
+                    job.task_id,
+                    tuple(str(item.get("segment_id", "")) for item in items),
+                )
             except (TaskNotFoundError, OSError, ValueError):
                 job.error = "task cache disappeared during retranslate."
                 job.last_error = job.error
@@ -2905,6 +3007,7 @@ class TaskService:
         )
 
         job.batch_results = results
+        job.cache_applied = True
         primary = next(
             (item for item in results if item.get("segment_id") == job.segment_id),
             None,
@@ -2926,7 +3029,10 @@ class TaskService:
         updates: dict[str, str] = {}
         with self._retranslate_task_lock(job.task_id):
             try:
-                snapshot = self.cache.load(job.task_id)
+                snapshot = self._load_retranslate_snapshot(
+                    job.task_id,
+                    tuple(str(item.get("segment_id", "")) for item in items),
+                )
             except (TaskNotFoundError, OSError, ValueError) as exc:
                 return [
                     {
@@ -3007,7 +3113,9 @@ class TaskService:
     def _finish_retranslate_if_cache_changed(self, job: RetranslateJob) -> bool:
         with self._retranslate_task_lock(job.task_id):
             try:
-                snapshot = self.cache.load(job.task_id)
+                snapshot = self._load_retranslate_snapshot(
+                    job.task_id, (job.segment_id,)
+                )
             except (TaskNotFoundError, OSError, ValueError):
                 job.error = "task cache disappeared during retranslate."
                 job.last_error = job.error
