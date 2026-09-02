@@ -375,6 +375,43 @@ def test_pool_falls_back_when_provider_rejects_stream_options() -> None:
     assert pool.dead_keys == frozenset()
 
 
+def test_pool_falls_back_when_provider_rejects_thinking() -> None:
+    transport = RecordingTransport(
+        queue=[
+            _http(
+                400,
+                {
+                    "error": {
+                        "message": "Unknown parameter: 'thinking'.",
+                        "param": "thinking",
+                        "code": "unknown_parameter",
+                    }
+                },
+            ),
+            _ok("fallback ok"),
+        ]
+    )
+    client = LlmClient(transport=transport)
+    pool = KeyPool(("ka", "kb"))
+    request = ChatRequest(
+        model=_model("ka", "kb"),
+        system_prompt="",
+        user_prompt="ping",
+        key_pool=pool,
+    )
+
+    response = asyncio.run(client.chat(request))
+
+    assert response.content == "fallback ok"
+    assert [h["Authorization"] for h in transport.headers_seen] == [
+        "Bearer ka",
+        "Bearer ka",
+    ]
+    assert transport.payloads_seen[0]["thinking"] == {"type": "disabled"}
+    assert "thinking" not in transport.payloads_seen[1]
+    assert pool.dead_keys == frozenset()
+
+
 def test_pool_falls_back_when_provider_rejects_streaming() -> None:
     transport = RecordingTransport(
         queue=[

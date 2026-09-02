@@ -164,6 +164,144 @@ def test_chat_explicitly_disables_thinking_when_level_is_off() -> None:
     assert payload["thinking"] == {"type": "disabled"}
 
 
+def test_chat_retries_without_unsupported_thinking_and_remembers_capability() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                400,
+                {
+                    "error": {
+                        "message": "Unknown parameter: 'thinking'.",
+                        "type": "invalid_request_error",
+                        "param": "thinking",
+                        "code": "unknown_parameter",
+                    }
+                },
+            ),
+            TransportResult(200, _ok_body("first")),
+            TransportResult(200, _ok_body("second")),
+        ]
+    )
+    client = LlmClient(transport=transport)
+    request = ChatRequest(model=_model(), system_prompt="sys", user_prompt="user")
+
+    first = asyncio.run(client.chat(request))
+    second = asyncio.run(client.chat(request))
+
+    assert first.content == "first"
+    assert second.content == "second"
+    assert transport.calls[0]["payload"]["thinking"] == {"type": "disabled"}
+    assert "thinking" not in transport.calls[1]["payload"]
+    assert "thinking" not in transport.calls[2]["payload"]
+
+
+def test_chat_retries_without_thinking_when_enabled_model_rejects_parameter() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                422,
+                {
+                    "detail": [
+                        {
+                            "loc": ["body", "thinking"],
+                            "msg": "Extra inputs are not permitted",
+                        }
+                    ]
+                },
+            ),
+            TransportResult(200, _ok_body("ok")),
+        ]
+    )
+    client = LlmClient(transport=transport)
+
+    response = asyncio.run(
+        client.chat(
+            ChatRequest(
+                model=_model(thinking_level=ThinkingLevel.HIGH),
+                system_prompt="sys",
+                user_prompt="user",
+            )
+        )
+    )
+
+    assert response.content == "ok"
+    assert transport.calls[0]["payload"]["thinking"] == {"type": "enabled"}
+    assert "thinking" not in transport.calls[1]["payload"]
+
+
+def test_chat_does_not_drop_thinking_for_unrelated_bad_request() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                400,
+                {
+                    "error": {
+                        "message": "The thinking budget is invalid.",
+                        "type": "invalid_request_error",
+                        "param": "thinking",
+                        "code": "invalid_value",
+                    }
+                },
+            )
+        ]
+    )
+    client = LlmClient(transport=transport)
+
+    with pytest.raises(LlmRequestError, match="HTTP 400"):
+        asyncio.run(
+            client.chat(
+                ChatRequest(
+                    model=_model(thinking_level=ThinkingLevel.HIGH),
+                    system_prompt="sys",
+                    user_prompt="user",
+                )
+            )
+        )
+
+    assert len(transport.calls) == 1
+    assert transport.calls[0]["payload"]["thinking"] == {"type": "enabled"}
+
+
+def test_chat_applies_sequential_openai_compatibility_fallbacks() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                400,
+                {"error": {"message": "Unknown parameter: stream_options"}},
+            ),
+            TransportResult(
+                400,
+                {"error": {"message": "Unknown parameter: thinking"}},
+            ),
+            TransportResult(
+                400,
+                {"error": {"message": "Streaming is not supported"}},
+            ),
+            TransportResult(200, _ok_body("ok")),
+        ]
+    )
+    client = LlmClient(transport=transport)
+
+    response = asyncio.run(
+        client.chat(
+            ChatRequest(
+                model=_model(),
+                system_prompt="sys",
+                user_prompt="user",
+                stream=True,
+            )
+        )
+    )
+
+    assert response.content == "ok"
+    assert "stream_options" in transport.calls[0]["payload"]
+    assert "stream_options" not in transport.calls[1]["payload"]
+    assert "thinking" in transport.calls[1]["payload"]
+    assert "thinking" not in transport.calls[2]["payload"]
+    assert "stream" in transport.calls[2]["payload"]
+    assert "stream" not in transport.calls[3]["payload"]
+
+
 def test_chat_rotates_api_key_on_429() -> None:
     transport = FakeTransport(
         responses=[

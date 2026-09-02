@@ -436,14 +436,11 @@ class HttpxChatTransport:
 _ROTATABLE_STATUSES: frozenset[int] = frozenset({401, 403, 429})
 
 
-# OpenAI-compatible thinking flag. We always state our intent
-# explicitly: ``disabled`` when the user wants OFF, ``enabled``
-# otherwise. Reasoning-default providers (DeepSeek-V3.2, GLM-Zero,
-# Kimi-K, etc.) honor ``disabled`` and stop burning reasoning tokens;
-# non-reasoning providers ignore unknown body fields and behave
-# normally. This keeps the runtime free of any hard-coded model-id
-# allowlist — users decide whether to engage reasoning by the level
-# they pick, and the provider applies whatever default budget it has.
+# OpenAI-compatible thinking flag. We state our intent explicitly so
+# reasoning-default providers can honor OFF without burning reasoning
+# tokens. Some strict OpenAI-compatible endpoints reject the extension
+# instead of ignoring it; the send path detects that exact rejection,
+# retries without the field, and remembers the capability for later calls.
 def _thinking_payload(level: ThinkingLevel) -> dict[str, object] | None:
     if level is ThinkingLevel.OFF:
         return {"type": "disabled"}
@@ -693,23 +690,61 @@ def _body_mentions_stream_options(body: Mapping[str, object]) -> bool:
     return "stream_options" in text or "include_usage" in text
 
 
+_PAYLOAD_FIELD_REJECTION_TERMS: tuple[str, ...] = (
+    r"not\s+support(?:ed)?",
+    r"unsupported",
+    r"unknown\s+(?:request\s+)?(?:parameter|field|argument)",
+    r"unrecognized\s+(?:request\s+)?(?:parameter|field|argument)",
+    r"unexpected\s+(?:request\s+)?(?:parameter|field|argument)",
+    r"extra\s+inputs?\s+are\s+not\s+permitted",
+    r"not\s+permitted",
+    r"not\s+allowed",
+)
+
+
+def _body_rejects_payload_field(
+    body: Mapping[str, object], field_name: str
+) -> bool:
+    """Return true only when an error says a named field is unsupported.
+
+    A generic 400 that merely mentions the field must not trigger a silent
+    retry. Structured ``param``/``code`` errors and close textual rejection
+    phrases cover OpenAI, Pydantic, and common compatibility gateways.
+    """
+
+    error = body.get("error")
+    if isinstance(error, Mapping):
+        param = str(error.get("param", "")).strip("'\" ").lower()
+        code = str(error.get("code", "")).lower()
+        if param == field_name.lower() and any(
+            marker in code
+            for marker in ("unknown", "unsupported", "unrecognized", "unexpected")
+        ):
+            return True
+
+    text = json.dumps(body, ensure_ascii=False, default=str).lower()
+    field_word = rf"(?<![a-z0-9_]){re.escape(field_name.lower())}(?![a-z0-9_])"
+    if re.search(field_word, text) is None:
+        return False
+    rejection = "|".join(_PAYLOAD_FIELD_REJECTION_TERMS)
+    nearby = r"[^.;\n]{0,120}"
+    return bool(
+        re.search(f"{field_word}{nearby}(?:{rejection})", text)
+        or re.search(f"(?:{rejection}){nearby}{field_word}", text)
+    )
+
+
 def _body_rejects_streaming(body: Mapping[str, object]) -> bool:
     text = json.dumps(body, ensure_ascii=False, default=str).lower()
     has_stream = re.search(r"(?<![a-z0-9_])stream(?:ing)?(?![a-z0-9_])", text)
     if has_stream is None:
         return False
-    rejection_terms = (
-        r"not\s+support(?:ed)?",
-        r"unsupported",
-        r"unknown\s+(?:request\s+)?(?:parameter|field|argument)",
-        r"unrecognized\s+(?:request\s+)?(?:parameter|field|argument)",
-        r"invalid\s+(?:request\s+)?(?:parameter|field|argument)",
-        r"unexpected\s+(?:request\s+)?(?:parameter|field|argument)",
-        r"extra\s+inputs?\s+are\s+not\s+permitted",
-        r"not\s+permitted",
-        r"not\s+allowed",
+    rejection = "|".join(
+        (
+            *_PAYLOAD_FIELD_REJECTION_TERMS,
+            r"invalid\s+(?:request\s+)?(?:parameter|field|argument)",
+        )
     )
-    rejection = "|".join(rejection_terms)
     stream_word = r"(?<![a-z0-9_])stream(?:ing)?(?![a-z0-9_])"
     nearby = r"[^.;\n]{0,120}"
     return bool(
@@ -740,9 +775,58 @@ def _should_retry_without_streaming(
     return _body_rejects_streaming(result.body)
 
 
+def _should_retry_without_thinking(
+    payload: Mapping[str, object], result: TransportResult
+) -> bool:
+    if "thinking" not in payload:
+        return False
+    if result.status_code not in {400, 422}:
+        return False
+    return _body_rejects_payload_field(result.body, "thinking")
+
+
+def _payload_rejection_fallback(
+    payload: Mapping[str, object], result: TransportResult
+) -> tuple[str, str, tuple[str, ...]] | None:
+    if _should_retry_without_stream_options(payload, result):
+        return (
+            "stream_options",
+            "without streaming usage request",
+            ("stream_options",),
+        )
+    if _should_retry_without_thinking(payload, result):
+        return (
+            "thinking",
+            "without the native thinking parameter",
+            ("thinking",),
+        )
+    if _should_retry_without_streaming(payload, result):
+        return (
+            "streaming",
+            "without stream",
+            ("stream_options", "stream"),
+        )
+    return None
+
+
+def _payload_capability_key(model: ModelConfig, field_name: str) -> tuple[str, ...]:
+    return (
+        model.provider_format.value,
+        model.base_url.rstrip("/").lower(),
+        model.model_id,
+        field_name,
+    )
+
+
 @dataclass(frozen=True)
 class LlmClient:
     transport: ChatTransport
+    _unsupported_payload_fields: set[tuple[str, ...]] = field(
+        default_factory=set,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     async def aclose(self) -> None:
         close = getattr(self.transport, "aclose", None)
@@ -823,7 +907,11 @@ class LlmClient:
             ):
                 payload["stream_options"] = {"include_usage": True}
         thinking = _thinking_payload(request.model.thinking_level)
-        if thinking is not None:
+        thinking_key = _payload_capability_key(request.model, "thinking")
+        if (
+            thinking is not None
+            and thinking_key not in self._unsupported_payload_fields
+        ):
             payload["thinking"] = thinking
 
         url = request.model.base_url.rstrip("/") + "/chat/completions"
@@ -1012,6 +1100,49 @@ class LlmClient:
             raise
         return result, fallback_start, fallback_log
 
+    async def _apply_payload_compatibility_fallbacks(
+        self,
+        *,
+        request: ChatRequest,
+        url: str,
+        headers: Mapping[str, str],
+        payload: dict[str, object],
+        result: TransportResult,
+        send_start: float,
+        request_log: RequestLogHandle | None,
+        provider_attempt: int,
+    ) -> tuple[TransportResult, float, RequestLogHandle | None]:
+        """Retry a request after explicit unsupported-field responses.
+
+        Each fallback removes at least one field, so the loop is finite while
+        still handling gateways that reject extensions one at a time.
+        """
+
+        while True:
+            fallback = _payload_rejection_fallback(payload, result)
+            if fallback is None:
+                return result, send_start, request_log
+            rejected_feature, retry_action, drop_fields = fallback
+            if "thinking" in drop_fields:
+                self._unsupported_payload_fields.add(
+                    _payload_capability_key(request.model, "thinking")
+                )
+            result, send_start, request_log = (
+                await self._retry_after_payload_rejection(
+                    request=request,
+                    url=url,
+                    headers=headers,
+                    payload=payload,
+                    rejected_result=result,
+                    send_start=send_start,
+                    request_log=request_log,
+                    provider_attempt=provider_attempt,
+                    rejected_feature=rejected_feature,
+                    retry_action=retry_action,
+                    drop_fields=drop_fields,
+                )
+            )
+
     async def _send_with_rotation(
         self,
         request: ChatRequest,
@@ -1082,67 +1213,32 @@ class LlmClient:
                     code="llm.transport_error",
                 ) from exc
 
-            if _should_retry_without_stream_options(payload, result):
-                try:
-                    result, send_start, request_log = (
-                        await self._retry_after_payload_rejection(
-                            request=request,
-                            url=url,
-                            headers=headers,
-                            payload=payload,
-                            rejected_result=result,
-                            send_start=send_start,
-                            request_log=request_log,
-                            provider_attempt=attempt + 1,
-                            rejected_feature="stream_options",
-                            retry_action="without streaming usage request",
-                            drop_fields=("stream_options",),
-                        )
+            try:
+                result, send_start, request_log = (
+                    await self._apply_payload_compatibility_fallbacks(
+                        request=request,
+                        url=url,
+                        headers=headers,
+                        payload=payload,
+                        result=result,
+                        send_start=send_start,
+                        request_log=request_log,
+                        provider_attempt=attempt + 1,
                     )
-                except LlmDegenerateOutputError:
-                    raise
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    last_error = exc
-                    if attempt + 1 < attempts:
-                        continue
-                    detail = _transport_error_detail(exc)
-                    raise LlmRequestError(
-                        f"Transport failed for model {request.model.id!r}: {detail}",
-                        code="llm.transport_error",
-                    ) from exc
-
-            if _should_retry_without_streaming(payload, result):
-                try:
-                    result, send_start, request_log = (
-                        await self._retry_after_payload_rejection(
-                            request=request,
-                            url=url,
-                            headers=headers,
-                            payload=payload,
-                            rejected_result=result,
-                            send_start=send_start,
-                            request_log=request_log,
-                            provider_attempt=attempt + 1,
-                            rejected_feature="streaming",
-                            retry_action="without stream",
-                            drop_fields=("stream_options", "stream"),
-                        )
-                    )
-                except LlmDegenerateOutputError:
-                    raise
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    last_error = exc
-                    if attempt + 1 < attempts:
-                        continue
-                    detail = _transport_error_detail(exc)
-                    raise LlmRequestError(
-                        f"Transport failed for model {request.model.id!r}: {detail}",
-                        code="llm.transport_error",
-                    ) from exc
+                )
+            except LlmDegenerateOutputError:
+                raise
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_error = exc
+                if attempt + 1 < attempts:
+                    continue
+                detail = _transport_error_detail(exc)
+                raise LlmRequestError(
+                    f"Transport failed for model {request.model.id!r}: {detail}",
+                    code="llm.transport_error",
+                ) from exc
 
             latency = time.monotonic() - send_start
             try:
@@ -1281,61 +1377,29 @@ class LlmClient:
                     code="llm.transport_error",
                 ) from exc
 
-            if _should_retry_without_stream_options(payload, result):
-                try:
-                    result, send_start, request_log = (
-                        await self._retry_after_payload_rejection(
-                            request=request,
-                            url=url,
-                            headers=headers,
-                            payload=payload,
-                            rejected_result=result,
-                            send_start=send_start,
-                            request_log=request_log,
-                            provider_attempt=provider_attempt,
-                            rejected_feature="stream_options",
-                            retry_action="without streaming usage request",
-                            drop_fields=("stream_options",),
-                        )
+            try:
+                result, send_start, request_log = (
+                    await self._apply_payload_compatibility_fallbacks(
+                        request=request,
+                        url=url,
+                        headers=headers,
+                        payload=payload,
+                        result=result,
+                        send_start=send_start,
+                        request_log=request_log,
+                        provider_attempt=provider_attempt,
                     )
-                except LlmDegenerateOutputError:
-                    raise
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    detail = _transport_error_detail(exc)
-                    raise LlmRequestError(
-                        f"Transport failed for model {request.model.id!r}: {detail}",
-                        code="llm.transport_error",
-                    ) from exc
-
-            if _should_retry_without_streaming(payload, result):
-                try:
-                    result, send_start, request_log = (
-                        await self._retry_after_payload_rejection(
-                            request=request,
-                            url=url,
-                            headers=headers,
-                            payload=payload,
-                            rejected_result=result,
-                            send_start=send_start,
-                            request_log=request_log,
-                            provider_attempt=provider_attempt,
-                            rejected_feature="streaming",
-                            retry_action="without stream",
-                            drop_fields=("stream_options", "stream"),
-                        )
-                    )
-                except LlmDegenerateOutputError:
-                    raise
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    detail = _transport_error_detail(exc)
-                    raise LlmRequestError(
-                        f"Transport failed for model {request.model.id!r}: {detail}",
-                        code="llm.transport_error",
-                    ) from exc
+                )
+            except LlmDegenerateOutputError:
+                raise
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                detail = _transport_error_detail(exc)
+                raise LlmRequestError(
+                    f"Transport failed for model {request.model.id!r}: {detail}",
+                    code="llm.transport_error",
+                ) from exc
 
             latency = time.monotonic() - send_start
             try:
