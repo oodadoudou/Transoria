@@ -1450,6 +1450,92 @@ def test_runner_falls_back_to_source_when_residue_persists() -> None:
     assert len(transport.responses) == 2
 
 
+def test_runner_preserves_korean_latin_title_candidate_when_enabled() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body('{"0":"All About Ethan Carter."}\n')),
+            TransportResult(200, _ok_body('{"0":"All About Ethan Carter."}\n')),
+            TransportResult(200, _ok_body('{"0":"All About Ethan Carter."}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=1,
+        preserve_korean_latin_title_candidates=True,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask(sources=("올 어바웃 에단 카터.",)))
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"]["0:0"] == "All About Ethan Carter."
+    assert payload[PRESERVED_CANDIDATE_SEGMENTS_KEY] == ["0:0"]
+    flagged = payload["low_confidence"][0]
+    assert "force_accepted_after_max_retries" in flagged["reasons"]
+    assert "fell_back_to_source_after_max_retries" not in flagged["reasons"]
+
+
+def test_runner_does_not_preserve_korean_latin_title_candidate_by_default() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body('{"0":"All About Ethan Carter."}\n')),
+            TransportResult(200, _ok_body('{"0":"All About Ethan Carter."}\n')),
+            TransportResult(200, _ok_body('{"0":"All About Ethan Carter."}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=1,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask(sources=("올 어바웃 에단 카터.",)))
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"]["0:0"] == "올 어바웃 에단 카터."
+    assert PRESERVED_CANDIDATE_SEGMENTS_KEY not in payload
+
+
+def test_runner_rejects_latin_prose_as_korean_title_candidate() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body('{"0":"He really is fine."}\n')),
+            TransportResult(200, _ok_body('{"0":"He really is fine."}\n')),
+            TransportResult(200, _ok_body('{"0":"He really is fine."}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=1,
+        preserve_korean_latin_title_candidates=True,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask(sources=("그는 정말 괜찮다.",)))
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"]["0:0"] == "그는 정말 괜찮다."
+    assert PRESERVED_CANDIDATE_SEGMENTS_KEY not in payload
+
+
 def test_runner_retries_solo_low_confidence_transport_error() -> None:
     transport = FlakyTransport(
         outcomes=[

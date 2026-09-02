@@ -613,6 +613,54 @@ def test_retranslate_batch_keeps_successes_and_preserves_unresolved_segment(
     assert payload["translations"]["0:4"] == "旧译文 4"
 
 
+def test_retranslate_batch_writes_korean_latin_title_candidates(tmp_path: Path):
+    transport = _StubTransport(
+        translations_by_key={
+            "0": "All About Ethan Carter.",
+            "1": "“<Vanilla Twilight>？”",
+            "2": "“<Barney's Grill Westwood>。”",
+            "3": "<Jack in the Box>.",
+            "4": "这是普通正文。",
+        }
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 1, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = (
+        ("0:1576", "올 어바웃 에단 카터.", "올 어바웃 에단 카터."),
+        ("0:2090", "“<바닐라 트와일라잇>?”", "“<바닐라 트와일라잇>?”"),
+        ("0:5504", "“<바니즈 그릴 웨스트우드>.”", "“<바니즈 그릴 웨스트우드>.”"),
+        ("0:16112", "<잭 인 더 박스>.", "<잭 인 더 박스>."),
+        ("0:20000", "평범한 본문이다.", "普通旧译文。"),
+    )
+    _seed_task_with_snapshot(service, segments=segments)
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:1576",
+            "segment_ids": [item[0] for item in segments],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed", final
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"] == {
+        "0:1576": "All About Ethan Carter.",
+        "0:2090": "“<Vanilla Twilight>？”",
+        "0:5504": "“<Barney's Grill Westwood>。”",
+        "0:16112": "<Jack in the Box>.",
+        "0:20000": "这是普通正文。",
+    }
+
+
 def test_retranslate_batch_applies_exact_non_prose_content(tmp_path: Path):
     title = "∥8. Moderato piano p."
     transport = _StubTransport(

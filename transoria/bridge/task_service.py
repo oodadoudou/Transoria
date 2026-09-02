@@ -3354,6 +3354,7 @@ class TaskService:
             transport_retry_attempts=max(
                 0, int(settings.translation.request_retry_attempts)
             ),
+            preserve_korean_latin_title_candidates=True,
         )
         translations: dict[str, str] = {}
         low_confidence: dict[str, dict[str, list[str]]] = {}
