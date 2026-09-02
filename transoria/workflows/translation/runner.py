@@ -1557,7 +1557,7 @@ class TranslationSubtaskRunner:
                         tags.append("source_residue")
                 preserved_korean_latin_title = (
                     self.preserve_korean_latin_title_candidates
-                    and _looks_like_korean_latin_title_candidate(
+                    and is_korean_latin_title_candidate(
                         meta.original_text,
                         last_text,
                         source_language=self.source_language,
@@ -1689,7 +1689,7 @@ class TranslationSubtaskRunner:
                     )
                     or (
                         self.preserve_korean_latin_title_candidates
-                        and _looks_like_korean_latin_title_candidate(
+                        and is_korean_latin_title_candidate(
                             meta.original_text,
                             finalized[meta.segment_id],
                             source_language=self.source_language,
@@ -2213,7 +2213,7 @@ def _has_target_language_candidate(text: str, target_language: Language) -> bool
     return bool(text.strip()) and _target_language_score(text, target_language) > 0.0
 
 
-def _looks_like_korean_latin_title_candidate(
+def is_korean_latin_title_candidate(
     source_text: str,
     candidate_text: str,
     *,
@@ -2421,5 +2421,6 @@ __all__ = [
     "TranslationRecoveryRunner",
     "TranslationSubtaskRunner",
     "encode_subtask_payload",
+    "is_korean_latin_title_candidate",
     "split_segment_payload_batches",
 ]

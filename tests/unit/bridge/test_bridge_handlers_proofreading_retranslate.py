@@ -650,6 +650,15 @@ def test_retranslate_batch_writes_korean_latin_title_candidates(tmp_path: Path):
     final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
 
     assert final["status"] == "completed", final
+    quality_requests = [
+        request
+        for request in transport.requests
+        if "translation quality comparator"
+        in request["messages"][0]["content"]
+    ]
+    assert len(quality_requests) == 1
+    quality_payload = json.loads(quality_requests[0]["messages"][-1]["content"])
+    assert len(quality_payload["items"]) == 4
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"] == {
@@ -658,6 +667,98 @@ def test_retranslate_batch_writes_korean_latin_title_candidates(tmp_path: Path):
         "0:5504": "“<Barney's Grill Westwood>。”",
         "0:16112": "<Jack in the Box>.",
         "0:20000": "这是普通正文。",
+    }
+
+
+def test_retranslate_batch_keeps_title_when_quality_review_rejects(
+    tmp_path: Path,
+):
+    transport = _StubTransport(
+        translations_by_key={
+            "0": "Unrelated English Title",
+            "1": "这是正确的中文。",
+        },
+        judge_decisions=["keep_existing"],
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 0, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(
+            ("0:0", "올 어바웃 에단", "保留的旧译文"),
+            ("0:1", "정상적인 문장.", "旧的中文。"),
+        ),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    statuses = {item["segment_id"]: item["status"] for item in final["results"]}
+    assert statuses == {"0:0": "unresolved", "0:1": "completed"}
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"] == {
+        "0:0": "保留的旧译文",
+        "0:1": "这是正确的中文。",
+    }
+
+
+def test_retranslate_batch_keeps_title_when_quality_review_fails(tmp_path: Path):
+    transport = _StubTransport(
+        translations_by_key={
+            "0": "All About Ethan",
+            "1": "这是正确的中文。",
+        },
+        judge_fail=True,
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 0, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(
+            ("0:0", "올 어바웃 에단", "保留的旧译文"),
+            ("0:1", "정상적인 문장.", "旧的中文。"),
+        ),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    statuses = {item["segment_id"]: item["status"] for item in final["results"]}
+    assert statuses == {"0:0": "unresolved", "0:1": "completed"}
+    failed_item = next(
+        item for item in final["results"] if item["segment_id"] == "0:0"
+    )
+    assert "could not verify" in failed_item["error"]
+    snapshot = service.cache.load("translation-pf-rt-1")
+    payload = json.loads(snapshot.subtasks[0].response_content)
+    assert payload["translations"] == {
+        "0:0": "保留的旧译文",
+        "0:1": "这是正确的中文。",
     }
 
 

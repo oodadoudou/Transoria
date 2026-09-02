@@ -356,6 +356,7 @@ def _retranslate_log_subtask_id(request_id: str) -> str:
 class _RetranslateRunnerResult:
     translations: dict[str, str]
     low_confidence: dict[str, dict[str, list[str]]]
+    quality_review_segments: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -399,7 +400,10 @@ _RETRANSLATE_QUALITY_COMPARATOR_PROMPT = (
     "can be correct for symbols, emoticons, sound effects, names, codes, "
     "and other non-prose content. Do not prefer a candidate merely because "
     "it contains more target-language characters. Reject unrelated prose, "
-    "hallucination, omission, or a semantic/function mismatch. Choose "
+    "hallucination, omission, or a semantic/function mismatch. "
+    "A source-script phonetic spelling may become a canonical Latin proper "
+    "title or name only when that identity is clear; reject unrelated Latin "
+    "prose or uncertain phonetic matches. Choose "
     "accept_new only when the new candidate is clearly faithful and at "
     "least as suitable as the existing translation. Choose keep_existing "
     "when the existing translation is safer. Choose uncertain when the "
@@ -3041,6 +3045,8 @@ class TaskService:
                 continue
             ready.append(item)
 
+        quality_decisions: dict[str, _RetranslateQualityDecision] = {}
+        quality_review_error = ""
         try:
             if ready:
                 with request_log_scope(
@@ -3058,6 +3064,13 @@ class TaskService:
                             model_snapshot=job.model_snapshot,
                             prompt_preset_id=job.prompt_preset_id,
                             prompt_snapshot=job.prompt_snapshot,
+                        )
+                    )
+                    quality_decisions, quality_review_error = (
+                        self._review_retranslate_batch_title_candidates(
+                            job,
+                            ready,
+                            runner_result,
                         )
                     )
             else:
@@ -3084,7 +3097,13 @@ class TaskService:
             return
 
         results.extend(
-            self._apply_retranslate_batch_candidates(job, ready, runner_result)
+            self._apply_retranslate_batch_candidates(
+                job,
+                ready,
+                runner_result,
+                quality_decisions=quality_decisions,
+                quality_review_error=quality_review_error,
+            )
         )
 
         job.batch_results = results
@@ -3100,11 +3119,72 @@ class TaskService:
         job.updated_at_wall = _utc_now_iso()
         self._save_retranslate_job(job)
 
+    def _review_retranslate_batch_title_candidates(
+        self,
+        job: RetranslateJob,
+        items: Sequence[Mapping[str, object]],
+        runner_result: _RetranslateRunnerResult,
+    ) -> tuple[dict[str, _RetranslateQualityDecision], str]:
+        review_segment_ids: list[str] = []
+        review_items: list[_RetranslateQualityReviewItem] = []
+        metadata = job.metadata or {}
+        for item in items:
+            segment_id = str(item.get("segment_id", ""))
+            if segment_id not in runner_result.quality_review_segments:
+                continue
+            seg_data = item.get("seg_data")
+            if not isinstance(seg_data, Mapping):
+                continue
+            source_text = _retranslate_source_text(seg_data)
+            existing_dst = str(item.get("original_dst", ""))
+            candidate_dst = runner_result.translations[segment_id]
+            review_segment_ids.append(segment_id)
+            review_items.append(
+                _RetranslateQualityReviewItem(
+                    source_text=source_text,
+                    existing_dst=existing_dst,
+                    candidate_dst=candidate_dst,
+                    source_language=str(metadata.get("source_language", "")),
+                    target_language=str(metadata.get("target_language", "")),
+                    model_id=job.model_id,
+                    model_snapshot=(
+                        dict(job.model_snapshot)
+                        if job.model_snapshot is not None
+                        else None
+                    ),
+                    estimated_tokens=_estimate_dynamic_input_tokens(
+                        json.dumps(
+                            {
+                                "source": source_text,
+                                "existing_translation": existing_dst,
+                                "new_candidate": candidate_dst,
+                            },
+                            ensure_ascii=False,
+                        )
+                    ),
+                )
+            )
+        if not review_items:
+            return {}, ""
+        try:
+            indexed = asyncio.run(
+                self._review_retranslation_candidates_batch(review_items)
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {}, f"{type(exc).__name__}: {exc}"
+        return {
+            segment_id: indexed[str(index)]
+            for index, segment_id in enumerate(review_segment_ids)
+        }, ""
+
     def _apply_retranslate_batch_candidates(
         self,
         job: RetranslateJob,
         items: Sequence[Mapping[str, object]],
         runner_result: _RetranslateRunnerResult,
+        *,
+        quality_decisions: Mapping[str, _RetranslateQualityDecision],
+        quality_review_error: str,
     ) -> list[dict[str, object]]:
         results: list[dict[str, object]] = []
         updates: dict[str, str] = {}
@@ -3145,6 +3225,40 @@ class TaskService:
                 if _read_segment_dst(snapshot, segment_id) != original_dst:
                     results.append({"segment_id": segment_id, "status": "stale"})
                     continue
+                if segment_id in runner_result.quality_review_segments:
+                    decision = quality_decisions.get(segment_id)
+                    if quality_review_error:
+                        results.append(
+                            {
+                                "segment_id": segment_id,
+                                "status": "unresolved",
+                                "result_dst": new_dst,
+                                "error": (
+                                    "quality review could not verify the new "
+                                    "title candidate; kept the existing "
+                                    f"translation ({quality_review_error})."
+                                ),
+                            }
+                        )
+                        continue
+                    if decision is None or decision.decision != "accept_new":
+                        reason = (
+                            decision.reason
+                            if decision is not None
+                            else "quality review returned no decision"
+                        )
+                        results.append(
+                            {
+                                "segment_id": segment_id,
+                                "status": "unresolved",
+                                "result_dst": new_dst,
+                                "error": (
+                                    "quality review did not approve the new "
+                                    f"title candidate: {reason}"
+                                ),
+                            }
+                        )
+                        continue
                 if _should_keep_existing_retranslation(
                     snapshot,
                     segment_id,
@@ -3269,6 +3383,7 @@ class TaskService:
         from transoria.workflows.translation.runner import (  # noqa: PLC0415
             TranslationSubtaskRunner,
             encode_subtask_payload,
+            is_korean_latin_title_candidate,
             split_segment_payload_batches,
         )
 
@@ -3437,7 +3552,24 @@ class TaskService:
                 f"runner returned no translation for segments: {sorted(missing)!r}.",
                 retryable=True,
             )
-        return _RetranslateRunnerResult(translations, low_confidence)
+        quality_review_segments = frozenset(
+            segment_id
+            for seg_data in seg_datas
+            if (
+                (segment_id := str(seg_data["segment_id"])) in translations
+                and is_korean_latin_title_candidate(
+                    str(seg_data.get("original_text", "")),
+                    translations[segment_id],
+                    source_language=source_language,
+                    target_language=target_language,
+                )
+            )
+        )
+        return _RetranslateRunnerResult(
+            translations,
+            low_confidence,
+            quality_review_segments,
+        )
 
     def _model_for_retranslate(
         self,
