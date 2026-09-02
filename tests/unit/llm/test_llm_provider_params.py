@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 from dataclasses import dataclass, field
 from typing import Mapping
 
@@ -26,7 +27,7 @@ class FakeTransport:
         payload: Mapping[str, object],
         timeout: float,
     ) -> TransportResult:
-        self.captured.append(dict(payload))
+        self.captured.append(copy.deepcopy(dict(payload)))
         return self.responses.pop(0)
 
 
@@ -139,3 +140,85 @@ def test_google_generation_config_includes_thinking_when_enabled() -> None:
     # MEDIUM maps to 768 by the level ladder; the user's 8000 only
     # acts as an upper bound.
     assert payload["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 768
+
+
+def test_anthropic_retries_without_unsupported_cache_control() -> None:
+    ok_body = {
+        "content": [{"type": "text", "text": "x"}],
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                400,
+                {
+                    "error": {
+                        "message": "cache_control: Extra inputs are not permitted"
+                    }
+                },
+            ),
+            TransportResult(200, ok_body),
+        ]
+    )
+    model = ModelConfig(
+        id="m",
+        display_name="m",
+        provider_format=ProviderFormat.ANTHROPIC,
+        base_url="https://anthropic-compatible.example",
+        model_id="claude-compatible",
+        api_keys=("k",),
+    )
+    client = LlmClient(transport=transport)
+
+    response = asyncio.run(
+        client.chat(ChatRequest(model=model, system_prompt="sys", user_prompt="x"))
+    )
+
+    assert response.content == "x"
+    assert transport.captured[0]["system"][0]["cache_control"] == {
+        "type": "ephemeral"
+    }
+    assert "cache_control" not in transport.captured[1]["system"][0]
+    assert transport.captured[1]["system"][0]["text"] == "sys"
+
+
+def test_google_retries_without_unsupported_thinking_config() -> None:
+    ok_body = {
+        "candidates": [{"content": {"parts": [{"text": "x"}]}}],
+        "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1},
+    }
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                400,
+                {
+                    "error": {
+                        "message": (
+                            "Unknown name 'thinkingConfig' at "
+                            "'generation_config'"
+                        )
+                    }
+                },
+            ),
+            TransportResult(200, ok_body),
+        ]
+    )
+    model = ModelConfig(
+        id="m",
+        display_name="m",
+        provider_format=ProviderFormat.GOOGLE,
+        base_url="https://generativelanguage.googleapis.com",
+        model_id="gemini-compatible",
+        api_keys=("k",),
+        thinking_level=ThinkingLevel.MEDIUM,
+        thinking_budget_tokens=8000,
+    )
+    client = LlmClient(transport=transport)
+
+    response = asyncio.run(
+        client.chat(ChatRequest(model=model, system_prompt="sys", user_prompt="x"))
+    )
+
+    assert response.content == "x"
+    assert "thinkingConfig" in transport.captured[0]["generationConfig"]
+    assert "generationConfig" not in transport.captured[1]

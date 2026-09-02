@@ -693,12 +693,22 @@ def _body_mentions_stream_options(body: Mapping[str, object]) -> bool:
 _PAYLOAD_FIELD_REJECTION_TERMS: tuple[str, ...] = (
     r"not\s+support(?:ed)?",
     r"unsupported",
-    r"unknown\s+(?:request\s+)?(?:parameter|field|argument)",
-    r"unrecognized\s+(?:request\s+)?(?:parameter|field|argument)",
-    r"unexpected\s+(?:request\s+)?(?:parameter|field|argument)",
+    r"unknown\s+(?:request\s+)?(?:parameter|field|argument|name)",
+    r"unrecognized\s+(?:request\s+)?(?:parameter|field|argument|name)",
+    r"unexpected\s+(?:request\s+)?(?:parameter|field|argument|name)",
     r"extra\s+inputs?\s+are\s+not\s+permitted",
     r"not\s+permitted",
     r"not\s+allowed",
+)
+
+_OPTIONAL_COMPATIBILITY_FIELDS: tuple[str, ...] = (
+    "thinking",
+    "thinkingConfig",
+    "cache_control",
+    "temperature",
+    "top_p",
+    "presence_penalty",
+    "frequency_penalty",
 )
 
 
@@ -775,30 +785,59 @@ def _should_retry_without_streaming(
     return _body_rejects_streaming(result.body)
 
 
-def _should_retry_without_thinking(
-    payload: Mapping[str, object], result: TransportResult
+def _payload_contains_field(
+    payload: Mapping[str, object], field_name: str
 ) -> bool:
-    if "thinking" not in payload:
-        return False
-    if result.status_code not in {400, 422}:
-        return False
-    return _body_rejects_payload_field(result.body, "thinking")
+    if field_name in payload:
+        return True
+    generation_config = payload.get("generationConfig")
+    if isinstance(generation_config, Mapping) and field_name in generation_config:
+        return True
+    if field_name == "cache_control":
+        system = payload.get("system")
+        if isinstance(system, list):
+            return any(
+                isinstance(block, Mapping) and field_name in block
+                for block in system
+            )
+    return False
+
+
+def _drop_payload_field(payload: dict[str, object], field_name: str) -> None:
+    payload.pop(field_name, None)
+    generation_config = payload.get("generationConfig")
+    if isinstance(generation_config, dict):
+        generation_config.pop(field_name, None)
+        if not generation_config:
+            payload.pop("generationConfig", None)
+    if field_name == "cache_control":
+        system = payload.get("system")
+        if isinstance(system, list):
+            for block in system:
+                if isinstance(block, dict):
+                    block.pop(field_name, None)
 
 
 def _payload_rejection_fallback(
     payload: Mapping[str, object], result: TransportResult
 ) -> tuple[str, str, tuple[str, ...]] | None:
+    if result.status_code not in {400, 422}:
+        return None
     if _should_retry_without_stream_options(payload, result):
         return (
             "stream_options",
             "without streaming usage request",
             ("stream_options",),
         )
-    if _should_retry_without_thinking(payload, result):
+    for field_name in _OPTIONAL_COMPATIBILITY_FIELDS:
+        if not _payload_contains_field(payload, field_name):
+            continue
+        if not _body_rejects_payload_field(result.body, field_name):
+            continue
         return (
-            "thinking",
-            "without the native thinking parameter",
-            ("thinking",),
+            field_name,
+            f"without the unsupported {field_name} parameter",
+            (field_name,),
         )
     if _should_retry_without_streaming(payload, result):
         return (
@@ -814,7 +853,7 @@ def _payload_capability_key(model: ModelConfig, field_name: str) -> tuple[str, .
         model.provider_format.value,
         model.base_url.rstrip("/").lower(),
         model.model_id,
-        field_name,
+        field_name.lower(),
     )
 
 
@@ -832,6 +871,18 @@ class LlmClient:
         close = getattr(self.transport, "aclose", None)
         if close is not None:
             await close()
+
+    def _drop_cached_unsupported_fields(
+        self, model: ModelConfig, payload: dict[str, object]
+    ) -> None:
+        cached = self._unsupported_payload_fields
+        for field_name in (
+            *_OPTIONAL_COMPATIBILITY_FIELDS,
+            "stream_options",
+            "stream",
+        ):
+            if _payload_capability_key(model, field_name) in cached:
+                _drop_payload_field(payload, field_name)
 
     async def _execute_transport(
         self,
@@ -907,12 +958,9 @@ class LlmClient:
             ):
                 payload["stream_options"] = {"include_usage": True}
         thinking = _thinking_payload(request.model.thinking_level)
-        thinking_key = _payload_capability_key(request.model, "thinking")
-        if (
-            thinking is not None
-            and thinking_key not in self._unsupported_payload_fields
-        ):
+        if thinking is not None:
             payload["thinking"] = thinking
+        self._drop_cached_unsupported_fields(request.model, payload)
 
         url = request.model.base_url.rstrip("/") + "/chat/completions"
         custom = request.model.custom_headers_dict()
@@ -964,6 +1012,7 @@ class LlmClient:
                 "type": "enabled",
                 "budget_tokens": request.model.effective_thinking_budget(),
             }
+        self._drop_cached_unsupported_fields(request.model, payload)
 
         url = request.model.base_url.rstrip("/") + "/v1/messages"
         custom = request.model.custom_headers_dict()
@@ -1011,6 +1060,7 @@ class LlmClient:
             }
         if generation_config:
             payload["generationConfig"] = generation_config
+        self._drop_cached_unsupported_fields(request.model, payload)
 
         # Google uses URL-bound API keys: ?key=<key>
         url_template = (
@@ -1063,7 +1113,7 @@ class LlmClient:
         )
         # Rejected payload features are endpoint-level, so later key attempts skip them.
         for field_name in drop_fields:
-            payload.pop(field_name, None)
+            _drop_payload_field(payload, field_name)
         log_send(request.log_label, request.model.id, payload)
         fallback_start = time.monotonic()
         fallback_log = begin_llm_request(
@@ -1123,9 +1173,9 @@ class LlmClient:
             if fallback is None:
                 return result, send_start, request_log
             rejected_feature, retry_action, drop_fields = fallback
-            if "thinking" in drop_fields:
+            for field_name in drop_fields:
                 self._unsupported_payload_fields.add(
-                    _payload_capability_key(request.model, "thinking")
+                    _payload_capability_key(request.model, field_name)
                 )
             result, send_start, request_log = (
                 await self._retry_after_payload_rejection(

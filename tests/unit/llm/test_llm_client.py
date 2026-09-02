@@ -262,6 +262,61 @@ def test_chat_does_not_drop_thinking_for_unrelated_bad_request() -> None:
     assert transport.calls[0]["payload"]["thinking"] == {"type": "enabled"}
 
 
+def test_chat_retries_without_unsupported_sampling_parameter() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                400,
+                {
+                    "error": {
+                        "message": (
+                            "Unsupported value: 'temperature' does not support "
+                            "0.3 with this model."
+                        ),
+                        "param": "temperature",
+                        "code": "unsupported_value",
+                    }
+                },
+            ),
+            TransportResult(200, _ok_body("ok")),
+        ]
+    )
+    client = LlmClient(transport=transport)
+
+    response = asyncio.run(
+        client.chat(
+            ChatRequest(
+                model=_model(temperature=0.3),
+                system_prompt="sys",
+                user_prompt="user",
+            )
+        )
+    )
+
+    assert response.content == "ok"
+    assert transport.calls[0]["payload"]["temperature"] == 0.3
+    assert "temperature" not in transport.calls[1]["payload"]
+    assert transport.calls[1]["payload"]["thinking"] == {"type": "disabled"}
+
+
+def test_successful_content_cannot_trigger_payload_fallback() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body("Unknown parameter: thinking")),
+        ]
+    )
+    client = LlmClient(transport=transport)
+
+    response = asyncio.run(
+        client.chat(
+            ChatRequest(model=_model(), system_prompt="sys", user_prompt="user")
+        )
+    )
+
+    assert response.content == "Unknown parameter: thinking"
+    assert len(transport.calls) == 1
+
+
 def test_chat_applies_sequential_openai_compatibility_fallbacks() -> None:
     transport = FakeTransport(
         responses=[
