@@ -401,9 +401,16 @@ _RETRANSLATE_QUALITY_COMPARATOR_PROMPT = (
     "and other non-prose content. Do not prefer a candidate merely because "
     "it contains more target-language characters. Reject unrelated prose, "
     "hallucination, omission, or a semantic/function mismatch. "
-    "A source-script phonetic spelling may become a canonical Latin proper "
-    "title or name only when that identity is clear; reject unrelated Latin "
-    "prose or uncertain phonetic matches. Choose "
+    "For Korean source and a Chinese target, a short Latin candidate may "
+    "restore a foreign name, title, phrase, or dialogue spelled phonetically "
+    "in Hangul, regardless of capitalization or word spacing. Accept this "
+    "only if the source sounds clearly correspond to the candidate words "
+    "and the meaning and function are preserved. An ordinary Korean sentence "
+    "translated semantically into English is a wrong-target translation, "
+    "not phonetic restoration: reject it even if its meaning is accurate. "
+    "Reject unrelated Latin prose, omissions, and uncertain phonetic matches. "
+    "An unchanged Korean source is not evidence that preservation is correct. "
+    "Choose "
     "accept_new only when the new candidate is clearly faithful and at "
     "least as suitable as the existing translation. Choose keep_existing "
     "when the existing translation is safer. Choose uncertain when the "
@@ -3067,7 +3074,7 @@ class TaskService:
                         )
                     )
                     quality_decisions, quality_review_error = (
-                        self._review_retranslate_batch_title_candidates(
+                        self._review_retranslate_batch_latin_candidates(
                             job,
                             ready,
                             runner_result,
@@ -3119,7 +3126,7 @@ class TaskService:
         job.updated_at_wall = _utc_now_iso()
         self._save_retranslate_job(job)
 
-    def _review_retranslate_batch_title_candidates(
+    def _review_retranslate_batch_latin_candidates(
         self,
         job: RetranslateJob,
         items: Sequence[Mapping[str, object]],
@@ -3235,7 +3242,7 @@ class TaskService:
                                 "result_dst": new_dst,
                                 "error": (
                                     "quality review could not verify the new "
-                                    "title candidate; kept the existing "
+                                    "Latin candidate; kept the existing "
                                     f"translation ({quality_review_error})."
                                 ),
                             }
@@ -3254,7 +3261,7 @@ class TaskService:
                                 "result_dst": new_dst,
                                 "error": (
                                     "quality review did not approve the new "
-                                    f"title candidate: {reason}"
+                                    f"Latin candidate: {reason}"
                                 ),
                             }
                         )
@@ -3383,7 +3390,7 @@ class TaskService:
         from transoria.workflows.translation.runner import (  # noqa: PLC0415
             TranslationSubtaskRunner,
             encode_subtask_payload,
-            is_korean_latin_title_candidate,
+            is_korean_latin_review_candidate,
             split_segment_payload_batches,
         )
 
@@ -3469,7 +3476,7 @@ class TaskService:
             transport_retry_attempts=max(
                 0, int(settings.translation.request_retry_attempts)
             ),
-            preserve_korean_latin_title_candidates=True,
+            preserve_korean_latin_review_candidates=True,
         )
         translations: dict[str, str] = {}
         low_confidence: dict[str, dict[str, list[str]]] = {}
@@ -3557,7 +3564,7 @@ class TaskService:
             for seg_data in seg_datas
             if (
                 (segment_id := str(seg_data["segment_id"])) in translations
-                and is_korean_latin_title_candidate(
+                and is_korean_latin_review_candidate(
                     str(seg_data.get("original_text", "")),
                     translations[segment_id],
                     source_language=source_language,

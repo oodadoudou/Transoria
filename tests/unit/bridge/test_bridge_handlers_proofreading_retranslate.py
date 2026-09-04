@@ -670,6 +670,105 @@ def test_retranslate_batch_writes_korean_latin_title_candidates(tmp_path: Path):
     }
 
 
+@pytest.mark.parametrize("batch", [False, True])
+def test_retranslate_reviews_phonetic_dialogue_before_writeback(
+    tmp_path: Path, batch: bool,
+):
+    source = "“해피 버스데이 투 유.”"
+    candidate = "“happy birthday to you.”"
+    transport = _StubTransport(
+        translations_by_key={"0": candidate, "1": "普通中文。"},
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 1, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = [("0:0", source, source)]
+    if batch:
+        segments.append(("0:1", "일반 문장이다.", "旧译文。"))
+    _seed_task_with_snapshot(service, segments=segments)
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": [item[0] for item in segments],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed", final
+    review_requests = [
+        request for request in transport.requests
+        if "translation quality comparator" in request["messages"][0]["content"]
+    ]
+    assert len(review_requests) == 1
+    review = review_requests[0]
+    comparison = json.loads(review["messages"][-1]["content"])
+    item = comparison["items"][0] if "items" in comparison else comparison
+    assert item["source"] == source
+    assert item["existing_translation"] == source
+    assert item["new_candidate"] == candidate
+    assert "wrong-target translation" in review["messages"][0]["content"]
+    snapshot = service.cache.load("translation-pf-rt-1")
+    assert _read_segment_dst(snapshot, "0:0") == candidate
+
+
+@pytest.mark.parametrize("batch", [False, True])
+@pytest.mark.parametrize("decision", ["keep_existing", "uncertain", "invalid", "error"])
+def test_retranslate_latin_prose_requires_quality_approval(
+    tmp_path: Path, batch: bool, decision: str,
+):
+    candidate = "He really is fine."
+    transport = _StubTransport(
+        translations_by_key={"0": candidate, "1": "普通中文。"},
+        judge_decisions=[decision],
+        judge_invalid_response=decision == "invalid",
+        judge_fail=decision == "error",
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation",
+        {"low_confidence_max_retries": 0, "request_retry_attempts": 0},
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = [("0:0", "그는 정말 괜찮다.", "他确实没事。")]
+    if batch:
+        segments.append(("0:1", "일반 문장이다.", "旧译文。"))
+    _seed_task_with_snapshot(service, segments=segments)
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": [item[0] for item in segments],
+        },
+    )
+    final = _wait_for_status(
+        service, response["request_id"], {"completed", "unresolved", "failed"},
+    )
+
+    assert final["results"][0]["status"] == "unresolved", final
+    review_requests = [
+        request for request in transport.requests
+        if "translation quality comparator" in request["messages"][0]["content"]
+    ]
+    assert review_requests
+    comparison = json.loads(review_requests[0]["messages"][-1]["content"])
+    item = comparison["items"][0] if "items" in comparison else comparison
+    assert item["new_candidate"] == candidate
+    snapshot = service.cache.load("translation-pf-rt-1")
+    assert _read_segment_dst(snapshot, "0:0") == "他确实没事。"
+    if batch:
+        assert _read_segment_dst(snapshot, "0:1") == "普通中文。"
+
+
 def test_retranslate_batch_keeps_title_when_quality_review_rejects(
     tmp_path: Path,
 ):

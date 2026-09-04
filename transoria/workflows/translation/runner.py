@@ -779,7 +779,7 @@ class TranslationSubtaskRunner:
     fake_name_roster: FakeNameRoster | FakeNameSession | None = None
     solo_retry_limiter: asyncio.Semaphore | None = None
     transport_retry_attempts: int = 3
-    preserve_korean_latin_title_candidates: bool = False
+    preserve_korean_latin_review_candidates: bool = False
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
@@ -1555,9 +1555,9 @@ class TranslationSubtaskRunner:
                 if has_source_residue or echoes_source:
                     if "source_residue" not in tags:
                         tags.append("source_residue")
-                preserved_korean_latin_title = (
-                    self.preserve_korean_latin_title_candidates
-                    and is_korean_latin_title_candidate(
+                preserved_korean_latin_candidate = (
+                    self.preserve_korean_latin_review_candidates
+                    and is_korean_latin_review_candidate(
                         meta.original_text,
                         last_text,
                         source_language=self.source_language,
@@ -1569,7 +1569,7 @@ class TranslationSubtaskRunner:
                         last_text,
                         self.target_language,
                     )
-                    and not preserved_korean_latin_title
+                    and not preserved_korean_latin_candidate
                 ):
                     finalized[meta.segment_id] = meta.original_text
                     extra_reason = "fell_back_to_source_after_max_retries"
@@ -1688,8 +1688,8 @@ class TranslationSubtaskRunner:
                         self.target_language,
                     )
                     or (
-                        self.preserve_korean_latin_title_candidates
-                        and is_korean_latin_title_candidate(
+                        self.preserve_korean_latin_review_candidates
+                        and is_korean_latin_review_candidate(
                             meta.original_text,
                             finalized[meta.segment_id],
                             source_language=self.source_language,
@@ -2157,13 +2157,10 @@ _LATIN_TARGET_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
 _ARABIC_TARGET_RE = re.compile(r"[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]")
 _CYRILLIC_TARGET_RE = re.compile(r"[\u0400-\u04ff]")
 _THAI_TARGET_RE = re.compile(r"[\u0e00-\u0e7f]")
-_KOREAN_TITLE_WORD_RE = re.compile(r"[\uac00-\ud7af]+")
-_LATIN_TITLE_WORD_RE = re.compile(
+_KOREAN_REVIEW_WORD_RE = re.compile(r"[\uac00-\ud7af]+")
+_LATIN_REVIEW_WORD_RE = re.compile(
     r"[A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]+"
     r"(?:['\u2019-][A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]+)*"
-)
-_LATIN_TITLE_CONNECTORS = frozenset(
-    "a an and at by for from in of on or the to vs with".split()
 )
 
 
@@ -2213,13 +2210,14 @@ def _has_target_language_candidate(text: str, target_language: Language) -> bool
     return bool(text.strip()) and _target_language_score(text, target_language) > 0.0
 
 
-def is_korean_latin_title_candidate(
+def is_korean_latin_review_candidate(
     source_text: str,
     candidate_text: str,
     *,
     source_language: Language,
     target_language: Language,
 ) -> bool:
+    # This only stages a candidate for mandatory review, never authorizes it.
     if source_language is not Language.KOREAN or target_language not in (
         Language.CHINESE_SIMPLIFIED,
         Language.CHINESE_TRADITIONAL,
@@ -2239,16 +2237,9 @@ def is_korean_latin_title_candidate(
         return False
     if any(_LATIN_TARGET_RE.fullmatch(char) is None for char in candidate_letters):
         return False
-    source_words = _KOREAN_TITLE_WORD_RE.findall(source)
-    candidate_words = _LATIN_TITLE_WORD_RE.findall(candidate)
-    if not 2 <= len(source_words) == len(candidate_words) <= 8:
-        return False
-    return all(
-        word.casefold() in _LATIN_TITLE_CONNECTORS
-        or word.isupper()
-        or word[:1].isupper()
-        for word in candidate_words
-    )
+    source_words = _KOREAN_REVIEW_WORD_RE.findall(source)
+    candidate_words = _LATIN_REVIEW_WORD_RE.findall(candidate)
+    return 1 <= len(source_words) <= 8 and 1 <= len(candidate_words) <= 8
 
 
 def _low_confidence_candidate_rank(
@@ -2421,6 +2412,6 @@ __all__ = [
     "TranslationRecoveryRunner",
     "TranslationSubtaskRunner",
     "encode_subtask_payload",
-    "is_korean_latin_title_candidate",
+    "is_korean_latin_review_candidate",
     "split_segment_payload_batches",
 ]
