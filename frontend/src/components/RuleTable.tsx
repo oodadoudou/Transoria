@@ -82,6 +82,8 @@ interface RuleTableProps<T> {
    * when the user clicks through to clear the sort. */
   onSortChange?: (next: SortState | null) => void;
   getRowClassName?: (rule: T, index: number) => string | undefined;
+  /** Render large tables incrementally as the viewport approaches the end. */
+  renderBatchSize?: number;
 }
 
 interface ContextMenuState {
@@ -122,15 +124,62 @@ export function RuleTable<T>({
   sortState,
   onSortChange,
   getRowClassName,
+  renderBatchSize,
 }: RuleTableProps<T>) {
   const messages = useMessages();
   const gridTemplate = ["28px", "36px", ...columns.map((c) => c.width)].join(
     " ",
   );
   const tableRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const headerCheckboxRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [editing, setEditing] = useState<EditingCell | null>(null);
+  const batchSize =
+    renderBatchSize && renderBatchSize > 0
+      ? Math.floor(renderBatchSize)
+      : null;
+  const [renderLimit, setRenderLimit] = useState(() =>
+    batchSize ? Math.min(rules.length, batchSize) : rules.length,
+  );
+  const previousRulesLengthRef = useRef(rules.length);
+
+  useEffect(() => {
+    const previousLength = previousRulesLengthRef.current;
+    previousRulesLengthRef.current = rules.length;
+    if (!batchSize) {
+      setRenderLimit(rules.length);
+      return;
+    }
+    setRenderLimit((current) => {
+      if (rules.length <= batchSize) return rules.length;
+      if (rules.length < previousLength) return Math.min(current, rules.length);
+      if (rules.length - previousLength <= 1 && current >= previousLength) {
+        return rules.length;
+      }
+      return Math.max(batchSize, Math.min(current, rules.length));
+    });
+  }, [batchSize, rules.length]);
+
+  const hasMoreRows = renderLimit < rules.length;
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!batchSize || !hasMoreRows || !target) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setRenderLimit(rules.length);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setRenderLimit((current) =>
+        Math.min(rules.length, current + batchSize),
+      );
+    }, { rootMargin: "240px 0px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [batchSize, hasMoreRows, rules.length]);
+
+  const renderedRules = hasMoreRows ? rules.slice(0, renderLimit) : rules;
 
   const selectedSet = useMemo(
     () => new Set(selection.indices),
@@ -351,7 +400,7 @@ export function RuleTable<T>({
         {rules.length === 0 ? (
           <div className={styles.empty}>{emptyMessage}</div>
         ) : (
-          rules.map((rule, index) => {
+          renderedRules.map((rule, index) => {
             const inSelection = selectedSet.has(index);
             const isPrimary = selection.last === index && inSelection;
             const enabled = isEnabled(rule);
@@ -421,6 +470,13 @@ export function RuleTable<T>({
             );
           })
         )}
+        {hasMoreRows ? (
+          <div
+            ref={loadMoreRef}
+            className={styles.loadMoreSentinel}
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
 
       {hasSidebar ? (

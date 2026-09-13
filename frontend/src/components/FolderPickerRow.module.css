@@ -1,8 +1,9 @@
 .row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: stretch;
+  min-width: 0;
 }
 
 .field {
@@ -69,15 +70,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .recentWrap {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
-.recentSelect {
-  max-width: 160px;
+.row .recentWrap .recentSelect {
+  width: 160px;
+  min-width: 0;
   border: 1px solid var(--hairline-strong, #d8d2c7);
   background: var(--panel, #fff);
   border-radius: 6px;
@@ -88,7 +92,7 @@
   padding: 5px 8px;
 }
 
-.recentSelect:hover {
+.row .recentWrap .recentSelect:hover {
   background: var(--panel-soft, #f5f0e9);
 }
 
@@ -147,9 +151,9 @@
   align-self: end;
 }
 
-.compact .recentSelect {
+.compact .recentWrap .recentSelect {
   min-height: 36px;
-  max-width: 125px;
+  width: 125px;
   border-color: var(--hairline, #ece8e2);
   padding: 6px 8px;
   font-size: 11.5px;

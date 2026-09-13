@@ -91,6 +91,11 @@
   border-bottom: 0;
 }
 
+.loadMoreSentinel {
+  height: 1px;
+  width: 100%;
+}
+
 .row:hover:not(.rowActive):not(.rowMultiSelected) {
   background: var(--panel-soft);
 }

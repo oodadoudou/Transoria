@@ -31,6 +31,10 @@ import {
   type GlossaryExportFormat,
 } from "@/components/GlossaryExportModal";
 import { GlossaryScrollNav } from "@/components/GlossaryScrollNav";
+import {
+  buildGlossaryConflictSummary,
+  type GlossaryConflictKind,
+} from "./glossaryConflicts";
 
 type Toggle = "on" | "off";
 
@@ -86,123 +90,6 @@ function persistedToEntry(raw: unknown, index: number): GlossaryEntry | null {
     enabled: obj.enabled !== false,
     frequency: freq,
   };
-}
-
-type GlossaryConflictKind = "duplicateSource" | "overlap" | "invalidRegex";
-
-interface GlossaryConflictSummary {
-  byEntryId: Map<string, GlossaryConflictKind[]>;
-  conflicts: Array<{ kind: GlossaryConflictKind; entryIds: string[] }>;
-  firstEntryId: string | null;
-}
-
-function buildGlossaryConflictSummary(
-  entries: GlossaryEntry[],
-): GlossaryConflictSummary {
-  const byEntryId = new Map<string, Set<GlossaryConflictKind>>();
-  const conflicts: Array<{ kind: GlossaryConflictKind; entryIds: string[] }> =
-    [];
-  const active = entries.filter(
-    (entry) =>
-      entry.enabled &&
-      entry.source.trim().length > 0 &&
-      entry.translation.trim().length > 0,
-  );
-
-  const addConflict = (
-    kind: GlossaryConflictKind,
-    entryIds: string[],
-  ): void => {
-    const uniqueIds = Array.from(new Set(entryIds));
-    if (uniqueIds.length === 0) return;
-    conflicts.push({ kind, entryIds: uniqueIds });
-    uniqueIds.forEach((id) => {
-      const kinds = byEntryId.get(id) ?? new Set<GlossaryConflictKind>();
-      kinds.add(kind);
-      byEntryId.set(id, kinds);
-    });
-  };
-
-  active.forEach((entry) => {
-    if (!entry.regex) return;
-    if (!compileRegex(entry)) addConflict("invalidRegex", [entry.id]);
-  });
-
-  const bySource = new Map<string, GlossaryEntry[]>();
-  active.forEach((entry) => {
-    const source = entry.source.trim();
-    const bucket = bySource.get(source) ?? [];
-    bucket.push(entry);
-    bySource.set(source, bucket);
-  });
-  bySource.forEach((bucket) => {
-    const translations = new Set(
-      bucket.map((entry) => entry.translation.trim()).filter(Boolean),
-    );
-    if (translations.size > 1) {
-      addConflict(
-        "duplicateSource",
-        bucket.map((entry) => entry.id),
-      );
-    }
-  });
-
-  for (let i = 0; i < active.length; i += 1) {
-    for (let j = i + 1; j < active.length; j += 1) {
-      const left = active[i];
-      const right = active[j];
-      if (left.translation.trim() === right.translation.trim()) continue;
-      if (left.source.trim() === right.source.trim()) continue;
-      if (entriesOverlap(left, right)) {
-        addConflict("overlap", [left.id, right.id]);
-      }
-    }
-  }
-
-  return {
-    byEntryId: new Map(
-      Array.from(byEntryId.entries()).map(([id, kinds]) => [
-        id,
-        Array.from(kinds),
-      ]),
-    ),
-    conflicts,
-    firstEntryId: conflicts[0]?.entryIds[0] ?? null,
-  };
-}
-
-function entriesOverlap(left: GlossaryEntry, right: GlossaryEntry): boolean {
-  if (!left.regex && !right.regex) {
-    if (left.caseSensitive && right.caseSensitive) return false;
-    return (
-      left.source.trim().toLowerCase() === right.source.trim().toLowerCase()
-    );
-  }
-  if (left.regex && right.regex) {
-    if (!compileRegex(left) || !compileRegex(right)) return false;
-    return (
-      (left.source.trim() === right.source.trim() &&
-        left.caseSensitive === right.caseSensitive) ||
-      regexMatchesSource(left, right.source.trim()) ||
-      regexMatchesSource(right, left.source.trim())
-    );
-  }
-  const regexEntry = left.regex ? left : right;
-  const plainEntry = left.regex ? right : left;
-  return regexMatchesSource(regexEntry, plainEntry.source.trim());
-}
-
-function compileRegex(entry: GlossaryEntry): RegExp | null {
-  try {
-    return new RegExp(entry.source, entry.caseSensitive ? "" : "i");
-  } catch {
-    return null;
-  }
-}
-
-function regexMatchesSource(entry: GlossaryEntry, source: string): boolean {
-  const compiled = compileRegex(entry);
-  return compiled ? compiled.test(source) : false;
 }
 
 export function GlossaryPage() {
@@ -278,7 +165,7 @@ export function GlossaryPage() {
     }
   }, [sortState]);
 
-  const filteredEntries = (() => {
+  const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const base =
       !searchOpen || !query
@@ -313,7 +200,7 @@ export function GlossaryPage() {
       if (av > bv) return direction;
       return 0;
     });
-  })();
+  }, [searchOpen, searchQuery, sortState, state.entries]);
 
   const selectedIndex = selection.last;
   const selected =
@@ -322,7 +209,10 @@ export function GlossaryPage() {
     selectedIndex < filteredEntries.length
       ? filteredEntries[selectedIndex]
       : null;
-  const enabledCount = state.entries.filter((e) => e.enabled).length;
+  const enabledCount = useMemo(
+    () => state.entries.filter((entry) => entry.enabled).length,
+    [state.entries],
+  );
 
   const handleImport = async () => {
     setImportError(null);
@@ -638,6 +528,7 @@ export function GlossaryPage() {
         ) : null}
         <RuleTable
           rules={filteredEntries}
+          renderBatchSize={300}
           selection={selection}
           onSelectionChange={setSelection}
           onBulkDelete={handleBulkDelete}
