@@ -393,10 +393,16 @@ class _RetranslateQualityReviewGroup:
 
 _RETRANSLATE_QUALITY_DECISIONS = {"accept_new", "keep_existing", "uncertain"}
 _RETRANSLATE_QUALITY_COMPARATOR_PROMPT = (
-    "You are a conservative translation quality comparator. "
+    "You are a conservative Korean-to-Chinese translation quality comparator. "
     "Do not translate, rewrite, or improve either candidate. Compare the "
     "existing translation and the new candidate against the source and "
-    "choose whether the new candidate is safe to store. Exact preservation "
+    "choose whether the new candidate is safe to store. Judge accuracy before "
+    "fluency or style. Check semantic fidelity, omission, addition, negation, "
+    "entities, numbers, Korean omitted subjects, speaker and addressee, pronouns, "
+    "honorific register, names, titles, relationships, and terminology visible "
+    "in the source and candidates. "
+    "A merely smoother stylistic variant is not enough to replace the existing "
+    "translation. Exact preservation "
     "can be correct for symbols, emoticons, sound effects, names, codes, "
     "and other non-prose content. Do not prefer a candidate merely because "
     "it contains more target-language characters. Reject unrelated prose, "
@@ -410,9 +416,9 @@ _RETRANSLATE_QUALITY_COMPARATOR_PROMPT = (
     "not phonetic restoration: reject it even if its meaning is accurate. "
     "Reject unrelated Latin prose, omissions, and uncertain phonetic matches. "
     "An unchanged Korean source is not evidence that preservation is correct. "
-    "Choose "
-    "accept_new only when the new candidate is clearly faithful and at "
-    "least as suitable as the existing translation. Choose keep_existing "
+    "Assess each candidate independently before comparing them. Choose accept_new "
+    "only when the new candidate clearly fixes a substantive error without "
+    "introducing another one. Choose keep_existing "
     "when the existing translation is safer. Choose uncertain when the "
     "evidence is insufficient."
 )
@@ -738,6 +744,19 @@ def _is_preserved_nonprose_retranslation(
         for char, count in remaining.items()
     )
     return overlap / len(source_structure) >= 0.6
+
+
+def _uses_korean_retranslation_quality_review(
+    metadata: Mapping[str, object],
+) -> bool:
+    return (
+        metadata.get("source_language") == Language.KOREAN.value
+        and metadata.get("target_language")
+        in {
+            Language.CHINESE_SIMPLIFIED.value,
+            Language.CHINESE_TRADITIONAL.value,
+        }
+    )
 
 
 def _looks_like_compact_nonprose(text: str) -> bool:
@@ -2631,7 +2650,10 @@ class TaskService:
             self._save_retranslate_job(job)
             return
         source_text = _retranslate_source_text(job.seg_data)
-        if not _is_preserved_nonprose_retranslation(source_text, new_dst):
+        if (
+            _uses_korean_retranslation_quality_review(job.metadata)
+            and not _is_preserved_nonprose_retranslation(source_text, new_dst)
+        ):
             try:
                 quality_decision = self._review_retranslation_candidate_batched(
                     source_text=source_text,
@@ -3476,7 +3498,14 @@ class TaskService:
             transport_retry_attempts=max(
                 0, int(settings.translation.request_retry_attempts)
             ),
-            preserve_korean_latin_review_candidates=True,
+            preserve_korean_latin_review_candidates=(
+                source_language is Language.KOREAN
+                and target_language
+                in {
+                    Language.CHINESE_SIMPLIFIED,
+                    Language.CHINESE_TRADITIONAL,
+                }
+            ),
         )
         translations: dict[str, str] = {}
         low_confidence: dict[str, dict[str, list[str]]] = {}

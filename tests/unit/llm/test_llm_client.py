@@ -9,6 +9,7 @@ import pytest
 from transoria.llm import (
     ChatRequest,
     LlmClient,
+    LlmFilteredResponseError,
     LlmRequestError,
     LlmTruncatedResponseError,
     ModelConfig,
@@ -727,6 +728,11 @@ def test_chat_raises_on_content_filter_finish_reason() -> None:
         )
 
     assert exc_info.value.code == "llm.content_filter"
+    assert isinstance(exc_info.value, LlmFilteredResponseError)
+    assert exc_info.value.partial_response == "partial"
+    assert exc_info.value.usage.input_tokens == 11
+    assert exc_info.value.usage.output_tokens == 22
+    assert exc_info.value.finish_reason == "content_filter"
 
 
 def test_chat_raises_on_length_finish_reason() -> None:

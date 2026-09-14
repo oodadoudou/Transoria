@@ -24,6 +24,7 @@ from transoria.llm.client import (
     ChatResponse,
     LlmClient,
     LlmDegenerateOutputError,
+    LlmFilteredResponseError,
     LlmRequestError,
     LlmTruncatedResponseError,
 )
@@ -933,7 +934,11 @@ class TranslationSubtaskRunner:
                         ),
                         timeout=request_model.timeout_seconds,
                     )
-                except (LlmTruncatedResponseError, LlmDegenerateOutputError) as exc:
+                except (
+                    LlmTruncatedResponseError,
+                    LlmFilteredResponseError,
+                    LlmDegenerateOutputError,
+                ) as exc:
                     response_requires_explicit_decode = True
                     partial_error_code = exc.code
                     response = ChatResponse(
@@ -1156,7 +1161,11 @@ class TranslationSubtaskRunner:
                         ),
                         timeout=rescue_request_model.timeout_seconds,
                     )
-                except (LlmTruncatedResponseError, LlmDegenerateOutputError) as exc:
+                except (
+                    LlmTruncatedResponseError,
+                    LlmFilteredResponseError,
+                    LlmDegenerateOutputError,
+                ) as exc:
                     rescue_requires_explicit_decode = True
                     rescue_partial_error_code = exc.code
                     rescue_response = ChatResponse(
@@ -1309,6 +1318,7 @@ class TranslationSubtaskRunner:
                         )
                     except (
                         LlmTruncatedResponseError,
+                        LlmFilteredResponseError,
                         LlmDegenerateOutputError,
                     ) as exc:
                         micro_requires_explicit_decode = True
@@ -1489,6 +1499,7 @@ class TranslationSubtaskRunner:
                                 )
                     except (
                         LlmTruncatedResponseError,
+                        LlmFilteredResponseError,
                         LlmDegenerateOutputError,
                     ) as exc:
                         solo_requires_explicit_decode = True

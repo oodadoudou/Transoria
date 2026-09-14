@@ -598,6 +598,78 @@ def test_runner_keeps_explicit_complete_rows_from_length_truncation() -> None:
     assert result.output_tokens == 60
 
 
+@pytest.mark.parametrize("finish_reason", ["content_filter", "safety"])
+def test_runner_keeps_complete_rows_before_content_filter(
+    finish_reason: str,
+) -> None:
+    sources = ("source 0", "source 1", "source 2")
+    filtered = '{"0":"译文 0"}\n{"1":"译文 1"}\n{"2":"被截断'
+    first_body = _ok_body(filtered)
+    first_body["choices"][0]["finish_reason"] = finish_reason  # type: ignore[index]
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, first_body),
+            TransportResult(200, _ok_body('{"2":"译文 2"}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(runner.run(_make_subtask(sources=sources)))
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {
+        "0:0": "译文 0",
+        "0:1": "译文 1",
+        "0:2": "译文 2",
+    }
+    assert len(transport.requests) == 2
+    retry_prompt = transport.requests[1]["payload"]["messages"][-1]["content"]
+    assert "source 0" not in retry_prompt
+    assert "source 1" not in retry_prompt
+    assert "source 2" in retry_prompt
+    assert result.input_tokens == 100
+    assert result.output_tokens == 60
+
+
+def test_runner_failed_content_filter_preserves_complete_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "transoria.workflows.translation.runner._PARTIAL_ACCEPT_MAX_RETRIES", 0
+    )
+    filtered = '{"0":"译文 0"}\n{"1":"被截断'
+    body = _ok_body(filtered)
+    body["choices"][0]["finish_reason"] = "content_filter"  # type: ignore[index]
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(
+            transport=FakeTransport(responses=[TransportResult(200, body)])
+        ),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    with pytest.raises(SubtaskFailedWithResult) as exc_info:
+        asyncio.run(runner.run(_make_subtask(sources=("source 0", "source 1"))))
+
+    result = exc_info.value.result
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {
+        "0:0": "译文 0",
+        "0:1": "source 1",
+    }
+    assert payload["accepted_overrides"] == ["0:0"]
+    assert result.input_tokens == 50
+    assert result.output_tokens == 30
+
+
 def test_runner_accumulates_rows_across_repeated_length_truncation() -> None:
     first_body = _ok_body('{"0":"译文 0"}\n{"1":"截断')
     first_body["choices"][0]["finish_reason"] = "length"  # type: ignore[index]

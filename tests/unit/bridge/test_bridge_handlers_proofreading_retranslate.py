@@ -213,6 +213,8 @@ def _seed_task_with_snapshot(
     glossary: Sequence[Mapping[str, object]] = (),
     post_replacements: Sequence[Mapping[str, object]] = (),
     status: TaskStatus = TaskStatus.COMPLETED,
+    source_language: Language = Language.KOREAN,
+    target_language: Language = Language.CHINESE_SIMPLIFIED,
 ) -> None:
     record = TaskRecord(
         id=task_id,
@@ -223,8 +225,8 @@ def _seed_task_with_snapshot(
         metadata={
             "input_dir": "/in",
             "output_dir": "/out",
-            "source_language": Language.KOREAN.value,
-            "target_language": Language.CHINESE_SIMPLIFIED.value,
+            "source_language": source_language.value,
+            "target_language": target_language.value,
             "model_id": "test-profile",
             "prompt_preset_id": "default-translation-en",
             "prompt_preset": {
@@ -1055,6 +1057,37 @@ def test_single_retranslate_quality_review_failure_keeps_existing(
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"]["0:0"] == "现有译文。"
+
+
+@pytest.mark.parametrize("source_language", [Language.ENGLISH, Language.JAPANESE])
+def test_single_retranslate_quality_review_is_korean_only(
+    tmp_path: Path,
+    source_language: Language,
+):
+    transport = _StubTransport(
+        translations_by_key={"0": "新的中文译文。"},
+        judge_fail=True,
+    )
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    source = "Source sentence." if source_language is Language.ENGLISH else "原文です。"
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:0", source, "现有译文。"),),
+        source_language=source_language,
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed", final
+    assert len(transport.requests) == 1
+    snapshot = service.cache.load("translation-pf-rt-1")
+    assert _read_segment_dst(snapshot, "0:0") == "新的中文译文。"
 
 
 def test_single_retranslate_quality_reviews_share_dynamic_batch(tmp_path: Path):

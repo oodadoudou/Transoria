@@ -82,6 +82,29 @@ class LlmTruncatedResponseError(LlmRequestError):
         self.finish_reason = finish_reason
 
 
+class LlmFilteredResponseError(LlmRequestError):
+    """Raised when a provider filters a response after emitting usable text."""
+
+    code: str = "llm.content_filter"
+
+    def __init__(
+        self,
+        partial_response: str,
+        usage: TokenUsage,
+        *,
+        finish_reason: str,
+        model_id: str,
+    ) -> None:
+        super().__init__(
+            f"Provider returned finish_reason={finish_reason!r} "
+            f"for model {model_id!r}.",
+            code=self.code,
+        )
+        self.partial_response = partial_response
+        self.usage = usage
+        self.finish_reason = finish_reason
+
+
 @dataclass(frozen=True)
 class ChatMessage:
     role: str
@@ -546,9 +569,11 @@ def _record_request_response(
                 finish_reason=response.finish_reason,
                 model_id=request.model.id,
             )
-        raise LlmRequestError(
-            detail,
-            code=_finish_reason_error_code(response.finish_reason),
+        raise LlmFilteredResponseError(
+            response.content,
+            response.usage,
+            finish_reason=response.finish_reason,
+            model_id=request.model.id,
         )
     if request_log is None:
         return
@@ -1666,6 +1691,7 @@ __all__ = [
     "ChatTransport",
     "HttpxChatTransport",
     "LlmClient",
+    "LlmFilteredResponseError",
     "LlmRequestError",
     "LlmTruncatedResponseError",
     "NoApiKeyError",
