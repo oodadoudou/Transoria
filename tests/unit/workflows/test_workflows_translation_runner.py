@@ -30,7 +30,10 @@ from transoria.workflows.translation import (
     encode_subtask_payload,
     preprocess_segment,
 )
-from transoria.workflows.translation.runner import _decode_subtask_payload
+from transoria.workflows.translation.runner import (
+    _decode_explicit_partial_rows,
+    _decode_subtask_payload,
+)
 from transoria.workflows.translation.segment_state import (
     PRESERVED_CANDIDATE_SEGMENTS_KEY,
 )
@@ -2213,6 +2216,53 @@ def test_runner_recovers_pretty_printed_object_response() -> None:
     assert len(payload["translations"]) == 8
     # No retry — fallback succeeded on the first call.
     assert len(transport.requests) == 1
+
+
+def test_runner_retry_attempt_accepts_exact_dense_object_response() -> None:
+    dense = json.dumps(
+        {str(index): f"译文 {index}" for index in range(8)},
+        ensure_ascii=False,
+    )
+    transport = FakeTransport(responses=[TransportResult(200, _ok_body(dense))])
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=_literary_preset(),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(
+        runner.run(
+            replace(
+                _make_subtask_with_context(
+                    context=("已翻译前文",),
+                    sources=tuple(f"원문 {index}" for index in range(8)),
+                ),
+                attempt_count=2,
+            )
+        )
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {
+        f"0:{index}": f"译文 {index}" for index in range(8)
+    }
+    assert len(transport.requests) == 1
+
+
+def test_explicit_partial_decoder_rejects_inexact_dense_object_keys() -> None:
+    expected = {40, 41, 42, 43, 44}
+    missing = json.dumps({str(index): f"译文 {index}" for index in range(40, 44)})
+    extra = json.dumps({str(index): f"译文 {index}" for index in range(40, 46)})
+    duplicate = (
+        '{"40":"译文 40","40":"冲突译文","41":"译文 41",'
+        '"42":"译文 42","43":"译文 43","44":"译文 44"}'
+    )
+
+    assert _decode_explicit_partial_rows(missing, expected) == {}
+    assert _decode_explicit_partial_rows(extra, expected) == {}
+    assert _decode_explicit_partial_rows(duplicate, expected) == {}
 
 
 def test_runner_recovers_response_wrapped_in_translations_key() -> None:

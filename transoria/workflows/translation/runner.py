@@ -493,7 +493,9 @@ def _decode_explicit_partial_rows(
 
     Positional recovery is intentionally disabled here. Only an explicit,
     in-range index proves which source segment a surviving row translates.
-    Duplicate indices are discarded so conflicting output is retried.
+    Duplicate indices are discarded so conflicting output is retried. A
+    complete multi-key object is accepted only when its keys exactly match the
+    requested set.
     """
 
     candidates: dict[int, str] = {}
@@ -525,7 +527,51 @@ def _decode_explicit_partial_rows(
         candidates[index] = raw_text
     for index in duplicate_indices:
         candidates.pop(index, None)
-    return candidates
+    if candidates:
+        return candidates
+
+    dense_lines = [
+        line.strip() for line in raw_content.splitlines() if line.strip()
+    ]
+    if (
+        len(dense_lines) >= 3
+        and dense_lines[0].startswith("```")
+        and dense_lines[-1] == "```"
+    ):
+        dense_text = "\n".join(dense_lines[1:-1])
+    else:
+        dense_text = raw_content.strip()
+    try:
+        parsed_dense = json.loads(dense_text)
+        parsed_pairs = json.loads(dense_text, object_pairs_hook=lambda pairs: pairs)
+    except json.JSONDecodeError:
+        return {}
+    if (
+        not isinstance(parsed_dense, dict)
+        or not isinstance(parsed_pairs, list)
+        or not expected_indices
+    ):
+        return {}
+
+    dense_candidates: dict[int, str] = {}
+    for raw_index, raw_text in parsed_pairs:
+        try:
+            index = int(str(raw_index).strip())
+        except (TypeError, ValueError):
+            return {}
+        if (
+            index in dense_candidates
+            or not isinstance(raw_text, str)
+            or not raw_text.strip()
+        ):
+            return {}
+        dense_candidates[index] = raw_text
+
+    # Context-aware retries may only accept a dense object when its explicit
+    # keys prove a complete one-to-one match with the requested segments.
+    if set(dense_candidates) != expected_indices:
+        return {}
+    return dense_candidates
 
 
 def _line_count_fallback_segment_ids(
