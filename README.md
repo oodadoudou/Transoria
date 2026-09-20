@@ -25,8 +25,8 @@ Transoria 是一个本地小说翻译桌面应用。导入 EPUB / TXT，完成�
 
 ### 核心能力
 
-- **翻译工作流**：EPUB / TXT 分块翻译、同结构输出、术语注入、文本保护、替换规则和中断续跑。
-- **质量检查与校对**：按源语言识别低置信度、原文残留、术语异常、疑似重复和模型异常；支持单条、批量及筛选结果重译，并对韩语源任务的单条重译及疑似外语音译还原进行候选质量校验。
+- **翻译工作流**：EPUB / TXT 分块翻译、同结构输出、术语注入、文本保护、替换规则和中断续跑；EPUB 分页标记后的正文也会参与翻译。
+- **质量检查与校对**：按源语言识别低置信度、原文残留、术语异常、疑似重复和模型异常；支持单条、批量及筛选结果重译，并对韩语源任务的单条重译及疑似外语音译还原进行候选质量校验；拉丁语系批量重译会拦截明显的段落错配。
 - **模型、Prompt 与预设**：支持主流供应商及 OpenAI 兼容接口，并可将模型、Prompt 和语言组合成一键切换的工作流预设。
 - **术语提取与审查**：生成术语 XLSX 和参考文本，执行多轮审查、表格编辑并导入翻译术语表。
 - **请求记录与恢复**：查看耗时、token、回复和失败原因；保留截断或过滤回复中完整且可验证的分段，仅重试缺失内容，并可在任务停止、失败或应用重启后继续处理。
@@ -88,8 +88,8 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 
 ### Core Capabilities
 
-- **Translation workflow**: chunked EPUB / TXT translation, structure-preserving output, glossary injection, protected text, replacement rules, and resumable tasks.
-- **Quality review**: detect low-confidence output, source residue, terminology issues, possible repetition, and model anomalies with source-language-aware checks; retranslate one row, a selection, or filtered results, with candidate validation for Korean-source single-row replacements and suspected foreign-language phonetic restorations.
+- **Translation workflow**: chunked EPUB / TXT translation, structure-preserving output, glossary injection, protected text, replacement rules, and resumable tasks; prose after EPUB page markers is included.
+- **Quality review**: detect low-confidence output, source residue, terminology issues, possible repetition, and model anomalies with source-language-aware checks; retranslate one row, a selection, or filtered results, with candidate validation for Korean-source single-row replacements and suspected foreign-language phonetic restorations. Latin-source batch retranslation blocks obvious cross-segment drift.
 - **Models, prompts, and presets**: use major providers or OpenAI-compatible endpoints, and bundle model, prompt, and language settings into switchable workflow presets.
 - **Glossary extraction and review**: generate glossary XLSX and reference text, run multi-round review, edit the final table, and import it into Translation.
 - **Request logs and recovery**: inspect latency, token usage, responses, and failures; preserve complete validated rows from truncated or filtered responses, retry only missing content, and continue unfinished work after stopping, failure, or application restart.

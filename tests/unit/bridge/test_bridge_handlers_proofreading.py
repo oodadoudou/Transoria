@@ -1249,6 +1249,38 @@ def test_regenerate_outputs_blocks_completed_cache_segment_mismatch(
     assert list(output_dir.iterdir()) == []
 
 
+def test_regenerate_outputs_blocks_changed_source_with_same_segment_ids(
+    router_and_service,
+):
+    router, service, tmp_path = router_and_service
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    (input_dir / "sample.txt").write_text("changed source\n", encoding="utf-8")
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-same-ids-different-text",
+        input_dir=input_dir,
+        output_dir=output_dir,
+        file_segments=[("0:0", "old source", "旧译文")],
+        status=TaskStatus.COMPLETED,
+        metadata_overrides={"source_language": Language.ENGLISH.value},
+    )
+
+    response = router.call(
+        "proofreading.regenerate_outputs",
+        {"task_id": "translation-pf-same-ids-different-text"},
+    )
+
+    assert response["translated_files"] == []
+    assert response["failed_files"][0]["code"] == "cache_segment_mismatch"
+    details = response["failed_files"][0]["details"]
+    assert details["expected_segments"] == details["matched_segments"] == 1
+    assert details["parsed_source_fingerprint"] != details["cache_source_fingerprint"]
+    assert list(output_dir.iterdir()) == []
+
+
 def test_regenerate_outputs_reuses_cached_pre_replacements_for_segment_filter(
     router_and_service,
 ):

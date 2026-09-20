@@ -47,6 +47,58 @@ class EpubWriterTests(TestCase):
             self.assertIn("<p>第二句</p>", chapter)
             self.assertEqual(cover_bytes, b"\xff\xd8binary-cover\xff\xd9")
 
+    def test_write_translated_epub_replaces_page_marker_tail_for_any_language(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = _write_minimal_epub(
+                Path(temp_dir) / "Novel Name.epub",
+                chapter_body='<p><span>한국어 앞부분<?dp n="14"?> 뒷부분</span></p>',
+            )
+            document = parse_epub_file(source)
+            body_segment = next(
+                segment for segment in document.segments
+                if segment.kind == EpubTextKind.BODY
+            )
+            self.assertIn("뒷부분", body_segment.text)
+
+            written = write_translated_epub(
+                document,
+                {body_segment.index: "完整的中文译文。"},
+                Path(temp_dir) / "out",
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(written) as archive:
+                chapter = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+            self.assertIn('完整的中文译文。<?dp n="14"?>', chapter)
+            self.assertNotIn("한국어", chapter)
+            self.assertNotIn("뒷부분", chapter)
+
+    def test_write_translated_epub_replaces_page_marker_between_block_children(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = _write_minimal_epub(
+                Path(temp_dir) / "Novel Name.epub",
+                chapter_body='<section>Before<?dp n="15"?>after<p>Next block</p></section>',
+            )
+            document = parse_epub_file(source)
+            translations = {
+                segment.index: "前文" if segment.text == "Before" else "后文"
+                for segment in document.segments
+                if segment.kind == EpubTextKind.BODY and segment.text != "Next block"
+            }
+
+            written = write_translated_epub(
+                document,
+                translations,
+                Path(temp_dir) / "out",
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(written) as archive:
+                chapter = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+            self.assertIn('前文<?dp n="15"?>后文', chapter)
+            self.assertNotIn("Before", chapter)
+            self.assertNotIn("after", chapter)
+
     def test_write_translated_epub_removes_only_xml_forbidden_characters(self) -> None:
         with TemporaryDirectory() as temp_dir:
             source = _write_minimal_epub(Path(temp_dir) / "Novel Name.epub")

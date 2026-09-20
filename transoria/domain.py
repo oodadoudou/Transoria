@@ -32,6 +32,23 @@ class Language(str, Enum):
     VIETNAMESE = "vi"
 
 
+LATIN_SOURCE_LANGUAGES = frozenset(
+    {
+        Language.ENGLISH,
+        Language.FRENCH,
+        Language.GERMAN,
+        Language.HUNGARIAN,
+        Language.INDONESIAN,
+        Language.ITALIAN,
+        Language.POLISH,
+        Language.PORTUGUESE,
+        Language.SPANISH,
+        Language.TURKISH,
+        Language.VIETNAMESE,
+    }
+)
+
+
 _LANGUAGE_PROMPT_LABELS: dict[Language, str] = {
     Language.KOREAN: "Korean (한국어)",
     Language.CHINESE_SIMPLIFIED: "Simplified Chinese (简体中文)",

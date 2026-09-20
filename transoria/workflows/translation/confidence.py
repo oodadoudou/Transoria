@@ -22,7 +22,7 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass
 
-from transoria.domain import Language
+from transoria.domain import LATIN_SOURCE_LANGUAGES, Language
 from transoria.workflows.prefilter import is_fixed_identifier_line
 
 
@@ -339,21 +339,7 @@ _CHINESE_TARGET_LANGUAGES = {
     Language.CHINESE_SIMPLIFIED,
     Language.CHINESE_TRADITIONAL,
 }
-_LATIN_SOURCE_LANGUAGES = frozenset(
-    {
-        Language.ENGLISH,
-        Language.FRENCH,
-        Language.GERMAN,
-        Language.HUNGARIAN,
-        Language.INDONESIAN,
-        Language.ITALIAN,
-        Language.POLISH,
-        Language.PORTUGUESE,
-        Language.SPANISH,
-        Language.TURKISH,
-        Language.VIETNAMESE,
-    }
-)
+_LATIN_SOURCE_LANGUAGES = LATIN_SOURCE_LANGUAGES
 _LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
 _LATIN_SCRIPT_PATTERN = re.compile(
     r"[A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u024f\u1e00-\u1eff]"

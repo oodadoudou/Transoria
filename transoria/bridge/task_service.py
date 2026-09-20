@@ -26,6 +26,7 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 from uuid import uuid4
@@ -35,6 +36,7 @@ from openpyxl import load_workbook
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.task_registry import RunningTask, TaskRegistry
 from transoria.domain import (
+    LATIN_SOURCE_LANGUAGES,
     DocumentFormat,
     Language,
     SubtaskStatus,
@@ -208,6 +210,9 @@ _RETRANSLATE_TERMINAL_STATUSES = frozenset(
 )
 _RETRANSLATE_QUALITY_BATCH_MAX_ITEMS = 5
 _RETRANSLATE_QUALITY_BATCH_WAIT_SECONDS = 0.2
+_LATIN_SOURCE_LANGUAGE_CODES = frozenset(
+    language.value for language in LATIN_SOURCE_LANGUAGES
+)
 
 
 def _metadata_timeout_seconds(metadata: Mapping[str, object]) -> float | None:
@@ -757,6 +762,52 @@ def _uses_korean_retranslation_quality_review(
             Language.CHINESE_TRADITIONAL.value,
         }
     )
+
+
+def _latin_retranslation_drift_partner(
+    item: Mapping[str, object],
+    candidate_dst: str,
+    items: Sequence[Mapping[str, object]],
+    metadata: Mapping[str, object],
+) -> str | None:
+    if metadata.get("source_language") not in _LATIN_SOURCE_LANGUAGE_CODES:
+        return None
+    if metadata.get("target_language") not in {
+        Language.CHINESE_SIMPLIFIED.value,
+        Language.CHINESE_TRADITIONAL.value,
+    }:
+        return None
+    seg_data = item.get("seg_data")
+    if not isinstance(seg_data, Mapping):
+        return None
+    source = _retranslate_source_text(seg_data)
+    existing_dst = str(item.get("original_dst", ""))
+    if len(source) < 120 or len(candidate_dst) < 80 or len(existing_dst) < 80:
+        return None
+
+    def similarity(left: str, right: str) -> float:
+        left_compact = re.sub(r"[\W_]+", "", left, flags=re.UNICODE)
+        right_compact = re.sub(r"[\W_]+", "", right, flags=re.UNICODE)
+        if not left_compact or not right_compact:
+            return 0.0
+        return SequenceMatcher(None, left_compact, right_compact, autojunk=False).ratio()
+
+    self_similarity = similarity(candidate_dst, existing_dst)
+    for other in items:
+        if other is item:
+            continue
+        other_data = other.get("seg_data")
+        if not isinstance(other_data, Mapping):
+            continue
+        other_dst = str(other.get("original_dst", ""))
+        if len(other_dst) < 80:
+            continue
+        other_similarity = similarity(candidate_dst, other_dst)
+        if other_similarity < 0.45 or other_similarity - self_similarity < 0.25:
+            continue
+        if similarity(source, _retranslate_source_text(other_data)) < 0.70:
+            return str(other.get("segment_id", ""))
+    return None
 
 
 def _looks_like_compact_nonprose(text: str) -> bool:
@@ -3253,6 +3304,22 @@ class TaskService:
                     continue
                 if _read_segment_dst(snapshot, segment_id) != original_dst:
                     results.append({"segment_id": segment_id, "status": "stale"})
+                    continue
+                drift_partner = _latin_retranslation_drift_partner(
+                    item, new_dst, items, job.metadata or {}
+                )
+                if drift_partner:
+                    results.append(
+                        {
+                            "segment_id": segment_id,
+                            "status": "unresolved",
+                            "result_dst": new_dst,
+                            "error": (
+                                "retranslation resembles another segment "
+                                f"({drift_partner}); kept the existing translation."
+                            ),
+                        }
+                    )
                     continue
                 if segment_id in runner_result.quality_review_segments:
                     decision = quality_decisions.get(segment_id)

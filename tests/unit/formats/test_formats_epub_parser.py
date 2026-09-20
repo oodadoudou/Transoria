@@ -39,6 +39,40 @@ class EpubDocumentTests(TestCase):
             ],
         )
 
+    def test_parse_epub_file_includes_text_after_page_markers(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            epub_path = _write_minimal_epub(
+                Path(temp_dir) / "book.epub",
+                chapter_body=(
+                    '<div><span>Before the page\n<?dp n="14"?>after the page'
+                    '<!-- note --> and the comment.</span></div>'
+                    '<section>Start<?dp n="15"?>finish<p>Next block</p></section>'
+                ),
+            )
+            document = parse_epub_file(epub_path)
+
+        body_segments = [
+            segment for segment in document.segments
+            if segment.kind == EpubTextKind.BODY
+        ]
+        self.assertEqual(
+            [segment.text for segment in body_segments],
+            [
+                "Before the page after the page and the comment.",
+                "Start",
+                "finish",
+                "Next block",
+            ],
+        )
+        self.assertEqual(
+            [part.path for part in body_segments[0].parts],
+            [
+                "/html/body[1]/div[1]/span[1]",
+                "/html/body[1]/div[1]/span[1]/$node[1]",
+                "/html/body[1]/div[1]/span[1]/$node[2]",
+            ],
+        )
+
     def test_parse_epub_file_extracts_xhtm_spine_documents(self) -> None:
         with TemporaryDirectory() as temp_dir:
             epub_path = _write_minimal_epub(

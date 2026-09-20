@@ -1033,16 +1033,21 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     for segment in prepared_segments
                     if segment.segment_id in translations_by_segment
                 )
-                if 0 < matched_segments < expected_segments:
-                    current_source_segments = [
-                        (segment.segment_id, segment.original_text)
-                        for segment in prepared_segments
-                    ]
-                    cached_source_segments = [
-                        (segment_id, source_text)
-                        for segment_id, source_text in cached_source_texts.items()
-                        if segment_id.split(":", 1)[0] == str(parsed.file_index)
-                    ]
+                current_source_segments = [
+                    (segment.segment_id, segment.original_text)
+                    for segment in prepared_segments
+                ]
+                cached_source_segments = [
+                    (segment_id, source_text)
+                    for segment_id, source_text in cached_source_texts.items()
+                    if segment_id.split(":", 1)[0] == str(parsed.file_index)
+                ]
+                current_fingerprint = _source_segments_fingerprint(current_source_segments)
+                cached_fingerprint = _source_segments_fingerprint(cached_source_segments)
+                if 0 < matched_segments and (
+                    matched_segments != expected_segments
+                    or current_fingerprint != cached_fingerprint
+                ):
                     first_missing_segment_id = next(
                         (
                             segment.segment_id
@@ -1064,12 +1069,8 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                                 "matched_segments": matched_segments,
                                 "missing_segments": expected_segments
                                 - matched_segments,
-                                "parsed_source_fingerprint": _source_segments_fingerprint(
-                                    current_source_segments
-                                ),
-                                "cache_source_fingerprint": _source_segments_fingerprint(
-                                    cached_source_segments
-                                ),
+                                "parsed_source_fingerprint": current_fingerprint,
+                                "cache_source_fingerprint": cached_fingerprint,
                                 "first_missing_segment_id": first_missing_segment_id,
                             },
                         }

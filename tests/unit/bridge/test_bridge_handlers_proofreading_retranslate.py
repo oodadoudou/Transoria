@@ -17,6 +17,7 @@ from transoria.bridge.task_registry import RunningTask, TaskRegistry
 from transoria.bridge.task_service import (
     RetranslateJob,
     TaskService,
+    _RetranslateRunnerResult,
     _is_preserved_nonprose_retranslation,
     _read_segment_dst,
 )
@@ -564,6 +565,62 @@ def test_retranslate_batch_sends_five_segments_in_one_request_and_patches_all(
     assert payload["translations"] == {
         f"0:{index}": f"重翻译文{index}" for index in range(5)
     }
+
+
+@pytest.mark.parametrize(
+    ("source_language", "blocked"),
+    [
+        (Language.ENGLISH, True),
+        (Language.FRENCH, True),
+        (Language.KOREAN, False),
+        (Language.JAPANESE, False),
+    ],
+)
+def test_batch_retranslate_blocks_latin_cross_segment_drift_only(
+    tmp_path: Path,
+    source_language: Language,
+    blocked: bool,
+):
+    service = _make_service(tmp_path)
+    source_a = "The sun crossed the empty sky and warmed the town. " * 5
+    source_b = "A driver walked to the garage and opened the car door. " * 5
+    old_a = "那天太阳照耀着小镇，明亮的天空一望无际。" * 6
+    old_b = "司机走进车库，打开车门，准备迎接乘客。" * 6
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:0", source_a, old_a), ("0:1", source_b, old_b)),
+        source_language=source_language,
+    )
+    items = [
+        {"segment_id": "0:0", "seg_data": {"original_text": source_a}, "original_dst": old_a},
+        {"segment_id": "0:1", "seg_data": {"original_text": source_b}, "original_dst": old_b},
+    ]
+    job = RetranslateJob(
+        request_id="retranslate-test",
+        task_id="translation-pf-rt-1",
+        segment_id="0:0",
+        original_dst=old_a,
+        metadata={
+            "source_language": source_language.value,
+            "target_language": Language.CHINESE_SIMPLIFIED.value,
+        },
+    )
+    wrong_b = old_a.replace("照耀", "照亮")
+    results = service._apply_retranslate_batch_candidates(
+        job,
+        items,
+        _RetranslateRunnerResult(
+            translations={"0:0": old_a + "。", "0:1": wrong_b},
+            low_confidence={},
+        ),
+        quality_decisions={},
+        quality_review_error="",
+    )
+
+    by_id = {item["segment_id"]: item for item in results}
+    assert by_id["0:1"]["status"] == ("unresolved" if blocked else "completed")
+    snapshot = service.cache.load("translation-pf-rt-1")
+    assert _read_segment_dst(snapshot, "0:1") == (old_b if blocked else wrong_b)
 
 
 def test_retranslate_batch_keeps_successes_and_preserves_unresolved_segment(
