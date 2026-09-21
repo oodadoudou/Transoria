@@ -412,6 +412,21 @@ _RETRANSLATE_QUALITY_COMPARATOR_PROMPT = (
     "and other non-prose content. Do not prefer a candidate merely because "
     "it contains more target-language characters. Reject unrelated prose, "
     "hallucination, omission, or a semantic/function mismatch. "
+    "Compare total quality rather than requiring either candidate to be perfect. "
+    "If both candidates have defects, choose accept_new when the new candidate "
+    "clearly reduces a more serious defect, especially untranslated Korean "
+    "source residue, while preserving the overall meaning. Residual-script "
+    "counts are mechanical evidence, not proof of quality; intentional names, "
+    "symbols, abbreviations, and quoted forms may need to remain. In "
+    "metalinguistic explanations, wordplay, abbreviations, and derivation chains "
+    "such as A>B>C, preserve the number, order, and relationship of the steps for "
+    "the target reader; raw Hangul surface forms are not inherently safer. "
+    "Translating Korean lexical meanings or transliterating Korean phonetic forms "
+    "into Chinese or Latin is not by itself a hallucination and does not break the "
+    "chain. If the existing translation leaves full Korean words or clauses "
+    "untranslated while the candidate makes the explanation understandable and "
+    "keeps the chain structure, treat that as a substantive improvement. Isolated "
+    "Jamo initials may remain when they are evidence used by the explanation. "
     "For Korean source and a Chinese target, a short Latin candidate may "
     "restore a foreign name, title, phrase, or dialogue spelled phonetically "
     "in Hangul, regardless of capitalization or word spacing. Accept this "
@@ -422,10 +437,10 @@ _RETRANSLATE_QUALITY_COMPARATOR_PROMPT = (
     "Reject unrelated Latin prose, omissions, and uncertain phonetic matches. "
     "An unchanged Korean source is not evidence that preservation is correct. "
     "Assess each candidate independently before comparing them. Choose accept_new "
-    "only when the new candidate clearly fixes a substantive error without "
-    "introducing another one. Choose keep_existing "
-    "when the existing translation is safer. Choose uncertain when the "
-    "evidence is insufficient."
+    "when the new candidate is clearly better overall and safe to store, even if "
+    "a minor imperfection remains. Choose keep_existing when the existing "
+    "translation is at least as accurate or the new candidate introduces an equal "
+    "or more serious error. Choose uncertain when the evidence is insufficient."
 )
 
 
@@ -713,6 +728,13 @@ def _should_keep_existing_retranslation(
         _retranslate_source_text(source_segment), candidate_dst
     ):
         return False
+    if source_segment is not None and _is_structured_korean_explanation_improvement(
+        _retranslate_source_text(source_segment),
+        existing_dst,
+        candidate_dst,
+        candidate_entry,
+    ):
+        return False
     candidate_tags = set(_string_values((candidate_entry or {}).get("tags")))
     if "source_residue" not in candidate_tags:
         return False
@@ -855,6 +877,59 @@ def _is_korean_jamo(char: str) -> bool:
         or 0xD7B0 <= codepoint <= 0xD7FF
         or 0xFFA0 <= codepoint <= 0xFFDC
     )
+
+
+def _korean_script_char_count(text: str) -> int:
+    return sum(
+        1
+        for char in text
+        if 0xAC00 <= ord(char) <= 0xD7A3 or _is_korean_jamo(char)
+    )
+
+
+def _is_structured_korean_explanation_improvement(
+    source_text: str,
+    existing_dst: str,
+    candidate_dst: str,
+    candidate_entry: Mapping[str, object] | None,
+) -> bool:
+    candidate_tags = set(_string_values((candidate_entry or {}).get("tags")))
+    if candidate_tags - {"source_residue"}:
+        return False
+    separator_count = source_text.count(">")
+    if (
+        separator_count < 2
+        or existing_dst.count(">") != separator_count
+        or candidate_dst.count(">") != separator_count
+    ):
+        return False
+    existing_korean = _korean_script_char_count(existing_dst)
+    candidate_korean = _korean_script_char_count(candidate_dst)
+    if (
+        existing_korean < 6
+        or existing_korean - candidate_korean < max(3, existing_korean // 4)
+    ):
+        return False
+    if not any(
+        0x3400 <= ord(char) <= 0x4DBF
+        or 0x4E00 <= ord(char) <= 0x9FFF
+        or 0xF900 <= ord(char) <= 0xFAFF
+        for char in candidate_dst
+    ):
+        return False
+    source_ascii = Counter(
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_]{1,}", source_text)
+    )
+    candidate_ascii = Counter(
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_]{1,}", candidate_dst)
+    )
+    if source_ascii - candidate_ascii:
+        return False
+    source_jamo = Counter(char for char in source_text if _is_korean_jamo(char))
+    candidate_jamo = Counter(char for char in candidate_dst if _is_korean_jamo(char))
+    return not (source_jamo - candidate_jamo)
 
 
 def _retranslation_quality_rank(
@@ -2724,7 +2799,15 @@ class TaskService:
                 job.updated_at_wall = _utc_now_iso()
                 self._save_retranslate_job(job)
                 return
-            if quality_decision.decision != "accept_new":
+            if (
+                quality_decision.decision != "accept_new"
+                and not _is_structured_korean_explanation_improvement(
+                    source_text,
+                    job.original_dst,
+                    new_dst,
+                    runner_result.low_confidence.get(job.segment_id),
+                )
+            ):
                 job.error = (
                     "quality review kept the existing translation: "
                     f"{quality_decision.reason}"
@@ -2956,6 +3039,21 @@ class TaskService:
                 "source": item.source_text,
                 "existing_translation": item.existing_dst,
                 "new_candidate": item.candidate_dst,
+                "residual_script_evidence": {
+                    "existing_korean_char_count": _korean_script_char_count(
+                        item.existing_dst
+                    ),
+                    "new_candidate_korean_char_count": _korean_script_char_count(
+                        item.candidate_dst
+                    ),
+                },
+                "derivation_chain_evidence": {
+                    "source_step_separator_count": item.source_text.count(">"),
+                    "existing_step_separator_count": item.existing_dst.count(">"),
+                    "new_candidate_step_separator_count": item.candidate_dst.count(
+                        ">"
+                    ),
+                },
             }
             for index, item in enumerate(items)
         ]
@@ -3020,6 +3118,19 @@ class TaskService:
                 "source": source_text,
                 "existing_translation": existing_dst,
                 "new_candidate": candidate_dst,
+                "residual_script_evidence": {
+                    "existing_korean_char_count": _korean_script_char_count(
+                        existing_dst
+                    ),
+                    "new_candidate_korean_char_count": _korean_script_char_count(
+                        candidate_dst
+                    ),
+                },
+                "derivation_chain_evidence": {
+                    "source_step_separator_count": source_text.count(">"),
+                    "existing_step_separator_count": existing_dst.count(">"),
+                    "new_candidate_step_separator_count": candidate_dst.count(">"),
+                },
             },
             ensure_ascii=False,
         )
