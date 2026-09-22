@@ -249,6 +249,8 @@ class RetranslateJob:
     prompt_snapshot: dict[str, object] | None = None
     batch_items: list[dict[str, object]] | None = None
     batch_results: list[dict[str, object]] | None = None
+    runner_checkpoint: dict[str, object] | None = None
+    quality_checkpoint: dict[str, object] | None = None
     cache_applied: bool = False
     created_at_wall: str = ""
     updated_at_wall: str = ""
@@ -278,6 +280,8 @@ class RetranslateJob:
             "prompt_snapshot": self.prompt_snapshot or {},
             "batch_items": self.batch_items or [],
             "batch_results": self.batch_results or [],
+            "runner_checkpoint": self.runner_checkpoint or {},
+            "quality_checkpoint": self.quality_checkpoint or {},
             "cache_applied": self.cache_applied,
             "created_at_wall": self.created_at_wall,
             "updated_at_wall": self.updated_at_wall,
@@ -336,6 +340,8 @@ class RetranslateJob:
             prompt_snapshot=mapping_or_none("prompt_snapshot"),
             batch_items=mappings("batch_items"),
             batch_results=mappings("batch_results"),
+            runner_checkpoint=mapping_or_none("runner_checkpoint"),
+            quality_checkpoint=mapping_or_none("quality_checkpoint"),
             cache_applied=bool(data.get("cache_applied", False)),
             created_at_wall=str(data.get("created_at_wall", "")),
             updated_at_wall=str(data.get("updated_at_wall", "")),
@@ -386,6 +392,9 @@ class _RetranslateQualityReviewItem:
     model_id: str
     model_snapshot: dict[str, object] | None
     estimated_tokens: int
+    task_id: str = ""
+    request_id: str = ""
+    attempt: int = 0
     result: _RetranslateQualityDecision | None = None
     error: Exception | None = None
     done: threading.Event = field(default_factory=threading.Event)
@@ -2443,6 +2452,9 @@ class TaskService:
             return self._retranslate_status_payload(job)
         if job.status in _RETRANSLATE_TERMINAL_STATUSES and job.status != "failed":
             return self._retranslate_status_payload(job)
+        if job.status == "failed":
+            job.runner_checkpoint = None
+            job.quality_checkpoint = None
         job.status = "pending"
         job.error = ""
         job.updated_at_wall = _utc_now_iso()
@@ -2538,6 +2550,82 @@ class TaskService:
             "updated_at": job.updated_at_wall,
             "elapsed_seconds": round(elapsed_seconds, 1),
         }
+
+    def _retranslate_runner_fingerprint(
+        self,
+        job: RetranslateJob,
+        seg_datas: Sequence[Mapping[str, object]],
+        *,
+        allow_source_phonetic_jamo: bool,
+    ) -> str:
+        if not job.model_snapshot or not job.prompt_snapshot:
+            return ""
+        settings = self.settings_store.load_all()
+        return _hash_text(
+            json.dumps(
+                {
+                    "segments": seg_datas,
+                    "metadata": job.metadata,
+                    "model_id": job.model_id,
+                    "model_snapshot": job.model_snapshot,
+                    "prompt_preset_id": job.prompt_preset_id,
+                    "prompt_snapshot": job.prompt_snapshot,
+                    "low_confidence_max_retries": settings.translation.low_confidence_max_retries,
+                    "request_retry_attempts": settings.translation.request_retry_attempts,
+                    "allow_source_phonetic_jamo": allow_source_phonetic_jamo,
+                },
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+        )
+
+    def _cached_retranslate_result(
+        self,
+        job: RetranslateJob,
+        fingerprint: str,
+        segment_ids: set[str],
+    ) -> _RetranslateRunnerResult | None:
+        checkpoint = job.runner_checkpoint or {}
+        if (
+            not fingerprint
+            or checkpoint.get("attempt") != job.attempts
+            or checkpoint.get("fingerprint") != fingerprint
+        ):
+            return None
+        translations = checkpoint.get("translations")
+        low_confidence = checkpoint.get("low_confidence")
+        quality_review_segments = checkpoint.get("quality_review_segments")
+        if (
+            not isinstance(translations, Mapping)
+            or set(translations) != segment_ids
+            or not all(isinstance(value, str) for value in translations.values())
+            or not isinstance(low_confidence, Mapping)
+            or not isinstance(quality_review_segments, list)
+            or not all(isinstance(value, str) for value in quality_review_segments)
+        ):
+            return None
+        return _RetranslateRunnerResult(
+            dict(translations),
+            dict(low_confidence),
+            frozenset(quality_review_segments),
+        )
+
+    def _save_retranslate_runner_result(
+        self,
+        job: RetranslateJob,
+        fingerprint: str,
+        result: _RetranslateRunnerResult,
+    ) -> None:
+        if not fingerprint:
+            return
+        job.runner_checkpoint = {
+            "attempt": job.attempts,
+            "fingerprint": fingerprint,
+            "translations": result.translations,
+            "low_confidence": result.low_confidence,
+            "quality_review_segments": sorted(result.quality_review_segments),
+        }
+        self._save_retranslate_job(job)
 
     def _sync_completed_retranslate_result(self, job: RetranslateJob) -> None:
         if job.status != "completed" or job.cache_applied:
@@ -2665,33 +2753,44 @@ class TaskService:
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
             return
+        fingerprint = self._retranslate_runner_fingerprint(
+            job, (job.seg_data,), allow_source_phonetic_jamo=True
+        )
+        runner_result = self._cached_retranslate_result(
+            job, fingerprint, {job.segment_id}
+        )
         with self._retranslate_lock:
             job.status = "running"
             job.error = ""
-            job.attempts += 1
+            if runner_result is None:
+                job.attempts += 1
+                job.runner_checkpoint = None
+                job.quality_checkpoint = None
             job.updated_at_wall = _utc_now_iso()
             self._retranslate_jobs[job.request_id] = job
             self._save_retranslate_job(job)
         if self._finish_retranslate_if_cache_changed(job):
             return
         try:
-            with request_log_scope(
-                self.cache,
-                task_id=job.task_id,
-                subtask_id=_retranslate_log_subtask_id(job.request_id),
-                subtask_attempt=job.attempts,
-                clock=_utc_now_iso,
-            ):
-                runner_result = asyncio.run(
-                    self._call_runner_for_retranslate(
-                        job.seg_data,
-                        job.metadata,
-                        model_id=job.model_id,
-                        model_snapshot=job.model_snapshot,
-                        prompt_preset_id=job.prompt_preset_id,
-                        prompt_snapshot=job.prompt_snapshot,
+            if runner_result is None:
+                with request_log_scope(
+                    self.cache,
+                    task_id=job.task_id,
+                    subtask_id=_retranslate_log_subtask_id(job.request_id),
+                    subtask_attempt=job.attempts,
+                    clock=_utc_now_iso,
+                ):
+                    runner_result = asyncio.run(
+                        self._call_runner_for_retranslate(
+                            job.seg_data,
+                            job.metadata,
+                            model_id=job.model_id,
+                            model_snapshot=job.model_snapshot,
+                            prompt_preset_id=job.prompt_preset_id,
+                            prompt_snapshot=job.prompt_snapshot,
+                        )
                     )
-                )
+                self._save_retranslate_runner_result(job, fingerprint, runner_result)
         except BridgeError as exc:
             job.error = f"{exc.code}: {exc.payload.message}"
             job.last_error = job.error
@@ -2747,20 +2846,62 @@ class TaskService:
             job.updated_at_wall = _utc_now_iso()
             self._save_retranslate_job(job)
             return
+        if new_dst == job.original_dst:
+            job.error = "retranslation is identical to the existing translation."
+            job.last_error = job.error
+            job.status = "unresolved"
+            job.updated_at_wall = _utc_now_iso()
+            self._save_retranslate_job(job)
+            return
         source_text = _retranslate_source_text(job.seg_data)
         if (
             _uses_korean_retranslation_quality_review(job.metadata)
             and not _is_preserved_nonprose_retranslation(source_text, new_dst)
         ):
-            try:
-                quality_decision = self._review_retranslation_candidate_batched(
-                    source_text=source_text,
-                    existing_dst=job.original_dst,
-                    candidate_dst=new_dst,
-                    metadata=job.metadata,
-                    model_id=job.model_id,
-                    model_snapshot=job.model_snapshot,
+            quality_fingerprint = _hash_text(
+                json.dumps(
+                    [
+                        fingerprint,
+                        _RETRANSLATE_QUALITY_COMPARATOR_PROMPT,
+                        source_text,
+                        job.original_dst,
+                        new_dst,
+                    ],
+                    ensure_ascii=False,
                 )
+            )
+            quality_checkpoint = job.quality_checkpoint or {}
+            try:
+                if (
+                    fingerprint
+                    and quality_checkpoint.get("attempt") == job.attempts
+                    and quality_checkpoint.get("fingerprint") == quality_fingerprint
+                    and quality_checkpoint.get("decision") in _RETRANSLATE_QUALITY_DECISIONS
+                ):
+                    quality_decision = _RetranslateQualityDecision(
+                        str(quality_checkpoint["decision"]),
+                        str(quality_checkpoint.get("reason", "")),
+                    )
+                else:
+                    quality_decision = self._review_retranslation_candidate_batched(
+                        source_text=source_text,
+                        existing_dst=job.original_dst,
+                        candidate_dst=new_dst,
+                        metadata=job.metadata,
+                        model_id=job.model_id,
+                        model_snapshot=job.model_snapshot,
+                        task_id=job.task_id,
+                        request_id=job.request_id,
+                        attempt=job.attempts,
+                    )
+                    if fingerprint:
+                        job.quality_checkpoint = {
+                            "attempt": job.attempts,
+                            "fingerprint": quality_fingerprint,
+                            "decision": quality_decision.decision,
+                            "reason": quality_decision.reason,
+                        }
+                        self._save_retranslate_job(job)
             except Exception as exc:  # noqa: BLE001
                 job.error = (
                     "quality review could not verify the new translation; "
@@ -2848,6 +2989,9 @@ class TaskService:
         metadata: Mapping[str, object],
         model_id: str | None,
         model_snapshot: Mapping[str, object] | None,
+        task_id: str,
+        request_id: str,
+        attempt: int,
     ) -> _RetranslateQualityDecision:
         settings = self.settings_store.load_all()
         effective_model_id = model_id or settings.app.active_translation_model_id
@@ -2864,6 +3008,7 @@ class TaskService:
         group_key = _hash_text(
             json.dumps(
                 {
+                    "task_id": task_id,
                     "model_id": effective_model_id,
                     "model_snapshot": snapshot or {},
                 },
@@ -2890,6 +3035,9 @@ class TaskService:
             model_id=effective_model_id,
             model_snapshot=snapshot,
             estimated_tokens=estimated_tokens,
+            task_id=task_id,
+            request_id=request_id,
+            attempt=attempt,
         )
         with self._retranslate_quality_gate:
             group = self._retranslate_quality_groups.get(group_key)
@@ -2952,27 +3100,34 @@ class TaskService:
                     batch_tokens += next_item.estimated_tokens
 
             try:
-                if len(batch) == 1:
-                    only = batch[0]
-                    decisions = {
-                        "0": asyncio.run(
-                            self._review_single_retranslation_candidate(
-                                source_text=only.source_text,
-                                existing_dst=only.existing_dst,
-                                candidate_dst=only.candidate_dst,
-                                metadata={
-                                    "source_language": only.source_language,
-                                    "target_language": only.target_language,
-                                },
-                                model_id=only.model_id,
-                                model_snapshot=only.model_snapshot,
+                with request_log_scope(
+                    self.cache,
+                    task_id=batch[0].task_id,
+                    subtask_id=f"{_retranslate_log_subtask_id(batch[0].request_id)}-quality",
+                    subtask_attempt=batch[0].attempt,
+                    clock=_utc_now_iso,
+                ):
+                    if len(batch) == 1:
+                        only = batch[0]
+                        decisions = {
+                            "0": asyncio.run(
+                                self._review_single_retranslation_candidate(
+                                    source_text=only.source_text,
+                                    existing_dst=only.existing_dst,
+                                    candidate_dst=only.candidate_dst,
+                                    metadata={
+                                        "source_language": only.source_language,
+                                        "target_language": only.target_language,
+                                    },
+                                    model_id=only.model_id,
+                                    model_snapshot=only.model_snapshot,
+                                )
                             )
+                        }
+                    else:
+                        decisions = asyncio.run(
+                            self._review_retranslation_candidates_batch(batch)
                         )
-                    }
-                else:
-                    decisions = asyncio.run(
-                        self._review_retranslation_candidates_batch(batch)
-                    )
             except Exception as exc:  # noqa: BLE001
                 for queued_item in batch:
                     queued_item.error = exc
@@ -3157,10 +3312,8 @@ class TaskService:
         with self._retranslate_lock:
             job.status = "running"
             job.error = ""
-            job.attempts += 1
             job.updated_at_wall = _utc_now_iso()
             self._retranslate_jobs[job.request_id] = job
-            self._save_retranslate_job(job)
 
         ready: list[dict[str, object]] = []
         results: list[dict[str, object]] = []
@@ -3210,30 +3363,45 @@ class TaskService:
         quality_review_error = ""
         try:
             if ready:
-                with request_log_scope(
-                    self.cache,
-                    task_id=job.task_id,
-                    subtask_id=_retranslate_log_subtask_id(job.request_id),
-                    subtask_attempt=job.attempts,
-                    clock=_utc_now_iso,
-                ):
-                    runner_result = asyncio.run(
-                        self._call_runner_for_retranslate_batch(
-                            tuple(dict(item["seg_data"]) for item in ready),
-                            job.metadata,
-                            model_id=job.model_id,
-                            model_snapshot=job.model_snapshot,
-                            prompt_preset_id=job.prompt_preset_id,
-                            prompt_snapshot=job.prompt_snapshot,
+                ready_segments = tuple(dict(item["seg_data"]) for item in ready)
+                fingerprint = self._retranslate_runner_fingerprint(
+                    job, ready_segments, allow_source_phonetic_jamo=False
+                )
+                runner_result = self._cached_retranslate_result(
+                    job,
+                    fingerprint,
+                    {str(item["segment_id"]) for item in ready},
+                )
+                if runner_result is None:
+                    job.attempts += 1
+                    job.runner_checkpoint = None
+                    job.quality_checkpoint = None
+                    self._save_retranslate_job(job)
+                    with request_log_scope(
+                        self.cache,
+                        task_id=job.task_id,
+                        subtask_id=_retranslate_log_subtask_id(job.request_id),
+                        subtask_attempt=job.attempts,
+                        clock=_utc_now_iso,
+                    ):
+                        runner_result = asyncio.run(
+                            self._call_runner_for_retranslate_batch(
+                                ready_segments,
+                                job.metadata,
+                                model_id=job.model_id,
+                                model_snapshot=job.model_snapshot,
+                                prompt_preset_id=job.prompt_preset_id,
+                                prompt_snapshot=job.prompt_snapshot,
+                            )
                         )
+                    self._save_retranslate_runner_result(job, fingerprint, runner_result)
+                quality_decisions, quality_review_error = (
+                    self._review_retranslate_batch_latin_candidates(
+                        job,
+                        ready,
+                        runner_result,
                     )
-                    quality_decisions, quality_review_error = (
-                        self._review_retranslate_batch_latin_candidates(
-                            job,
-                            ready,
-                            runner_result,
-                        )
-                    )
+                )
             else:
                 runner_result = _RetranslateRunnerResult({}, {})
         except Exception as exc:  # noqa: BLE001
@@ -3299,6 +3467,8 @@ class TaskService:
             source_text = _retranslate_source_text(seg_data)
             existing_dst = str(item.get("original_dst", ""))
             candidate_dst = runner_result.translations[segment_id]
+            if candidate_dst == existing_dst:
+                continue
             review_segment_ids.append(segment_id)
             review_items.append(
                 _RetranslateQualityReviewItem(
@@ -3327,16 +3497,72 @@ class TaskService:
             )
         if not review_items:
             return {}, ""
-        try:
-            indexed = asyncio.run(
-                self._review_retranslation_candidates_batch(review_items)
+        quality_fingerprint = _hash_text(
+            json.dumps(
+                {
+                    "prompt": _RETRANSLATE_QUALITY_COMPARATOR_PROMPT,
+                    "model_snapshot": job.model_snapshot,
+                    "items": [
+                        [item.source_text, item.existing_dst, item.candidate_dst]
+                        for item in review_items
+                    ],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
             )
+        )
+        checkpoint = job.quality_checkpoint or {}
+        saved_decisions = checkpoint.get("decisions")
+        if (
+            job.runner_checkpoint
+            and checkpoint.get("attempt") == job.attempts
+            and checkpoint.get("fingerprint") == quality_fingerprint
+            and isinstance(saved_decisions, Mapping)
+            and set(saved_decisions) == set(review_segment_ids)
+            and all(
+                isinstance(value, Mapping)
+                and value.get("decision") in _RETRANSLATE_QUALITY_DECISIONS
+                for value in saved_decisions.values()
+            )
+        ):
+            return {
+                segment_id: _RetranslateQualityDecision(
+                    str(saved_decisions[segment_id]["decision"]),
+                    str(saved_decisions[segment_id].get("reason", "")),
+                )
+                for segment_id in review_segment_ids
+            }, ""
+        try:
+            with request_log_scope(
+                self.cache,
+                task_id=job.task_id,
+                subtask_id=f"{_retranslate_log_subtask_id(job.request_id)}-quality",
+                subtask_attempt=job.attempts,
+                clock=_utc_now_iso,
+            ):
+                indexed = asyncio.run(
+                    self._review_retranslation_candidates_batch(review_items)
+                )
         except Exception as exc:  # noqa: BLE001
             return {}, f"{type(exc).__name__}: {exc}"
-        return {
+        decisions = {
             segment_id: indexed[str(index)]
             for index, segment_id in enumerate(review_segment_ids)
-        }, ""
+        }
+        if job.runner_checkpoint:
+            job.quality_checkpoint = {
+                "attempt": job.attempts,
+                "fingerprint": quality_fingerprint,
+                "decisions": {
+                    segment_id: {
+                        "decision": decision.decision,
+                        "reason": decision.reason,
+                    }
+                    for segment_id, decision in decisions.items()
+                },
+            }
+            self._save_retranslate_job(job)
+        return decisions, ""
 
     def _apply_retranslate_batch_candidates(
         self,
@@ -3385,6 +3611,16 @@ class TaskService:
                     continue
                 if _read_segment_dst(snapshot, segment_id) != original_dst:
                     results.append({"segment_id": segment_id, "status": "stale"})
+                    continue
+                if new_dst == original_dst:
+                    results.append(
+                        {
+                            "segment_id": segment_id,
+                            "status": "unresolved",
+                            "result_dst": new_dst,
+                            "error": "retranslation is identical to the existing translation.",
+                        }
+                    )
                     continue
                 drift_partner = _latin_retranslation_drift_partner(
                     item, new_dst, items, job.metadata or {}
@@ -5763,11 +5999,12 @@ class TaskService:
                 ),
             )
         with self._retranslate_lock:
-            live_retranslate_subtasks = {
-                _retranslate_log_subtask_id(job.request_id)
-                for job in self._retranslate_jobs.values()
-                if job.task_id == task_id and job.status in {"pending", "running"}
-            }
+            live_retranslate_subtasks = set()
+            for job in self._retranslate_jobs.values():
+                if job.task_id != task_id or job.status not in {"pending", "running"}:
+                    continue
+                subtask_id = _retranslate_log_subtask_id(job.request_id)
+                live_retranslate_subtasks.update({subtask_id, f"{subtask_id}-quality"})
         formatted, total = _format_request_events(
             events,
             limit=limit,

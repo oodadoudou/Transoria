@@ -729,6 +729,49 @@ def test_retranslate_batch_writes_korean_latin_title_candidates(tmp_path: Path):
     }
 
 
+def test_batch_identical_latin_candidate_skips_review_and_write(tmp_path: Path):
+    transport = _StubTransport(
+        translations_by_key={"0": "All About Ethan Carter.", "1": "新的中文译文。"},
+        judge_fail=True,
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation", {"low_confidence_max_retries": 0, "request_retry_attempts": 0}
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service,
+        segments=(
+            ("0:0", "올 어바웃 에단 카터.", "All About Ethan Carter."),
+            ("0:1", "원문", "旧译文。"),
+        ),
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed"
+    assert [item["status"] for item in final["results"]] == [
+        "unresolved", "completed"
+    ]
+    assert "identical" in final["results"][0]["error"]
+    assert not any(
+        "translation quality comparator" in request["messages"][0]["content"]
+        for request in transport.requests
+    )
+    snapshot = service.cache.load("translation-pf-rt-1")
+    assert _read_segment_dst(snapshot, "0:0") == "All About Ethan Carter."
+    assert _read_segment_dst(snapshot, "0:1") == "新的中文译文。"
+
+
 @pytest.mark.parametrize("batch", [False, True])
 def test_retranslate_reviews_phonetic_dialogue_before_writeback(
     tmp_path: Path, batch: bool,
@@ -1056,6 +1099,61 @@ def test_single_retranslate_quality_review_accepts_exact_symbol_preservation(
     assert len(transport.requests) == 1
 
 
+def test_single_retranslate_identical_candidate_skips_quality_review(tmp_path: Path):
+    transport = _StubTransport(
+        translations_by_key={"0": "现有译文。"},
+        judge_fail=True,
+    )
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service, segments=(("0:0", "원문", "现有译文。"),)
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(service, response["request_id"], {"unresolved", "failed"})
+
+    assert final["status"] == "unresolved"
+    assert final["last_translation"] == "现有译文。"
+    assert "identical" in final["error"]
+    assert _read_segment_dst(service.cache.load("translation-pf-rt-1"), "0:0") == "现有译文。"
+    assert len(transport.requests) == 1
+
+
+def test_single_quality_review_usage_is_logged_separately(tmp_path: Path):
+    transport = _StubTransport(translations_by_key={"0": "新的译文。"})
+    service = _make_service(tmp_path, transport=transport)
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(
+        service, segments=(("0:0", "원문", "现有译文。"),)
+    )
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed"
+    events = service.read_request_events(
+        kind="translation", task_id="translation-pf-rt-1"
+    )["events"]
+    quality = [
+        event for event in events
+        if event.get("label") == "proofreading single retranslation quality review"
+    ]
+    assert len(quality) == 1
+    assert quality[0]["status"] == "completed"
+    assert quality[0]["input_tokens"] == 5
+    assert quality[0]["output_tokens"] == 7
+    assert quality[0]["subtask_id"].endswith("-quality")
+
+
 def test_single_retranslate_quality_review_rejection_overrides_structure(
     tmp_path: Path,
 ):
@@ -1353,6 +1451,16 @@ def test_single_retranslate_quality_reviews_share_dynamic_batch(tmp_path: Path):
     assert len(quality_requests) == 1
     quality_payload = json.loads(quality_requests[0]["messages"][-1]["content"])
     assert len(quality_payload["items"]) == 3
+    events = service.read_request_events(
+        kind="translation", task_id="translation-pf-rt-1"
+    )["events"]
+    logged_quality = [
+        event for event in events
+        if event.get("label") == "proofreading retranslation quality review batch"
+    ]
+    assert len(logged_quality) == 1
+    assert logged_quality[0]["input_tokens"] == 5
+    assert logged_quality[0]["output_tokens"] == 7
     snapshot = service.cache.load("translation-pf-rt-1")
     payload = json.loads(snapshot.subtasks[0].response_content)
     assert payload["translations"] == {
@@ -2052,6 +2160,151 @@ def test_resume_completed_retranslate_does_not_rerun(router_and_service):
 
     assert resumed["status"] == "completed"
     assert len(transport.requests) == before
+
+
+def test_resume_orphan_retranslate_reuses_same_attempt_checkpoint(
+    router_and_service,
+):
+    router, service, transport = router_and_service
+    _seed_task_with_snapshot(service)
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    request_id = response["request_id"]
+    final = _wait_for_status(service, request_id, {"completed", "failed"})
+    assert final["status"] == "completed"
+    before = len(transport.requests)
+    router.call(
+        "proofreading.update_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0", "dst": "你好"},
+    )
+    job = service._load_retranslate_job(request_id)
+    assert job is not None
+    assert job.runner_checkpoint
+    assert job.quality_checkpoint
+    job.status = "running"
+    job.cache_applied = False
+    job.result_dst = ""
+    service._save_retranslate_job(job)
+    service._retranslate_jobs.pop(request_id, None)
+
+    resumed = router.call(
+        "proofreading.resume_retranslate", {"request_id": request_id}
+    )
+    assert resumed["status"] in {"pending", "running"}
+    recovered = _wait_for_status(service, request_id, {"completed", "failed"})
+
+    assert recovered["status"] == "completed"
+    assert recovered["attempts"] == 1
+    assert len(transport.requests) == before
+    assert _read_segment_dst(service.cache.load("translation-pf-rt-1"), "0:0") == "重翻译文0"
+
+
+def test_resume_orphan_retranslate_changed_input_does_not_reuse_checkpoint(
+    router_and_service,
+):
+    router, service, transport = router_and_service
+    _seed_task_with_snapshot(service)
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    request_id = response["request_id"]
+    final = _wait_for_status(service, request_id, {"completed", "failed"})
+    assert final["status"] == "completed"
+    before = len(transport.requests)
+    router.call(
+        "proofreading.update_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0", "dst": "你好"},
+    )
+    job = service._load_retranslate_job(request_id)
+    assert job is not None
+    job.status = "running"
+    job.cache_applied = False
+    job.result_dst = ""
+    service._save_retranslate_job(job)
+    service._retranslate_jobs.pop(request_id, None)
+    service.settings_store.save_partial(
+        "translation", {"low_confidence_max_retries": 0}
+    )
+
+    router.call("proofreading.resume_retranslate", {"request_id": request_id})
+    recovered = _wait_for_status(service, request_id, {"completed", "failed"})
+
+    assert recovered["status"] == "completed"
+    assert recovered["attempts"] == 2
+    assert len(transport.requests) > before
+
+
+def test_new_manual_retranslation_never_reuses_previous_checkpoint(
+    router_and_service,
+):
+    router, service, transport = router_and_service
+    _seed_task_with_snapshot(service)
+    first = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    first_final = _wait_for_status(
+        service, first["request_id"], {"completed", "failed"}
+    )
+    assert first_final["status"] == "completed"
+    before = len(transport.requests)
+
+    second = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    second_final = _wait_for_status(
+        service, second["request_id"], {"unresolved", "failed"}
+    )
+
+    assert second["request_id"] != first["request_id"]
+    assert second_final["status"] == "unresolved"
+    assert len(transport.requests) == before + 1
+
+
+def test_resume_orphan_batch_reuses_completed_result(router_and_service):
+    router, service, transport = router_and_service
+    _seed_task_with_snapshot(
+        service,
+        segments=(("0:0", "원문 0", "旧译文 0"), ("0:1", "원문 1", "旧译文 1")),
+    )
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )
+    request_id = response["request_id"]
+    final = _wait_for_status(service, request_id, {"completed", "failed"})
+    assert final["status"] == "completed"
+    before = len(transport.requests)
+    for segment_id, dst in (("0:0", "旧译文 0"), ("0:1", "旧译文 1")):
+        router.call(
+            "proofreading.update_segment",
+            {"task_id": "translation-pf-rt-1", "segment_id": segment_id, "dst": dst},
+        )
+    job = service._load_retranslate_job(request_id)
+    assert job is not None
+    assert job.runner_checkpoint
+    job.status = "running"
+    job.cache_applied = False
+    service._save_retranslate_job(job)
+    service._retranslate_jobs.pop(request_id, None)
+
+    router.call("proofreading.resume_retranslate", {"request_id": request_id})
+    recovered = _wait_for_status(service, request_id, {"completed", "failed"})
+
+    assert recovered["status"] == "completed"
+    assert recovered["attempts"] == 1
+    assert len(transport.requests) == before
+    snapshot = service.cache.load("translation-pf-rt-1")
+    assert _read_segment_dst(snapshot, "0:0") == "重翻译文0"
+    assert _read_segment_dst(snapshot, "0:1") == "重翻译文1"
 
 
 def test_resume_failed_retranslate_from_disk_retries_unfinished(tmp_path: Path):
