@@ -75,6 +75,7 @@ def evaluate_segment_confidence(
     max_punctuation_delta: int,
     source_language: Language | None = None,
     target_language: Language | None = None,
+    allow_source_phonetic_jamo: bool = False,
 ) -> ConfidenceVerdict:
     reasons: list[str] = []
     tags: list[str] = []
@@ -134,6 +135,7 @@ def evaluate_segment_confidence(
             translated_text,
             source_language=source_language,
             target_language=target_language,
+            allow_source_phonetic_jamo=allow_source_phonetic_jamo,
         )
     if residue_reason:
         reasons.append(residue_reason)
@@ -283,8 +285,8 @@ _CJK_IDEOGRAPH_PATTERN = re.compile(
 )
 
 
-# Korean "hard" residue \u2014 these never appear legitimately in Chinese
-# text; their presence always means the model failed to translate.
+# Korean "hard" residue is normally untranslated text. Single-row proofreading
+# may exempt exact short source phonetic fragments without changing normal translation.
 #   U+AC00-U+D7AF  Hangul Syllables (\uc548\ub155\ud558\uc138\uc694)
 #   U+FFA0-U+FFDC  Halfwidth Hangul Jamo (legacy game-text leakage)
 _KOREAN_HARD_RESIDUE_PATTERN = re.compile(r"[\uac00-\ud7af\uffa0-\uffdc]")
@@ -299,6 +301,10 @@ _KOREAN_HARD_RESIDUE_PATTERN = re.compile(r"[\uac00-\ud7af\uffa0-\uffdc]")
 #   U+D7B0-U+D7FF  Hangul Jamo Extended-B
 _KOREAN_SOFT_RESIDUE_PATTERN = re.compile(
     r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]"
+)
+_KOREAN_PHONETIC_FRAGMENT_PATTERN = re.compile(
+    r"[\uac00-\ud7a3]{0,2}[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]"
+    r"(?:[\uac00-\ud7a3]{0,2}[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff])*"
 )
 _KOREAN_EMOTICON_JAMO = frozenset("\u314b\u314e\u3160\u315c")
 _KOREAN_COMPATIBILITY_CONSONANT_PATTERN = re.compile(r"[\u3131-\u314e]")
@@ -669,8 +675,17 @@ def _source_language_residue(
     *,
     source_language: Language | None,
     target_language: Language | None,
+    allow_source_phonetic_jamo: bool = False,
 ) -> str | None:
     if source_language is Language.KOREAN:
+        if (
+            allow_source_phonetic_jamo
+            and target_language in _CHINESE_TARGET_LANGUAGES
+            and _CJK_IDEOGRAPH_PATTERN.search(translated_text)
+        ):
+            translated_text = _without_preserved_phonetic_fragments(
+                source_text, translated_text
+            )
         # Hard residue (real Korean words / halfwidth legacy) is always
         # a problem.
         if _KOREAN_HARD_RESIDUE_PATTERN.search(translated_text):
@@ -701,6 +716,25 @@ def _source_language_residue(
         ):
             return f"{policy.name} source residue remains in Chinese translation"
     return None
+
+
+def _without_preserved_phonetic_fragments(source: str, translated: str) -> str:
+    available = Counter(
+        fragment
+        for fragment in _KOREAN_PHONETIC_FRAGMENT_PATTERN.findall(source)
+        if 2 <= len(fragment) <= 4
+    )
+
+    def remove_exact_source_fragment(match: re.Match[str]) -> str:
+        fragment = match.group(0)
+        if available[fragment] > 0:
+            available[fragment] -= 1
+            return ""
+        return fragment
+
+    return _KOREAN_PHONETIC_FRAGMENT_PATTERN.sub(
+        remove_exact_source_fragment, translated
+    )
 
 
 def _has_script_residue(

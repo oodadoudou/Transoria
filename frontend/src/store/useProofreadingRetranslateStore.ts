@@ -17,9 +17,15 @@ export interface RetranslateActivity {
   elapsedSeconds: number;
 }
 
+export interface RejectedCandidate {
+  text: string;
+  reason: string;
+}
+
 export interface ProofreadingRetranslateSession {
   inflightRetranslates: Record<string, string>;
   retranslateActivities: Record<string, RetranslateActivity>;
+  rejectedCandidates: Record<string, RejectedCandidate>;
   batchRetranslating: boolean;
   batchRetranslateProgress: BatchRetranslateProgress | null;
   completedRevision: number;
@@ -30,6 +36,7 @@ export type RetranslateValueUpdater<T> = T | ((previous: T) => T);
 const EMPTY_SESSION: ProofreadingRetranslateSession = {
   inflightRetranslates: {},
   retranslateActivities: {},
+  rejectedCandidates: {},
   batchRetranslating: false,
   batchRetranslateProgress: null,
   completedRevision: 0,
@@ -46,6 +53,10 @@ interface ProofreadingRetranslateStore {
   setRetranslateActivities: (
     taskId: string,
     updater: RetranslateValueUpdater<Record<string, RetranslateActivity>>,
+  ) => void;
+  setRejectedCandidates: (
+    taskId: string,
+    updater: RetranslateValueUpdater<Record<string, RejectedCandidate>>,
   ) => void;
   setBatchRetranslating: (taskId: string, running: boolean) => void;
   setBatchRetranslateProgress: (
@@ -91,6 +102,22 @@ export const useProofreadingRetranslateStore =
               retranslateActivities: resolveUpdater(
                 updater,
                 current.retranslateActivities,
+              ),
+            },
+          },
+        };
+      }),
+    setRejectedCandidates: (taskId, updater) =>
+      set((state) => {
+        const current = state.sessions[taskId] ?? EMPTY_SESSION;
+        return {
+          sessions: {
+            ...state.sessions,
+            [taskId]: {
+              ...current,
+              rejectedCandidates: resolveUpdater(
+                updater,
+                current.rejectedCandidates,
               ),
             },
           },

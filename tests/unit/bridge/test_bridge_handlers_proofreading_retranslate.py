@@ -1056,7 +1056,7 @@ def test_single_retranslate_quality_review_accepts_exact_symbol_preservation(
     assert len(transport.requests) == 1
 
 
-def test_single_retranslate_quality_review_compares_korean_residue_reduction(
+def test_single_retranslate_quality_review_rejection_overrides_structure(
     tmp_path: Path,
 ):
     source = (
@@ -1091,9 +1091,9 @@ def test_single_retranslate_quality_review_compares_korean_residue_reduction(
         "proofreading.retranslate_segment",
         {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
     )
-    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+    final = _wait_for_status(service, response["request_id"], {"unresolved", "failed"})
 
-    assert final["status"] == "completed", final
+    assert final["status"] == "unresolved", final
     comparison_request = transport.requests[-1]
     messages = comparison_request["messages"]
     assert "Compare total quality" in messages[0]["content"]
@@ -1110,7 +1110,71 @@ def test_single_retranslate_quality_review_compares_korean_residue_reduction(
     }
     assert len(transport.requests) == 2
     snapshot = service.cache.load("translation-pf-rt-1")
+    assert _read_segment_dst(snapshot, "0:0") == existing
+    assert final["last_translation"] == candidate
+
+
+def test_single_retranslate_rejects_unrelated_prose_with_matching_chain(
+    tmp_path: Path,
+):
+    source = "성ㅇㅈ>성>holy>홀 river>리버>립 ㅇ강ㅎ"
+    existing = "성ㅇㅈ>성>holy>홀 river>리버>립 ㅇ강ㅎ"
+    candidate = "今天天气很好ㅇㅈ> >holy> >river> > ㅇ강ㅎ"
+    transport = _StubTransport(
+        translations_by_key={"0": candidate},
+        judge_decisions=["keep_existing"],
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation", {"low_confidence_max_retries": 0, "request_retry_attempts": 0}
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(service, segments=(("0:0", source, existing),))
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(service, response["request_id"], {"unresolved", "failed"})
+
+    assert final["status"] == "unresolved", final
+    assert _read_segment_dst(service.cache.load("translation-pf-rt-1"), "0:0") == existing
+
+
+def test_single_retranslate_keeps_source_phonetic_fragment_without_retry(
+    tmp_path: Path,
+):
+    source = "ㅇ강ㅎ이니까 river>리버>립 이거임"
+    existing = "ㅇ강ㅎ，所以 river>리버>립。"
+    candidate = "这里的ㅇ강ㅎ是拆解标记，river>河流>音译就是这个意思。"
+    transport = _StubTransport(
+        translations_by_key={"0": candidate},
+        judge_decisions=["accept_new"],
+    )
+    service = _make_service(tmp_path, transport=transport)
+    service.settings_store.save_partial(
+        "translation", {"low_confidence_max_retries": 3, "request_retry_attempts": 0}
+    )
+    router = BridgeRouter()
+    register(router, service=service)
+    _seed_task_with_snapshot(service, segments=(("0:0", source, existing),))
+
+    response = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )
+    final = _wait_for_status(service, response["request_id"], {"completed", "failed"})
+
+    assert final["status"] == "completed", final
+    assert len(transport.requests) == 2
+    snapshot = service.cache.load("translation-pf-rt-1")
     assert _read_segment_dst(snapshot, "0:0") == candidate
+    saved_payload = json.loads(snapshot.subtasks[0].response_content)
+    assert not any(
+        "source_residue" in entry.get("tags", [])
+        for entry in saved_payload.get("low_confidence", [])
+    )
 
 
 def test_single_retranslate_chain_evidence_does_not_override_missing_jamo(

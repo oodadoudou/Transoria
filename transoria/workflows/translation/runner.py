@@ -827,6 +827,7 @@ class TranslationSubtaskRunner:
     solo_retry_limiter: asyncio.Semaphore | None = None
     transport_retry_attempts: int = 3
     preserve_korean_latin_review_candidates: bool = False
+    allow_source_phonetic_jamo: bool = False
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
@@ -2050,6 +2051,7 @@ class TranslationSubtaskRunner:
             max_punctuation_delta=self.max_punctuation_delta,
             source_language=self.source_language,
             target_language=self.target_language,
+            allow_source_phonetic_jamo=self.allow_source_phonetic_jamo,
         )
 
 

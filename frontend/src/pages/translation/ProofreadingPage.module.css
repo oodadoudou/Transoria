@@ -719,6 +719,34 @@
   color: var(--muted);
 }
 
+.rejectedCandidate {
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+
+.rejectedCandidateText {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rejectedCandidateReason {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.rejectedCandidateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .debugHint {
   font-size: 11.5px;
   color: var(--muted);

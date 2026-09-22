@@ -1240,7 +1240,11 @@ export const en: Messages = {
       retranslateStale:
         "You edited this segment manually; LLM result discarded.",
       retranslateUnresolved:
-        "The new result still contains source-language text, so the existing translation was kept for review.",
+        "The new translation was not accepted; the existing translation was kept.",
+      retranslateCandidateLabel: "Unaccepted candidate",
+      retranslateCandidateReason: "Reason:",
+      retranslateCandidateEdit: "Load in editor",
+      retranslateCandidateKeep: "Dismiss candidate",
       retranslateRejectedRunning:
         "Task is running; stop it before retranslating.",
       selectRowLabel: "Select {id}",

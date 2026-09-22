@@ -1172,6 +1172,40 @@ def test_evaluate_flags_non_emoticon_jamo_inside_chinese(translated: str) -> Non
     assert any("Korean residue" in reason for reason in verdict.reasons)
 
 
+def test_source_phonetic_fragment_relaxation_is_opt_in_and_exact() -> None:
+    source = "ㅇ강ㅎ이니까 river>리버>립 이거임"
+    translated = "这里的ㅇ강ㅎ是拆解标记，river>河流>音译就是这个意思。"
+    options = {
+        "min_length_ratio": 0.0,
+        "max_length_ratio": 10.0,
+        "max_punctuation_delta": 20,
+        "source_language": Language.KOREAN,
+        "target_language": Language.CHINESE_SIMPLIFIED,
+    }
+
+    ordinary = evaluate_segment_confidence(source, translated, **options)
+    proofreading = evaluate_segment_confidence(
+        source, translated, allow_source_phonetic_jamo=True, **options
+    )
+    leaked = evaluate_segment_confidence(
+        source,
+        translated + " 한국어",
+        allow_source_phonetic_jamo=True,
+        **options,
+    )
+    repeated_fragment = evaluate_segment_confidence(
+        source,
+        translated + " ㅇ강ㅎ",
+        allow_source_phonetic_jamo=True,
+        **options,
+    )
+
+    assert TAG_SOURCE_RESIDUE in ordinary.tags
+    assert TAG_SOURCE_RESIDUE not in proofreading.tags
+    assert TAG_SOURCE_RESIDUE in leaked.tags
+    assert TAG_SOURCE_RESIDUE in repeated_fragment.tags
+
+
 def test_evaluate_flags_korean_halfwidth_hangul() -> None:
     """Halfwidth Hangul (U+FFA0-U+FFDC) is legacy game-text leakage
     and should be flagged even at low ratio because it's never used

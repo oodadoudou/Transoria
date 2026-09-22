@@ -596,17 +596,31 @@ def _patch_segment_dst(
     snapshot: TaskSnapshot,
     segment_id: str,
     new_dst: str,
+    *,
+    allow_source_phonetic_jamo: bool = False,
 ) -> None:
-    _patch_segment_dsts(cache, snapshot, {segment_id: new_dst})
+    _patch_segment_dsts(
+        cache,
+        snapshot,
+        {segment_id: new_dst},
+        allow_source_phonetic_jamo=allow_source_phonetic_jamo,
+    )
 
 
 def _patch_segment_dsts(
     cache: TaskCache,
     snapshot: TaskSnapshot,
     updates: Mapping[str, str],
+    *,
+    allow_source_phonetic_jamo: bool = False,
 ) -> None:
     confidence_entries = {
-        segment_id: _confidence_entry_for_segment(snapshot, segment_id, new_dst)
+        segment_id: _confidence_entry_for_segment(
+            snapshot,
+            segment_id,
+            new_dst,
+            allow_source_phonetic_jamo=allow_source_phonetic_jamo,
+        )
         for segment_id, new_dst in updates.items()
     }
     for subtask in snapshot.subtasks:
@@ -646,7 +660,11 @@ def _patch_segment_dsts(
 
 
 def _confidence_entry_for_segment(
-    snapshot: TaskSnapshot, segment_id: str, dst: str
+    snapshot: TaskSnapshot,
+    segment_id: str,
+    dst: str,
+    *,
+    allow_source_phonetic_jamo: bool = False,
 ) -> dict[str, object] | None:
     source = ""
     for subtask in snapshot.subtasks:
@@ -685,6 +703,7 @@ def _confidence_entry_for_segment(
         max_punctuation_delta=12,
         source_language=source_language,
         target_language=target_language,
+        allow_source_phonetic_jamo=allow_source_phonetic_jamo,
     )
     if not verdict.is_low_confidence:
         return None
@@ -726,13 +745,6 @@ def _should_keep_existing_retranslation(
     source_segment = _find_segment_payload(snapshot, segment_id)
     if source_segment is not None and _is_preserved_nonprose_retranslation(
         _retranslate_source_text(source_segment), candidate_dst
-    ):
-        return False
-    if source_segment is not None and _is_structured_korean_explanation_improvement(
-        _retranslate_source_text(source_segment),
-        existing_dst,
-        candidate_dst,
-        candidate_entry,
     ):
         return False
     candidate_tags = set(_string_values((candidate_entry or {}).get("tags")))
@@ -885,51 +897,6 @@ def _korean_script_char_count(text: str) -> int:
         for char in text
         if 0xAC00 <= ord(char) <= 0xD7A3 or _is_korean_jamo(char)
     )
-
-
-def _is_structured_korean_explanation_improvement(
-    source_text: str,
-    existing_dst: str,
-    candidate_dst: str,
-    candidate_entry: Mapping[str, object] | None,
-) -> bool:
-    candidate_tags = set(_string_values((candidate_entry or {}).get("tags")))
-    if candidate_tags - {"source_residue"}:
-        return False
-    separator_count = source_text.count(">")
-    if (
-        separator_count < 2
-        or existing_dst.count(">") != separator_count
-        or candidate_dst.count(">") != separator_count
-    ):
-        return False
-    existing_korean = _korean_script_char_count(existing_dst)
-    candidate_korean = _korean_script_char_count(candidate_dst)
-    if (
-        existing_korean < 6
-        or existing_korean - candidate_korean < max(3, existing_korean // 4)
-    ):
-        return False
-    if not any(
-        0x3400 <= ord(char) <= 0x4DBF
-        or 0x4E00 <= ord(char) <= 0x9FFF
-        or 0xF900 <= ord(char) <= 0xFAFF
-        for char in candidate_dst
-    ):
-        return False
-    source_ascii = Counter(
-        token.casefold()
-        for token in re.findall(r"[A-Za-z][A-Za-z0-9_]{1,}", source_text)
-    )
-    candidate_ascii = Counter(
-        token.casefold()
-        for token in re.findall(r"[A-Za-z][A-Za-z0-9_]{1,}", candidate_dst)
-    )
-    if source_ascii - candidate_ascii:
-        return False
-    source_jamo = Counter(char for char in source_text if _is_korean_jamo(char))
-    candidate_jamo = Counter(char for char in candidate_dst if _is_korean_jamo(char))
-    return not (source_jamo - candidate_jamo)
 
 
 def _retranslation_quality_rank(
@@ -2608,7 +2575,12 @@ class TaskService:
                     if current_dst == job.original_dst:
                         updates[job.segment_id] = job.result_dst
             try:
-                _patch_segment_dsts(self.cache, snapshot, updates)
+                _patch_segment_dsts(
+                    self.cache,
+                    snapshot,
+                    updates,
+                    allow_source_phonetic_jamo=not bool(job.batch_results),
+                )
             except (TaskNotFoundError, OSError):
                 return
         job.cache_applied = True
@@ -2799,15 +2771,7 @@ class TaskService:
                 job.updated_at_wall = _utc_now_iso()
                 self._save_retranslate_job(job)
                 return
-            if (
-                quality_decision.decision != "accept_new"
-                and not _is_structured_korean_explanation_improvement(
-                    source_text,
-                    job.original_dst,
-                    new_dst,
-                    runner_result.low_confidence.get(job.segment_id),
-                )
-            ):
+            if quality_decision.decision != "accept_new":
                 job.error = (
                     "quality review kept the existing translation: "
                     f"{quality_decision.reason}"
@@ -2855,7 +2819,13 @@ class TaskService:
                 self._save_retranslate_job(job)
                 return
             try:
-                _patch_segment_dst(self.cache, snapshot, job.segment_id, new_dst)
+                _patch_segment_dst(
+                    self.cache,
+                    snapshot,
+                    job.segment_id,
+                    new_dst,
+                    allow_source_phonetic_jamo=True,
+                )
             except (TaskNotFoundError, OSError) as exc:
                 job.error = f"failed to write cache: {exc}"
                 job.last_error = job.error
@@ -3567,6 +3537,7 @@ class TaskService:
             model_snapshot=model_snapshot,
             prompt_preset_id=prompt_preset_id,
             prompt_snapshot=prompt_snapshot,
+            allow_source_phonetic_jamo=True,
         )
 
     async def _call_runner_for_retranslate_batch(
@@ -3578,6 +3549,7 @@ class TaskService:
         model_snapshot: Mapping[str, object] | None = None,
         prompt_preset_id: str | None = None,
         prompt_snapshot: Mapping[str, object] | None = None,
+        allow_source_phonetic_jamo: bool = False,
     ) -> _RetranslateRunnerResult:
         from transoria.workflows.translation.chunker import (  # noqa: PLC0415
             ChunkSegment,
@@ -3683,6 +3655,12 @@ class TaskService:
                     Language.CHINESE_SIMPLIFIED,
                     Language.CHINESE_TRADITIONAL,
                 }
+            ),
+            allow_source_phonetic_jamo=(
+                allow_source_phonetic_jamo
+                and source_language is Language.KOREAN
+                and target_language
+                in {Language.CHINESE_SIMPLIFIED, Language.CHINESE_TRADITIONAL}
             ),
         )
         translations: dict[str, str] = {}

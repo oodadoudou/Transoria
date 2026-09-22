@@ -1201,7 +1201,11 @@ export const zh: Messages = {
       retranslateFailed: "重翻失败：{reason}",
       retranslateStale: "您已手动修改，本次重翻结果已丢弃。",
       retranslateUnresolved:
-        "新结果仍有原文残留，已保留现有译文供您继续校对。",
+        "新译文未被采纳，已保留现有译文。",
+      retranslateCandidateLabel: "未采纳的候选译文",
+      retranslateCandidateReason: "未采纳原因：",
+      retranslateCandidateEdit: "载入编辑区",
+      retranslateCandidateKeep: "关闭候选",
       retranslateRejectedRunning: "任务正在运行中，请先停止再重翻。",
       selectRowLabel: "选择 {id}",
       subtaskHint: "来源分块：{ids}",

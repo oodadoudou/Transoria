@@ -31,6 +31,7 @@ import {
   EMPTY_PROOFREADING_RETRANSLATE_SESSION,
   useProofreadingRetranslateStore,
   type BatchRetranslateProgress,
+  type RejectedCandidate,
   type RetranslateActivity,
   type RetranslateValueUpdater,
 } from "@/store/useProofreadingRetranslateStore";
@@ -463,6 +464,9 @@ export function ProofreadingPage() {
   const setStoredRetranslateActivities = useProofreadingRetranslateStore(
     (state) => state.setRetranslateActivities,
   );
+  const setStoredRejectedCandidates = useProofreadingRetranslateStore(
+    (state) => state.setRejectedCandidates,
+  );
   const setStoredBatchRetranslating = useProofreadingRetranslateStore(
     (state) => state.setBatchRetranslating,
   );
@@ -475,6 +479,7 @@ export function ProofreadingPage() {
   const {
     inflightRetranslates,
     retranslateActivities,
+    rejectedCandidates,
     batchRetranslating,
     batchRetranslateProgress,
     completedRevision,
@@ -488,6 +493,11 @@ export function ProofreadingPage() {
     updater: RetranslateValueUpdater<Record<string, RetranslateActivity>>,
   ) => {
     if (activeTaskId) setStoredRetranslateActivities(activeTaskId, updater);
+  };
+  const setRejectedCandidates = (
+    updater: RetranslateValueUpdater<Record<string, RejectedCandidate>>,
+  ) => {
+    if (activeTaskId) setStoredRejectedCandidates(activeTaskId, updater);
   };
   const setBatchRetranslating = (running: boolean) => {
     if (activeTaskId) setStoredBatchRetranslating(activeTaskId, running);
@@ -847,6 +857,9 @@ export function ProofreadingPage() {
     if (!selectedSegmentId) return null;
     return proofreadingIndex.itemsBySegmentId.get(selectedSegmentId) ?? null;
   }, [proofreadingIndex, selectedSegmentId]);
+  const selectedRejectedCandidate = selectedItem
+    ? rejectedCandidates[selectedItem.segment_id]
+    : undefined;
 
   useEffect(() => {
     setDraftDst(selectedItem?.dst ?? "");
@@ -934,6 +947,11 @@ export function ProofreadingPage() {
       });
       setSavedTick((t) => t + 1);
       setRetranslateUndo(null);
+      setRejectedCandidates((prev) => {
+        const next = { ...prev };
+        delete next[selectedItem.segment_id];
+        return next;
+      });
     } catch (err) {
       setFeedback({
         kind: "error",
@@ -1218,6 +1236,11 @@ export function ProofreadingPage() {
             }));
           }
           if (status.status === "completed") {
+            setRejectedCandidates((prev) => {
+              const next = { ...prev };
+              delete next[segmentId];
+              return next;
+            });
             if (refreshOnComplete) {
               try {
                 await reloadProofreadingSnapshot(segmentId);
@@ -1247,6 +1270,15 @@ export function ProofreadingPage() {
           }
           if (status.status === "unresolved") {
             const reason = status.error || status.last_error;
+            if (status.last_translation) {
+              setRejectedCandidates((prev) => ({
+                ...prev,
+                [segmentId]: {
+                  text: status.last_translation,
+                  reason,
+                },
+              }));
+            }
             if (showFeedback) {
               setFeedback({ kind: "info", text: m.retranslateUnresolved });
             }
@@ -1328,16 +1360,33 @@ export function ProofreadingPage() {
           if (status.status === "completed") {
             const outcomes = new Map<string, RetranslateOutcome>();
             let completedAny = false;
+            const rejectedUpdates: Record<string, RejectedCandidate> = {};
+            const completedIds: string[] = [];
             for (const item of status.results) {
               const outcome: RetranslateOutcome = {
                 status: item.status,
                 reason: item.error,
               };
               outcomes.set(item.segment_id, outcome);
+              if (item.status === "unresolved" && item.result_dst) {
+                rejectedUpdates[item.segment_id] = {
+                  text: item.result_dst,
+                  reason: item.error ?? "",
+                };
+              } else if (item.status === "completed") {
+                completedIds.push(item.segment_id);
+              }
               if (item.status === "completed" && item.result_dst !== undefined) {
                 completedAny = true;
                 patchCompletedRetranslateResult(item.segment_id, item.result_dst);
               }
+            }
+            if (Object.keys(rejectedUpdates).length || completedIds.length) {
+              setRejectedCandidates((prev) => {
+                const next = { ...prev, ...rejectedUpdates };
+                for (const segmentId of completedIds) delete next[segmentId];
+                return next;
+              });
             }
             if (completedAny && activeTaskId) {
               markRetranslateCompleted(activeTaskId);
@@ -1496,6 +1545,11 @@ export function ProofreadingPage() {
       };
     }
     if (showFeedback) setFeedback(null);
+    setRejectedCandidates((prev) => {
+      const next = { ...prev };
+      delete next[segmentId];
+      return next;
+    });
     try {
       const { request_id } = await proofreadingBridge.retranslateSegment(
         activeTaskId,
@@ -1616,6 +1670,13 @@ export function ProofreadingPage() {
   };
 
   const retranslateIds = async (ids: string[]) => {
+    setRejectedCandidates((prev) => {
+      const next = { ...prev };
+      for (const segmentId of ids) {
+        delete next[segmentId];
+      }
+      return next;
+    });
     const batches = Array.from(
       { length: Math.ceil(ids.length / 5) },
       (_, index) => ids.slice(index * 5, index * 5 + 5),
@@ -2733,6 +2794,41 @@ export function ProofreadingPage() {
                 </Pill>
               </span>
             </div>
+            {selectedRejectedCandidate ? (
+              <div className={styles.rejectedCandidate}>
+                <div className={styles.label}>{m.retranslateCandidateLabel}</div>
+                <div className={styles.rejectedCandidateText}>
+                  {selectedRejectedCandidate.text}
+                </div>
+                <div className={styles.rejectedCandidateReason}>
+                  {m.retranslateCandidateReason}{" "}
+                  {selectedRejectedCandidate.reason}
+                </div>
+                <div className={styles.rejectedCandidateActions}>
+                  <Pill
+                    variant="ghost"
+                    disabled={
+                      dirty || selectedRejectedCandidate.text === selectedItem.dst
+                    }
+                    onClick={() => setDraftDst(selectedRejectedCandidate.text)}
+                  >
+                    {m.retranslateCandidateEdit}
+                  </Pill>
+                  <Pill
+                    variant="ghost"
+                    onClick={() =>
+                      setRejectedCandidates((prev) => {
+                        const next = { ...prev };
+                        delete next[selectedItem.segment_id];
+                        return next;
+                      })
+                    }
+                  >
+                    {m.retranslateCandidateKeep}
+                  </Pill>
+                </div>
+              </div>
+            ) : null}
             {selectedItem.subtask_ids?.length ? (
               <div className={styles.debugHintRow}>
                 <div className={styles.debugHint}>
