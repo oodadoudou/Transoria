@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
@@ -84,11 +85,42 @@ class RouteLimitedClient:
 @dataclass
 class RoutedTranslationRunner:
     routes: tuple[tuple[TranslationRouteConfig, SubtaskRunner], ...]
-    _next_index: int = field(default=0, init=False, repr=False)
+    group_concurrency: int
+    _active: list[int] = field(default_factory=list, init=False, repr=False)
+    _assigned: list[int] = field(default_factory=list, init=False, repr=False)
+    _weights: tuple[float, ...] = field(default=(), init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.routes:
+            raise ValueError("Routed translation requires at least one route.")
+        profile_counts = Counter(route.model.id for route, _ in self.routes)
+        profile_rpm: dict[str, int] = {}
+        for route, _ in self.routes:
+            profile_id = route.model.id
+            profile_rpm[profile_id] = max(
+                profile_rpm.get(profile_id, 0), route.model.rpm_limit
+            )
+        finite_rpm = sum(max(0, rpm) for rpm in profile_rpm.values())
+        unlimited_weight = max(1, self.group_concurrency, finite_rpm)
+        self._weights = tuple(
+            (max(0, route.model.rpm_limit) or unlimited_weight)
+            / profile_counts[route.model.id]
+            for route, _ in self.routes
+        )
+        self._active = [0] * len(self.routes)
+        self._assigned = [0] * len(self.routes)
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
-        index = self._next_index % len(self.routes)
-        self._next_index += 1
+        index = min(
+            range(len(self.routes)),
+            key=lambda i: (
+                self._active[i] / self._weights[i],
+                self._assigned[i] / self._weights[i],
+                i,
+            ),
+        )
+        self._active[index] += 1
+        self._assigned[index] += 1
         route, runner = self.routes[index]
         try:
             result = await runner.run(subtask)
@@ -98,7 +130,10 @@ class RoutedTranslationRunner:
                 result=replace(exc.result, route_profile_id=route.model.id),
                 code=exc.code,
             ) from exc
-        return replace(result, route_profile_id=route.model.id)
+        else:
+            return replace(result, route_profile_id=route.model.id)
+        finally:
+            self._active[index] -= 1
 
 
 __all__ = ["RouteLimitedClient", "RoutedTranslationRunner", "route_snapshot"]

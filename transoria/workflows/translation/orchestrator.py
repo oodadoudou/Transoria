@@ -515,7 +515,8 @@ class TranslationOrchestrator:
                     ),
                 )
                 for route in routes
-            )
+            ),
+            group_concurrency=config.group_concurrency,
         )
 
     def _set_advanced_retry_state(self, task_id: str, state: str) -> None:
