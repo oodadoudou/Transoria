@@ -25,7 +25,6 @@ BILINGUAL_OUTPUT_FOLDER_ZH = "双语版本"
 class TranslationRouteConfig:
     model: ModelConfig
     prompt_preset: PromptPreset
-    concurrency: int
 
 
 @dataclass(frozen=True)

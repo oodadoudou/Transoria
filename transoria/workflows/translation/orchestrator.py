@@ -505,7 +505,10 @@ class TranslationOrchestrator:
                             limited_client,
                             replace(
                                 config,
-                                model=route.model,
+                                model=replace(
+                                    route.model,
+                                    concurrency_limit=config.group_concurrency,
+                                ),
                                 prompt_preset=route.prompt_preset,
                             ),
                         )

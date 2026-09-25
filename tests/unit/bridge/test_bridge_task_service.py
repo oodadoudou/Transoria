@@ -1288,6 +1288,7 @@ def test_advanced_translation_config_resolves_route_prompts_and_group_limits(tmp
     )
     service.profile_store.set_api_keys("second", ("second-key",))
     first = service.settings_store.load_all().app.active_translation_model_id
+    service.profile_store.update(first, {"rpm_limit": 90})
     WorkflowPresetStore(
         service.prompts_cache_root / "workflow_presets.translation.json",
         PromptKind.TRANSLATION,
@@ -1303,10 +1304,10 @@ def test_advanced_translation_config_resolves_route_prompts_and_group_limits(tmp
                 target_language="zh",
                 advanced=True,
                 routes=(
-                    PresetRoute(first, DEFAULT_TRANSLATION_PRESET_ID, 2),
-                    PresetRoute("second", DEFAULT_TRANSLATION_PRESET_ID, 1),
+                    PresetRoute(first, DEFAULT_TRANSLATION_PRESET_ID),
+                    PresetRoute("second", DEFAULT_TRANSLATION_PRESET_ID, 15),
                 ),
-                fallback_route=PresetRoute("second", DEFAULT_TRANSLATION_PRESET_ID, 1),
+                fallback_route=PresetRoute("second", DEFAULT_TRANSLATION_PRESET_ID, 7),
                 group_concurrency=3,
                 retry_failed=True,
             ),
@@ -1320,8 +1321,9 @@ def test_advanced_translation_config_resolves_route_prompts_and_group_limits(tmp
 
     assert config.workflow_preset_id == "advanced-1"
     assert config.group_concurrency == 3
-    assert [route.concurrency for route in config.routes] == [2, 1]
+    assert [route.model.rpm_limit for route in config.routes] == [90, 15]
     assert config.fallback_route.model.id == "second"
+    assert config.fallback_route.model.rpm_limit == 7
     assert config.retry_failed
     assert model.id == first
 
@@ -1348,6 +1350,7 @@ def test_advanced_translation_config_resolves_route_prompts_and_group_limits(tmp
     assert resumed.workflow_preset_id == "advanced-1"
     assert [route.model.id for route in resumed.routes] == [first, "second"]
     assert resumed.fallback_route.model.id == "second"
+    assert [route.model.rpm_limit for route in resumed.routes] == [90, 15]
     assert resumed.routes[0].prompt_preset.to_dict() == config.routes[0].prompt_preset.to_dict()
 
 

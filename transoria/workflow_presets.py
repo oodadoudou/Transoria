@@ -16,14 +16,18 @@ from transoria.prompts import PromptKind
 class PresetRoute:
     model_profile_id: str
     prompt_preset_id: str
-    concurrency: int = 1
+    rpm_limit: int | None = None
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> "PresetRoute":
         return cls(
             model_profile_id=str(data.get("model_profile_id", "")),
             prompt_preset_id=str(data.get("prompt_preset_id", "")),
-            concurrency=int(data.get("concurrency", 1)),
+            rpm_limit=(
+                int(data["rpm_limit"])
+                if data.get("rpm_limit") is not None
+                else None
+            ),
         )
 
 

@@ -2414,7 +2414,9 @@ class TaskService:
             model_snapshot = self._model_snapshot_for_retranslate(effective_model_id)
             if advanced_preset_id and model_snapshot is not None:
                 model_snapshot["advanced_route"] = True
-                model_snapshot["concurrency_limit"] = selected_advanced_route.concurrency
+                model_snapshot["concurrency_limit"] = selected.group_concurrency
+                if selected_advanced_route.rpm_limit is not None:
+                    model_snapshot["rpm_limit"] = selected_advanced_route.rpm_limit
             job = RetranslateJob(
                 request_id=request_id,
                 task_id=task_id,
@@ -4196,10 +4198,6 @@ class TaskService:
                     "group concurrency must be positive.", field="group_concurrency"
                 )
             for route in (*routes, *((fallback_route,) if fallback_route else ())):
-                if route.concurrency <= 0:
-                    raise BridgeError.invalid_argument(
-                        "route concurrency must be positive.", field="routes"
-                    )
                 primary = routes[0].model
                 if (
                     primary.input_token_limit > 0
@@ -4276,10 +4274,13 @@ class TaskService:
             model=replace(
                 model,
                 timeout_seconds=float(timeout_seconds),
-                concurrency_limit=route.concurrency,
+                rpm_limit=(
+                    route.rpm_limit
+                    if route.rpm_limit is not None
+                    else model.rpm_limit
+                ),
             ),
             prompt_preset=preset,
-            concurrency=route.concurrency,
         )
 
     def _route_from_snapshot(
@@ -4303,7 +4304,6 @@ class TaskService:
         return TranslationRouteConfig(
             model=replace(model, timeout_seconds=float(timeout_seconds)),
             prompt_preset=PromptPreset.from_dict(prompt_data),
-            concurrency=int(raw.get("concurrency", 1)),
         )
 
     def start_translation(self, request_id: str) -> dict[str, object]:

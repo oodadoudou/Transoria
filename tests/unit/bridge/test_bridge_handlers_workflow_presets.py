@@ -137,7 +137,7 @@ def test_advanced_translation_preset_applies_routes_without_changing_basic_match
     route = {
         "model_profile_id": "model-1",
         "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
-        "concurrency": 2,
+        "rpm_limit": 60,
     }
     created = router.call(
         "workflow_presets.create",
@@ -162,6 +162,8 @@ def test_advanced_translation_preset_applies_routes_without_changing_basic_match
     listed = router.call("workflow_presets.list", {"kind": "translation"})
 
     assert created["preset"]["routes"][1]["model_profile_id"] == "model-2"
+    assert created["preset"]["routes"][1]["rpm_limit"] == 60
+    assert "concurrency" not in created["preset"]["routes"][1]
     assert listed["matched_id"] == "group-1"
     assert settings_store.load_all().app.active_translation_workflow_preset_id == "group-1"
 
@@ -189,7 +191,7 @@ def test_advanced_preset_rejects_duplicate_normal_model(env):
     route = {
         "model_profile_id": "model-1",
         "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
-        "concurrency": 1,
+        "rpm_limit": 30,
     }
     with pytest.raises(BridgeError) as caught:
         router.call(
@@ -226,7 +228,7 @@ def test_advanced_preset_derives_basic_fields_from_primary_route(env):
                     {
                         "model_profile_id": "model-1",
                         "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
-                        "concurrency": 1,
+                        "rpm_limit": 30,
                     }
                 ],
                 "group_concurrency": 1,
@@ -236,3 +238,54 @@ def test_advanced_preset_derives_basic_fields_from_primary_route(env):
 
     assert created["model_profile_id"] == "model-1"
     assert created["prompt_preset_id"] == DEFAULT_TRANSLATION_PRESET_ID
+
+
+def test_old_advanced_route_ignores_concurrency_and_inherits_model_rpm(env):
+    router, settings_store = env
+    model_store = ModelProfileStore.from_cache_root(settings_store.path.parent)
+    model_store.update("model-1", {"rpm_limit": 42})
+    created = router.call(
+        "workflow_presets.create",
+        {
+            "kind": "translation",
+            "preset": {
+                "name": "Old group",
+                "source_language": "kr",
+                "target_language": "zh",
+                "advanced": True,
+                "routes": [{
+                    "model_profile_id": "model-1",
+                    "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+                    "concurrency": 2,
+                }],
+                "group_concurrency": 3,
+            },
+        },
+    )["preset"]
+
+    assert created["routes"][0]["rpm_limit"] is None
+    assert "concurrency" not in created["routes"][0]
+
+
+def test_advanced_preset_rejects_negative_route_rpm(env):
+    router, _ = env
+    with pytest.raises(BridgeError) as caught:
+        router.call(
+            "workflow_presets.create",
+            {
+                "kind": "translation",
+                "preset": {
+                    "name": "Invalid RPM",
+                    "source_language": "kr",
+                    "target_language": "zh",
+                    "advanced": True,
+                    "routes": [{
+                        "model_profile_id": "model-1",
+                        "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+                        "rpm_limit": -1,
+                    }],
+                    "group_concurrency": 2,
+                },
+            },
+        )
+    assert caught.value.code == "bridge.invalid_argument"

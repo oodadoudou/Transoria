@@ -273,7 +273,9 @@
 
 .select {
   width: 100%;
-  min-height: 36px;
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
   border: 1px solid transparent;
   border-radius: 10px;
   background: var(--panel-soft);
@@ -281,7 +283,7 @@
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
-  padding: 7px 32px 7px 12px;
+  padding: 0 32px 0 12px;
 }
 
 .select:focus {
@@ -293,6 +295,14 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.languageGrid select {
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .toggleRow,

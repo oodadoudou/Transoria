@@ -118,8 +118,19 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
     source_language: preset.source_language,
     target_language: preset.target_language,
     advanced: preset.advanced,
-    routes: preset.routes,
-    fallback_route: preset.fallback_route,
+    routes: preset.routes.map((route) => ({
+      ...route,
+      rpm_limit: route.rpm_limit ?? modelById(route.model_profile_id)?.rpm_limit ?? 0,
+    })),
+    fallback_route: preset.fallback_route
+      ? {
+          ...preset.fallback_route,
+          rpm_limit:
+            preset.fallback_route.rpm_limit ??
+            modelById(preset.fallback_route.model_profile_id)?.rpm_limit ??
+            0,
+        }
+      : null,
     group_concurrency: preset.group_concurrency || 2,
     retry_failed: preset.retry_failed,
   });
@@ -335,6 +346,7 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
             label: `${profile.display_name} · ${profile.model_id} · ${profile.provider_format} · ${profile.rpm_limit} RPM`,
             modelId: profile.model_id,
             thinkingLevel: profile.thinking_level,
+            rpmLimit: profile.rpm_limit,
           }))}
           promptOptions={visiblePrompts.map((preset) => ({
             id: preset.id,
@@ -353,6 +365,11 @@ interface Option {
   label: string;
   modelId?: string;
   thinkingLevel?: string;
+  rpmLimit?: number;
+}
+
+function modelRpm(options: Option[], profileId: string): number {
+  return options.find((option) => option.id === profileId)?.rpmLimit ?? 0;
 }
 
 function suggestedRouteModel(options: Option[], routes: PresetRoute[]): string {
@@ -401,14 +418,16 @@ function WorkflowPresetModal({
         form.group_concurrency > 0 &&
         form.routes.every(
           (route) =>
-            route.model_profile_id && route.prompt_preset_id && route.concurrency > 0,
+            route.model_profile_id && route.prompt_preset_id &&
+            route.rpm_limit !== null && route.rpm_limit >= 0,
         ) &&
         new Set(form.routes.map((route) => route.model_profile_id)).size ===
           form.routes.length &&
         (!form.fallback_route ||
           (form.fallback_route.model_profile_id &&
             form.fallback_route.prompt_preset_id &&
-            form.fallback_route.concurrency > 0))
+            form.fallback_route.rpm_limit !== null &&
+            form.fallback_route.rpm_limit >= 0))
       : form.model_profile_id.trim().length > 0 &&
         form.prompt_preset_id.trim().length > 0);
   const routeModelIds = form.routes.map(
@@ -484,7 +503,10 @@ function WorkflowPresetModal({
                               current.model_profile_id || modelOptions[0]?.id || "",
                             prompt_preset_id:
                               current.prompt_preset_id || promptOptions[0]?.id || "",
-                            concurrency: 1,
+                            rpm_limit: modelRpm(
+                              modelOptions,
+                              current.model_profile_id || modelOptions[0]?.id || "",
+                            ),
                           }]
                         : current.routes,
                   }))
@@ -499,21 +521,21 @@ function WorkflowPresetModal({
                 <button
                   type="button"
                   className={styles.textAction}
-                  onClick={() =>
-                    setForm((current) => ({
+                  onClick={() => setForm((current) => {
+                    const modelId = suggestedRouteModel(modelOptions, current.routes);
+                    return {
                       ...current,
                       routes: [
                         ...current.routes,
                         {
-                          model_profile_id:
-                            suggestedRouteModel(modelOptions, current.routes),
+                          model_profile_id: modelId,
                           prompt_preset_id:
                             current.routes[0]?.prompt_preset_id || promptOptions[0]?.id || "",
-                          concurrency: 1,
+                          rpm_limit: modelRpm(modelOptions, modelId),
                         },
                       ],
-                    }))
-                  }
+                    };
+                  })}
                   disabled={form.routes.length >= modelOptions.length}
                 >
                   {labels.addRoute}
@@ -530,7 +552,9 @@ function WorkflowPresetModal({
                       setForm((current) => ({
                         ...current,
                         routes: current.routes.map((item, position) =>
-                          position === index ? { ...item, model_profile_id } : item,
+                          position === index
+                            ? { ...item, model_profile_id, rpm_limit: modelRpm(modelOptions, model_profile_id) }
+                            : item,
                         ),
                       }))
                     }
@@ -550,13 +574,15 @@ function WorkflowPresetModal({
                     }
                   />
                   <NumberInput
-                    label={labels.routeConcurrency}
-                    value={route.concurrency}
-                    onChange={(concurrency) =>
+                    label={labels.routeRpm}
+                    value={route.rpm_limit ?? 0}
+                    min={0}
+                    title={labels.routeRpmHint}
+                    onChange={(rpm_limit) =>
                       setForm((current) => ({
                         ...current,
                         routes: current.routes.map((item, position) =>
-                          position === index ? { ...item, concurrency } : item,
+                          position === index ? { ...item, rpm_limit } : item,
                         ),
                       }))
                     }
@@ -624,20 +650,20 @@ function WorkflowPresetModal({
                     <input
                       type="checkbox"
                       checked={form.fallback_route !== null}
-                      onChange={(event) =>
-                        setForm((current) => ({
+                      onChange={(event) => setForm((current) => {
+                        const modelId = suggestedRouteModel(modelOptions, current.routes);
+                        return {
                           ...current,
                           fallback_route: event.target.checked
                             ? {
-                                model_profile_id:
-                                  suggestedRouteModel(modelOptions, current.routes),
+                                model_profile_id: modelId,
                                 prompt_preset_id:
                                   current.routes[0]?.prompt_preset_id || promptOptions[0]?.id || "",
-                                concurrency: 1,
+                                rpm_limit: modelRpm(modelOptions, modelId),
                               }
                             : null,
-                        }))
-                      }
+                        };
+                      })}
                     />
                   </label>
                   {form.fallback_route ? (
@@ -651,7 +677,11 @@ function WorkflowPresetModal({
                           setForm((current) => ({
                             ...current,
                             fallback_route: current.fallback_route
-                              ? { ...current.fallback_route, model_profile_id }
+                              ? {
+                                  ...current.fallback_route,
+                                  model_profile_id,
+                                  rpm_limit: modelRpm(modelOptions, model_profile_id),
+                                }
                               : null,
                           }))
                         }
@@ -671,13 +701,15 @@ function WorkflowPresetModal({
                         }
                       />
                       <NumberInput
-                        label={labels.routeConcurrency}
-                        value={form.fallback_route.concurrency}
-                        onChange={(concurrency) =>
+                        label={labels.routeRpm}
+                        value={form.fallback_route.rpm_limit ?? 0}
+                        min={0}
+                        title={labels.routeRpmHint}
+                        onChange={(rpm_limit) =>
                           setForm((current) => ({
                             ...current,
                             fallback_route: current.fallback_route
-                              ? { ...current.fallback_route, concurrency }
+                              ? { ...current.fallback_route, rpm_limit }
                               : null,
                           }))
                         }
@@ -790,10 +822,14 @@ function formEquals(a: FormState, b: FormState): boolean {
 function NumberInput({
   label,
   value,
+  min = 1,
+  title,
   onChange,
 }: {
   label: string;
   value: number;
+  min?: number;
+  title?: string;
   onChange: (value: number) => void;
 }) {
   return (
@@ -802,9 +838,10 @@ function NumberInput({
       <input
         className={styles.select}
         type="number"
-        min={1}
+        min={min}
         step={1}
         value={value}
+        title={title}
         onChange={(event) => onChange(Number(event.target.value))}
       />
     </label>

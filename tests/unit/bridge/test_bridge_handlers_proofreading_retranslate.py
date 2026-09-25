@@ -351,7 +351,7 @@ def test_advanced_retranslate_rejects_model_prompt_outside_selected_route(tmp_pa
                 source_language="kr",
                 target_language="zh",
                 advanced=True,
-                routes=(PresetRoute("test-profile", "default-translation-en", 1),),
+                routes=(PresetRoute("test-profile", "default-translation-en", 30),),
                 group_concurrency=1,
             ),
         )
@@ -384,8 +384,8 @@ def test_advanced_retranslate_uses_route_snapshot_and_paired_prompt(tmp_path: Pa
                 source_language="kr",
                 target_language="zh",
                 advanced=True,
-                routes=(PresetRoute("test-profile", "default-translation-en", 2),),
-                group_concurrency=2,
+                routes=(PresetRoute("test-profile", "default-translation-en", 25),),
+                group_concurrency=3,
             ),
         )
     )
@@ -399,7 +399,8 @@ def test_advanced_retranslate_uses_route_snapshot_and_paired_prompt(tmp_path: Pa
     job = service._load_retranslate_job(response["request_id"])
     assert job is not None
     assert job.model_snapshot["advanced_route"] is True
-    assert job.model_snapshot["concurrency_limit"] == 2
+    assert job.model_snapshot["concurrency_limit"] == 3
+    assert job.model_snapshot["rpm_limit"] == 25
     assert job.prompt_preset_id == "default-translation-en"
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
@@ -17,7 +16,6 @@ def route_snapshot(route: TranslationRouteConfig) -> dict[str, object]:
     return {
         "model": {**route.model.to_dict(), "api_keys": []},
         "prompt_preset": route.prompt_preset.to_dict(),
-        "concurrency": route.concurrency,
     }
 
 
@@ -78,29 +76,21 @@ class RouteLimitedClient:
 @dataclass
 class RoutedTranslationRunner:
     routes: tuple[tuple[TranslationRouteConfig, SubtaskRunner], ...]
-    _slots: asyncio.Queue[int] = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._slots = asyncio.Queue()
-        for index, (route, _) in enumerate(self.routes):
-            for _ in range(route.concurrency):
-                self._slots.put_nowait(index)
+    _next_index: int = field(default=0, init=False, repr=False)
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
-        index = await self._slots.get()
+        index = self._next_index % len(self.routes)
+        self._next_index += 1
         route, runner = self.routes[index]
         try:
-            try:
-                result = await runner.run(subtask)
-            except SubtaskFailedWithResult as exc:
-                raise SubtaskFailedWithResult(
-                    str(exc),
-                    result=replace(exc.result, route_profile_id=route.model.id),
-                    code=exc.code,
-                ) from exc
-            return replace(result, route_profile_id=route.model.id)
-        finally:
-            self._slots.put_nowait(index)
+            result = await runner.run(subtask)
+        except SubtaskFailedWithResult as exc:
+            raise SubtaskFailedWithResult(
+                str(exc),
+                result=replace(exc.result, route_profile_id=route.model.id),
+                code=exc.code,
+            ) from exc
+        return replace(result, route_profile_id=route.model.id)
 
 
 __all__ = ["RouteLimitedClient", "RoutedTranslationRunner", "route_snapshot"]

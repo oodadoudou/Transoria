@@ -139,7 +139,7 @@ def _coerce_preset(
             routes = tuple(PresetRoute.from_dict(item) for item in raw_routes)
         except (TypeError, ValueError) as exc:
             raise BridgeError.invalid_argument(
-                "route concurrency must be an integer.", field="routes"
+                "route RPM must be a non-negative integer.", field="routes"
             ) from exc
         if len({route.model_profile_id for route in routes}) != len(routes):
             raise BridgeError.invalid_argument(
@@ -157,7 +157,7 @@ def _coerce_preset(
                 fallback_route = PresetRoute.from_dict(raw_fallback)
             except (TypeError, ValueError) as exc:
                 raise BridgeError.invalid_argument(
-                    "fallback concurrency must be an integer.", field="fallback_route"
+                    "fallback RPM must be a non-negative integer.", field="fallback_route"
                 ) from exc
             _validate_route(cache_root, profile_store, fallback_route)
         try:
@@ -218,9 +218,9 @@ def _coerce_preset(
 def _validate_route(
     cache_root: Path, profile_store: ModelProfileStore, route: PresetRoute
 ) -> None:
-    if route.concurrency <= 0:
+    if route.rpm_limit is not None and route.rpm_limit < 0:
         raise BridgeError.invalid_argument(
-            "route concurrency must be positive.", field="routes"
+            "route RPM must be non-negative.", field="routes"
         )
     if profile_store.get(route.model_profile_id) is None:
         raise BridgeError.not_found(

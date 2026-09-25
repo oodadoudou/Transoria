@@ -325,7 +325,7 @@ export interface WorkflowPreset {
 export interface PresetRoute {
   model_profile_id: string;
   prompt_preset_id: string;
-  concurrency: number;
+  rpm_limit: number | null;
 }
 
 export type WorkflowPresetDraft = Omit<WorkflowPreset, "id" | "kind"> & {

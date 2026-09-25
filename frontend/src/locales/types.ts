@@ -1447,7 +1447,8 @@ export interface Messages {
     routeCount: string;
     addRoute: string;
     removeRoute: string;
-    routeConcurrency: string;
+    routeRpm: string;
+    routeRpmHint: string;
     groupConcurrency: string;
     failedRetry: string;
     fallbackRoute: string;

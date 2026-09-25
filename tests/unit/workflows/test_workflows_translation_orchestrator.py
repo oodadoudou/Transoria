@@ -203,20 +203,34 @@ def test_orchestrator_translates_txt_file_end_to_end(tmp_path: Path) -> None:
     assert stats["output_tokens"] >= 20
 
 
-def test_advanced_routes_translate_chunks_with_both_profiles(tmp_path: Path) -> None:
+def test_advanced_routes_translate_chunks_with_both_profiles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from transoria.workflows.translation import routing
+
+    limits: dict[str, list[int]] = {}
+
+    class Limiter:
+        def __init__(self, profile_id: str) -> None:
+            self.profile_id = profile_id
+
+        async def acquire(self, limit: int) -> None:
+            limits.setdefault(self.profile_id, []).append(limit)
+
+    monkeypatch.setattr(routing, "shared_rpm_limiter", lambda profile_id: Limiter(profile_id))
     input_dir = tmp_path / "in"
     input_dir.mkdir()
     (input_dir / "book.txt").write_text("첫 줄\n둘째 줄\n셋째 줄\n", encoding="utf-8")
     transport = EchoTranslateTransport()
     orchestrator = _new_orchestrator(transport, tmp_path / "cache")
-    first = replace(_model(), id="route-a", model_id="model-a", concurrency_limit=1)
-    second = replace(_model(), id="route-b", model_id="model-b", concurrency_limit=1)
+    first = replace(_model(), id="route-a", model_id="model-a", concurrency_limit=1, rpm_limit=7)
+    second = replace(_model(), id="route-b", model_id="model-b", concurrency_limit=1, rpm_limit=11)
     config = replace(
         _build_config(input_dir=input_dir, output_dir=tmp_path / "out", chunk_size=1),
         model=first,
         routes=(
-            TranslationRouteConfig(first, default_preset(PromptKind.TRANSLATION), 1),
-            TranslationRouteConfig(second, default_preset(PromptKind.TRANSLATION), 1),
+            TranslationRouteConfig(first, default_preset(PromptKind.TRANSLATION)),
+            TranslationRouteConfig(second, default_preset(PromptKind.TRANSLATION)),
         ),
         group_concurrency=2,
         workflow_preset_id="group-1",
@@ -227,10 +241,50 @@ def test_advanced_routes_translate_chunks_with_both_profiles(tmp_path: Path) -> 
 
     assert result.final_status is TaskStatus.COMPLETED
     assert models_used == {"model-a", "model-b"}
+    assert {profile: set(values) for profile, values in limits.items()} == {
+        "route-a": {7}, "route-b": {11}
+    }
     assert {item.route_profile_id for item in subtasks} == {"route-a", "route-b"}
-    routing = orchestrator.cache.load_record(result.task_id).metadata["advanced_routing"]
-    assert routing["preset_id"] == "group-1"
-    assert routing["routes"][0]["model"]["api_keys"] == []
+    saved_routes = orchestrator.cache.load_record(result.task_id).metadata["advanced_routing"]
+    assert saved_routes["preset_id"] == "group-1"
+    assert saved_routes["routes"][0]["model"]["api_keys"] == []
+
+
+def test_advanced_group_concurrency_is_not_limited_by_profile_concurrency(
+    tmp_path: Path,
+) -> None:
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("첫 줄\n둘째 줄\n셋째 줄\n", encoding="utf-8")
+
+    @dataclass
+    class ActiveTransport(EchoTranslateTransport):
+        active: int = 0
+        peak: int = 0
+
+        async def execute(self, url, headers, payload, timeout):
+            self.active += 1
+            self.peak = max(self.peak, self.active)
+            try:
+                await asyncio.sleep(0.02)
+                return await super().execute(url, headers, payload, timeout)
+            finally:
+                self.active -= 1
+
+    transport = ActiveTransport()
+    orchestrator = _new_orchestrator(transport, tmp_path / "cache")
+    model = replace(_model(), id="route-a", concurrency_limit=1)
+    config = replace(
+        _build_config(input_dir=input_dir, output_dir=tmp_path / "out", chunk_size=1),
+        model=model,
+        routes=(TranslationRouteConfig(model, default_preset(PromptKind.TRANSLATION)),),
+        group_concurrency=3,
+    )
+
+    result = asyncio.run(orchestrator.run(config))
+
+    assert result.final_status is TaskStatus.COMPLETED
+    assert transport.peak == 3
 
 
 def test_advanced_failed_retry_uses_fallback_only_after_first_pass(tmp_path: Path) -> None:
@@ -258,9 +312,9 @@ def test_advanced_failed_retry_uses_fallback_only_after_first_pass(tmp_path: Pat
             request_retry_attempts=0,
         ),
         model=primary,
-        routes=(TranslationRouteConfig(primary, default_preset(PromptKind.TRANSLATION), 1),),
+        routes=(TranslationRouteConfig(primary, default_preset(PromptKind.TRANSLATION)),),
         fallback_route=TranslationRouteConfig(
-            fallback, default_preset(PromptKind.TRANSLATION), 1
+            fallback, default_preset(PromptKind.TRANSLATION)
         ),
         group_concurrency=1,
         retry_failed=True,
@@ -297,7 +351,7 @@ def test_advanced_failed_retry_has_one_optional_extra_pass(
             request_retry_attempts=0,
         ),
         model=primary,
-        routes=(TranslationRouteConfig(primary, default_preset(PromptKind.TRANSLATION), 1),),
+        routes=(TranslationRouteConfig(primary, default_preset(PromptKind.TRANSLATION)),),
         group_concurrency=1,
         retry_failed=retry_failed,
     )
