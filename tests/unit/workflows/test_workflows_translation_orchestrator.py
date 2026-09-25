@@ -27,6 +27,7 @@ from transoria.workflows.translation.orchestrator import (
     _should_split_failed_subtask,
     _split_failed_payload,
 )
+from transoria.workflows.translation.config import TranslationRouteConfig
 from tests.unit.formats.test_formats_epub_parser import _write_minimal_epub
 
 
@@ -200,6 +201,110 @@ def test_orchestrator_translates_txt_file_end_to_end(tmp_path: Path) -> None:
     assert stats["failed_subtasks"] == 0
     assert stats["input_tokens"] >= 10
     assert stats["output_tokens"] >= 20
+
+
+def test_advanced_routes_translate_chunks_with_both_profiles(tmp_path: Path) -> None:
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("첫 줄\n둘째 줄\n셋째 줄\n", encoding="utf-8")
+    transport = EchoTranslateTransport()
+    orchestrator = _new_orchestrator(transport, tmp_path / "cache")
+    first = replace(_model(), id="route-a", model_id="model-a", concurrency_limit=1)
+    second = replace(_model(), id="route-b", model_id="model-b", concurrency_limit=1)
+    config = replace(
+        _build_config(input_dir=input_dir, output_dir=tmp_path / "out", chunk_size=1),
+        model=first,
+        routes=(
+            TranslationRouteConfig(first, default_preset(PromptKind.TRANSLATION), 1),
+            TranslationRouteConfig(second, default_preset(PromptKind.TRANSLATION), 1),
+        ),
+        group_concurrency=2,
+        workflow_preset_id="group-1",
+    )
+    result = asyncio.run(orchestrator.run(config))
+    models_used = {str(item["model"]) for item in transport.requests}
+    subtasks = orchestrator.cache.load_subtasks(result.task_id)
+
+    assert result.final_status is TaskStatus.COMPLETED
+    assert models_used == {"model-a", "model-b"}
+    assert {item.route_profile_id for item in subtasks} == {"route-a", "route-b"}
+    routing = orchestrator.cache.load_record(result.task_id).metadata["advanced_routing"]
+    assert routing["preset_id"] == "group-1"
+    assert routing["routes"][0]["model"]["api_keys"] == []
+
+
+def test_advanced_failed_retry_uses_fallback_only_after_first_pass(tmp_path: Path) -> None:
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("첫 줄\n", encoding="utf-8")
+
+    @dataclass
+    class FallbackTransport(EchoTranslateTransport):
+        async def execute(self, url, headers, payload, timeout):
+            if payload["model"] == "primary":
+                self.requests.append(dict(payload))
+                return TransportResult(500, {"error": "primary failed"})
+            return await super().execute(url, headers, payload, timeout)
+
+    transport = FallbackTransport()
+    orchestrator = _new_orchestrator(transport, tmp_path / "cache")
+    primary = replace(_model(), id="primary", model_id="primary", concurrency_limit=1)
+    fallback = replace(_model(), id="fallback", model_id="fallback", concurrency_limit=1)
+    config = replace(
+        _build_config(
+            input_dir=input_dir,
+            output_dir=tmp_path / "out",
+            chunk_size=1,
+            request_retry_attempts=0,
+        ),
+        model=primary,
+        routes=(TranslationRouteConfig(primary, default_preset(PromptKind.TRANSLATION), 1),),
+        fallback_route=TranslationRouteConfig(
+            fallback, default_preset(PromptKind.TRANSLATION), 1
+        ),
+        group_concurrency=1,
+        retry_failed=True,
+    )
+    result = asyncio.run(orchestrator.run(config))
+
+    assert result.final_status is TaskStatus.COMPLETED
+    assert [item["model"] for item in transport.requests] == ["primary", "fallback"]
+    assert orchestrator.cache.load_record(result.task_id).metadata["advanced_retry_state"] == "done"
+
+
+@pytest.mark.parametrize("retry_failed, expected_calls", [(False, 1), (True, 2)])
+def test_advanced_failed_retry_has_one_optional_extra_pass(
+    tmp_path: Path, retry_failed: bool, expected_calls: int
+) -> None:
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("첫 줄\n", encoding="utf-8")
+
+    @dataclass
+    class AlwaysFailTransport(EchoTranslateTransport):
+        async def execute(self, url, headers, payload, timeout):
+            self.requests.append(dict(payload))
+            return TransportResult(500, {"error": "unavailable"})
+
+    transport = AlwaysFailTransport()
+    orchestrator = _new_orchestrator(transport, tmp_path / "cache")
+    primary = replace(_model(), id="primary", concurrency_limit=1)
+    config = replace(
+        _build_config(
+            input_dir=input_dir,
+            output_dir=tmp_path / "out",
+            chunk_size=1,
+            request_retry_attempts=0,
+        ),
+        model=primary,
+        routes=(TranslationRouteConfig(primary, default_preset(PromptKind.TRANSLATION), 1),),
+        group_concurrency=1,
+        retry_failed=retry_failed,
+    )
+    result = asyncio.run(orchestrator.run(config))
+
+    assert result.final_status is TaskStatus.FAILED
+    assert len(transport.requests) == expected_calls
 
 
 def test_orchestrator_only_sends_source_language_residue_for_mixed_cache(

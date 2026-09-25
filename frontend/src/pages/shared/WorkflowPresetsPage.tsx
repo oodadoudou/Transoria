@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Language, PromptKind, WorkflowPreset } from "@/bridge";
+import type { Language, PresetRoute, PromptKind, WorkflowPreset } from "@/bridge";
 import { useMessages, useI18n } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useModelProfiles } from "@/store/useModelProfilesStore";
@@ -27,6 +27,11 @@ interface FormState {
   prompt_preset_id: string;
   source_language: Language;
   target_language: Language;
+  advanced: boolean;
+  routes: PresetRoute[];
+  fallback_route: PresetRoute | null;
+  group_concurrency: number;
+  retry_failed: boolean;
 }
 
 function defaultPromptId(kind: PromptKind, locale: string): string {
@@ -98,6 +103,11 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
     prompt_preset_id: String(activePromptId ?? ""),
     source_language: "kr",
     target_language: "zh",
+    advanced: false,
+    routes: [],
+    fallback_route: null,
+    group_concurrency: 2,
+    retry_failed: false,
   });
 
   const presetToForm = (preset: WorkflowPreset): FormState => ({
@@ -107,6 +117,11 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
     prompt_preset_id: preset.prompt_preset_id,
     source_language: preset.source_language,
     target_language: preset.target_language,
+    advanced: preset.advanced,
+    routes: preset.routes,
+    fallback_route: preset.fallback_route,
+    group_concurrency: preset.group_concurrency || 2,
+    retry_failed: preset.retry_failed,
   });
 
   const activePreset = workflowSlice.matchedId
@@ -116,8 +131,12 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
   const activePrompt = promptById(String(activePromptId));
   const activeSummary = [
     `${languageLabels[activeSourceLanguage]} → ${languageLabels[activeTargetLanguage]}`,
-    activeModel?.display_name ?? labels.missingSelection,
-    activePrompt?.name ?? labels.missingSelection,
+    activePreset?.advanced
+      ? `${activePreset.routes.length} ${labels.routeCount}`
+      : activeModel?.display_name ?? labels.missingSelection,
+    activePreset?.advanced
+      ? `${labels.groupConcurrency}: ${activePreset.group_concurrency}`
+      : activePrompt?.name ?? labels.missingSelection,
   ].join(" · ");
 
   const beginCreate = () => {
@@ -138,13 +157,21 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
   };
 
   const save = async (form: FormState) => {
+    const primary = form.advanced ? form.routes[0] : null;
     const draft = {
       name: form.name.trim(),
-      model_profile_id: form.model_profile_id,
-      prompt_preset_id: form.prompt_preset_id,
+      model_profile_id: primary?.model_profile_id ?? form.model_profile_id,
+      prompt_preset_id: primary?.prompt_preset_id ?? form.prompt_preset_id,
       source_language: form.source_language,
       target_language: form.target_language,
       enabled: true,
+      advanced: owner === "translation" && form.advanced,
+      routes: owner === "translation" && form.advanced ? form.routes : [],
+      fallback_route:
+        owner === "translation" && form.advanced ? form.fallback_route : null,
+      group_concurrency:
+        owner === "translation" && form.advanced ? form.group_concurrency : 0,
+      retry_failed: owner === "translation" && form.advanced && form.retry_failed,
     };
     let saved: WorkflowPreset | null;
     if (form.id) {
@@ -236,8 +263,12 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
                 `${languageLabels[preset.source_language]} → ${
                   languageLabels[preset.target_language]
                 }`,
-                model?.display_name ?? preset.model_profile_id,
-                prompt?.name ?? preset.prompt_preset_id,
+                preset.advanced
+                  ? `${preset.routes.length} ${labels.routeCount}`
+                  : model?.display_name ?? preset.model_profile_id,
+                preset.advanced
+                  ? `${labels.groupConcurrency}: ${preset.group_concurrency}`
+                  : prompt?.name ?? preset.prompt_preset_id,
               ].join(" · ");
               return (
                 <div
@@ -297,10 +328,13 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
       {modal ? (
         <WorkflowPresetModal
           mode={modal.mode}
+          owner={owner}
           seed={modal.seed}
           modelOptions={models.profiles.map((profile) => ({
             id: profile.id,
-            label: `${profile.display_name} · ${profile.model_id}`,
+            label: `${profile.display_name} · ${profile.model_id} · ${profile.provider_format} · ${profile.rpm_limit} RPM`,
+            modelId: profile.model_id,
+            thinkingLevel: profile.thinking_level,
           }))}
           promptOptions={visiblePrompts.map((preset) => ({
             id: preset.id,
@@ -317,10 +351,28 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
 interface Option {
   id: string;
   label: string;
+  modelId?: string;
+  thinkingLevel?: string;
+}
+
+function suggestedRouteModel(options: Option[], routes: PresetRoute[]): string {
+  const primaryModelId = options.find(
+    (option) => option.id === routes[0]?.model_profile_id,
+  )?.modelId;
+  const available = options.filter(
+    (option) => !routes.some((route) => route.model_profile_id === option.id),
+  );
+  return (
+    available.find((option) => option.modelId === primaryModelId)?.id ||
+    available[0]?.id ||
+    routes[0]?.model_profile_id ||
+    ""
+  );
 }
 
 interface WorkflowPresetModalProps {
   mode: ModalMode;
+  owner: PromptKind;
   seed: FormState;
   modelOptions: Option[];
   promptOptions: Option[];
@@ -330,6 +382,7 @@ interface WorkflowPresetModalProps {
 
 function WorkflowPresetModal({
   mode,
+  owner,
   seed,
   modelOptions,
   promptOptions,
@@ -343,8 +396,31 @@ function WorkflowPresetModal({
   const isDirty = !formEquals(form, baselineRef.current);
   const canSave =
     form.name.trim().length > 0 &&
-    form.model_profile_id.trim().length > 0 &&
-    form.prompt_preset_id.trim().length > 0;
+    (form.advanced
+      ? form.routes.length > 0 &&
+        form.group_concurrency > 0 &&
+        form.routes.every(
+          (route) =>
+            route.model_profile_id && route.prompt_preset_id && route.concurrency > 0,
+        ) &&
+        new Set(form.routes.map((route) => route.model_profile_id)).size ===
+          form.routes.length &&
+        (!form.fallback_route ||
+          (form.fallback_route.model_profile_id &&
+            form.fallback_route.prompt_preset_id &&
+            form.fallback_route.concurrency > 0))
+      : form.model_profile_id.trim().length > 0 &&
+        form.prompt_preset_id.trim().length > 0);
+  const routeModelIds = form.routes.map(
+    (route) => modelOptions.find((model) => model.id === route.model_profile_id)?.modelId,
+  );
+  const routeThinkingLevels = form.routes.map(
+    (route) => modelOptions.find((model) => model.id === route.model_profile_id)?.thinkingLevel,
+  );
+  const routeMismatch =
+    new Set(routeModelIds).size > 1 ||
+    new Set(routeThinkingLevels).size > 1 ||
+    new Set(form.routes.map((route) => route.prompt_preset_id)).size > 1;
 
   useEffect(() => {
     setForm(seed);
@@ -367,7 +443,10 @@ function WorkflowPresetModal({
       aria-modal="true"
       onClick={handleCancel}
     >
-      <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
+      <div
+        className={`${styles.modal} ${form.advanced ? styles.modalWide : ""}`.trim()}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className={styles.modalHeader}>
           <h2 className={styles.modalTitle}>
             {mode === "edit" ? labels.formTitleEdit : labels.formTitleCreate}
@@ -388,24 +467,248 @@ function WorkflowPresetModal({
             placeholder={labels.namePlaceholder}
             onChange={(name) => setForm((current) => ({ ...current, name }))}
           />
-          <SelectField
-            label={labels.modelLabel}
-            value={form.model_profile_id}
-            options={modelOptions}
-            emptyLabel={labels.missingSelection}
-            onChange={(model_profile_id) =>
-              setForm((current) => ({ ...current, model_profile_id }))
-            }
-          />
-          <SelectField
-            label={labels.promptLabel}
-            value={form.prompt_preset_id}
-            options={promptOptions}
-            emptyLabel={labels.missingSelection}
-            onChange={(prompt_preset_id) =>
-              setForm((current) => ({ ...current, prompt_preset_id }))
-            }
-          />
+          {owner === "translation" ? (
+            <label className={styles.toggleRow}>
+              <span>{labels.advanced}</span>
+              <input
+                type="checkbox"
+                checked={form.advanced}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    advanced: event.target.checked,
+                    routes:
+                      event.target.checked && current.routes.length === 0
+                        ? [{
+                            model_profile_id:
+                              current.model_profile_id || modelOptions[0]?.id || "",
+                            prompt_preset_id:
+                              current.prompt_preset_id || promptOptions[0]?.id || "",
+                            concurrency: 1,
+                          }]
+                        : current.routes,
+                  }))
+                }
+              />
+            </label>
+          ) : null}
+          {form.advanced && owner === "translation" ? (
+            <>
+              <div className={styles.advancedHeading}>
+                <strong>{labels.normalRoutes}</strong>
+                <button
+                  type="button"
+                  className={styles.textAction}
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      routes: [
+                        ...current.routes,
+                        {
+                          model_profile_id:
+                            suggestedRouteModel(modelOptions, current.routes),
+                          prompt_preset_id:
+                            current.routes[0]?.prompt_preset_id || promptOptions[0]?.id || "",
+                          concurrency: 1,
+                        },
+                      ],
+                    }))
+                  }
+                  disabled={form.routes.length >= modelOptions.length}
+                >
+                  {labels.addRoute}
+                </button>
+              </div>
+              {form.routes.map((route, index) => (
+                <div className={styles.routeRow} key={index}>
+                  <SelectField
+                    label={`${labels.modelLabel} ${index + 1}`}
+                    value={route.model_profile_id}
+                    options={modelOptions}
+                    emptyLabel={labels.missingSelection}
+                    onChange={(model_profile_id) =>
+                      setForm((current) => ({
+                        ...current,
+                        routes: current.routes.map((item, position) =>
+                          position === index ? { ...item, model_profile_id } : item,
+                        ),
+                      }))
+                    }
+                  />
+                  <SelectField
+                    label={labels.promptLabel}
+                    value={route.prompt_preset_id}
+                    options={promptOptions}
+                    emptyLabel={labels.missingSelection}
+                    onChange={(prompt_preset_id) =>
+                      setForm((current) => ({
+                        ...current,
+                        routes: current.routes.map((item, position) =>
+                          position === index ? { ...item, prompt_preset_id } : item,
+                        ),
+                      }))
+                    }
+                  />
+                  <NumberInput
+                    label={labels.routeConcurrency}
+                    value={route.concurrency}
+                    onChange={(concurrency) =>
+                      setForm((current) => ({
+                        ...current,
+                        routes: current.routes.map((item, position) =>
+                          position === index ? { ...item, concurrency } : item,
+                        ),
+                      }))
+                    }
+                  />
+                  {form.routes.length > 1 ? (
+                    <div className={styles.routeActions}>
+                      {index === 0 ? (
+                        <span className={styles.routePrimary}>{labels.primaryRoute}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.textAction}
+                          onClick={() =>
+                            setForm((current) => {
+                              const routes = [...current.routes];
+                              const [primary] = routes.splice(index, 1);
+                              routes.unshift(primary);
+                              return { ...current, routes };
+                            })
+                          }
+                        >
+                          {labels.setPrimary}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={styles.textAction}
+                        onClick={() =>
+                          setForm((current) => ({
+                            ...current,
+                            routes: current.routes.filter((_, position) => position !== index),
+                          }))
+                        }
+                      >
+                        {labels.removeRoute}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {routeMismatch ? (
+                <p className={styles.warning}>{labels.routeMismatchWarning}</p>
+              ) : null}
+              <NumberInput
+                label={labels.groupConcurrency}
+                value={form.group_concurrency}
+                onChange={(group_concurrency) =>
+                  setForm((current) => ({ ...current, group_concurrency }))
+                }
+              />
+              <label className={styles.toggleRow}>
+                <span>{labels.failedRetry}</span>
+                <input
+                  type="checkbox"
+                  checked={form.retry_failed}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, retry_failed: event.target.checked }))
+                  }
+                />
+              </label>
+              {form.retry_failed ? (
+                <>
+                  <label className={styles.toggleRow}>
+                    <span>{labels.fallbackRoute}</span>
+                    <input
+                      type="checkbox"
+                      checked={form.fallback_route !== null}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          fallback_route: event.target.checked
+                            ? {
+                                model_profile_id:
+                                  suggestedRouteModel(modelOptions, current.routes),
+                                prompt_preset_id:
+                                  current.routes[0]?.prompt_preset_id || promptOptions[0]?.id || "",
+                                concurrency: 1,
+                              }
+                            : null,
+                        }))
+                      }
+                    />
+                  </label>
+                  {form.fallback_route ? (
+                    <div className={styles.routeRow}>
+                      <SelectField
+                        label={labels.modelLabel}
+                        value={form.fallback_route.model_profile_id}
+                        options={modelOptions}
+                        emptyLabel={labels.missingSelection}
+                        onChange={(model_profile_id) =>
+                          setForm((current) => ({
+                            ...current,
+                            fallback_route: current.fallback_route
+                              ? { ...current.fallback_route, model_profile_id }
+                              : null,
+                          }))
+                        }
+                      />
+                      <SelectField
+                        label={labels.promptLabel}
+                        value={form.fallback_route.prompt_preset_id}
+                        options={promptOptions}
+                        emptyLabel={labels.missingSelection}
+                        onChange={(prompt_preset_id) =>
+                          setForm((current) => ({
+                            ...current,
+                            fallback_route: current.fallback_route
+                              ? { ...current.fallback_route, prompt_preset_id }
+                              : null,
+                          }))
+                        }
+                      />
+                      <NumberInput
+                        label={labels.routeConcurrency}
+                        value={form.fallback_route.concurrency}
+                        onChange={(concurrency) =>
+                          setForm((current) => ({
+                            ...current,
+                            fallback_route: current.fallback_route
+                              ? { ...current.fallback_route, concurrency }
+                              : null,
+                          }))
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <SelectField
+                label={labels.modelLabel}
+                value={form.model_profile_id}
+                options={modelOptions}
+                emptyLabel={labels.missingSelection}
+                onChange={(model_profile_id) =>
+                  setForm((current) => ({ ...current, model_profile_id }))
+                }
+              />
+              <SelectField
+                label={labels.promptLabel}
+                value={form.prompt_preset_id}
+                options={promptOptions}
+                emptyLabel={labels.missingSelection}
+                onChange={(prompt_preset_id) =>
+                  setForm((current) => ({ ...current, prompt_preset_id }))
+                }
+              />
+            </>
+          )}
           <div className={styles.languageGrid}>
             <div className={styles.field}>
               <label className={styles.fieldLabel}>
@@ -481,12 +784,29 @@ function SelectField({
 }
 
 function formEquals(a: FormState, b: FormState): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function NumberInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
   return (
-    a.id === b.id &&
-    a.name === b.name &&
-    a.model_profile_id === b.model_profile_id &&
-    a.prompt_preset_id === b.prompt_preset_id &&
-    a.source_language === b.source_language &&
-    a.target_language === b.target_language
+    <label className={styles.field}>
+      <span className={styles.fieldLabel}>{label}</span>
+      <input
+        className={styles.select}
+        type="number"
+        min={1}
+        step={1}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
   );
 }

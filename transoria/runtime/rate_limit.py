@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable, Deque, Tuple
@@ -116,4 +117,36 @@ class TpmLimiter:
         return sum(tokens for _, _, tokens in self._entries)
 
 
-__all__ = ["RpmLimiter", "TpmLimiter"]
+@dataclass
+class SharedRpmLimiter:
+    clock: Callable[[], float] = time.monotonic
+    sleep: Callable[[float], "asyncio.Future[None]"] = asyncio.sleep
+    _timestamps: Deque[float] = field(default_factory=deque, init=False, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+
+    async def acquire(self, limit: int) -> None:
+        if limit <= 0:
+            return
+        while True:
+            with self._lock:
+                now = self.clock()
+                cutoff = now - 60.0
+                while self._timestamps and self._timestamps[0] <= cutoff:
+                    self._timestamps.popleft()
+                if len(self._timestamps) < limit:
+                    self._timestamps.append(now)
+                    return
+                wait_for = 60.0 - (now - self._timestamps[0])
+            await self.sleep(min(max(wait_for, 0.01), 1.0))
+
+
+_shared_rpm_lock = threading.Lock()
+_shared_rpm: dict[str, SharedRpmLimiter] = {}
+
+
+def shared_rpm_limiter(profile_id: str) -> SharedRpmLimiter:
+    with _shared_rpm_lock:
+        return _shared_rpm.setdefault(profile_id, SharedRpmLimiter())
+
+
+__all__ = ["RpmLimiter", "TpmLimiter", "SharedRpmLimiter", "shared_rpm_limiter"]

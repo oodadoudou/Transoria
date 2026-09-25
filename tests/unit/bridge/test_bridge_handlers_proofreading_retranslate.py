@@ -35,6 +35,7 @@ from transoria.runtime.cache import TaskCache
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskRecord
 from transoria.settings import SettingsStore
+from transoria.workflow_presets import PresetRoute, WorkflowPreset, WorkflowPresetStore
 
 
 @dataclass
@@ -331,6 +332,82 @@ def test_read_segment_dst_matches_proofreading_latest_subtask_wins(
             "translation-pf-rt-1", ("0:0",)
         )
     assert _read_segment_dst(indexed_snapshot, "0:0") == "最新译文"
+
+
+def test_advanced_retranslate_rejects_model_prompt_outside_selected_route(tmp_path: Path):
+    service = _make_service(tmp_path)
+    _seed_task_with_snapshot(service)
+    WorkflowPresetStore(
+        service.prompts_cache_root / "workflow_presets.translation.json",
+        PromptKind.TRANSLATION,
+    ).save(
+        (
+            WorkflowPreset(
+                id="advanced-test",
+                name="Advanced",
+                kind=PromptKind.TRANSLATION,
+                model_profile_id="test-profile",
+                prompt_preset_id="default-translation-en",
+                source_language="kr",
+                target_language="zh",
+                advanced=True,
+                routes=(PresetRoute("test-profile", "default-translation-en", 1),),
+                group_concurrency=1,
+            ),
+        )
+    )
+    with pytest.raises(BridgeError) as caught:
+        service.start_retranslate(
+            task_id="translation-pf-rt-1",
+            segment_id="0:0",
+            model_id="test-profile",
+            prompt_preset_id="default-translation-zh",
+            advanced_preset_id="advanced-test",
+        )
+    assert caught.value.code == "bridge.invalid_argument"
+
+
+def test_advanced_retranslate_uses_route_snapshot_and_paired_prompt(tmp_path: Path):
+    service = _make_service(tmp_path, transport=_StubTransport(prefix="新的译文"))
+    _seed_task_with_snapshot(service)
+    WorkflowPresetStore(
+        service.prompts_cache_root / "workflow_presets.translation.json",
+        PromptKind.TRANSLATION,
+    ).save(
+        (
+            WorkflowPreset(
+                id="advanced-test",
+                name="Advanced",
+                kind=PromptKind.TRANSLATION,
+                model_profile_id="test-profile",
+                prompt_preset_id="default-translation-en",
+                source_language="kr",
+                target_language="zh",
+                advanced=True,
+                routes=(PresetRoute("test-profile", "default-translation-en", 2),),
+                group_concurrency=2,
+            ),
+        )
+    )
+    response = service.start_retranslate(
+        task_id="translation-pf-rt-1",
+        segment_id="0:0",
+        model_id="test-profile",
+        prompt_preset_id="default-translation-en",
+        advanced_preset_id="advanced-test",
+    )
+    job = service._load_retranslate_job(response["request_id"])
+    assert job is not None
+    assert job.model_snapshot["advanced_route"] is True
+    assert job.model_snapshot["concurrency_limit"] == 2
+    assert job.prompt_preset_id == "default-translation-en"
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        status = service.read_retranslate_status(request_id=response["request_id"])
+        if status["status"] not in {"pending", "running"}:
+            break
+        time.sleep(0.02)
+    assert status["status"] not in {"pending", "running"}
 
 
 def test_retranslate_happy_path_writes_new_dst_to_cache(router_and_service):

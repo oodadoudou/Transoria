@@ -1130,6 +1130,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             segment_ids=segment_ids,
             model_id=_optional_string(payload, "model_id"),
             prompt_preset_id=_optional_string(payload, "prompt_preset_id"),
+            advanced_preset_id=_optional_string(payload, "advanced_preset_id"),
         )
 
     def retranslate_status(payload: Mapping[str, object]) -> dict[str, object]:

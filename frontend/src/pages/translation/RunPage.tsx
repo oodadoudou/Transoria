@@ -239,6 +239,14 @@ export function RunPage() {
   const activePreset = workflowSlice.matchedId
     ? workflowSlice.presets.find((preset) => preset.id === workflowSlice.matchedId)
     : undefined;
+  const advancedPreset = activePreset?.advanced ? activePreset : undefined;
+  const hasUsableSelection = advancedPreset
+    ? [...advancedPreset.routes, ...(advancedPreset.fallback_route ? [advancedPreset.fallback_route] : [])]
+        .every((route) => {
+          const profile = profiles.profiles.find((item) => item.id === route.model_profile_id);
+          return profile?.api_key_status === "present" || profile?.api_key_status === "from_env";
+        })
+    : hasUsableModel;
   const sourceLanguage = translationSettings.draft?.source_language ?? "kr";
   const targetLanguage = translationSettings.draft?.target_language ?? "zh";
   const presetItems: QuickSwitchItem[] = workflowSlice.presets.map((preset) => {
@@ -251,8 +259,12 @@ export function RunPage() {
         `${messages.language.options[preset.source_language]} → ${
           messages.language.options[preset.target_language]
         }`,
-        model?.display_name ?? preset.model_profile_id,
-        prompt?.name ?? preset.prompt_preset_id,
+        preset.advanced
+          ? `${preset.routes.length} ${messages.workflowPresets.routeCount}`
+          : model?.display_name ?? preset.model_profile_id,
+        preset.advanced
+          ? `${messages.workflowPresets.groupConcurrency}: ${preset.group_concurrency}`
+          : prompt?.name ?? preset.prompt_preset_id,
       ].join(" · "),
     };
   });
@@ -333,7 +345,7 @@ export function RunPage() {
   const nextStepReady = profiles.hydrated && appSettings.isHydrated;
   const nextStepKind: NextStepKind | null = !nextStepReady
     ? null
-    : !hasUsableModel
+    : !hasUsableSelection
       ? "model"
       : !recentTranslationTask
         ? "start"
@@ -362,7 +374,16 @@ export function RunPage() {
 
       <Panel label={run.activeConfig}>
         <RunConfigBar
-          items={[
+          items={advancedPreset ? [
+            {
+              id: "preset",
+              label: messages.runConfig.preset,
+              primary: advancedPreset.name,
+              secondary: `${advancedPreset.routes.length} ${messages.workflowPresets.routeCount} · ${messages.workflowPresets.groupConcurrency}: ${advancedPreset.group_concurrency}`,
+              actionLabel: messages.runConfig.switchAction,
+              onClick: () => setSwitchOpen("preset"),
+            },
+          ] : [
             {
               id: "preset",
               label: messages.runConfig.preset,

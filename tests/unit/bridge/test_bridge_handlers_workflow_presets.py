@@ -120,3 +120,119 @@ def test_create_rejects_missing_model(env):
 
     assert caught.value.code == "bridge.not_found"
     assert caught.value.payload.details["field"] == "model_profile_id"
+
+
+def test_advanced_translation_preset_applies_routes_without_changing_basic_match(env):
+    router, settings_store = env
+    model_store = ModelProfileStore.from_cache_root(settings_store.path.parent)
+    model_store.create(
+        ModelConfig(
+            id="model-2",
+            display_name="Model 2",
+            provider_format=ProviderFormat.OPENAI,
+            base_url="https://other.test/v1",
+            model_id="example-model",
+        )
+    )
+    route = {
+        "model_profile_id": "model-1",
+        "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+        "concurrency": 2,
+    }
+    created = router.call(
+        "workflow_presets.create",
+        {
+            "kind": "translation",
+            "preset": {
+                "id": "group-1",
+                "name": "Group",
+                "model_profile_id": "model-1",
+                "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+                "source_language": Language.KOREAN.value,
+                "target_language": Language.CHINESE_SIMPLIFIED.value,
+                "advanced": True,
+                "routes": [route, {**route, "model_profile_id": "model-2"}],
+                "fallback_route": {**route, "model_profile_id": "model-2"},
+                "group_concurrency": 3,
+                "retry_failed": True,
+            },
+        },
+    )
+    router.call("workflow_presets.apply", {"kind": "translation", "id": "group-1"})
+    listed = router.call("workflow_presets.list", {"kind": "translation"})
+
+    assert created["preset"]["routes"][1]["model_profile_id"] == "model-2"
+    assert listed["matched_id"] == "group-1"
+    assert settings_store.load_all().app.active_translation_workflow_preset_id == "group-1"
+
+    router.call(
+        "workflow_presets.create",
+        {
+            "kind": "translation",
+            "preset": {
+                "id": "basic-1",
+                "name": "Basic",
+                "model_profile_id": "model-1",
+                "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+                "source_language": Language.KOREAN.value,
+                "target_language": Language.CHINESE_SIMPLIFIED.value,
+            },
+        },
+    )
+    router.call("workflow_presets.apply", {"kind": "translation", "id": "basic-1"})
+    assert settings_store.load_all().app.active_translation_workflow_preset_id is None
+    assert router.call("workflow_presets.list", {"kind": "translation"})["matched_id"] == "basic-1"
+
+
+def test_advanced_preset_rejects_duplicate_normal_model(env):
+    router, _ = env
+    route = {
+        "model_profile_id": "model-1",
+        "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+        "concurrency": 1,
+    }
+    with pytest.raises(BridgeError) as caught:
+        router.call(
+            "workflow_presets.create",
+            {
+                "kind": "translation",
+                "preset": {
+                    "name": "Invalid",
+                    "model_profile_id": "model-1",
+                    "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+                    "source_language": "kr",
+                    "target_language": "zh",
+                    "advanced": True,
+                    "routes": [route, route],
+                    "group_concurrency": 2,
+                },
+            },
+        )
+    assert caught.value.code == "bridge.invalid_argument"
+
+
+def test_advanced_preset_derives_basic_fields_from_primary_route(env):
+    router, _ = env
+    created = router.call(
+        "workflow_presets.create",
+        {
+            "kind": "translation",
+            "preset": {
+                "name": "Group",
+                "source_language": "kr",
+                "target_language": "zh",
+                "advanced": True,
+                "routes": [
+                    {
+                        "model_profile_id": "model-1",
+                        "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+                        "concurrency": 1,
+                    }
+                ],
+                "group_concurrency": 1,
+            },
+        },
+    )["preset"]
+
+    assert created["model_profile_id"] == "model-1"
+    assert created["prompt_preset_id"] == DEFAULT_TRANSLATION_PRESET_ID

@@ -228,7 +228,10 @@ def _build_handlers(
                     f"profile {profile_id!r} does not exist."
                 )
         field = ACTIVE_FIELD_BY_MODULE[module]
-        updated = settings_store.save_partial("app", {field: profile_id})
+        patch: dict[str, object] = {field: profile_id}
+        if module == "translation":
+            patch["active_translation_workflow_preset_id"] = None
+        updated = settings_store.save_partial("app", patch)
         return {"app": _app_settings_dict(updated.app)}
 
     def test_connection(payload: Mapping[str, object]) -> dict[str, object]:

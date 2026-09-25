@@ -529,6 +529,8 @@ export function ProofreadingPage() {
   const [proofreadingPromptId, setProofreadingPromptId] = useState<
     string | null
   >(null);
+  const [proofreadingAdvancedPresetId, setProofreadingAdvancedPresetId] =
+    useState<string | null>(null);
   const [proofreadingModelOverridden, setProofreadingModelOverridden] =
     useState(false);
   const [proofreadingPromptOverridden, setProofreadingPromptOverridden] =
@@ -622,8 +624,9 @@ export function ProofreadingPage() {
     ],
   );
   const activeProofreadingPresetId =
-    workflowSlice.presets.find(
+    proofreadingAdvancedPresetId ?? workflowSlice.presets.find(
       (preset) =>
+        !preset.advanced &&
         preset.model_profile_id === proofreadingModelId &&
         preset.prompt_preset_id === effectiveProofreadingPromptId,
     )?.id ?? null;
@@ -645,6 +648,21 @@ export function ProofreadingPage() {
       activeTranslationModelId ?? modelItems[0]?.id ?? null,
     );
   }, [activeTranslationModelId, modelItems, proofreadingModelOverridden]);
+
+  useEffect(() => {
+    if (proofreadingModelOverridden || proofreadingPromptOverridden) return;
+    const selected = workflowSlice.presets.find(
+      (preset) =>
+        preset.id === appSettings.draft?.active_translation_workflow_preset_id &&
+        preset.advanced,
+    );
+    setProofreadingAdvancedPresetId(selected?.id ?? null);
+  }, [
+    appSettings.draft?.active_translation_workflow_preset_id,
+    proofreadingModelOverridden,
+    proofreadingPromptOverridden,
+    workflowSlice.presets,
+  ]);
 
   useEffect(() => {
     if (proofreadingPromptOverridden) return;
@@ -1557,6 +1575,7 @@ export function ProofreadingPage() {
         {
           modelId: proofreadingModelId,
           promptPresetId: effectiveProofreadingPromptId,
+          advancedPresetId: proofreadingAdvancedPresetId,
         },
       );
       setInflightRetranslates((prev) => ({
@@ -1604,6 +1623,7 @@ export function ProofreadingPage() {
         {
           modelId: proofreadingModelId,
           promptPresetId: effectiveProofreadingPromptId,
+          advancedPresetId: proofreadingAdvancedPresetId,
           segmentIds,
         },
       );
@@ -2182,8 +2202,9 @@ export function ProofreadingPage() {
             if (!preset) return;
             setProofreadingModelOverridden(true);
             setProofreadingPromptOverridden(true);
-            setProofreadingModelId(preset.model_profile_id);
-            setProofreadingPromptId(preset.prompt_preset_id);
+            setProofreadingAdvancedPresetId(preset.advanced ? preset.id : null);
+            setProofreadingModelId(preset.routes[0]?.model_profile_id ?? preset.model_profile_id);
+            setProofreadingPromptId(preset.routes[0]?.prompt_preset_id ?? preset.prompt_preset_id);
           }}
           onClose={() => setSwitchOpen(null)}
           onManage={() => navigate({ module: "translation", page: "presets" })}
@@ -2198,6 +2219,19 @@ export function ProofreadingPage() {
           emptyMessage={messages.quickSwitch.emptyModel}
           onSelect={(id) => {
             setProofreadingModelOverridden(true);
+            const advanced = workflowSlice.presets.find(
+              (preset) => preset.id === proofreadingAdvancedPresetId,
+            );
+            const route = advanced?.routes.find((item) => item.model_profile_id === id) ??
+              (advanced?.fallback_route?.model_profile_id === id
+                ? advanced.fallback_route
+                : null);
+            if (route) {
+              setProofreadingPromptOverridden(true);
+              setProofreadingPromptId(route.prompt_preset_id);
+            } else {
+              setProofreadingAdvancedPresetId(null);
+            }
             setProofreadingModelId(id);
           }}
           onClose={() => setSwitchOpen(null)}
@@ -2211,6 +2245,7 @@ export function ProofreadingPage() {
           emptyMessage={messages.quickSwitch.emptyPrompt}
           onSelect={(id) => {
             setProofreadingPromptOverridden(true);
+            setProofreadingAdvancedPresetId(null);
             setProofreadingPromptId(id);
           }}
           onClose={() => setSwitchOpen(null)}

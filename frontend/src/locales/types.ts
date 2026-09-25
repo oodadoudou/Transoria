@@ -1442,6 +1442,18 @@ export interface Messages {
     badgeCustom: string;
     customConfig: string;
     missingSelection: string;
+    advanced: string;
+    normalRoutes: string;
+    routeCount: string;
+    addRoute: string;
+    removeRoute: string;
+    routeConcurrency: string;
+    groupConcurrency: string;
+    failedRetry: string;
+    fallbackRoute: string;
+    routeMismatchWarning: string;
+    primaryRoute: string;
+    setPrimary: string;
   };
   model: {
     crumb: string;

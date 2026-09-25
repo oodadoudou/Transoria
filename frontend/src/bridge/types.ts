@@ -75,6 +75,7 @@ export interface AppSettings {
   proxy_url: string;
   task_sound_notifications: boolean;
   active_translation_model_id: string | null;
+  active_translation_workflow_preset_id: string | null;
   active_glossary_model_id: string | null;
   active_glossary_review_model_id: string | null;
   active_translation_prompt_id: string | null;
@@ -314,6 +315,17 @@ export interface WorkflowPreset {
   source_language: Language;
   target_language: Language;
   enabled: boolean;
+  advanced: boolean;
+  routes: PresetRoute[];
+  fallback_route: PresetRoute | null;
+  group_concurrency: number;
+  retry_failed: boolean;
+}
+
+export interface PresetRoute {
+  model_profile_id: string;
+  prompt_preset_id: string;
+  concurrency: number;
 }
 
 export type WorkflowPresetDraft = Omit<WorkflowPreset, "id" | "kind"> & {
@@ -428,6 +440,7 @@ export interface SubtaskMini {
    * surfaces this so users can hover a red square and see the LLM /
    * decoder error instead of guessing why it failed. */
   last_error?: string;
+  route_profile_id?: string;
 }
 
 export interface TaskLowConfidenceSummary {

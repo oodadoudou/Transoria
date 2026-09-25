@@ -272,7 +272,10 @@ def _build_handlers(
                     f"prompt preset {preset_id!r} does not exist."
                 )
         field = ACTIVE_FIELD_BY_KIND[kind.value]
-        updated = settings_store.save_partial("app", {field: preset_id})
+        patch: dict[str, object] = {field: preset_id}
+        if kind is PromptKind.TRANSLATION:
+            patch["active_translation_workflow_preset_id"] = None
+        updated = settings_store.save_partial("app", patch)
         from dataclasses import asdict  # noqa: PLC0415
 
         return {"app": asdict(updated.app)}

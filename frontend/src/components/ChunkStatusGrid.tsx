@@ -69,6 +69,9 @@ function cellTooltip(
   if (subtask.attempts && subtask.attempts > 0) {
     parts.push(`attempt ${subtask.attempts}`);
   }
+  if (subtask.route_profile_id) {
+    parts.push(subtask.route_profile_id);
+  }
   if (subtask.status === "running" && subtask.started_at) {
     parts.push(`started ${subtask.started_at}`);
   }

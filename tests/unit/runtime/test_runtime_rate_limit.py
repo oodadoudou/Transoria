@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from transoria.runtime import RpmLimiter
+from transoria.runtime.rate_limit import SharedRpmLimiter
 
 
 class _FakeClock:
@@ -66,3 +67,22 @@ def test_rpm_limiter_with_zero_limit_is_a_noop() -> None:
     asyncio.run(limiter.acquire())
 
     assert limiter.in_flight_count() == 0
+
+
+def test_shared_rpm_limiter_counts_each_acquire_and_respects_new_limit() -> None:
+    clock = _FakeClock()
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock.advance(seconds)
+
+    limiter = SharedRpmLimiter(clock=clock, sleep=fake_sleep)
+
+    async def scenario() -> None:
+        await limiter.acquire(2)
+        await limiter.acquire(2)
+        await limiter.acquire(1)
+
+    asyncio.run(scenario())
+    assert sum(sleeps) >= 60.0

@@ -13,6 +13,21 @@ from transoria.prompts import PromptKind
 
 
 @dataclass(frozen=True)
+class PresetRoute:
+    model_profile_id: str
+    prompt_preset_id: str
+    concurrency: int = 1
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> "PresetRoute":
+        return cls(
+            model_profile_id=str(data.get("model_profile_id", "")),
+            prompt_preset_id=str(data.get("prompt_preset_id", "")),
+            concurrency=int(data.get("concurrency", 1)),
+        )
+
+
+@dataclass(frozen=True)
 class WorkflowPreset:
     id: str
     name: str
@@ -22,6 +37,11 @@ class WorkflowPreset:
     source_language: str
     target_language: str
     enabled: bool = True
+    advanced: bool = False
+    routes: tuple[PresetRoute, ...] = ()
+    fallback_route: PresetRoute | None = None
+    group_concurrency: int = 0
+    retry_failed: bool = False
 
     def to_dict(self) -> dict[str, object]:
         data = asdict(self)
@@ -37,6 +57,13 @@ class WorkflowPreset:
         )
         Language(source_language)
         Language(target_language)
+        raw_routes = data.get("routes", ())
+        routes = (
+            tuple(PresetRoute.from_dict(item) for item in raw_routes if isinstance(item, Mapping))
+            if isinstance(raw_routes, (list, tuple))
+            else ()
+        )
+        raw_fallback = data.get("fallback_route")
         return cls(
             id=str(data["id"]),
             name=str(data["name"]),
@@ -46,6 +73,15 @@ class WorkflowPreset:
             source_language=source_language,
             target_language=target_language,
             enabled=bool(data.get("enabled", True)),
+            advanced=bool(data.get("advanced", False)),
+            routes=routes,
+            fallback_route=(
+                PresetRoute.from_dict(raw_fallback)
+                if isinstance(raw_fallback, Mapping)
+                else None
+            ),
+            group_concurrency=int(data.get("group_concurrency", 0)),
+            retry_failed=bool(data.get("retry_failed", False)),
         )
 
 
@@ -115,4 +151,4 @@ class WorkflowPresetStore:
         return True
 
 
-__all__ = ["WorkflowPreset", "WorkflowPresetStore"]
+__all__ = ["PresetRoute", "WorkflowPreset", "WorkflowPresetStore"]

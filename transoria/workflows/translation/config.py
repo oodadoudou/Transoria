@@ -22,6 +22,13 @@ BILINGUAL_OUTPUT_FOLDER_ZH = "双语版本"
 
 
 @dataclass(frozen=True)
+class TranslationRouteConfig:
+    model: ModelConfig
+    prompt_preset: PromptPreset
+    concurrency: int
+
+
+@dataclass(frozen=True)
 class TranslationConfig:
     input_dir: Path
     output_dir: Path
@@ -29,6 +36,11 @@ class TranslationConfig:
     target_language: Language
     model: ModelConfig
     prompt_preset: PromptPreset
+    routes: tuple[TranslationRouteConfig, ...] = ()
+    fallback_route: TranslationRouteConfig | None = None
+    group_concurrency: int = 0
+    retry_failed: bool = False
+    workflow_preset_id: str = ""
 
     glossary: Glossary = field(default_factory=Glossary.empty)
     text_preserve_rules: tuple[TextPreserveRule, ...] = ()
@@ -97,4 +109,5 @@ __all__ = [
     "BILINGUAL_OUTPUT_FOLDER_EN",
     "BILINGUAL_OUTPUT_FOLDER_ZH",
     "TranslationConfig",
+    "TranslationRouteConfig",
 ]

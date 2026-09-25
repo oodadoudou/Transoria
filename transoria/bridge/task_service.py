@@ -127,7 +127,9 @@ from transoria.workflows.glossary.orchestrator import (
     GlossaryOrchestrator,
 )
 from transoria.workflows.glossary.statistics import GLOSSARY_STATISTICS_FILENAME_JSON
-from transoria.workflows.translation.config import TranslationConfig
+from transoria.workflows.translation.config import TranslationConfig, TranslationRouteConfig
+from transoria.workflows.translation.routing import RouteLimitedClient
+from transoria.workflow_presets import PresetRoute, WorkflowPresetStore
 from transoria.workflows.translation.glossary_report import (
     GLOSSARY_REPORT_FILENAME_JSON,
     GLOSSARY_REPORT_FILENAME_MD,
@@ -1524,6 +1526,7 @@ def _format_snapshot(snapshot: TaskSnapshot) -> dict[str, object]:
                 "attempts": s.attempt_count,
                 "started_at": s.started_at if s.status is SubtaskStatus.RUNNING else "",
                 "last_error": s.last_error if s.status is SubtaskStatus.FAILED else "",
+                "route_profile_id": s.route_profile_id,
             }
             for s in snapshot.subtasks
         ],
@@ -2291,6 +2294,7 @@ class TaskService:
         segment_ids: Sequence[str] | None = None,
         model_id: str | None = None,
         prompt_preset_id: str | None = None,
+        advanced_preset_id: str | None = None,
     ) -> dict[str, object]:
         requested_ids = list(dict.fromkeys(segment_ids or (segment_id,)))
         if not requested_ids or len(requested_ids) > 5:
@@ -2360,6 +2364,37 @@ class TaskService:
         settings = self.settings_store.load_all()
         effective_model_id = model_id or settings.app.active_translation_model_id
         effective_prompt_id = prompt_preset_id or settings.app.active_translation_prompt_id
+        selected_advanced_route: PresetRoute | None = None
+        if advanced_preset_id:
+            selected = next(
+                (
+                    item
+                    for item in WorkflowPresetStore(
+                        self.prompts_cache_root / "workflow_presets.translation.json",
+                        PromptKind.TRANSLATION,
+                    ).load()
+                    if item.id == advanced_preset_id and item.advanced and item.enabled
+                ),
+                None,
+            )
+            allowed = (
+                (*selected.routes, *((selected.fallback_route,) if selected.fallback_route else ()))
+                if selected is not None
+                else ()
+            )
+            selected_advanced_route = next(
+                (
+                    item for item in allowed
+                    if item.model_profile_id == effective_model_id
+                    and item.prompt_preset_id == effective_prompt_id
+                ),
+                None,
+            )
+            if selected_advanced_route is None:
+                raise BridgeError.invalid_argument(
+                    "the selected model and prompt are not a route in this advanced preset.",
+                    field="advanced_preset_id",
+                )
         metadata = dict(snapshot.record.metadata)
 
         with self._retranslate_lock:
@@ -2376,6 +2411,10 @@ class TaskService:
                         details={"request_id": job.request_id},
                     )
             request_id = f"retranslate-{uuid4().hex[:12]}"
+            model_snapshot = self._model_snapshot_for_retranslate(effective_model_id)
+            if advanced_preset_id and model_snapshot is not None:
+                model_snapshot["advanced_route"] = True
+                model_snapshot["concurrency_limit"] = selected_advanced_route.concurrency
             job = RetranslateJob(
                 request_id=request_id,
                 task_id=task_id,
@@ -2389,9 +2428,7 @@ class TaskService:
                 original_dst_hash=_hash_text(original_dst),
                 seg_data=dict(seg_data),
                 metadata=metadata,
-                model_snapshot=self._model_snapshot_for_retranslate(
-                    effective_model_id
-                ),
+                model_snapshot=model_snapshot,
                 prompt_snapshot=self._prompt_snapshot_for_retranslate(
                     effective_prompt_id, metadata
                 ),
@@ -3190,8 +3227,13 @@ class TaskService:
             "id exactly once and no additional ids."
         )
         client = self.llm_client_factory()
+        request_client = (
+            RouteLimitedClient(client)
+            if first.model_snapshot and first.model_snapshot.get("advanced_route")
+            else client
+        )
         try:
-            response = await client.chat(
+            response = await request_client.chat(
                 ChatRequest(
                     model=model,
                     system_prompt=system_prompt,
@@ -3260,8 +3302,13 @@ class TaskService:
             ensure_ascii=False,
         )
         client = self.llm_client_factory()
+        request_client = (
+            RouteLimitedClient(client)
+            if model_snapshot and model_snapshot.get("advanced_route")
+            else client
+        )
         try:
-            response = await client.chat(
+            response = await request_client.chat(
                 ChatRequest(
                     model=model,
                     system_prompt=system_prompt,
@@ -3869,8 +3916,13 @@ class TaskService:
             else ()
         )
 
+        client = self.llm_client_factory()
         runner = TranslationSubtaskRunner(
-            client=self.llm_client_factory(),
+            client=(
+                RouteLimitedClient(client)
+                if model_snapshot and model_snapshot.get("advanced_route")
+                else client
+            ),
             model=model,
             prompt_preset=preset,
             source_language=source_language,
@@ -4034,10 +4086,41 @@ class TaskService:
 
     def _build_translation_config(
         self,
+        *,
+        routing_snapshot: Mapping[str, object] | None = None,
+        task_metadata: Mapping[str, object] | None = None,
     ) -> tuple[TranslationConfig, ModelConfig, PromptPreset]:
         settings = self.settings_store.load_all()
         translation = settings.translation
         app = settings.app
+        if routing_snapshot is not None:
+            frozen = routing_snapshot.get("settings")
+            if isinstance(frozen, Mapping):
+                fields = {
+                    name: frozen[name]
+                    for name in (
+                        "input_folder", "output_folder", "source_language",
+                        "target_language", "bilingual_enabled",
+                        "bilingual_dedupe_identical", "bilingual_subfolder_name",
+                        "context_lines", "low_confidence_max_retries",
+                        "request_retry_attempts", "timeout_seconds",
+                    )
+                    if name in frozen
+                }
+                translation = replace(translation, **fields)
+            if task_metadata is not None:
+                rule_fields = {
+                    "glossary": "translation_glossary",
+                    "text_preserve_rules": "text_preserve_rules",
+                    "pre_replacements": "pre_replacements",
+                    "post_replacements": "post_replacements",
+                }
+                saved = {
+                    target: tuple(task_metadata[source])
+                    for source, target in rule_fields.items()
+                    if isinstance(task_metadata.get(source), list)
+                }
+                translation = replace(translation, **saved)
 
         input_dir = _require_directory(translation.input_folder, field="input_folder")
         _require_input_with_supported_files(input_dir, field="input_folder")
@@ -4051,15 +4134,91 @@ class TaskService:
         target_lang = _coerce_language(
             translation.target_language, field="target_language"
         )
-        model = self._resolve_model_profile(
-            app.active_translation_model_id, field="active_translation_model_id"
-        )
-        # Per-task timeout overrides any value persisted on the model
-        # profile — this knob lives in the translation settings UI now.
-        model = replace(model, timeout_seconds=float(translation.timeout_seconds))
-        preset = self._resolve_prompt_preset(
-            app.active_translation_prompt_id, kind=PromptKind.TRANSLATION
-        )
+        routes: tuple[TranslationRouteConfig, ...] = ()
+        fallback_route: TranslationRouteConfig | None = None
+        group_concurrency = 0
+        retry_failed = False
+        workflow_preset_id = ""
+        if routing_snapshot is not None:
+            raw_routes = routing_snapshot.get("routes")
+            if not isinstance(raw_routes, list) or not raw_routes:
+                raise BridgeError.invalid_argument(
+                    "persisted advanced routes are invalid.", field="routes"
+                )
+            routes = tuple(self._route_from_snapshot(item, translation.timeout_seconds) for item in raw_routes)
+            raw_fallback = routing_snapshot.get("fallback_route")
+            if raw_fallback is not None:
+                fallback_route = self._route_from_snapshot(
+                    raw_fallback, translation.timeout_seconds
+                )
+            group_concurrency = int(routing_snapshot.get("group_concurrency", 0))
+            retry_failed = bool(routing_snapshot.get("retry_failed", False))
+            workflow_preset_id = str(routing_snapshot.get("preset_id", ""))
+        elif app.active_translation_workflow_preset_id:
+            selected = next(
+                (
+                    item
+                    for item in WorkflowPresetStore(
+                        self.prompts_cache_root / "workflow_presets.translation.json",
+                        PromptKind.TRANSLATION,
+                    ).load()
+                    if item.id == app.active_translation_workflow_preset_id
+                ),
+                None,
+            )
+            if selected is None or not selected.enabled or not selected.advanced:
+                raise BridgeError.invalid_argument(
+                    "the selected advanced preset is unavailable.",
+                    field="active_translation_workflow_preset_id",
+                )
+            if (
+                selected.source_language != translation.source_language
+                or selected.target_language != translation.target_language
+            ):
+                raise BridgeError.invalid_argument(
+                    "the selected advanced preset's languages changed; reapply the preset.",
+                    field="active_translation_workflow_preset_id",
+                )
+            routes = tuple(
+                self._resolve_translation_route(route, translation.timeout_seconds)
+                for route in selected.routes
+            )
+            if selected.fallback_route is not None:
+                fallback_route = self._resolve_translation_route(
+                    selected.fallback_route, translation.timeout_seconds
+                )
+            group_concurrency = selected.group_concurrency
+            retry_failed = selected.retry_failed
+            workflow_preset_id = selected.id
+        if routes:
+            if group_concurrency <= 0:
+                raise BridgeError.invalid_argument(
+                    "group concurrency must be positive.", field="group_concurrency"
+                )
+            for route in (*routes, *((fallback_route,) if fallback_route else ())):
+                if route.concurrency <= 0:
+                    raise BridgeError.invalid_argument(
+                        "route concurrency must be positive.", field="routes"
+                    )
+                primary = routes[0].model
+                if (
+                    primary.input_token_limit > 0
+                    and route.model.input_token_limit > 0
+                    and route.model.input_token_limit < primary.input_token_limit
+                ) or route.model.max_output_tokens < primary.max_output_tokens:
+                    raise BridgeError.invalid_argument(
+                        "a route has a smaller input or output budget than the primary route.",
+                        field="routes",
+                    )
+            model, preset = routes[0].model, routes[0].prompt_preset
+        else:
+            model = self._resolve_model_profile(
+                app.active_translation_model_id, field="active_translation_model_id"
+            )
+            model = replace(model, timeout_seconds=float(translation.timeout_seconds))
+            preset = self._resolve_prompt_preset(
+                app.active_translation_prompt_id, kind=PromptKind.TRANSLATION
+            )
 
         glossary = Glossary.from_records(translation.translation_glossary)
         text_preserve_rules = _coerce_text_preserve_rules(
@@ -4079,6 +4238,11 @@ class TaskService:
             target_language=target_lang,
             model=model,
             prompt_preset=preset,
+            routes=routes,
+            fallback_route=fallback_route,
+            group_concurrency=group_concurrency,
+            retry_failed=retry_failed,
+            workflow_preset_id=workflow_preset_id,
             glossary=glossary,
             text_preserve_rules=text_preserve_rules,
             pre_replacements=pre_replacements,
@@ -4098,6 +4262,49 @@ class TaskService:
             request_retry_attempts=max(0, int(translation.request_retry_attempts)),
         )
         return config, model, preset
+
+    def _resolve_translation_route(
+        self, route: PresetRoute, timeout_seconds: int
+    ) -> TranslationRouteConfig:
+        model = self._resolve_model_profile(
+            route.model_profile_id, field="model_profile_id"
+        )
+        preset = self._resolve_prompt_preset(
+            route.prompt_preset_id, kind=PromptKind.TRANSLATION
+        )
+        return TranslationRouteConfig(
+            model=replace(
+                model,
+                timeout_seconds=float(timeout_seconds),
+                concurrency_limit=route.concurrency,
+            ),
+            prompt_preset=preset,
+            concurrency=route.concurrency,
+        )
+
+    def _route_from_snapshot(
+        self, raw: object, timeout_seconds: int
+    ) -> TranslationRouteConfig:
+        if not isinstance(raw, Mapping):
+            raise BridgeError.invalid_argument(
+                "persisted advanced route is invalid.", field="routes"
+            )
+        model_data = raw.get("model")
+        prompt_data = raw.get("prompt_preset")
+        if not isinstance(model_data, Mapping) or not isinstance(prompt_data, Mapping):
+            raise BridgeError.invalid_argument(
+                "persisted advanced route is incomplete.", field="routes"
+            )
+        model = self._model_for_retranslate(
+            str(model_data.get("id", "")),
+            model_snapshot=model_data,
+            field="model_profile_id",
+        )
+        return TranslationRouteConfig(
+            model=replace(model, timeout_seconds=float(timeout_seconds)),
+            prompt_preset=PromptPreset.from_dict(prompt_data),
+            concurrency=int(raw.get("concurrency", 1)),
+        )
 
     def start_translation(self, request_id: str) -> dict[str, object]:
         with self._start_locks["translation"]:
@@ -5702,10 +5909,16 @@ class TaskService:
         return self._continue_glossary_review(task_id)
 
     def _continue_translation(self, task_id: str) -> dict[str, object]:
-        config, _model, _preset = self._build_translation_config()
-        started_at = _utc_now_iso()
         cache = self._cache_for_kind("translation")
         record = cache.load_record(task_id)
+        routing_snapshot = record.metadata.get("advanced_routing")
+        config, _model, _preset = self._build_translation_config(
+            routing_snapshot=(
+                routing_snapshot if isinstance(routing_snapshot, Mapping) else None
+            ),
+            task_metadata=record.metadata,
+        )
+        started_at = _utc_now_iso()
         metadata = dict(record.metadata)
         metadata["active_model_id"] = config.model.id
         metadata["active_prompt_id"] = config.prompt_preset.id

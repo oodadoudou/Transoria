@@ -1267,6 +1267,90 @@ def test_translation_input_limit_threads_into_dynamic_prompt_budget(tmp_path: Pa
     assert config.token_counter is None
 
 
+def test_advanced_translation_config_resolves_route_prompts_and_group_limits(tmp_path: Path):
+    from transoria.llm.config import ModelConfig, ProviderFormat
+    from transoria.prompts import DEFAULT_TRANSLATION_PRESET_ID, PromptKind
+    from transoria.workflow_presets import PresetRoute, WorkflowPreset, WorkflowPresetStore
+
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("안녕", encoding="utf-8")
+    _seed_translation_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
+    service.profile_store.create(
+        ModelConfig(
+            id="second",
+            display_name="Second",
+            provider_format=ProviderFormat.OPENAI,
+            base_url="https://second.test/v1",
+            model_id="same-model",
+        )
+    )
+    service.profile_store.set_api_keys("second", ("second-key",))
+    first = service.settings_store.load_all().app.active_translation_model_id
+    WorkflowPresetStore(
+        service.prompts_cache_root / "workflow_presets.translation.json",
+        PromptKind.TRANSLATION,
+    ).save(
+        (
+            WorkflowPreset(
+                id="advanced-1",
+                name="Advanced",
+                kind=PromptKind.TRANSLATION,
+                model_profile_id=first,
+                prompt_preset_id=DEFAULT_TRANSLATION_PRESET_ID,
+                source_language="kr",
+                target_language="zh",
+                advanced=True,
+                routes=(
+                    PresetRoute(first, DEFAULT_TRANSLATION_PRESET_ID, 2),
+                    PresetRoute("second", DEFAULT_TRANSLATION_PRESET_ID, 1),
+                ),
+                fallback_route=PresetRoute("second", DEFAULT_TRANSLATION_PRESET_ID, 1),
+                group_concurrency=3,
+                retry_failed=True,
+            ),
+        )
+    )
+    service.settings_store.save_partial(
+        "app", {"active_translation_workflow_preset_id": "advanced-1"}
+    )
+
+    config, model, _ = service._build_translation_config()
+
+    assert config.workflow_preset_id == "advanced-1"
+    assert config.group_concurrency == 3
+    assert [route.concurrency for route in config.routes] == [2, 1]
+    assert config.fallback_route.model.id == "second"
+    assert config.retry_failed
+    assert model.id == first
+
+    from transoria.workflows.translation.routing import route_snapshot
+
+    saved_routing = {
+        "preset_id": "advanced-1",
+        "routes": [route_snapshot(route) for route in config.routes],
+        "fallback_route": route_snapshot(config.fallback_route),
+        "group_concurrency": config.group_concurrency,
+        "retry_failed": config.retry_failed,
+    }
+    service.settings_store.save_partial(
+        "app", {"active_translation_workflow_preset_id": None}
+    )
+    store = WorkflowPresetStore(
+        service.prompts_cache_root / "workflow_presets.translation.json",
+        PromptKind.TRANSLATION,
+    )
+    store.save(())
+
+    resumed, _, _ = service._build_translation_config(routing_snapshot=saved_routing)
+
+    assert resumed.workflow_preset_id == "advanced-1"
+    assert [route.model.id for route in resumed.routes] == [first, "second"]
+    assert resumed.fallback_route.model.id == "second"
+    assert resumed.routes[0].prompt_preset.to_dict() == config.routes[0].prompt_preset.to_dict()
+
+
 def test_translation_glossary_regex_setting_threads_and_matches(tmp_path: Path):
     """Regex glossary rows persisted by the frontend must stay active at run start."""
 

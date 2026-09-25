@@ -32,6 +32,7 @@ class Subtask:
     started_at: str = ""
     last_error: str = ""
     last_error_at: str = ""
+    route_profile_id: str = ""
 
     @property
     def total_tokens(self) -> int:
@@ -51,6 +52,7 @@ class Subtask:
             "started_at": self.started_at,
             "last_error": self.last_error,
             "last_error_at": self.last_error_at,
+            "route_profile_id": self.route_profile_id,
         }
 
     def to_json(self) -> str:
@@ -78,6 +80,7 @@ class Subtask:
             started_at=str(data.get("started_at", "")),
             last_error=str(data.get("last_error", "")),
             last_error_at=str(data.get("last_error_at", "")),
+            route_profile_id=str(data.get("route_profile_id", "")),
         )
 
     @classmethod

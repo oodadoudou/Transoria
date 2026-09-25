@@ -66,7 +66,12 @@ from transoria.workflows.translation.chunker import (
     PreparedSegment,
     build_chunks,
 )
-from transoria.workflows.translation.config import TranslationConfig
+from transoria.workflows.translation.config import TranslationConfig, TranslationRouteConfig
+from transoria.workflows.translation.routing import (
+    RouteLimitedClient,
+    RoutedTranslationRunner,
+    route_snapshot,
+)
 from transoria.workflows.executor_pacing import llm_launch_spacing_seconds
 from transoria.workflows.prefilter import should_translate_for_language
 from transoria.workflows.translation.glossary_report import (
@@ -195,7 +200,9 @@ class TranslationOrchestrator:
             self.cache.load_subtasks(task_id) if self.cache.has_task(task_id) else ()
         )
         if existing_subtasks:
-            _prepare_segment_recovery(self.cache, task_id, existing_subtasks)
+            retry_phase = self.cache.load_record(task_id).metadata.get("advanced_retry_state")
+            if not config.routes or retry_phase != "running":
+                _prepare_segment_recovery(self.cache, task_id, existing_subtasks)
         else:
             record = TaskRecord(
                 id=task_id,
@@ -213,6 +220,36 @@ class TranslationOrchestrator:
                     # Snapshot for proofreading retranslate — must use the
                     # same prompt/glossary/rules the original run used.
                     "prompt_preset": config.prompt_preset.to_dict(),
+                    **(
+                        {
+                            "advanced_routing": {
+                                "preset_id": config.workflow_preset_id,
+                                "routes": [route_snapshot(route) for route in config.routes],
+                                "fallback_route": (
+                                    route_snapshot(config.fallback_route)
+                                    if config.fallback_route is not None
+                                    else None
+                                ),
+                                "group_concurrency": config.group_concurrency,
+                                "retry_failed": config.retry_failed,
+                                "settings": {
+                                    "input_folder": str(config.input_dir),
+                                    "output_folder": str(config.output_dir),
+                                    "source_language": config.source_language.value,
+                                    "target_language": config.target_language.value,
+                                    "bilingual_enabled": config.bilingual_enabled,
+                                    "bilingual_dedupe_identical": config.bilingual_dedup_when_same,
+                                    "bilingual_subfolder_name": config.bilingual_subfolder,
+                                    "context_lines": config.context_line_count,
+                                    "low_confidence_max_retries": config.low_confidence_max_retries,
+                                    "request_retry_attempts": config.request_retry_attempts,
+                                    "timeout_seconds": int(config.model.timeout_seconds),
+                                },
+                            }
+                        }
+                        if config.routes
+                        else {}
+                    ),
                     "glossary": [
                         {
                             "src": entry.src,
@@ -273,16 +310,20 @@ class TranslationOrchestrator:
 
             self.cache.write_seed(record, subtasks)
 
-        actual_concurrency = effective_concurrency_limit(config.model)
-        config = replace(
-            config, model=replace(config.model, concurrency_limit=actual_concurrency)
-        )
-        runner = TranslationRecoveryRunner(self.runner_factory(self.client, config))
+        if config.routes:
+            actual_concurrency = config.group_concurrency
+            runner = self._routed_runner(config, config.routes)
+        else:
+            actual_concurrency = effective_concurrency_limit(config.model)
+            config = replace(
+                config, model=replace(config.model, concurrency_limit=actual_concurrency)
+            )
+            runner = TranslationRecoveryRunner(self.runner_factory(self.client, config))
         executor = TaskExecutor(
             cache=self.cache,
             runner=runner,
             concurrency_limit=actual_concurrency,
-            rpm_limit=max(0, config.model.rpm_limit),
+            rpm_limit=0 if config.routes else max(0, config.model.rpm_limit),
             progress=self.progress,
             clock=self.clock,
             # Drain in-flight LLM calls naturally on stop instead of
@@ -298,6 +339,11 @@ class TranslationOrchestrator:
         if self.on_executor_created is not None:
             self.on_executor_created(executor)
 
+        retry_state = str(self.cache.load_record(task_id).metadata.get("advanced_retry_state", ""))
+        if config.routes and retry_state == "running":
+            executor.runner = self._routed_runner(
+                config, (config.fallback_route,) if config.fallback_route else config.routes
+            )
         snapshot = await executor.run(task_id)
         # The split-failed-chunks loop must respect the stop signal —
         # otherwise pressing Stop and waiting for in-flight requests to
@@ -308,10 +354,34 @@ class TranslationOrchestrator:
         # storm. Transient transport errors are handled by request-level
         # backoff, not by re-running the whole task.
         while (
+            retry_state != "running"
+            and
             not executor.is_stopping
             and self._split_failed_subtasks(task_id, snapshot.subtasks, config)
         ):
             snapshot = await executor.run(task_id)
+
+        if (
+            config.routes
+            and config.retry_failed
+            and not retry_state
+            and not executor.is_stopping
+            and not executor.is_pausing
+            and snapshot.progress().failed > 0
+        ):
+            self._set_advanced_retry_state(task_id, "running")
+            _prepare_segment_recovery(self.cache, task_id, snapshot.subtasks)
+            executor.runner = self._routed_runner(
+                config, (config.fallback_route,) if config.fallback_route else config.routes
+            )
+            snapshot = await executor.run(task_id)
+            retry_state = "running"
+        if (
+            retry_state == "running"
+            and not executor.is_stopping
+            and not executor.is_pausing
+        ):
+            self._set_advanced_retry_state(task_id, "done")
 
         if (
             snapshot.record.status is TaskStatus.COMPLETED
@@ -421,6 +491,38 @@ class TranslationOrchestrator:
         if self.on_result_finalized is not None:
             self.on_result_finalized(result)
         return result
+
+    def _routed_runner(
+        self, config: TranslationConfig, routes: tuple[TranslationRouteConfig, ...]
+    ) -> RoutedTranslationRunner:
+        limited_client = RouteLimitedClient(self.client)
+        return RoutedTranslationRunner(
+            tuple(
+                (
+                    route,
+                    TranslationRecoveryRunner(
+                        self.runner_factory(
+                            limited_client,
+                            replace(
+                                config,
+                                model=route.model,
+                                prompt_preset=route.prompt_preset,
+                            ),
+                        )
+                    ),
+                )
+                for route in routes
+            )
+        )
+
+    def _set_advanced_retry_state(self, task_id: str, state: str) -> None:
+        record = self.cache.load_record(task_id)
+        self.cache.save_task(
+            replace(
+                record,
+                metadata={**record.metadata, "advanced_retry_state": state},
+            )
+        )
 
     def _finalize_empty(
         self,

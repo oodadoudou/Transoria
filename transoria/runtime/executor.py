@@ -32,6 +32,7 @@ class SubtaskResult:
     input_tokens: int = 0
     output_tokens: int = 0
     cached_input_tokens: int = 0
+    route_profile_id: str = ""
 
 
 class SubtaskFailedWithResult(RuntimeError):
@@ -412,6 +413,11 @@ class TaskExecutor:
                         if failed_result is not None
                         else running.cached_input_tokens
                     ),
+                    route_profile_id=(
+                        failed_result.route_profile_id
+                        if failed_result is not None
+                        else running.route_profile_id
+                    ),
                     last_error=f"{code_prefix}{type(exc).__name__}: {exc}",
                     last_error_at=self.clock(),
                     started_at="",
@@ -427,6 +433,7 @@ class TaskExecutor:
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
                 cached_input_tokens=result.cached_input_tokens,
+                route_profile_id=result.route_profile_id,
                 last_error="",
                 started_at="",
             )

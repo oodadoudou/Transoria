@@ -518,6 +518,7 @@ export const proofreadingBridge = {
     options?: {
       modelId?: string | null;
       promptPresetId?: string | null;
+      advancedPresetId?: string | null;
       segmentIds?: string[];
     },
   ): Promise<{ request_id: string; status: string }> {
@@ -527,6 +528,7 @@ export const proofreadingBridge = {
       segment_ids: options?.segmentIds ?? null,
       model_id: options?.modelId ?? null,
       prompt_preset_id: options?.promptPresetId ?? null,
+      advanced_preset_id: options?.advancedPresetId ?? null,
     });
   },
   retranslateStatus(requestId: string): Promise<RetranslateStatusResponse> {
