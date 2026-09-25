@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Mapping
 
+from transoria.domain import SubtaskStatus, TaskKind, TaskStatus
 from transoria.llm import ModelConfig, ProviderFormat
 from transoria.llm.client import TransportResult
 from transoria.prompts import PromptKind, default_preset
-from transoria.runtime import Subtask, SubtaskResult
+from transoria.runtime import Subtask, SubtaskResult, TaskCache, TaskExecutor, TaskRecord
 from transoria.runtime.rate_limit import SharedRpmLimiter
 from transoria.workflows.translation import routing
 from transoria.workflows.translation.config import TranslationRouteConfig
@@ -279,6 +281,97 @@ def test_advanced_route_waits_unassigned_until_any_profile_has_capacity(monkeypa
         result = await asyncio.wait_for(task, timeout=2)
         assert result.route_profile_id == "second"
         assert (first.calls, second.calls) == (0, 1)
+
+    asyncio.run(scenario())
+
+
+def test_advanced_rpm_wait_does_not_fill_running_concurrency(
+    tmp_path: Path, monkeypatch
+) -> None:
+    limiter = SharedRpmLimiter()
+    monkeypatch.setattr(routing, "shared_rpm_limiter", lambda _id: limiter)
+    cache = TaskCache(root=tmp_path)
+    cache.write_seed(
+        TaskRecord(
+            id="task",
+            kind=TaskKind.TRANSLATION,
+            status=TaskStatus.PENDING,
+            created_at="2026-04-27T00:00:00+00:00",
+        ),
+        [Subtask(id=str(index), task_id="task") for index in range(3)],
+    )
+
+    async def scenario() -> None:
+        ticket = limiter.try_reserve(1)
+        assert ticket is not None
+        blocked = _BlockingRunner()
+        routed = routing.RoutedTranslationRunner(
+            ((_route("limited", 1), blocked),), group_concurrency=3
+        )
+        executor = TaskExecutor(
+            cache=cache, runner=routed, concurrency_limit=3, rpm_limit=0
+        )
+        run_task = asyncio.create_task(executor.run("task"))
+        await asyncio.sleep(0.02)
+        assert {s.status for s in cache.load_subtasks("task")} == {
+            SubtaskStatus.PENDING
+        }
+
+        limiter.release(ticket)
+        for _ in range(150):
+            if blocked.started:
+                break
+            await asyncio.sleep(0.01)
+        assert len(blocked.started) == 1
+        statuses = [s.status for s in cache.load_subtasks("task")]
+        assert statuses.count(SubtaskStatus.RUNNING) == 1
+        assert statuses.count(SubtaskStatus.PENDING) == 2
+
+        executor.request_stop()
+        snapshot = await asyncio.wait_for(run_task, timeout=2)
+        assert snapshot.record.status is TaskStatus.STOPPED
+        assert all(s.status is SubtaskStatus.PENDING for s in snapshot.subtasks)
+        assert routed._active == [0]
+
+    asyncio.run(scenario())
+
+
+def test_advanced_rpm_wait_can_pause_without_starting_chunks(
+    tmp_path: Path, monkeypatch
+) -> None:
+    limiter = SharedRpmLimiter()
+    monkeypatch.setattr(routing, "shared_rpm_limiter", lambda _id: limiter)
+    cache = TaskCache(root=tmp_path)
+    cache.write_seed(
+        TaskRecord(
+            id="task",
+            kind=TaskKind.TRANSLATION,
+            status=TaskStatus.PENDING,
+            created_at="2026-04-27T00:00:00+00:00",
+        ),
+        [Subtask(id=str(index), task_id="task") for index in range(2)],
+    )
+
+    async def scenario() -> None:
+        ticket = limiter.try_reserve(1)
+        assert ticket is not None
+        blocked = _BlockingRunner()
+        routed = routing.RoutedTranslationRunner(
+            ((_route("limited", 1), blocked),), group_concurrency=2
+        )
+        executor = TaskExecutor(
+            cache=cache, runner=routed, concurrency_limit=2, rpm_limit=0
+        )
+        run_task = asyncio.create_task(executor.run("task"))
+        await asyncio.sleep(0.02)
+        executor.request_pause()
+        snapshot = await asyncio.wait_for(run_task, timeout=2)
+        assert snapshot.record.status is TaskStatus.PAUSED
+        assert all(s.status is SubtaskStatus.PENDING for s in snapshot.subtasks)
+        assert blocked.started == []
+        assert routed._active == [0]
+        limiter.release(ticket)
+        assert limiter.available_after(1) == 0
 
     asyncio.run(scenario())
 

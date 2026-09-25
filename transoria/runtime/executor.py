@@ -333,6 +333,17 @@ class TaskExecutor:
         if self._stop_event.is_set():
             return
 
+        runner = self.runner
+        prepare = getattr(runner, "prepare", None)
+        if callable(prepare):
+            try:
+                runner = await prepare()
+            except asyncio.CancelledError:
+                return
+            if self._stop_event.is_set() or self._pause_request.is_set():
+                runner.close()
+                return
+
         running = replace(
             subtask,
             status=SubtaskStatus.RUNNING,
@@ -341,8 +352,13 @@ class TaskExecutor:
             last_error="",
             last_error_at="",
         )
-        self.cache.save_subtask(running)
-        self._fire_progress(task_id, running.id)
+        try:
+            self.cache.save_subtask(running)
+            self._fire_progress(task_id, running.id)
+        except BaseException:
+            if runner is not self.runner:
+                runner.close()
+            raise
 
         self._active_runners += 1
         try:
@@ -357,7 +373,7 @@ class TaskExecutor:
                     if self.subtask_timeout_seconds > 0:
                         try:
                             result = await asyncio.wait_for(
-                                self.runner.run(running),
+                                runner.run(running),
                                 timeout=self.subtask_timeout_seconds,
                             )
                         except TimeoutError as exc:
@@ -366,7 +382,7 @@ class TaskExecutor:
                                 f"{self.subtask_timeout_seconds:.0f}s timeout"
                             ) from exc
                     else:
-                        result = await self.runner.run(running)
+                        result = await runner.run(running)
             except asyncio.CancelledError:
                 # Stop requested while in-flight: leave the subtask in
                 # PENDING so the next run picks it up. Re-raise so the
@@ -441,6 +457,8 @@ class TaskExecutor:
             self._fire_progress(task_id, completed.id)
         finally:
             self._active_runners -= 1
+            if runner is not self.runner:
+                runner.close()
 
     async def _pace_launch(self) -> None:
         spacing = max(0.0, self.launch_spacing_seconds)

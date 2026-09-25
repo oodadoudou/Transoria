@@ -36,6 +36,39 @@ _route_admission: ContextVar[_RouteAdmission | None] = ContextVar(
 
 
 @dataclass
+class _PreparedRoute:
+    owner: RoutedTranslationRunner
+    index: int
+    admission: _RouteAdmission
+    closed: bool = False
+
+    async def run(self, subtask: Subtask) -> SubtaskResult:
+        route, runner = self.owner.routes[self.index]
+        context_token = _route_admission.set(self.admission)
+        try:
+            try:
+                result = await runner.run(subtask)
+            except SubtaskFailedWithResult as exc:
+                raise SubtaskFailedWithResult(
+                    str(exc),
+                    result=replace(exc.result, route_profile_id=route.model.id),
+                    code=exc.code,
+                ) from exc
+            return replace(result, route_profile_id=route.model.id)
+        finally:
+            _route_admission.reset(context_token)
+            self.close()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        if not self.admission.used:
+            self.admission.limiter.release(self.admission.ticket)
+        self.owner._active[self.index] -= 1
+
+
+@dataclass
 class RouteRateLimitedTransport:
     transport: ChatTransport
     profile_id: str
@@ -136,7 +169,7 @@ class RoutedTranslationRunner:
         self._active = [0] * len(self.routes)
         self._assigned = [0] * len(self.routes)
 
-    async def run(self, subtask: Subtask) -> SubtaskResult:
+    async def prepare(self) -> _PreparedRoute:
         while True:
             order = sorted(
                 range(len(self.routes)),
@@ -167,23 +200,14 @@ class RoutedTranslationRunner:
 
         self._active[index] += 1
         self._assigned[index] += 1
-        route, runner = self.routes[index]
-        context_token = _route_admission.set(admission)
+        return _PreparedRoute(self, index, admission)
+
+    async def run(self, subtask: Subtask) -> SubtaskResult:
+        prepared = await self.prepare()
         try:
-            result = await runner.run(subtask)
-        except SubtaskFailedWithResult as exc:
-            raise SubtaskFailedWithResult(
-                str(exc),
-                result=replace(exc.result, route_profile_id=route.model.id),
-                code=exc.code,
-            ) from exc
-        else:
-            return replace(result, route_profile_id=route.model.id)
+            return await prepared.run(subtask)
         finally:
-            _route_admission.reset(context_token)
-            if not admission.used:
-                admission.limiter.release(admission.ticket)
-            self._active[index] -= 1
+            prepared.close()
 
 
 __all__ = ["RouteLimitedClient", "RoutedTranslationRunner", "route_snapshot"]
