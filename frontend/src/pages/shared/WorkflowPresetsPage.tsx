@@ -832,6 +832,7 @@ function NumberInput({
   title?: string;
   onChange: (value: number) => void;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
   return (
     <label className={styles.field}>
       <span className={styles.fieldLabel}>{label}</span>
@@ -840,9 +841,16 @@ function NumberInput({
         type="number"
         min={min}
         step={1}
-        value={value}
+        value={draft ?? value}
         title={title}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(event) => {
+          const raw = event.target.value;
+          setDraft(raw);
+          if (raw === "") return;
+          const parsed = Number(raw);
+          if (Number.isInteger(parsed) && parsed >= min) onChange(parsed);
+        }}
+        onBlur={() => setDraft(null)}
       />
     </label>
   );

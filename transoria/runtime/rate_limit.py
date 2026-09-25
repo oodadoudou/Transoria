@@ -122,22 +122,36 @@ class SharedRpmLimiter:
     clock: Callable[[], float] = time.monotonic
     sleep: Callable[[float], "asyncio.Future[None]"] = asyncio.sleep
     _timestamps: Deque[float] = field(default_factory=deque, init=False, repr=False)
+    _waiters: Deque[object] = field(default_factory=deque, init=False, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     async def acquire(self, limit: int) -> None:
         if limit <= 0:
             return
-        while True:
+        ticket = object()
+        with self._lock:
+            self._waiters.append(ticket)
+        try:
+            while True:
+                with self._lock:
+                    now = self.clock()
+                    cutoff = now - 60.0
+                    while self._timestamps and self._timestamps[0] <= cutoff:
+                        self._timestamps.popleft()
+                    if self._waiters[0] is ticket and len(self._timestamps) < limit:
+                        self._waiters.popleft()
+                        self._timestamps.append(now)
+                        return
+                    wait_for = (
+                        60.0 - (now - self._timestamps[0])
+                        if len(self._timestamps) >= limit
+                        else 0.1
+                    )
+                await self.sleep(min(max(wait_for, 0.01), 1.0))
+        finally:
             with self._lock:
-                now = self.clock()
-                cutoff = now - 60.0
-                while self._timestamps and self._timestamps[0] <= cutoff:
-                    self._timestamps.popleft()
-                if len(self._timestamps) < limit:
-                    self._timestamps.append(now)
-                    return
-                wait_for = 60.0 - (now - self._timestamps[0])
-            await self.sleep(min(max(wait_for, 0.01), 1.0))
+                if ticket in self._waiters:
+                    self._waiters.remove(ticket)
 
 
 _shared_rpm_lock = threading.Lock()

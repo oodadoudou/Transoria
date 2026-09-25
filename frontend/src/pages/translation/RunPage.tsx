@@ -268,6 +268,16 @@ export function RunPage() {
       ].join(" · "),
     };
   });
+  const presetName = advancedPreset?.name ?? (
+    workflowSlice.presets.length === 0
+      ? messages.runConfig.noPreset
+      : activePreset?.name ?? messages.runConfig.customPreset
+  );
+  const presetDetail = advancedPreset
+    ? `${advancedPreset.routes.length} ${messages.workflowPresets.routeCount} · ${messages.workflowPresets.groupConcurrency}: ${advancedPreset.group_concurrency}`
+    : workflowSlice.presets.length === 0
+      ? messages.runConfig.noPresetHint
+      : `${messages.language.options[sourceLanguage]} → ${messages.language.options[targetLanguage]}`;
 
   const handleSelectModel = async (id: string) => {
     await useModelProfilesStore.getState().selectActive("translation", id);
@@ -374,29 +384,12 @@ export function RunPage() {
 
       <Panel label={run.activeConfig}>
         <RunConfigBar
-          items={advancedPreset ? [
+          items={[
             {
               id: "preset",
               label: messages.runConfig.preset,
-              primary: advancedPreset.name,
-              secondary: `${advancedPreset.routes.length} ${messages.workflowPresets.routeCount} · ${messages.workflowPresets.groupConcurrency}: ${advancedPreset.group_concurrency}`,
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setSwitchOpen("preset"),
-            },
-          ] : [
-            {
-              id: "preset",
-              label: messages.runConfig.preset,
-              primary:
-                workflowSlice.presets.length === 0
-                  ? messages.runConfig.noPreset
-                  : activePreset?.name ?? messages.runConfig.customPreset,
-              secondary:
-                workflowSlice.presets.length === 0
-                  ? messages.runConfig.noPresetHint
-                  : `${messages.language.options[sourceLanguage]} → ${
-                      messages.language.options[targetLanguage]
-                    }`,
+              primary: presetName,
+              secondary: presetDetail,
               actionLabel: messages.runConfig.switchAction,
               onClick: () => setSwitchOpen("preset"),
             },
@@ -436,7 +429,7 @@ export function RunPage() {
         <QuickSwitchModal
           title={messages.quickSwitch.titleModel}
           items={modelItems}
-          activeId={activeModelId}
+          activeId={advancedPreset ? null : activeModelId}
           emptyMessage={messages.quickSwitch.emptyModel}
           onSelect={handleSelectModel}
           onClose={() => setSwitchOpen(null)}
@@ -448,7 +441,7 @@ export function RunPage() {
         <QuickSwitchModal
           title={messages.quickSwitch.titlePrompt}
           items={promptItems}
-          activeId={displayedPromptId}
+          activeId={advancedPreset ? null : displayedPromptId}
           emptyMessage={messages.quickSwitch.emptyPrompt}
           onSelect={handleSelectPrompt}
           onClose={() => setSwitchOpen(null)}

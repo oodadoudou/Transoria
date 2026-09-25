@@ -86,3 +86,51 @@ def test_shared_rpm_limiter_counts_each_acquire_and_respects_new_limit() -> None
 
     asyncio.run(scenario())
     assert sum(sleeps) >= 60.0
+
+
+def test_shared_rpm_limiter_admits_waiters_in_order() -> None:
+    clock = _FakeClock()
+
+    async def yield_sleep(_seconds: float) -> None:
+        await asyncio.sleep(0)
+
+    limiter = SharedRpmLimiter(clock=clock, sleep=yield_sleep)
+
+    async def scenario() -> None:
+        await limiter.acquire(1)
+        first = asyncio.create_task(limiter.acquire(1))
+        await asyncio.sleep(0)
+        second = asyncio.create_task(limiter.acquire(1))
+        await asyncio.sleep(0)
+        clock.advance(60)
+        await asyncio.wait_for(first, timeout=1)
+        assert not second.done()
+        clock.advance(60)
+        await asyncio.wait_for(second, timeout=1)
+
+    asyncio.run(scenario())
+
+
+def test_shared_rpm_limiter_removes_cancelled_waiter() -> None:
+    clock = _FakeClock()
+
+    async def yield_sleep(_seconds: float) -> None:
+        await asyncio.sleep(0)
+
+    limiter = SharedRpmLimiter(clock=clock, sleep=yield_sleep)
+
+    async def scenario() -> None:
+        await limiter.acquire(1)
+        cancelled = asyncio.create_task(limiter.acquire(1))
+        await asyncio.sleep(0)
+        follower = asyncio.create_task(limiter.acquire(1))
+        await asyncio.sleep(0)
+        cancelled.cancel()
+        try:
+            await cancelled
+        except asyncio.CancelledError:
+            pass
+        clock.advance(60)
+        await asyncio.wait_for(follower, timeout=1)
+
+    asyncio.run(scenario())

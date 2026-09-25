@@ -16,7 +16,7 @@ import unicodedata
 from dataclasses import dataclass, replace
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Awaitable, Iterable, Mapping, Sequence
 
 from transoria.domain import Language, language_prompt_label, normalize_target_script
 from transoria.llm.client import (
@@ -66,6 +66,7 @@ from transoria.workflows.translation.rules import (
     GlossaryEntry,
     ReplacementRule,
 )
+from transoria.workflows.translation.routing import RouteLimitedClient
 from transoria.workflows.translation.segment_state import (
     ACCEPTED_OVERRIDE_SEGMENTS_KEY,
     PRESERVED_CANDIDATE_SEGMENTS_KEY,
@@ -542,16 +543,19 @@ def _decode_explicit_partial_rows(
         dense_text = "\n".join(dense_lines[1:-1])
     else:
         dense_text = raw_content.strip()
+    if not dense_text.startswith("{"):
+        return {}
     try:
-        parsed_dense = json.loads(dense_text)
-        parsed_pairs = json.loads(dense_text, object_pairs_hook=lambda pairs: pairs)
+        parsed_pairs, end = json.JSONDecoder(
+            object_pairs_hook=lambda pairs: pairs
+        ).raw_decode(dense_text)
     except json.JSONDecodeError:
         return {}
-    if (
-        not isinstance(parsed_dense, dict)
-        or not isinstance(parsed_pairs, list)
-        or not expected_indices
-    ):
+    # Some providers append one stray closing brace after a complete object.
+    # Never accept arbitrary trailing text or a repaired/truncated value here.
+    if dense_text[end:].strip() not in ("", "}") or not expected_indices:
+        return {}
+    if not isinstance(parsed_pairs, list):
         return {}
 
     dense_candidates: dict[int, str] = {}
@@ -829,6 +833,15 @@ class TranslationSubtaskRunner:
     preserve_korean_latin_review_candidates: bool = False
     allow_source_phonetic_jamo: bool = False
 
+    async def _await_llm_request(
+        self, operation: Awaitable[ChatResponse], timeout_seconds: float
+    ) -> ChatResponse:
+        if isinstance(self.client, RouteLimitedClient):
+            # Advanced routes may wait through multiple RPM windows. Their
+            # transport starts the per-request clock only after admission.
+            return await operation
+        return await asyncio.wait_for(operation, timeout=timeout_seconds)
+
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)
         return await self._attempt(
@@ -917,7 +930,7 @@ class TranslationSubtaskRunner:
                 response_requires_explicit_decode = False
                 partial_error_code = ""
                 try:
-                    response = await asyncio.wait_for(
+                    response = await self._await_llm_request(
                         retry_async(
                             _llm_call,
                             transport_retry_attempts=self.transport_retry_attempts,
@@ -933,7 +946,7 @@ class TranslationSubtaskRunner:
                                 self.model, exc
                             ),
                         ),
-                        timeout=request_model.timeout_seconds,
+                        request_model.timeout_seconds,
                     )
                 except (
                     LlmTruncatedResponseError,
@@ -1148,7 +1161,7 @@ class TranslationSubtaskRunner:
                 rescue_requires_explicit_decode = False
                 rescue_partial_error_code = ""
                 try:
-                    rescue_response = await asyncio.wait_for(
+                    rescue_response = await self._await_llm_request(
                         retry_async(
                             _rescue_llm_call,
                             transport_retry_attempts=self.transport_retry_attempts,
@@ -1160,7 +1173,7 @@ class TranslationSubtaskRunner:
                                 self.model, exc
                             ),
                         ),
-                        timeout=rescue_request_model.timeout_seconds,
+                        rescue_request_model.timeout_seconds,
                     )
                 except (
                     LlmTruncatedResponseError,
@@ -1303,7 +1316,7 @@ class TranslationSubtaskRunner:
                     micro_requires_explicit_decode = False
                     micro_partial_error_code = ""
                     try:
-                        micro_response = await asyncio.wait_for(
+                        micro_response = await self._await_llm_request(
                             retry_async(
                                 _micro_llm_call,
                                 transport_retry_attempts=self.transport_retry_attempts,
@@ -1315,7 +1328,7 @@ class TranslationSubtaskRunner:
                                     self.model, exc
                                 ),
                             ),
-                            timeout=micro_request_model.timeout_seconds,
+                            micro_request_model.timeout_seconds,
                         )
                     except (
                         LlmTruncatedResponseError,
@@ -1468,7 +1481,7 @@ class TranslationSubtaskRunner:
                     solo_partial_error_code = ""
                     try:
                         if self.solo_retry_limiter is None:
-                            solo_response = await asyncio.wait_for(
+                            solo_response = await self._await_llm_request(
                                 retry_async(
                                     _solo_llm_call,
                                     transport_retry_attempts=self.transport_retry_attempts,
@@ -1480,11 +1493,11 @@ class TranslationSubtaskRunner:
                                         self.model, exc
                                     ),
                                 ),
-                                timeout=solo_request_model.timeout_seconds,
+                                solo_request_model.timeout_seconds,
                             )
                         else:
                             async with self.solo_retry_limiter:
-                                solo_response = await asyncio.wait_for(
+                                solo_response = await self._await_llm_request(
                                     retry_async(
                                         _solo_llm_call,
                                         transport_retry_attempts=self.transport_retry_attempts,
@@ -1496,7 +1509,7 @@ class TranslationSubtaskRunner:
                                             self.model, exc
                                         ),
                                     ),
-                                    timeout=solo_request_model.timeout_seconds,
+                                    solo_request_model.timeout_seconds,
                                 )
                     except (
                         LlmTruncatedResponseError,

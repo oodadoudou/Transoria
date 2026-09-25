@@ -34,6 +34,10 @@ from transoria.workflows.translation.runner import (
     _decode_explicit_partial_rows,
     _decode_subtask_payload,
 )
+from transoria.workflows.translation.routing import (
+    RouteLimitedClient,
+    RouteRateLimitedTransport,
+)
 from transoria.workflows.translation.segment_state import (
     PRESERVED_CANDIDATE_SEGMENTS_KEY,
 )
@@ -2335,6 +2339,105 @@ def test_explicit_partial_decoder_rejects_inexact_dense_object_keys() -> None:
     assert _decode_explicit_partial_rows(missing, expected) == {}
     assert _decode_explicit_partial_rows(extra, expected) == {}
     assert _decode_explicit_partial_rows(duplicate, expected) == {}
+
+
+def test_explicit_partial_decoder_accepts_one_surplus_closing_brace() -> None:
+    expected = {40, 41, 42}
+    complete = json.dumps(
+        {str(index): f"译文 {index}" for index in sorted(expected)},
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    assert _decode_explicit_partial_rows(complete + "}\n", expected) == {
+        index: f"译文 {index}" for index in expected
+    }
+    assert _decode_explicit_partial_rows(complete + "}}", expected) == {}
+    assert _decode_explicit_partial_rows(complete + "} explanation", expected) == {}
+    assert _decode_explicit_partial_rows(complete + "}", expected | {43}) == {}
+
+
+def test_mass_source_residue_retry_accepts_complete_object_with_extra_brace() -> None:
+    sources = tuple(f"안녕하세요 친구입니다 긴 문장 {idx}" for idx in range(4))
+    initial = "\n".join(
+        f'{{"{idx}":{json.dumps(source, ensure_ascii=False)}}}'
+        for idx, source in enumerate(sources)
+    )
+    rescue = json.dumps(
+        {str(idx): f"这是第{idx}句已经翻译完成的中文内容。" for idx in range(4)},
+        ensure_ascii=False,
+        indent=2,
+    ) + "}"
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body(initial)),
+            TransportResult(200, _ok_body(rescue)),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=2,
+    )
+
+    result = asyncio.run(runner.run(_make_subtask(sources=sources)))
+
+    payload = json.loads(result.response_content)
+    assert payload["low_confidence"] == []
+    assert all(text.startswith("这是第") for text in payload["translations"].values())
+    assert len(transport.requests) == 2
+
+
+def test_advanced_route_rpm_wait_does_not_consume_request_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from transoria.workflows.translation import routing
+
+    class SlowAdmission:
+        async def acquire(self, _limit: int) -> None:
+            await asyncio.sleep(0.03)
+
+    monkeypatch.setattr(routing, "shared_rpm_limiter", lambda _id: SlowAdmission())
+    transport = FakeTransport(
+        responses=[TransportResult(200, _ok_body('{"0":"你好"}'))]
+    )
+    runner = TranslationSubtaskRunner(
+        client=RouteLimitedClient(LlmClient(transport=transport)),
+        model=replace(_model(), concurrency_limit=72, timeout_seconds=0.01),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(runner.run(_make_subtask(sources=("안녕하세요",))))
+
+    assert json.loads(result.response_content)["translations"] == {"0:0": "你好"}
+    assert transport.requests[0]["timeout"] == 0.01
+
+
+def test_advanced_route_still_times_out_slow_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from transoria.workflows.translation import routing
+
+    class ImmediateAdmission:
+        async def acquire(self, _limit: int) -> None:
+            return None
+
+    class SlowTransport:
+        async def execute(self, *_args: object) -> TransportResult:
+            await asyncio.sleep(0.03)
+            return TransportResult(200, _ok_body('{"0":"你好"}'))
+
+    monkeypatch.setattr(routing, "shared_rpm_limiter", lambda _id: ImmediateAdmission())
+    route_transport = RouteRateLimitedTransport(SlowTransport(), "route-a", 24)
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(route_transport.execute("https://example", {}, {}, 0.01))
 
 
 def test_runner_recovers_response_wrapped_in_translations_key() -> None:

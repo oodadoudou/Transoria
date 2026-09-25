@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from transoria.bridge import BridgeError, BridgeRouter
+from transoria.bridge.handlers.model_profiles import register as register_model_profiles
+from transoria.bridge.handlers.prompts import register as register_prompts
 from transoria.bridge.handlers.workflow_presets import register
 from transoria.domain import Language
 from transoria.llm.config import ModelConfig, ProviderFormat
@@ -125,6 +127,15 @@ def test_create_rejects_missing_model(env):
 def test_advanced_translation_preset_applies_routes_without_changing_basic_match(env):
     router, settings_store = env
     model_store = ModelProfileStore.from_cache_root(settings_store.path.parent)
+    register_model_profiles(
+        router, profile_store=model_store, settings_store=settings_store
+    )
+    register_prompts(
+        router,
+        cache_root=settings_store.path.parent,
+        settings_store=settings_store,
+        profile_store=model_store,
+    )
     model_store.create(
         ModelConfig(
             id="model-2",
@@ -166,6 +177,18 @@ def test_advanced_translation_preset_applies_routes_without_changing_basic_match
     assert "concurrency" not in created["preset"]["routes"][1]
     assert listed["matched_id"] == "group-1"
     assert settings_store.load_all().app.active_translation_workflow_preset_id == "group-1"
+
+    router.call(
+        "model_profiles.select_active",
+        {"module": "translation", "profile_id": "model-1"},
+    )
+    assert settings_store.load_all().app.active_translation_workflow_preset_id is None
+    router.call("workflow_presets.apply", {"kind": "translation", "id": "group-1"})
+    router.call(
+        "prompts.select_active",
+        {"kind": "translation", "preset_id": DEFAULT_TRANSLATION_PRESET_ID},
+    )
+    assert settings_store.load_all().app.active_translation_workflow_preset_id is None
 
     router.call(
         "workflow_presets.create",

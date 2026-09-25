@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
@@ -33,7 +34,9 @@ class RouteRateLimitedTransport:
         timeout: float,
     ) -> TransportResult:
         await shared_rpm_limiter(self.profile_id).acquire(self.rpm_limit)
-        return await self.transport.execute(url, headers, payload, timeout)
+        return await asyncio.wait_for(
+            self.transport.execute(url, headers, payload, timeout), timeout=timeout
+        )
 
     async def execute_observed(
         self,
@@ -47,10 +50,15 @@ class RouteRateLimitedTransport:
         await shared_rpm_limiter(self.profile_id).acquire(self.rpm_limit)
         observed = getattr(self.transport, "execute_observed", None)
         if callable(observed):
-            return await observed(
-                url, headers, payload, timeout, request_log, detect_stream_repetition
+            return await asyncio.wait_for(
+                observed(
+                    url, headers, payload, timeout, request_log, detect_stream_repetition
+                ),
+                timeout=timeout,
             )
-        return await self.transport.execute(url, headers, payload, timeout)
+        return await asyncio.wait_for(
+            self.transport.execute(url, headers, payload, timeout), timeout=timeout
+        )
 
 
 @dataclass
