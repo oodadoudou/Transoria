@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from typing import Mapping
 
 from transoria.llm.client import ChatRequest, ChatResponse, ChatTransport, LlmClient, TransportResult
 from transoria.runtime.executor import SubtaskFailedWithResult, SubtaskResult, SubtaskRunner
-from transoria.runtime.rate_limit import shared_rpm_limiter
+from transoria.runtime.rate_limit import SharedRpmLimiter, shared_rpm_limiter
 from transoria.runtime.subtask import Subtask
 from transoria.workflows.translation.config import TranslationRouteConfig
 
@@ -22,10 +23,35 @@ def route_snapshot(route: TranslationRouteConfig) -> dict[str, object]:
 
 
 @dataclass
+class _RouteAdmission:
+    profile_id: str
+    limiter: SharedRpmLimiter
+    ticket: object
+    used: bool = False
+
+
+_route_admission: ContextVar[_RouteAdmission | None] = ContextVar(
+    "route_admission", default=None
+)
+
+
+@dataclass
 class RouteRateLimitedTransport:
     transport: ChatTransport
     profile_id: str
     rpm_limit: int
+
+    async def _admit(self) -> None:
+        admission = _route_admission.get()
+        if (
+            admission is not None
+            and admission.profile_id == self.profile_id
+            and not admission.used
+        ):
+            admission.used = True
+            if admission.limiter.claim(admission.ticket):
+                return
+        await shared_rpm_limiter(self.profile_id).acquire(self.rpm_limit)
 
     async def execute(
         self,
@@ -34,7 +60,7 @@ class RouteRateLimitedTransport:
         payload: Mapping[str, object],
         timeout: float,
     ) -> TransportResult:
-        await shared_rpm_limiter(self.profile_id).acquire(self.rpm_limit)
+        await self._admit()
         return await asyncio.wait_for(
             self.transport.execute(url, headers, payload, timeout), timeout=timeout
         )
@@ -48,7 +74,7 @@ class RouteRateLimitedTransport:
         request_log: object,
         detect_stream_repetition: bool = False,
     ) -> TransportResult:
-        await shared_rpm_limiter(self.profile_id).acquire(self.rpm_limit)
+        await self._admit()
         observed = getattr(self.transport, "execute_observed", None)
         if callable(observed):
             return await asyncio.wait_for(
@@ -111,17 +137,38 @@ class RoutedTranslationRunner:
         self._assigned = [0] * len(self.routes)
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
-        index = min(
-            range(len(self.routes)),
-            key=lambda i: (
-                self._active[i] / self._weights[i],
-                self._assigned[i] / self._weights[i],
-                i,
-            ),
-        )
+        while True:
+            order = sorted(
+                range(len(self.routes)),
+                key=lambda i: (
+                    self._active[i] / self._weights[i],
+                    self._assigned[i] / self._weights[i],
+                    i,
+                ),
+            )
+            for candidate in order:
+                route = self.routes[candidate][0]
+                limiter = shared_rpm_limiter(route.model.id)
+                ticket = limiter.try_reserve(route.model.rpm_limit)
+                if ticket is not None:
+                    index = candidate
+                    admission = _RouteAdmission(route.model.id, limiter, ticket)
+                    break
+            else:
+                delay = min(
+                    shared_rpm_limiter(self.routes[i][0].model.id).available_after(
+                        self.routes[i][0].model.rpm_limit
+                    )
+                    for i in order
+                )
+                await asyncio.sleep(min(max(delay, 0.01), 1.0))
+                continue
+            break
+
         self._active[index] += 1
         self._assigned[index] += 1
         route, runner = self.routes[index]
+        context_token = _route_admission.set(admission)
         try:
             result = await runner.run(subtask)
         except SubtaskFailedWithResult as exc:
@@ -133,6 +180,9 @@ class RoutedTranslationRunner:
         else:
             return replace(result, route_profile_id=route.model.id)
         finally:
+            _route_admission.reset(context_token)
+            if not admission.used:
+                admission.limiter.release(admission.ticket)
             self._active[index] -= 1
 
 

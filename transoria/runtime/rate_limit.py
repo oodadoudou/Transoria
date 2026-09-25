@@ -121,9 +121,58 @@ class TpmLimiter:
 class SharedRpmLimiter:
     clock: Callable[[], float] = time.monotonic
     sleep: Callable[[float], "asyncio.Future[None]"] = asyncio.sleep
-    _timestamps: Deque[float] = field(default_factory=deque, init=False, repr=False)
+    _timestamps: Deque[Tuple[float, object]] = field(
+        default_factory=deque, init=False, repr=False
+    )
     _waiters: Deque[object] = field(default_factory=deque, init=False, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+
+    def _evict(self, now: float) -> None:
+        cutoff = now - 60.0
+        while self._timestamps and self._timestamps[0][0] <= cutoff:
+            self._timestamps.popleft()
+
+    def try_reserve(self, limit: int) -> object | None:
+        ticket = object()
+        if limit <= 0:
+            return ticket
+        with self._lock:
+            now = self.clock()
+            self._evict(now)
+            if self._waiters or len(self._timestamps) >= limit:
+                return None
+            self._timestamps.append((now, ticket))
+        return ticket
+
+    def release(self, ticket: object) -> None:
+        with self._lock:
+            for entry in self._timestamps:
+                if entry[1] is ticket:
+                    self._timestamps.remove(entry)
+                    return
+
+    def claim(self, ticket: object) -> bool:
+        with self._lock:
+            now = self.clock()
+            self._evict(now)
+            for entry in self._timestamps:
+                if entry[1] is ticket:
+                    self._timestamps.remove(entry)
+                    self._timestamps.append((now, ticket))
+                    return True
+        return False
+
+    def available_after(self, limit: int) -> float:
+        if limit <= 0:
+            return 0.0
+        with self._lock:
+            now = self.clock()
+            self._evict(now)
+            if self._waiters and len(self._timestamps) < limit:
+                return 0.1
+            if len(self._timestamps) < limit:
+                return 0.0
+            return max(0.01, 60.0 - (now - self._timestamps[0][0]))
 
     async def acquire(self, limit: int) -> None:
         if limit <= 0:
@@ -135,15 +184,13 @@ class SharedRpmLimiter:
             while True:
                 with self._lock:
                     now = self.clock()
-                    cutoff = now - 60.0
-                    while self._timestamps and self._timestamps[0] <= cutoff:
-                        self._timestamps.popleft()
+                    self._evict(now)
                     if self._waiters[0] is ticket and len(self._timestamps) < limit:
                         self._waiters.popleft()
-                        self._timestamps.append(now)
+                        self._timestamps.append((now, ticket))
                         return
                     wait_for = (
-                        60.0 - (now - self._timestamps[0])
+                        60.0 - (now - self._timestamps[0][0])
                         if len(self._timestamps) >= limit
                         else 0.1
                     )

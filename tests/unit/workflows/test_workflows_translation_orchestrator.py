@@ -214,6 +214,16 @@ def test_advanced_routes_translate_chunks_with_both_profiles(
         def __init__(self, profile_id: str) -> None:
             self.profile_id = profile_id
 
+        def try_reserve(self, limit: int) -> object:
+            limits.setdefault(self.profile_id, []).append(limit)
+            return object()
+
+        def claim(self, _ticket: object) -> bool:
+            return True
+
+        def release(self, _ticket: object) -> None:
+            pass
+
         async def acquire(self, limit: int) -> None:
             limits.setdefault(self.profile_id, []).append(limit)
 

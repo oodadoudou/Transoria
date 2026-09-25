@@ -134,3 +134,29 @@ def test_shared_rpm_limiter_removes_cancelled_waiter() -> None:
         await asyncio.wait_for(follower, timeout=1)
 
     asyncio.run(scenario())
+
+
+def test_shared_rpm_reservation_is_atomic_and_can_be_released() -> None:
+    clock = _FakeClock()
+    limiter = SharedRpmLimiter(clock=clock)
+    ticket = limiter.try_reserve(1)
+
+    assert ticket is not None
+    assert limiter.try_reserve(1) is None
+    assert limiter.available_after(1) == 60.0
+    clock.advance(20)
+    assert limiter.claim(ticket)
+    assert limiter.available_after(1) == 60.0
+    limiter.release(ticket)
+    assert limiter.available_after(1) == 0.0
+
+
+def test_shared_rpm_expired_reservation_cannot_claim() -> None:
+    clock = _FakeClock()
+    limiter = SharedRpmLimiter(clock=clock)
+    ticket = limiter.try_reserve(1)
+
+    assert ticket is not None
+    clock.advance(60)
+    assert not limiter.claim(ticket)
+    assert limiter.try_reserve(1) is not None

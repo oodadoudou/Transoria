@@ -8,6 +8,7 @@ from transoria.llm import ModelConfig, ProviderFormat
 from transoria.llm.client import TransportResult
 from transoria.prompts import PromptKind, default_preset
 from transoria.runtime import Subtask, SubtaskResult
+from transoria.runtime.rate_limit import SharedRpmLimiter
 from transoria.workflows.translation import routing
 from transoria.workflows.translation.config import TranslationRouteConfig
 
@@ -195,3 +196,107 @@ def test_advanced_unlimited_route_still_receives_work() -> None:
         return counts
 
     assert asyncio.run(scenario()) == (54, 18)
+
+
+def test_advanced_route_with_available_rpm_takes_over_pending_chunk(monkeypatch) -> None:
+    limiters = {name: SharedRpmLimiter() for name in ("busy", "available")}
+    monkeypatch.setattr(routing, "shared_rpm_limiter", limiters.__getitem__)
+    for _ in range(2):
+        assert limiters["busy"].try_reserve(2) is not None
+
+    @dataclass
+    class RequestRunner:
+        profile_id: str
+        calls: int = 0
+
+        async def run(self, subtask: Subtask) -> SubtaskResult:
+            self.calls += 1
+            transport = routing.RouteRateLimitedTransport(
+                _Transport(), self.profile_id, 2
+            )
+            await transport.execute("https://example.test", {}, {}, 1)
+            return SubtaskResult(response_content="ok")
+
+    busy = RequestRunner("busy")
+    available = RequestRunner("available")
+    runner = routing.RoutedTranslationRunner(
+        ((_route("busy", 2), busy), (_route("available", 2), available)),
+        group_concurrency=4,
+    )
+
+    result = asyncio.run(runner.run(Subtask(id="new", task_id="task")))
+
+    assert result.route_profile_id == "available"
+    assert (busy.calls, available.calls) == (0, 1)
+    assert limiters["busy"].available_after(2) > 0
+
+
+def test_advanced_route_refunds_admission_if_no_http_was_sent(monkeypatch) -> None:
+    limiter = SharedRpmLimiter()
+    monkeypatch.setattr(routing, "shared_rpm_limiter", lambda _id: limiter)
+
+    async def scenario() -> None:
+        blocked = _BlockingRunner()
+        runner = routing.RoutedTranslationRunner(
+            ((_route("unused", 1), blocked),), group_concurrency=1
+        )
+        task = asyncio.create_task(runner.run(Subtask(id="unused", task_id="task")))
+        await asyncio.sleep(0)
+        assert limiter.available_after(1) > 0
+        blocked.gates["unused"].set_result(None)
+        await task
+        assert limiter.available_after(1) == 0
+
+    asyncio.run(scenario())
+
+
+def test_advanced_route_waits_unassigned_until_any_profile_has_capacity(monkeypatch) -> None:
+    limiters = {name: SharedRpmLimiter() for name in ("first", "second")}
+    monkeypatch.setattr(routing, "shared_rpm_limiter", limiters.__getitem__)
+    first_ticket = limiters["first"].try_reserve(1)
+    second_ticket = limiters["second"].try_reserve(1)
+    assert first_ticket is not None and second_ticket is not None
+
+    @dataclass
+    class InstantRunner:
+        calls: int = 0
+
+        async def run(self, subtask: Subtask) -> SubtaskResult:
+            self.calls += 1
+            return SubtaskResult(response_content="ok")
+
+    async def scenario() -> None:
+        first = InstantRunner()
+        second = InstantRunner()
+        runner = routing.RoutedTranslationRunner(
+            ((_route("first", 1), first), (_route("second", 1), second)),
+            group_concurrency=2,
+        )
+        task = asyncio.create_task(runner.run(Subtask(id="pending", task_id="task")))
+        await asyncio.sleep(0.02)
+        assert (first.calls, second.calls) == (0, 0)
+        limiters["second"].release(second_ticket)
+        result = await asyncio.wait_for(task, timeout=2)
+        assert result.route_profile_id == "second"
+        assert (first.calls, second.calls) == (0, 1)
+
+    asyncio.run(scenario())
+
+
+def test_advanced_route_retry_still_counts_second_http_attempt(monkeypatch) -> None:
+    limiter = SharedRpmLimiter()
+    monkeypatch.setattr(routing, "shared_rpm_limiter", lambda _id: limiter)
+
+    class RetryRunner:
+        async def run(self, subtask: Subtask) -> SubtaskResult:
+            transport = routing.RouteRateLimitedTransport(_Transport(), "retry", 2)
+            await transport.execute("https://example.test", {}, {}, 1)
+            await transport.execute("https://example.test", {}, {}, 1)
+            return SubtaskResult(response_content="ok")
+
+    runner = routing.RoutedTranslationRunner(
+        ((_route("retry", 2), RetryRunner()),), group_concurrency=1
+    )
+    asyncio.run(runner.run(Subtask(id="retry", task_id="task")))
+
+    assert limiter.available_after(2) > 0
