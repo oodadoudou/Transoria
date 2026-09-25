@@ -391,6 +391,7 @@ export function RunPage() {
               primary: presetName,
               secondary: presetDetail,
               actionLabel: messages.runConfig.switchAction,
+              active: Boolean(advancedPreset),
               onClick: () => setSwitchOpen("preset"),
             },
             {
@@ -399,6 +400,7 @@ export function RunPage() {
               primary: activeModel?.display_name ?? messages.runConfig.missingModel,
               secondary: activeModel?.model_id ?? "",
               actionLabel: messages.runConfig.switchAction,
+              active: !advancedPreset && Boolean(activeModel),
               onClick: () => setSwitchOpen("model"),
             },
             {
@@ -407,6 +409,7 @@ export function RunPage() {
               primary: activePrompt?.name ?? messages.runConfig.missingPrompt,
               secondary: activePrompt?.description ?? "",
               actionLabel: messages.runConfig.switchAction,
+              active: !advancedPreset && Boolean(activePrompt),
               onClick: () => setSwitchOpen("prompt"),
             },
           ]}

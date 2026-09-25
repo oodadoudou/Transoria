@@ -30,6 +30,26 @@
   border-color: var(--hairline-strong);
 }
 
+.itemActive,
+.itemActive:hover {
+  background: var(--panel);
+  border-color: var(--accent);
+}
+
+.itemInactive {
+  background: transparent;
+  color: var(--muted);
+}
+
+.itemInactive .primary,
+.itemInactive .action {
+  color: var(--muted);
+}
+
+.itemInactive .secondary {
+  opacity: 0.8;
+}
+
 .meta {
   min-width: 0;
   display: flex;

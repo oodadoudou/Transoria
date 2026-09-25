@@ -6,6 +6,7 @@ export interface RunConfigBarItem {
   primary: string;
   secondary?: string;
   actionLabel: string;
+  active?: boolean;
   onClick: () => void;
 }
 
@@ -20,7 +21,7 @@ export function RunConfigBar({ items }: RunConfigBarProps) {
         <button
           key={item.id}
           type="button"
-          className={styles.item}
+          className={`${styles.item} ${item.active === undefined ? "" : item.active ? styles.itemActive : styles.itemInactive}`}
           onClick={item.onClick}
           title={[item.primary, item.secondary].filter(Boolean).join("\n")}
         >
