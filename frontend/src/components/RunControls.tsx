@@ -122,6 +122,19 @@ export function RunControls({ kind, children }: RunControlsProps) {
         setProbe(next);
       } catch (error) {
         if (BridgeError.isBridgeError(error)) {
+          if (
+            actionKind === "continue" &&
+            error.code === "task.invalid_transition" &&
+            error.details?.status === "completed"
+          ) {
+            await refreshActiveTask(kind);
+            try {
+              setProbe(await bridge.probeContinuable());
+            } catch {
+              setProbe(EMPTY_PROBE);
+            }
+            return;
+          }
           setLastError(kind, error);
           if (actionKind === "continue") {
             try {
@@ -255,7 +268,15 @@ export function RunControls({ kind, children }: RunControlsProps) {
     setProbe((current) =>
       current.task_id === taskId ? { ...current, continuable: false } : current,
     );
-    void dispatch(() => bridge.continueTask(taskId), "continue");
+    void dispatch(
+      async () => {
+        const latest = await bridge.probeContinuable();
+        setProbe(latest);
+        if (!latest.continuable || latest.task_id !== taskId) return;
+        await bridge.continueTask(taskId);
+      },
+      "continue",
+    );
   }, [bridge, dispatch, probe.task_id, status]);
 
   // Pause is intentionally fused into Stop — the pause path was racy

@@ -73,6 +73,7 @@ const completionWithFailuresDismissed = new Set<string>();
 const cleanCompletionToastShown = new Set<string>();
 // Same idea for the "completed with low-confidence segments" toast.
 const lowConfToastShown = new Set<string>();
+const latestPollToken: Partial<Record<RunKind, number>> = {};
 
 export function hasShownLowConfToast(taskId: string): boolean {
   return lowConfToastShown.has(taskId);
@@ -245,11 +246,16 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   pollSnapshot: async (kind) => {
     const taskId = get()[kind].activeTaskId;
     if (!taskId) return;
+    const token = (latestPollToken[kind] ?? 0) + 1;
+    latestPollToken[kind] = token;
     try {
       const [{ snapshot }, { failures }] = await Promise.all([
         bridges[kind].readSnapshot(taskId),
         bridges[kind].listFailedSubtasks(taskId),
       ]);
+      if (latestPollToken[kind] !== token || get()[kind].activeTaskId !== taskId) {
+        return;
+      }
       void maybeOpenOutputFolder(kind, taskId, snapshot.header.status);
       maybePlayTaskSound(taskId, snapshot);
       set((state) =>
@@ -262,6 +268,9 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         }),
       );
     } catch (error) {
+      if (latestPollToken[kind] !== token || get()[kind].activeTaskId !== taskId) {
+        return;
+      }
       const bridgeError = asBridgeError(error);
       if (bridgeError.code === "bridge.not_found") {
         set((state) =>
@@ -332,9 +341,9 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
 
 /**
  * Polls the bridge for snapshot/failure updates while the kind has an active
- * task in a non-terminal state. Stops polling once the task reaches
- * `completed`, `failed`, or `stopped`. Safe to call from multiple components
- * — each mounts its own interval and they read the same store.
+ * task in a non-terminal state. Stopped and failed states get one delayed
+ * confirmation read before polling stops; completed states stop immediately.
+ * Safe to call from multiple components — each reads the same store.
  */
 export function usePollRunSnapshot(kind: RunKind, intervalMs = 2000): void {
   const activeTaskId = useRuntimeStore((state) => state[kind].activeTaskId);
@@ -345,7 +354,11 @@ export function usePollRunSnapshot(kind: RunKind, intervalMs = 2000): void {
 
   useEffect(() => {
     if (!activeTaskId) return;
-    if (TERMINAL_STATUSES.has(status)) return;
+    if (TERMINAL_STATUSES.has(status)) {
+      if (status === "completed") return;
+      const handle = window.setTimeout(() => void pollSnapshot(kind), intervalMs);
+      return () => window.clearTimeout(handle);
+    }
     let cancelled = false;
     let handle: number | null = null;
     let consecutiveFailures = 0;
