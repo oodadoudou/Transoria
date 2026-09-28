@@ -18,6 +18,7 @@ export interface EpubEditorDraft {
   replacement: string;
   scope: "current" | "text" | "styles" | "all";
   caseSensitive: boolean;
+  regularExpression?: boolean;
   sidebarWidth?: number;
   sourceWidth?: number;
 }

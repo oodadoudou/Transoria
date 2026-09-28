@@ -211,6 +211,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "epub_content.replace_match",
     "epub_content.reorder_spine",
     "epub_content.set_toc",
+    "epub_content.generate_toc",
     "epub_content.undo",
     "epub_content.redo",
     "epub_content.preview",
@@ -262,7 +263,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 171
+    assert len(actual) == 172
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -551,6 +552,7 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
     "epub_content.replace_match": {"session_id": "missing", "path": "missing", "query": "x", "replacement": "y", "start": 0, "end": 1},
     "epub_content.reorder_spine": {"session_id": "missing", "paths": []},
     "epub_content.set_toc": {"session_id": "missing", "entries": []},
+    "epub_content.generate_toc": {"session_id": "missing"},
     "epub_content.undo": {"session_id": "missing"},
     "epub_content.redo": {"session_id": "missing"},
     "epub_content.preview": {"session_id": "missing", "path": "missing"},

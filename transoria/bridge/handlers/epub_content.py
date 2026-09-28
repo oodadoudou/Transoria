@@ -57,6 +57,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                         expect_string(payload, "query", allow_empty=True),
                         _paths(payload),
                         bool(payload.get("case_sensitive", False)),
+                        bool(payload.get("regular_expression", False)),
                     )
                 }
             elif action == "replace":
@@ -71,6 +72,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     _paths(payload),
                     bool(payload.get("case_sensitive", False)),
                     expected_count,
+                    bool(payload.get("regular_expression", False)),
                 )
                 store.persist(session_id)
                 return {**result, **session.info(session_id)}
@@ -86,11 +88,16 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     expect_string(payload, "query"),
                     expect_string(payload, "replacement", allow_empty=True),
                     bool(payload.get("case_sensitive", False)),
+                    bool(payload.get("regular_expression", False)),
                 )
             elif action == "reorder_spine":
                 session.reorder_spine(_paths(payload))
             elif action == "set_toc":
                 session.set_toc(_entries(payload))
+            elif action == "generate_toc":
+                summary = session.generate_toc()
+                store.persist(session_id)
+                return {**summary, **session.info(session_id)}
             elif action in {"undo", "redo"}:
                 session.history(action)
             elif action == "preview":
@@ -138,6 +145,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "replace_match",
         "reorder_spine",
         "set_toc",
+        "generate_toc",
         "undo",
         "redo",
         "preview",

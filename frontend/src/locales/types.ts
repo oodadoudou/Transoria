@@ -1281,11 +1281,11 @@ export interface Messages {
     importTitle: string; importSubtitle: string; importPrompt: string; manualPath: string; recent: string; restoring: string;
     choose: string; open: string; close: string; dirtyClose: string; files: string; source: string; preview: string;
     toc: string; spine: string; find: string; replace: string; query: string; replacement: string;
-    current: string; textFiles: string; styleFiles: string; all: string; caseSensitive: string; matches: string;
+    current: string; textFiles: string; styleFiles: string; all: string; caseSensitive: string; regularExpression: string; matches: string;
     noMatches: string; previousMatch: string; nextMatch: string; narrowSearch: string;
     replaceOne: string; replaceAll: string; confirmReplace: string; save: string; saveAs: string;
     overwrite: string; confirmOverwrite: string; outputPath: string; saved: string; undo: string;
-    redo: string; applyToc: string; addEntry: string; removeEntry: string; target: string;
+    redo: string; applyToc: string; addEntry: string; generateToc: string; confirmGenerateToc: string; generatedToc: string; approximateToc: string; removeEntry: string; target: string;
     label: string; indent: string; outdent: string; up: string; down: string; loading: string;
     noBook: string; noPreview: string; error: string; cancel: string; editor: string;
     discardClose: string; closeTitle: string;

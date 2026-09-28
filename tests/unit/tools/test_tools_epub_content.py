@@ -411,6 +411,167 @@ def test_duplicate_paths_and_truncated_search_cannot_partially_replace(tmp_path:
     assert "y " not in session.read(one)["content"]
 
 
+def test_regex_search_and_group_replacement_across_files(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    one, two = session.spine
+    matches = session.search(r"Hello\s+(world|again)", [one, two], regular_expression=True)
+    assert [(match["path"], session.read(match["path"])["content"][match["start"]:match["end"]]) for match in matches] == [
+        (one, "Hello world"), (two, "Hello again"),
+    ]
+    result = session.replace(
+        r"Hello\s+(world|again)", r"Greetings \1", [one, two],
+        expected_count=2, regular_expression=True,
+    )
+    assert result == {"replacements": 2, "files_changed": 2}
+    assert "Greetings world" in session.read(one)["content"]
+    assert "Greetings again" in session.read(two)["content"]
+    session.history("undo")
+    assert "Hello world" in session.read(one)["content"]
+    assert "Hello again" in session.read(two)["content"]
+
+
+def test_regex_replace_one_and_invalid_patterns_are_atomic(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    one, two = session.spine
+    match = session.search(r"Hello (world)", [one], regular_expression=True)[0]
+    session.replace_match(
+        one, match["start"], match["end"], r"Hello (world)",
+        r"Goodbye \1", regular_expression=True,
+    )
+    assert "Goodbye world" in session.read(one)["content"]
+    assert "Hello again" in session.read(two)["content"]
+    session.history("undo")
+    with pytest.raises(ValueError, match="Invalid regular expression"):
+        session.search("(", [one], regular_expression=True)
+    with pytest.raises(ValueError, match="Invalid replacement expression"):
+        session.replace(r"Hello (world|again)", r"\2", [one, two], regular_expression=True)
+    with pytest.raises(ValueError, match="Zero-width"):
+        session.search(r"(?=Hello)", [one], regular_expression=True)
+    assert not session.dirty
+    assert "Hello world" in session.read(one)["content"]
+    assert "Hello again" in session.read(two)["content"]
+
+
+def test_regex_bridge_calls_and_literal_compatibility(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    paths = opened["spine"]
+    regex_matches = router.call("epub_content.search", {
+        "session_id": sid, "query": r"Hello (world|again)", "paths": paths,
+        "regular_expression": True,
+    })["matches"]
+    assert len(regex_matches) == 2
+    assert router.call("epub_content.search", {
+        "session_id": sid, "query": r"Hello (world|again)", "paths": paths,
+    })["matches"] == []
+    changed = router.call("epub_content.replace", {
+        "session_id": sid, "query": r"Hello (world|again)", "replacement": r"Hi \1",
+        "paths": paths, "expected_count": 2, "regular_expression": True,
+    })
+    assert changed["replacements"] == 2
+    assert "Hi world" in router.call("epub_content.read", {"session_id": sid, "path": paths[0]})["content"]
+
+
+def test_regex_timeout_leaves_session_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>'
+        + "a" * 5000 + "X</p></body></html>",
+    })
+    session = ContentSession.open(str(source))
+    monkeypatch.setattr(epub_content_module, "SEARCH_TIMEOUT_SECONDS", 0.01)
+    with pytest.raises(ValueError, match="timed out"):
+        session.search(r"(a+)+$", [session.spine[0]], regular_expression=True)
+    with pytest.raises(ValueError, match="timed out"):
+        session.replace(r"(a+)+$", "b", [session.spine[0]], regular_expression=True)
+    assert not session.dirty
+    assert session.changes == {}
+
+
+def test_generate_toc_from_headings_is_one_undoable_operation(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<h1>First chapter</h1><h2 id="part">First part</h2></body></html>',
+        "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<h1>Second chapter</h1></body></html>',
+    })
+    session = ContentSession.open(str(source))
+    original_toc = session.toc.copy()
+    assert session.generate_toc() == {"generated_entries": 3, "approximate_targets": 0}
+    assert [(entry["label"], entry["depth"]) for entry in session.toc] == [
+        ("First chapter", 0), ("First part", 1), ("Second chapter", 0),
+    ]
+    assert "#transoria-heading-1" in session.toc[0]["href"]
+    assert "#part" in session.toc[1]["href"]
+    assert "transoria-heading-1" in session.read(session.spine[0])["content"]
+    history_depth = len(session.undo_stack)
+    assert session.generate_toc() == {"generated_entries": 3, "approximate_targets": 0}
+    assert len(session.undo_stack) == history_depth
+    session.history("undo")
+    assert session.toc == original_toc
+    assert "transoria-heading-1" not in session.read(session.spine[0])["content"]
+    session.history("redo")
+    session.save(str(output), overwrite=False)
+    reopened = ContentSession.open(str(output))
+    assert reopened.toc == session.toc
+
+
+def test_generate_toc_bridge_returns_updated_session_and_survives_save(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<h1>Bridge chapter</h1></body></html>',
+    })
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    generated = router.call("epub_content.generate_toc", {"session_id": sid})
+    assert generated["generated_entries"] == 1
+    assert generated["approximate_targets"] == 0
+    assert generated["toc"][0]["label"] == "Bridge chapter"
+    assert generated["dirty"]
+    saved = router.call("epub_content.save", {
+        "session_id": sid, "output_path": str(output), "overwrite": False,
+    })
+    assert saved["output_path"] == str(output)
+    assert ContentSession.open(str(output)).toc[0]["label"] == "Bridge chapter"
+
+
+def test_generate_toc_recovers_malformed_chapter_without_rewriting_it(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>First</h1></body></html>',
+        "OEBPS/Text/two.xhtml": '<html><body><h1>Broken</body></html>',
+    })
+    session = ContentSession.open(str(source))
+    malformed = session._bytes(session.spine[1])
+    original_toc = session.toc.copy()
+    assert session.generate_toc() == {"generated_entries": 2, "approximate_targets": 1}
+    assert session.toc[1]["href"] == session.spine[1]
+    assert session._bytes(session.spine[1]) == malformed
+    assert "transoria-heading-1" in session.read(session.spine[0])["content"]
+    session.history("undo")
+    assert session.toc == original_toc
+    assert session._bytes(session.spine[1]) == malformed
+    assert not session.dirty
+
+
 def test_malformed_xhtml_preview_recovers_without_changing_source(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)

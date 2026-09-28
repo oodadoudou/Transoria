@@ -104,6 +104,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [query, setQuery] = useState("");
   const [replacement, setReplacement] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
+  const [regularExpression, setRegularExpression] = useState(false);
   const [scope, setScope] = useState<Scope>("current");
   const [matches, setMatches] = useState<EpubContentMatch[]>([]);
   const [matchIndex, setMatchIndex] = useState(-1);
@@ -157,13 +158,14 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       replacement,
       scope,
       caseSensitive,
+      regularExpression,
       sidebarWidth,
       sourceWidth,
     };
     currentDraft.current = draft;
     const timer = window.setTimeout(() => { writeEditorDraft(draft); }, 250);
     return () => window.clearTimeout(timer);
-  }, [session?.session_id, session?.input_path, session?.dirty, selectedPath, content, loadedContent, tocDraft, sideView, paneView, bookIndex, searchOpen, query, replacement, scope, caseSensitive, sidebarWidth, sourceWidth]);
+  }, [session?.session_id, session?.input_path, session?.dirty, selectedPath, content, loadedContent, tocDraft, sideView, paneView, bookIndex, searchOpen, query, replacement, scope, caseSensitive, regularExpression, sidebarWidth, sourceWidth]);
 
   useEffect(() => {
     const flush = () => {
@@ -340,6 +342,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setReplacement(draft.replacement ?? "");
       setScope(["current", "text", "styles", "all"].includes(draft.scope) ? draft.scope : "current");
       setCaseSensitive(Boolean(draft.caseSensitive));
+      setRegularExpression(Boolean(draft.regularExpression));
       if (typeof draft.sidebarWidth === "number" && draft.sidebarWidth >= 10 && draft.sidebarWidth <= 70) setSidebarWidth(draft.sidebarWidth);
       if (typeof draft.sourceWidth === "number" && draft.sourceWidth >= 10 && draft.sourceWidth <= 90) setSourceWidth(draft.sourceWidth);
       if (path) {
@@ -393,6 +396,19 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     });
   };
 
+  const generateToc = async () => {
+    if (!session || !window.confirm(t.confirmGenerateToc)) return;
+    await run(async () => {
+      await commitSource();
+      const next = await epubContentBridge.generateToc(session.session_id);
+      setSession(next);
+      setTocDraft(next.toc);
+      setFeedback(`${next.generated_entries} ${t.generatedToc}${next.approximate_targets ? `; ${next.approximate_targets} ${t.approximateToc}` : ""}`);
+      setFeedbackWarning(next.approximate_targets > 0);
+      if (selectedPath) await loadResource(session.session_id, selectedPath);
+    });
+  };
+
   const moveSpine = async (index: number, shift: number) => {
     if (!session || index + shift < 0 || index + shift >= session.spine.length) return;
     await run(async () => {
@@ -426,7 +442,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     if (!session || !query) return;
     await run(async () => {
       await commitSource();
-      const found = await epubContentBridge.search(session.session_id, query, scopePaths(), caseSensitive);
+      const found = await epubContentBridge.search(session.session_id, query, scopePaths(), caseSensitive, regularExpression);
       setMatches(found.matches);
       setMatchIndex(found.matches.length ? 0 : -1);
       if (found.matches.length) {
@@ -450,7 +466,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     if (!session || !query || !matches.length || matches.length >= 5000 || !window.confirm(`${t.confirmReplace} (${matches.length} ${t.matches})`)) return;
     await run(async () => {
       await commitSource();
-      const result = await epubContentBridge.replace(session.session_id, query, replacement, scopePaths(), caseSensitive, matches.length);
+      const result = await epubContentBridge.replace(session.session_id, query, replacement, scopePaths(), caseSensitive, matches.length, regularExpression);
       setSession(result);
       if (selectedPath) await loadResource(session.session_id, selectedPath);
       setFeedback(`${result.replacements} ${t.matches}`);
@@ -463,7 +479,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     if (!session) return;
     await run(async () => {
       await commitSource();
-      const next = await epubContentBridge.replaceMatch(session.session_id, query, replacement, match, caseSensitive);
+      const next = await epubContentBridge.replaceMatch(session.session_id, query, replacement, match, caseSensitive, regularExpression);
       setSession(next);
       if (selectedPath === match.path) await loadResource(session.session_id, selectedPath);
       setMatches([]);
@@ -648,6 +664,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         <label>{t.replacement}<input value={replacement} onChange={(event) => setReplacement(event.target.value)} /></label>
         <label><span>{t.files}</span><select value={scope} onChange={(event) => { setScope(event.target.value as Scope); setMatches([]); setMatchIndex(-1); }}><option value="current">{t.current}</option><option value="text">{t.textFiles}</option><option value="styles">{t.styleFiles}</option><option value="all">{t.all}</option></select></label>
         <label className={styles.checkbox}><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.caseSensitive}</label>
+        <label className={styles.checkbox}><input type="checkbox" checked={regularExpression} onChange={(event) => { setRegularExpression(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.regularExpression}</label>
         <button type="button" disabled={!query || busy || !scopePaths().length} onClick={() => void search()}><Search size={16} />{t.find}</button>
         <div className={styles.matchNavigation} role="status"><span>{matches.length ? `${matchIndex + 1} / ${matches.length}${matches.length >= 5000 ? "+" : ""}` : t.noMatches}</span><button type="button" title={t.previousMatch} aria-label={t.previousMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(-1)}><ArrowUp size={16} /></button><button type="button" title={t.nextMatch} aria-label={t.nextMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(1)}><ArrowDown size={16} /></button><button type="button" disabled={matchIndex < 0 || busy} onClick={() => void replaceOne(matches[matchIndex])}>{t.replaceOne}</button></div>
         <button type="button" disabled={!matches.length || matches.length >= 5000 || busy} title={matches.length >= 5000 ? t.narrowSearch : undefined} onClick={() => void replaceAll()}>{t.replaceAll}</button>
@@ -660,7 +677,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
           {sideView === "files" ? renderTree(nodes) : null}
           {sideView === "spine" ? session.spine.map((path, index) => <div key={path} className={styles.orderRow}><button type="button" onClick={() => void selectResource(path)}>{index + 1}. {path}</button><button type="button" title={t.up} aria-label={`${t.up}: ${path}`} disabled={index === 0} onClick={() => void moveSpine(index, -1)}><ArrowUp size={16} /></button><button type="button" title={t.down} aria-label={`${t.down}: ${path}`} disabled={index === session.spine.length - 1} onClick={() => void moveSpine(index, 1)}><ArrowDown size={16} /></button></div>) : null}
           {sideView === "book" ? session.spine.map((path, index) => <button type="button" key={`${path}-${index}`} className={styles.bookChapter} aria-current={bookIndex === index ? "page" : undefined} title={path} onClick={() => setBookIndex(index)}><span>{index + 1}</span><strong>{session.toc.find((entry) => entry.href.split("#")[0] === path)?.label ?? path.split("/").at(-1)}</strong></button>) : null}
-          {sideView === "toc" ? <><div className={styles.tocActions}><button type="button" disabled={!session.nav_path && !session.ncx_path} onClick={() => setTocDraft([...tocDraft, { label: "", href: selectedPath || session.spine[0] || "", depth: 0 }])}>{t.addEntry}</button><button type="button" disabled={!tocDirty || busy} onClick={() => void applyToc()}><Check size={16} />{t.applyToc}</button></div>{tocDraft.map((entry, index) => <div key={index} className={styles.tocRow} style={{ paddingLeft: `${Math.min(entry.depth, 8) * 12 + 8}px` }}><input aria-label={`${t.label} ${index + 1}`} value={entry.label} placeholder={t.label} onChange={(event) => updateEntry(index, { label: event.target.value })} /><input aria-label={`${t.target} ${index + 1}`} value={entry.href} placeholder={t.target} onChange={(event) => updateEntry(index, { href: event.target.value })} /><div className={styles.tocButtons}><button type="button" title={t.up} disabled={siblingIndex(tocDraft, index, -1) < 0} onClick={() => moveEntry(index, -1)}><ArrowUp size={15} /></button><button type="button" title={t.down} disabled={siblingIndex(tocDraft, index, 1) < 0} onClick={() => moveEntry(index, 1)}><ArrowDown size={15} /></button><button type="button" title={t.outdent} disabled={entry.depth === 0} onClick={() => outdentEntry(index)}><ArrowLeft size={15} /></button><button type="button" title={t.indent} disabled={index === 0 || entry.depth >= tocDraft[index - 1].depth + 1 || tocDraft.slice(index, subtreeEnd(tocDraft, index)).some((child) => child.depth >= 8)} onClick={() => shiftDepth(index, 1)}><ArrowRight size={15} /></button><button type="button" title={t.removeEntry} onClick={() => removeEntry(index)}><X size={15} /></button></div></div>)}</> : null}
+          {sideView === "toc" ? <><div className={styles.tocActions}><button type="button" disabled={!session.nav_path && !session.ncx_path} onClick={() => setTocDraft([...tocDraft, { label: "", href: selectedPath || session.spine[0] || "", depth: 0 }])}>{t.addEntry}</button><button type="button" disabled={!session.nav_path && !session.ncx_path || busy} onClick={() => void generateToc()}>{t.generateToc}</button><button type="button" disabled={!tocDirty || busy} onClick={() => void applyToc()}><Check size={16} />{t.applyToc}</button></div>{tocDraft.map((entry, index) => <div key={index} className={styles.tocRow} style={{ paddingLeft: `${Math.min(entry.depth, 8) * 12 + 8}px` }}><input aria-label={`${t.label} ${index + 1}`} value={entry.label} placeholder={t.label} onChange={(event) => updateEntry(index, { label: event.target.value })} /><input aria-label={`${t.target} ${index + 1}`} value={entry.href} placeholder={t.target} onChange={(event) => updateEntry(index, { href: event.target.value })} /><div className={styles.tocButtons}><button type="button" title={t.up} disabled={siblingIndex(tocDraft, index, -1) < 0} onClick={() => moveEntry(index, -1)}><ArrowUp size={15} /></button><button type="button" title={t.down} disabled={siblingIndex(tocDraft, index, 1) < 0} onClick={() => moveEntry(index, 1)}><ArrowDown size={15} /></button><button type="button" title={t.outdent} disabled={entry.depth === 0} onClick={() => outdentEntry(index)}><ArrowLeft size={15} /></button><button type="button" title={t.indent} disabled={index === 0 || entry.depth >= tocDraft[index - 1].depth + 1 || tocDraft.slice(index, subtreeEnd(tocDraft, index)).some((child) => child.depth >= 8)} onClick={() => shiftDepth(index, 1)}><ArrowRight size={15} /></button><button type="button" title={t.removeEntry} onClick={() => removeEntry(index)}><X size={15} /></button></div></div>)}</> : null}
         </div>
       </aside>
       {separator("sidebar", sidebarWidth)}

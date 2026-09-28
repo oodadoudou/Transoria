@@ -20,6 +20,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 from lxml import etree
 from lxml import html as lxml_html
+import regex
 
 from transoria.formats.epub_paths import (
     decode_epub_href,
@@ -56,6 +57,7 @@ MAX_PREVIEW_BYTES = 48_000_000
 MAX_PACKAGE_BYTES = 32_000_000
 MAX_ARCHIVE_BYTES = 2_000_000_000
 MAX_ARCHIVE_ENTRIES = 100_000
+SEARCH_TIMEOUT_SECONDS = 3.0
 
 
 def _xml(data: bytes) -> etree._Element:
@@ -85,6 +87,14 @@ def _decode(data: bytes) -> tuple[str, str]:
         return data.decode(encoding), encoding
     except (LookupError, UnicodeError) as exc:
         raise ValueError(f"Unsupported text encoding: {encoding}") from exc
+
+
+def _search_pattern(query: str, case_sensitive: bool, regular_expression: bool):
+    flags = 0 if case_sensitive else regex.IGNORECASE
+    try:
+        return regex.compile(query if regular_expression else regex.escape(query), flags)
+    except regex.error as exc:
+        raise ValueError(f"Invalid regular expression: {exc}") from exc
 
 
 def _encode(text: str, encoding: str) -> bytes:
@@ -386,15 +396,103 @@ class ContentSession:
             self._record()
             self.toc = normalized
 
+    def generate_toc(self) -> dict[str, int]:
+        if not self.nav_path and not self.ncx_path:
+            raise ValueError("This EPUB has no editable navigation document.")
+        entries: list[tuple[int, str, str]] = []
+        pending: dict[str, bytes] = {}
+        approximate_targets = 0
+        media_by_path = {str(item["path"]): str(item["media_type"]) for item in self.files}
+        for path in dict.fromkeys(self.spine):
+            if path == self.nav_path or media_by_path.get(path) not in {"application/xhtml+xml", "text/html"}:
+                continue
+            data = self._bytes(path)
+            if len(data) > MAX_TEXT_BYTES:
+                raise ValueError(f"Chapter exceeds the 4 MB editor limit: {path}")
+            media = media_by_path[path]
+            malformed = False
+            try:
+                root = _xml(data) if media == "application/xhtml+xml" else lxml_html.fromstring(
+                    data, parser=lxml_html.HTMLParser(no_network=True)
+                )
+            except etree.XMLSyntaxError:
+                malformed = True
+                try:
+                    root = lxml_html.fromstring(data, parser=lxml_html.HTMLParser(no_network=True))
+                except etree.ParserError as exc:
+                    raise ValueError(f"Cannot read headings from malformed chapter: {path}") from exc
+            except etree.ParserError as exc:
+                raise ValueError(f"Cannot read headings from chapter: {path}") from exc
+            body = next(
+                (node for node in root.iter() if isinstance(node.tag, str) and etree.QName(node).localname.lower() == "body"),
+                None,
+            )
+            if body is None:
+                continue
+            ids = _document_ids(data)
+            used_targets: set[str] = set()
+            changed = False
+            used_chapter_start = False
+            for node in body.iter():
+                if not isinstance(node.tag, str):
+                    continue
+                tag = etree.QName(node).localname.lower()
+                if tag not in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                    continue
+                label = " ".join("".join(node.itertext()).split())
+                if not label:
+                    continue
+                if len(entries) >= 5000:
+                    raise ValueError("Table of contents is too large.")
+                identifier = node.get("id", "")
+                if not identifier or identifier in used_targets:
+                    if malformed:
+                        if used_chapter_start:
+                            continue
+                        used_chapter_start = True
+                        entries.append((int(tag[1]), label, path))
+                        approximate_targets += 1
+                        continue
+                    index = len(entries) + 1
+                    identifier = f"transoria-heading-{index}"
+                    while identifier in ids:
+                        index += 1
+                        identifier = f"transoria-heading-{index}"
+                    node.set("id", identifier)
+                    ids.add(identifier)
+                    changed = True
+                used_targets.add(identifier)
+                entries.append((int(tag[1]), label, f"{path}#{quote(identifier, safe='-._~')}"))
+            if changed:
+                pending[path] = etree.tostring(
+                    root.getroottree() if media == "application/xhtml+xml" else root,
+                    encoding="utf-8", xml_declaration=media == "application/xhtml+xml",
+                    method="xml" if media == "application/xhtml+xml" else "html",
+                )
+        if not entries:
+            raise ValueError("No chapter headings were found in the reading order.")
+        base_level = min(level for level, _, _ in entries)
+        generated: list[dict[str, object]] = []
+        for level, label, href in entries:
+            depth = min(8, level - base_level)
+            depth = min(depth, int(generated[-1]["depth"]) + 1) if generated else 0
+            generated.append({"label": label, "href": href, "depth": depth})
+        if pending or generated != self.toc:
+            self._record()
+            self.changes.update(pending)
+            self.toc = generated
+        return {"generated_entries": len(generated), "approximate_targets": approximate_targets}
+
     def search(
-        self, query: str, paths: list[str], case_sensitive: bool = False
+        self, query: str, paths: list[str], case_sensitive: bool = False,
+        regular_expression: bool = False,
     ) -> list[dict[str, object]]:
         if not query:
             return []
         if len(query) > 2000:
             raise ValueError("Search text is too long.")
-        flags = 0 if case_sensitive else re.IGNORECASE
-        pattern = re.compile(re.escape(query), flags)
+        pattern = _search_pattern(query, case_sensitive, regular_expression)
+        deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
         results: list[dict[str, object]] = []
         for path in dict.fromkeys(paths):
             item = self._file(path, editable=True)
@@ -404,21 +502,29 @@ class ContentSession:
             if len(data) > MAX_TEXT_BYTES:
                 continue
             content = _editor_text(data, str(item["media_type"]))
-            for match in pattern.finditer(content):
-                results.append(
-                    {
-                        "path": path,
-                        "start": match.start(),
-                        "end": match.end(),
-                        "excerpt": content[
-                            max(0, match.start() - 45) : min(
-                                len(content), match.end() + 65
-                            )
-                        ].replace("\n", " "),
-                    }
-                )
-                if len(results) >= 5000:
-                    return results
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ValueError("Search timed out; narrow the scope or pattern.")
+            try:
+                for match in pattern.finditer(content, timeout=remaining):
+                    if match.start() == match.end():
+                        raise ValueError("Zero-width search matches are not supported.")
+                    results.append(
+                        {
+                            "path": path,
+                            "start": match.start(),
+                            "end": match.end(),
+                            "excerpt": content[
+                                max(0, match.start() - 45) : min(
+                                    len(content), match.end() + 65
+                                )
+                            ].replace("\n", " "),
+                        }
+                    )
+                    if len(results) >= 5000:
+                        return results
+            except TimeoutError as exc:
+                raise ValueError("Search timed out; narrow the scope or pattern.") from exc
         return results
 
     def replace(
@@ -428,10 +534,12 @@ class ContentSession:
         paths: list[str],
         case_sensitive: bool = False,
         expected_count: int | None = None,
+        regular_expression: bool = False,
     ) -> dict[str, object]:
         if not query:
             raise ValueError("Search text is required.")
-        pattern = re.compile(re.escape(query), 0 if case_sensitive else re.IGNORECASE)
+        pattern = _search_pattern(query, case_sensitive, regular_expression)
+        deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
         pending: dict[str, bytes] = {}
         total = 0
         for path in dict.fromkeys(paths):
@@ -443,7 +551,19 @@ class ContentSession:
                 raise ValueError(f"Resource exceeds the editor limit: {path}")
             content = _editor_text(data, str(item["media_type"]))
             encoding = _decode(data)[1]
-            updated, count = pattern.subn(lambda _: replacement, content)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ValueError("Replacement timed out; narrow the scope or pattern.")
+            def substitute(match: regex.Match) -> str:
+                if match.start() == match.end():
+                    raise ValueError("Zero-width search matches are not supported.")
+                return match.expand(replacement) if regular_expression else replacement
+            try:
+                updated, count = pattern.subn(substitute, content, timeout=remaining)
+            except TimeoutError as exc:
+                raise ValueError("Replacement timed out; narrow the scope or pattern.") from exc
+            except (regex.error, IndexError, KeyError) as exc:
+                raise ValueError(f"Invalid replacement expression: {exc}") from exc
             if count:
                 pending[path] = _encode(updated, encoding)
                 total += count
@@ -462,6 +582,7 @@ class ContentSession:
         query: str,
         replacement: str,
         case_sensitive: bool = False,
+        regular_expression: bool = False,
     ) -> None:
         item = self._file(path, editable=True)
         data = self._bytes(path)
@@ -469,15 +590,19 @@ class ContentSession:
         encoding = _decode(data)[1]
         if not 0 <= start < end <= len(content):
             raise ValueError("Search result is no longer current; search again.")
-        found = content[start:end]
-        if (found if case_sensitive else found.casefold()) != (
-            query if case_sensitive else query.casefold()
-        ):
-            raise ValueError("Search result is no longer current; search again.")
+        pattern = _search_pattern(query, case_sensitive, regular_expression)
+        try:
+            match = pattern.match(content, pos=start, timeout=SEARCH_TIMEOUT_SECONDS)
+            if match is None or match.end() != end or match.start() == match.end():
+                raise ValueError("Search result is no longer current; search again.")
+            substituted = match.expand(replacement) if regular_expression else replacement
+        except TimeoutError as exc:
+            raise ValueError("Replacement timed out; narrow the scope or pattern.") from exc
+        except (regex.error, IndexError, KeyError) as exc:
+            raise ValueError(f"Invalid replacement expression: {exc}") from exc
+        updated = _encode(content[:start] + substituted + content[end:], encoding)
         self._record()
-        self.changes[path] = _encode(
-            content[:start] + replacement + content[end:], encoding
-        )
+        self.changes[path] = updated
 
     def preview(
         self, path: str, draft_path: str = "", draft_content: str | None = None
