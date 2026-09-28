@@ -99,6 +99,67 @@ def test_edit_search_replace_history_and_safe_preview(tmp_path: Path):
     store.close(str(state["session_id"]))
 
 
+def test_replace_match_reports_next_position_and_keeps_other_files(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    first, second = opened["spine"]
+    match = router.call("epub_content.search", {
+        "session_id": sid, "query": "Hello", "paths": [first, second],
+    })["matches"][0]
+    replaced = router.call("epub_content.replace_match", {
+        "session_id": sid, "query": "Hello", "replacement": "Greetings", **match,
+    })
+    assert replaced["replaced_end"] == match["start"] + len("Greetings")
+    remaining = router.call("epub_content.search", {
+        "session_id": sid, "query": "Hello", "paths": [first, second],
+    })["matches"]
+    assert [item["path"] for item in remaining] == [second]
+    assert source.read_bytes() == original
+
+
+def test_create_chapter_is_undoable_and_saves_in_requested_order(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    original = source.read_bytes()
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    first, second = opened["spine"]
+    path = "OEBPS/Text/inserted.xhtml"
+    created = router.call("epub_content.create_chapter", {
+        "session_id": sid, "path": path, "title": "New & <Chapter>",
+        "body_text": "First paragraph\nSecond paragraph", "after_path": first,
+    })
+    assert created["spine"] == [first, path, second]
+    chapter = router.call("epub_content.read", {"session_id": sid, "path": path})["content"]
+    assert "New &amp; &lt;Chapter&gt;" in chapter
+    assert "First paragraph" in chapter and "Second paragraph" in chapter
+    router.call("epub_content.undo", {"session_id": sid})
+    assert router.call("epub_content.info", {"session_id": sid})["spine"] == [first, second]
+    router.call("epub_content.redo", {"session_id": sid})
+    router.call("epub_content.save", {"session_id": sid, "output_path": str(output), "overwrite": False})
+    reopened = ContentSession.open(str(output))
+    assert reopened.spine == [first, path, second]
+    assert source.read_bytes() == original
+
+
+def test_create_chapter_rejects_bad_insertion_without_changing_session(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    with pytest.raises(ValueError, match="insertion point"):
+        session.create_chapter("OEBPS/Text/new.xhtml", "New", "", "missing.xhtml")
+    assert not session.dirty
+    assert all(item["path"] != "OEBPS/Text/new.xhtml" for item in session.files)
+
+
 def test_editor_session_survives_backend_restart(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)
@@ -501,6 +562,23 @@ def test_single_match_requires_current_offsets_and_keeps_other_files(tmp_path: P
         session.replace_match(one, first["start"], first["end"], "Hello", "Again")
 
 
+def test_single_match_rejects_stale_file_with_same_match_offsets(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    found = session.search("Hello", [path])[0]
+    changed = session.read(path)["content"].replace("world.", "earth.")
+    session.write(path, changed)
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="Search result changed"):
+        session.replace_match(
+            path, found["start"], found["end"], "Hello", "Hi",
+            expected_fingerprint=found["fingerprint"],
+        )
+    assert session._snapshot() == before
+
+
 def test_duplicate_paths_and_truncated_search_cannot_partially_replace(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)
@@ -515,6 +593,26 @@ def test_duplicate_paths_and_truncated_search_cannot_partially_replace(tmp_path:
     with pytest.raises(ValueError, match="Search results changed"):
         session.replace("x", "y", [one], expected_count=5000)
     assert "y " not in session.read(one)["content"]
+
+
+def test_oversized_single_and_batch_replacements_leave_all_files_unchanged(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    one, two = session.spine
+    before = session._snapshot()
+    oversized = "x" * epub_content_module.MAX_TEXT_BYTES
+
+    match = session.search("Hello", [one])[0]
+    with pytest.raises(ValueError, match="Replacement exceeds"):
+        session.replace_match(one, match["start"], match["end"], "Hello", oversized)
+    assert session._snapshot() == before
+
+    with pytest.raises(ValueError, match="Replacement exceeds"):
+        session.replace("Hello", oversized, [one, two], expected_count=2)
+    assert session._snapshot() == before
+    assert "Hello world" in session.read(one)["content"]
+    assert "Hello again" in session.read(two)["content"]
 
 
 def test_regex_search_and_group_replacement_across_files(tmp_path: Path):

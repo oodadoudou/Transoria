@@ -91,6 +91,7 @@ export interface EpubContentMatch {
   path: string;
   start: number;
   end: number;
+  fingerprint: string;
   excerpt: string;
 }
 

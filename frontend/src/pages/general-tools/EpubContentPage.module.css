@@ -873,6 +873,28 @@
   font-weight: 600;
 }
 
+.sourceHeaderControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sourceHeaderControls > button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.sourceHeaderControls > button:hover:not(:disabled) {
+  background: var(--panel-soft);
+}
+
 .sourcePane > div:not(.paneHeader) {
   flex: 1;
   min-height: 0;
@@ -1074,6 +1096,17 @@
   background: var(--panel);
   color: var(--ink);
   padding: 5px 9px;
+}
+
+.saveDialog textarea {
+  width: 100%;
+  min-height: 110px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 8px 9px;
+  resize: vertical;
 }
 
 .resourcePick {

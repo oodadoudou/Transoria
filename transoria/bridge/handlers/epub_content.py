@@ -135,7 +135,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 end = payload.get("end")
                 if not isinstance(start, int) or not isinstance(end, int):
                     raise ValueError("Match offsets must be integers.")
-                session.replace_match(
+                replaced_end = session.replace_match(
                     expect_string(payload, "path"),
                     start,
                     end,
@@ -143,7 +143,10 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     expect_string(payload, "replacement", allow_empty=True),
                     bool(payload.get("case_sensitive", False)),
                     bool(payload.get("regular_expression", False)),
+                    expect_string(payload, "fingerprint") if "fingerprint" in payload else None,
                 )
+                store.persist(session_id)
+                return {"replaced_end": replaced_end, **session.info(session_id)}
             elif action == "reorder_spine":
                 session.reorder_spine(_paths(payload))
             elif action == "set_spine":
@@ -163,6 +166,13 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 path = session.generate_toc_page(expect_string(payload, "title"))
                 store.persist(session_id)
                 return {"generated_path": path, **session.info(session_id)}
+            elif action == "create_chapter":
+                session.create_chapter(
+                    expect_string(payload, "path"),
+                    expect_string(payload, "title"),
+                    expect_string(payload, "body_text", allow_empty=True),
+                    expect_string(payload, "after_path", allow_empty=True) if "after_path" in payload else "",
+                )
             elif action in {"add_resource", "replace_resource"}:
                 input_path = Path(expect_string(payload, "input_path")).expanduser().resolve()
                 if not input_path.is_file() or input_path.stat().st_size > 48_000_000:
@@ -207,7 +217,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {**result, **session.info(session_id)}
             else:
                 raise ValueError("Unknown EPUB content editor action.")
-            if action in {"write", "replace_match", "reorder_spine", "set_spine", "set_toc", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
+            if action in {"write", "reorder_spine", "set_spine", "set_toc", "create_chapter", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
                 store.persist(session_id)
             return session.info(session_id)
         except (
@@ -240,6 +250,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "generate_toc",
         "preview_toc",
         "generate_toc_page",
+        "create_chapter",
         "add_resource",
         "replace_resource",
         "rename_resource",

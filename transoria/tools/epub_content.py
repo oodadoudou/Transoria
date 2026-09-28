@@ -614,6 +614,28 @@ class ContentSession:
             self.spine.append(path)
             self.spine_linear[path] = True
 
+    def create_chapter(self, path: str, title: str, body_text: str, after_path: str = "") -> None:
+        title = title.strip()
+        if not title or not path.lower().endswith(".xhtml"):
+            raise ValueError("A chapter needs a title and an .xhtml path.")
+        if after_path and after_path not in self.spine:
+            raise ValueError("The chapter insertion point is not in the reading order.")
+        root = etree.Element(f"{{{XHTML}}}html", nsmap={None: XHTML})
+        head = etree.SubElement(root, f"{{{XHTML}}}head")
+        etree.SubElement(head, f"{{{XHTML}}}title").text = title
+        body = etree.SubElement(root, f"{{{XHTML}}}body")
+        etree.SubElement(body, f"{{{XHTML}}}h1").text = title
+        for paragraph in body_text.splitlines():
+            if paragraph.strip():
+                etree.SubElement(body, f"{{{XHTML}}}p").text = paragraph
+        data = _serialize(root)
+        if len(data) > MAX_TEXT_BYTES:
+            raise ValueError("Resource exceeds the 4 MB editor limit.")
+        self.add_resource(path, data, "application/xhtml+xml", in_spine=True)
+        if after_path:
+            self.spine.remove(path)
+            self.spine.insert(self.spine.index(after_path) + 1, path)
+
     def replace_resource(self, path: str, data: bytes) -> None:
         self._file(path)
         if len(data) > MAX_PREVIEW_BYTES:
@@ -1025,6 +1047,7 @@ class ContentSession:
             data = self._bytes(path)
             if len(data) > MAX_TEXT_BYTES:
                 continue
+            fingerprint = hashlib.sha256(data).hexdigest()
             content = _editor_text(data, str(item["media_type"]))
             start, end = _selection_bounds(path, content, selection)
             remaining = deadline - time.monotonic()
@@ -1039,6 +1062,7 @@ class ContentSession:
                             "path": path,
                             "start": match.start(),
                             "end": match.end(),
+                            "fingerprint": fingerprint,
                             "excerpt": content[
                                 max(0, match.start() - 45) : min(
                                     len(content), match.end() + 65
@@ -1144,7 +1168,10 @@ class ContentSession:
             if count:
                 pieces.append(content[cursor:end])
                 updated = "".join(pieces)
-                pending[path] = _encode(content[:start] + updated + content[end:], encoding)
+                encoded = _encode(content[:start] + updated + content[end:], encoding)
+                if len(encoded) > MAX_TEXT_BYTES:
+                    raise ValueError(f"Replacement exceeds the editor limit: {path}")
+                pending[path] = encoded
                 total += count
         return pending, total, samples, fingerprints
 
@@ -1157,9 +1184,12 @@ class ContentSession:
         replacement: str,
         case_sensitive: bool = False,
         regular_expression: bool = False,
-    ) -> None:
+        expected_fingerprint: str | None = None,
+    ) -> int:
         item = self._file(path, editable=True)
         data = self._bytes(path)
+        if expected_fingerprint is not None and hashlib.sha256(data).hexdigest() != expected_fingerprint:
+            raise ValueError("Search result changed; search again before replacing.")
         content = _editor_text(data, str(item["media_type"]))
         encoding = _decode(data)[1]
         if not 0 <= start < end <= len(content):
@@ -1175,8 +1205,11 @@ class ContentSession:
         except (regex.error, IndexError, KeyError) as exc:
             raise ValueError(f"Invalid replacement expression: {exc}") from exc
         updated = _encode(content[:start] + substituted + content[end:], encoding)
+        if len(updated) > MAX_TEXT_BYTES:
+            raise ValueError(f"Replacement exceeds the editor limit: {path}")
         self._record()
         self.changes[path] = updated
+        return start + len(substituted)
 
     def preview(
         self, path: str, draft_path: str = "", draft_content: str | None = None
