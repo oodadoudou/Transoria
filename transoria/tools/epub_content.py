@@ -636,6 +636,101 @@ class ContentSession:
             self.spine.remove(path)
             self.spine.insert(self.spine.index(after_path) + 1, path)
 
+    def split_points(self, path: str) -> list[dict[str, object]]:
+        item = self._file(path, editable=True)
+        if item["media_type"] != "application/xhtml+xml" or path not in self.spine:
+            raise ValueError("Only XHTML chapters in the reading order can be split.")
+        root = _xml(self._bytes(path))
+        body = root.find(f".//{{{XHTML}}}body")
+        if body is None or len(body) < 2:
+            raise ValueError("This chapter has no top-level body elements to split.")
+        if (body.text or "").strip() or any((child.tail or "").strip() for child in body):
+            raise ValueError("This chapter has loose body text; split it in the source editor first.")
+        return [
+            {
+                "index": index,
+                "label": " ".join("".join(child.itertext()).split())[:90]
+                or etree.QName(child).localname,
+            }
+            for index, child in enumerate(body) if index > 0 and isinstance(child.tag, str)
+        ]
+
+    def split_chapter(self, path: str, target: str, index: int) -> None:
+        points = self.split_points(path)
+        if not isinstance(index, int) or index not in {point["index"] for point in points}:
+            raise ValueError("Choose an existing chapter split point.")
+        if posixpath.dirname(target) != posixpath.dirname(path) or not target.lower().endswith(".xhtml"):
+            raise ValueError("The new chapter must be an .xhtml file in the same folder.")
+        self._check_new_path(target)
+        root = _xml(self._bytes(path))
+        first = copy.deepcopy(root)
+        second = copy.deepcopy(root)
+        first_body = first.find(f".//{{{XHTML}}}body")
+        second_body = second.find(f".//{{{XHTML}}}body")
+        assert first_body is not None and second_body is not None
+        for child in list(first_body)[index:]:
+            first_body.remove(child)
+        for child in list(second_body)[:index]:
+            second_body.remove(child)
+        moved_ids = {
+            value for node in second_body.iter() for value in
+            (node.get("id"), node.get("{http://www.w3.org/XML/1998/namespace}id"), node.get("name"))
+            if value
+        }
+        retained_ids = {
+            value for node in first_body.iter() for value in
+            (node.get("id"), node.get("{http://www.w3.org/XML/1998/namespace}id"), node.get("name"))
+            if value
+        }
+        for node in second_body.iter():
+            for attr, value in node.attrib.items():
+                if etree.QName(attr).localname.lower() in {"href", "src", "data", "poster"}:
+                    parts = urlsplit(value)
+                    if not parts.path and unquote(parts.fragment) in retained_ids:
+                        raise ValueError("The moved content links to an anchor left in the first chapter.")
+        if moved_ids:
+            for entry in self.toc:
+                href = str(entry["href"])
+                if href.split("#", 1)[0] == path and unquote(href.partition("#")[2]) in moved_ids:
+                    raise ValueError("A directory entry points into the new chapter; move that entry first.")
+            for source in [self.opf_path, *(str(item["path"]) for item in self.files)]:
+                media = str(self._file(source)["media_type"]) if source != self.opf_path else "application/xml"
+                if media not in XML_TYPES | {"application/xhtml+xml"}:
+                    if media == "text/css" and any(
+                        f"#{identifier}".encode("utf-8") in self._bytes(source)
+                        for identifier in moved_ids
+                    ):
+                        raise ValueError(f"A stylesheet may refer to moved content: {source}.")
+                    continue
+                data = self._bytes(source)
+                if len(data) > MAX_TEXT_BYTES:
+                    raise ValueError(f"Cannot check chapter references in oversized resource: {source}")
+                try:
+                    document = _xml(data)
+                except etree.XMLSyntaxError as exc:
+                    raise ValueError(f"Cannot check chapter references in malformed resource: {source}") from exc
+                for node in document.iter():
+                    for attr, value in node.attrib.items():
+                        if etree.QName(attr).localname.lower() not in {"href", "src", "data", "poster"}:
+                            continue
+                        parts = urlsplit(value)
+                        if not parts.fragment or unquote(parts.fragment) not in moved_ids:
+                            continue
+                        resolved = posixpath.normpath(posixpath.join(
+                            posixpath.dirname(source), unquote(parts.path),
+                        )) if parts.path else source
+                        if resolved == path:
+                            raise ValueError(f"A link to the moved chapter content exists in {source}.")
+        before = _serialize(first)
+        after = _serialize(second)
+        if len(before) > MAX_TEXT_BYTES or len(after) > MAX_TEXT_BYTES:
+            raise ValueError("Split chapters exceed the 4 MB editor limit.")
+        self.add_resource(target, after, "application/xhtml+xml", in_spine=True)
+        self.changes[path] = before
+        self._file(path)["size"] = len(before)
+        self.spine.remove(target)
+        self.spine.insert(self.spine.index(path) + 1, target)
+
     def replace_resource(self, path: str, data: bytes) -> None:
         self._file(path)
         if len(data) > MAX_PREVIEW_BYTES:

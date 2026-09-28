@@ -160,6 +160,66 @@ def test_create_chapter_rejects_bad_insertion_without_changing_session(tmp_path:
     assert all(item["path"] != "OEBPS/Text/new.xhtml" for item in session.files)
 
 
+def test_split_chapter_is_atomic_undoable_and_preserves_resources(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "split.epub"
+    _book(source)
+    original = source.read_bytes()
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    first, second = opened["spine"]
+    target = "OEBPS/Text/one_part2.xhtml"
+    points = router.call("epub_content.split_points", {"session_id": sid, "path": first})["points"]
+    assert points[0]["index"] == 1
+    split = router.call("epub_content.split_chapter", {
+        "session_id": sid, "path": first, "target": target, "index": 1,
+    })
+    assert split["spine"] == [first, target, second]
+    assert "Hello world" in router.call("epub_content.read", {"session_id": sid, "path": first})["content"]
+    assert "pixel.png" in router.call("epub_content.read", {"session_id": sid, "path": target})["content"]
+    assert "pixel.png" not in router.call("epub_content.read", {"session_id": sid, "path": first})["content"]
+    router.call("epub_content.undo", {"session_id": sid})
+    assert router.call("epub_content.info", {"session_id": sid})["spine"] == [first, second]
+    router.call("epub_content.redo", {"session_id": sid})
+    router.call("epub_content.save", {
+        "session_id": sid, "output_path": str(output), "overwrite": False,
+    })
+    reopened = ContentSession.open(str(output))
+    assert reopened.spine == [first, target, second]
+    assert "data:image/png;base64" in reopened.preview(target)
+    assert source.read_bytes() == original
+
+
+def test_split_chapter_rejects_moved_anchor_references_without_changes(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    one = "OEBPS/Text/one.xhtml"
+    with zipfile.ZipFile(source) as book:
+        content = book.read(one).decode("utf-8")
+    _rewrite_book(source, {one: content.replace("<img src=", '<p id="later">Later</p><img src=')})
+    session = ContentSession.open(str(source))
+    session.toc.append({"label": "Later", "href": one + "#later", "depth": 0})
+    with pytest.raises(ValueError, match="directory entry"):
+        session.split_chapter(one, "OEBPS/Text/split.xhtml", 1)
+    assert "OEBPS/Text/split.xhtml" not in session.spine
+    assert not session.changes
+
+
+def test_split_chapter_rejects_local_link_back_to_first_half(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    one = "OEBPS/Text/one.xhtml"
+    with zipfile.ZipFile(source) as book:
+        content = book.read(one).decode("utf-8")
+    _rewrite_book(source, {one: content.replace("<img src=", '<a href="#start">Back</a><img src=')})
+    session = ContentSession.open(str(source))
+    with pytest.raises(ValueError, match="anchor left"):
+        session.split_chapter(one, "OEBPS/Text/split.xhtml", 1)
+    assert not session.dirty
+
+
 def test_editor_session_survives_backend_restart(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)

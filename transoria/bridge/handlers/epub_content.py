@@ -80,6 +80,8 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return session.read(expect_string(payload, "path"))
             if action == "anchors":
                 return {"anchors": session.anchors(expect_string(payload, "path"))}
+            if action == "split_points":
+                return {"points": session.split_points(expect_string(payload, "path"))}
             if action == "references":
                 return {"inbound": session.resource_references(expect_string(payload, "path"))}
             if action == "export_resource":
@@ -173,6 +175,13 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     expect_string(payload, "body_text", allow_empty=True),
                     expect_string(payload, "after_path", allow_empty=True) if "after_path" in payload else "",
                 )
+            elif action == "split_chapter":
+                index = payload.get("index")
+                if not isinstance(index, int) or isinstance(index, bool):
+                    raise ValueError("Split point must be an integer.")
+                session.split_chapter(
+                    expect_string(payload, "path"), expect_string(payload, "target"), index,
+                )
             elif action in {"add_resource", "replace_resource"}:
                 input_path = Path(expect_string(payload, "input_path")).expanduser().resolve()
                 if not input_path.is_file() or input_path.stat().st_size > 48_000_000:
@@ -217,7 +226,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {**result, **session.info(session_id)}
             else:
                 raise ValueError("Unknown EPUB content editor action.")
-            if action in {"write", "reorder_spine", "set_spine", "set_toc", "create_chapter", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
+            if action in {"write", "reorder_spine", "set_spine", "set_toc", "create_chapter", "split_chapter", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
                 store.persist(session_id)
             return session.info(session_id)
         except (
@@ -237,6 +246,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "checkpoint",
         "read",
         "anchors",
+        "split_points",
         "references",
         "export_resource",
         "write",
@@ -251,6 +261,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "preview_toc",
         "generate_toc_page",
         "create_chapter",
+        "split_chapter",
         "add_resource",
         "replace_resource",
         "rename_resource",

@@ -1296,7 +1296,7 @@ export interface Messages {
     resourceReferences: string; resourceNotEditable: string; confirmDeleteResource: string;
     addToOrder: string; removeFromOrder: string; chooseChapter: string;
     fileOptions: string; markMain: string; markAuxiliary: string; auxiliaryReading: string; dragReadingOrder: string; tocEntryActions: string;
-    newChapter: string; chapterText: string; insertImage: string; imageResource: string; imageDescription: string;
+    newChapter: string; chapterText: string; splitChapter: string; splitBefore: string; insertImage: string; imageResource: string; imageDescription: string;
     chooseTocTarget: string; chapterStart: string; chooseAnchor: string;
     generateTocPage: string; tocPageTitle: string;
     chooseFile: string; confirmTarget: string;

@@ -1156,6 +1156,12 @@ export const epubContentBridge = {
   createChapter(sessionId: string, path: string, title: string, bodyText: string, afterPath: string): Promise<EpubContentSession> {
     return call("epub_content.create_chapter", { session_id: sessionId, path, title, body_text: bodyText, after_path: afterPath });
   },
+  splitPoints(sessionId: string, path: string): Promise<{ points: Array<{ index: number; label: string }> }> {
+    return call("epub_content.split_points", { session_id: sessionId, path });
+  },
+  splitChapter(sessionId: string, path: string, target: string, index: number): Promise<EpubContentSession> {
+    return call("epub_content.split_chapter", { session_id: sessionId, path, target, index });
+  },
   replaceResource(sessionId: string, path: string, inputPath: string): Promise<EpubContentSession> {
     return call("epub_content.replace_resource", { session_id: sessionId, path, input_path: inputPath });
   },

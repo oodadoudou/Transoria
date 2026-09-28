@@ -669,7 +669,7 @@ export const en: Messages = {
     resourceReferences: "References to this resource", resourceNotEditable: "This resource cannot be edited in the source pane", confirmDeleteResource: "Delete the selected resource? This can be undone.",
     addToOrder: "Add to reading order", removeFromOrder: "Remove from reading order", chooseChapter: "Choose chapter",
     fileOptions: "File reading options", markMain: "Read in sequence", markAuxiliary: "Mark as auxiliary", auxiliaryReading: "Auxiliary", dragReadingOrder: "Drag text files to change the reading order", tocEntryActions: "Contents entry actions",
-    newChapter: "New chapter", chapterText: "Initial text", insertImage: "Insert image", imageResource: "Book image", imageDescription: "Image description",
+    newChapter: "New chapter", chapterText: "Initial text", splitChapter: "Split chapter", splitBefore: "Start new chapter here", insertImage: "Insert image", imageResource: "Book image", imageDescription: "Image description",
     chooseTocTarget: "Choose TOC target", chapterStart: "Chapter start", chooseAnchor: "Choose anchor",
     generateTocPage: "Create in-book contents page", tocPageTitle: "Contents", tocLevel: "Contents level", tocPatternHelp: "Leave blank to use headings. Otherwise match chapter text at levels 1–3 with regex; the first capture group becomes the title.", tocFromFilesHelp: "Create one top-level entry per reading-order chapter. Use its heading, page title, or filename.", tocPatternPlaceholder: "For example ^Chapter (.+)", fromHeadings: "Headings / regex", fromFiles: "Reading-order files",
     addSibling: "Add sibling below", addChild: "Add child entry", newTocEntry: "New entry",

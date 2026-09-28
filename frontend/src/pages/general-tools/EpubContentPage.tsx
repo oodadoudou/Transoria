@@ -3,7 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
 import { css } from "@codemirror/lang-css";
 import { xml } from "@codemirror/lang-xml";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerDownRight, CornerUpLeft, CornerUpRight, Download, FileCode2, FilePlus2, FileText, FolderOpen, ImagePlus, ListTree, MoreHorizontal, Pencil, Plus, Replace, Save, Search, Trash2, WrapText, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerDownRight, CornerUpLeft, CornerUpRight, Download, FileCode2, FilePlus2, FileText, FolderOpen, ImagePlus, ListTree, MoreHorizontal, Pencil, Plus, Replace, Save, Scissors, Search, Trash2, WrapText, X, ZoomIn, ZoomOut } from "lucide-react";
 
 import { dialogsBridge, epubContentBridge, type EpubContentFile, type EpubContentMatch, type EpubContentSession, type EpubTocEntry } from "@/bridge";
 import { useMessages } from "@/locales";
@@ -138,6 +138,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [chapterPath, setChapterPath] = useState("");
   const [chapterTitle, setChapterTitle] = useState("");
   const [chapterText, setChapterText] = useState("");
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitPoints, setSplitPoints] = useState<Array<{ index: number; label: string }>>([]);
+  const [splitIndex, setSplitIndex] = useState(0);
+  const [splitTarget, setSplitTarget] = useState("");
   const [imageOpen, setImageOpen] = useState(false);
   const [imageMode, setImageMode] = useState<"existing" | "import">("existing");
   const [imagePath, setImagePath] = useState("");
@@ -551,6 +555,33 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setChapterOpen(false);
       setSideView("files");
       await loadResource(session.session_id, chapterPath.trim(), next);
+    });
+  };
+
+  const openSplit = async () => {
+    if (!session || !selectedPath) return;
+    await run(async () => {
+      await commitSource();
+      const result = await epubContentBridge.splitPoints(session.session_id, selectedPath);
+      const base = selectedPath.replace(/\.xhtml$/i, "");
+      const used = new Set(session.files.map((file) => file.path));
+      let target = `${base}_part2.xhtml`;
+      for (let number = 3; used.has(target); number += 1) target = `${base}_part${number}.xhtml`;
+      setSplitPoints(result.points);
+      setSplitIndex(result.points[0].index);
+      setSplitTarget(target);
+      setSplitOpen(true);
+    });
+  };
+
+  const splitChapter = async () => {
+    if (!session || !selectedPath) return;
+    await run(async () => {
+      const next = await epubContentBridge.splitChapter(session.session_id, selectedPath, splitTarget.trim(), splitIndex);
+      setSession(next);
+      setSplitOpen(false);
+      setSideView("files");
+      await loadResource(session.session_id, splitTarget.trim(), next);
     });
   };
 
@@ -1037,6 +1068,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         {sideView === "files" ? <div className={styles.fileActions}>
           <button type="button" title={t.importResource} aria-label={t.importResource} disabled={busy} onClick={() => void openResourceAction("add")}><Plus size={16} /></button>
           <button type="button" title={t.newChapter} aria-label={t.newChapter} disabled={busy} onClick={openChapter}><FilePlus2 size={16} /></button>
+          <button type="button" title={t.splitChapter} aria-label={t.splitChapter} disabled={busy || !session.spine.includes(selectedPath) || currentFile?.media_type !== "application/xhtml+xml"} onClick={() => void openSplit()}><Scissors size={16} /></button>
           <button type="button" title={t.renameResource} aria-label={t.renameResource} disabled={!currentResource || busy || resourcePath === session.nav_path || resourcePath === session.ncx_path} onClick={() => void openResourceAction("rename")}><Pencil size={16} /></button>
           <button type="button" title={t.replaceResource} aria-label={t.replaceResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("replace")}><Replace size={16} /></button>
           <button type="button" title={t.exportResource} aria-label={t.exportResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("export")}><Download size={16} /></button>
@@ -1091,6 +1123,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       </div>
     </div>}
     {chapterOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.newChapter}><h3>{t.newChapter}</h3><label>{t.archivePath}<input value={chapterPath} onChange={(event) => setChapterPath(event.target.value)} /></label><label>{t.label}<input value={chapterTitle} onChange={(event) => setChapterTitle(event.target.value)} /></label><label>{t.chapterText}<textarea value={chapterText} onChange={(event) => setChapterText(event.target.value)} rows={6} /></label><div className={styles.saveActions}><button type="button" onClick={() => setChapterOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || !chapterPath.trim() || !chapterTitle.trim()} onClick={() => void createChapter()}>{t.newChapter}</button></div></div></div> : null}
+    {splitOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.splitChapter}><h3>{t.splitChapter}</h3><label>{t.splitBefore}<select value={splitIndex} onChange={(event) => setSplitIndex(Number(event.target.value))}>{splitPoints.map((point) => <option key={point.index} value={point.index}>{point.index + 1}. {point.label}</option>)}</select></label><label>{t.archivePath}<input value={splitTarget} onChange={(event) => setSplitTarget(event.target.value)} /></label><div className={styles.saveActions}><button type="button" onClick={() => setSplitOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || !splitTarget.trim()} onClick={() => void splitChapter()}>{t.splitChapter}</button></div></div></div> : null}
     {imageOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.insertImage}><h3>{t.insertImage}</h3><div className={styles.tocSourceModes}><button type="button" aria-pressed={imageMode === "existing"} disabled={!session.files.some((file) => file.media_type.startsWith("image/"))} onClick={() => setImageMode("existing")}>{t.imageResource}</button><button type="button" aria-pressed={imageMode === "import"} onClick={() => setImageMode("import")}>{t.importResource}</button></div>{imageMode === "existing" ? <label>{t.imageResource}<select value={imagePath} onChange={(event) => setImagePath(event.target.value)}>{session.files.filter((file) => file.media_type.startsWith("image/")).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select></label> : <><label>{t.localFile}<div className={styles.resourcePick}><input value={imageInput} onChange={(event) => setImageInput(event.target.value)} /><button type="button" title={t.chooseFile} aria-label={t.chooseFile} onClick={() => void chooseImageFile()}><FolderOpen size={17} /></button></div></label><label>{t.archivePath}<input value={imageTarget} onChange={(event) => setImageTarget(event.target.value)} /></label></>}<label>{t.imageDescription}<input value={imageAlt} onChange={(event) => setImageAlt(event.target.value)} /></label><div className={styles.saveActions}><button type="button" onClick={() => setImageOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || (imageMode === "existing" ? !imagePath : !imageInput || !imageTarget || !/\.(?:apng|avif|gif|jpe?g|png|svg|webp)$/i.test(imageTarget))} onClick={() => void insertImage()}>{t.insertImage}</button></div></div></div> : null}
     {replaceProposal ? <div className={styles.modalBackdrop}><div className={`${styles.saveDialog} ${styles.tocPatternDialog}`} role="dialog" aria-modal="true" aria-label={t.replacePreviewTitle}><h3>{t.replacePreviewTitle}</h3><p>{replaceProposal.replacements} {t.matches} · {replaceProposal.files_changed} {t.filesChanged}</p><div className={styles.tocProposal}>{replaceProposal.samples.map((sample, index) => <div key={`${sample.path}-${sample.start}-${index}`}><small>{sample.path}</small><span>{sample.before} → {sample.after}</span></div>)}</div><div className={styles.saveActions}><button type="button" onClick={() => setReplaceProposal(null)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy} onClick={() => void applyReplaceAll()}>{t.replaceAll}</button></div></div></div> : null}
     {tocPatternOpen && session ? <div className={styles.modalBackdrop}><div className={`${styles.saveDialog} ${styles.tocPatternDialog}`} role="dialog" aria-modal="true" aria-label={t.generateToc}><h3>{t.generateToc}</h3><div className={styles.tocSourceModes}><button type="button" aria-pressed={tocSource === "headings"} onClick={() => { setTocSource("headings"); setTocProposal([]); }}>{t.fromHeadings}</button><button type="button" aria-pressed={tocSource === "files"} onClick={() => { setTocSource("files"); setTocProposal([]); }}>{t.fromFiles}</button></div><p>{tocSource === "files" ? t.tocFromFilesHelp : t.tocPatternHelp}</p>{tocSource === "headings" ? tocPatterns.map((pattern, index) => <label key={index}>{t.tocLevel} {index + 1}<input value={pattern} placeholder={t.tocPatternPlaceholder} onChange={(event) => { setTocPatterns((current) => current.map((value, position) => position === index ? event.target.value : value)); setTocProposal([]); }} /></label>) : null}<button type="button" disabled={busy} onClick={() => void previewGeneratedToc()}>{t.previewToc}</button>{tocProposal.length ? <div className={styles.tocProposal}>{tocProposal.map((entry, index) => <div key={`${entry.href}-${index}`} style={{ paddingLeft: `${entry.depth * 16}px` }}><strong>{entry.label}</strong><small>{entry.href}</small></div>)}</div> : null}<div className={styles.saveActions}><button type="button" onClick={() => setTocPatternOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={!tocProposal.length || busy} onClick={() => void generateToc()}>{t.applyToc}</button></div></div></div> : null}

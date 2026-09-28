@@ -207,11 +207,13 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "epub_content.checkpoint",
     "epub_content.read",
     "epub_content.anchors",
+    "epub_content.split_points",
     "epub_content.references",
     "epub_content.export_resource",
     "epub_content.write",
     "epub_content.add_resource",
     "epub_content.create_chapter",
+    "epub_content.split_chapter",
     "epub_content.replace_resource",
     "epub_content.rename_resource",
     "epub_content.delete_resource",
@@ -276,7 +278,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 185
+    assert len(actual) == 187
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -561,11 +563,13 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
     "epub_content.checkpoint": {"session_id": "missing"},
     "epub_content.read": {"session_id": "missing", "path": "missing"},
     "epub_content.anchors": {"session_id": "missing", "path": "missing"},
+    "epub_content.split_points": {"session_id": "missing", "path": "missing"},
     "epub_content.references": {"session_id": "missing", "path": "missing"},
     "epub_content.export_resource": {"session_id": "missing", "path": "missing", "output_path": "/tmp/out.css"},
     "epub_content.write": {"session_id": "missing", "path": "missing", "content": ""},
     "epub_content.add_resource": {"session_id": "missing", "path": "missing", "input_path": "/tmp/input.css"},
     "epub_content.create_chapter": {"session_id": "missing", "path": "Text/new.xhtml", "title": "New", "body_text": ""},
+    "epub_content.split_chapter": {"session_id": "missing", "path": "missing", "target": "Text/new.xhtml", "index": 1},
     "epub_content.replace_resource": {"session_id": "missing", "path": "missing", "input_path": "/tmp/input.css"},
     "epub_content.rename_resource": {"session_id": "missing", "path": "missing", "target": "renamed.css"},
     "epub_content.delete_resource": {"session_id": "missing", "path": "missing"},

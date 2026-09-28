@@ -652,7 +652,7 @@ export const zh: Messages = {
     resourceReferences: "引用此资源的位置", resourceNotEditable: "此资源不能在源码栏编辑", confirmDeleteResource: "删除所选资源？此操作可以撤销。",
     addToOrder: "加入阅读顺序", removeFromOrder: "移出阅读顺序", chooseChapter: "选择章节",
     fileOptions: "文件阅读选项", markMain: "按正文阅读", markAuxiliary: "标记为辅助内容", auxiliaryReading: "辅助", dragReadingOrder: "拖动正文文件可调整阅读顺序", tocEntryActions: "目录项操作",
-    newChapter: "新建章节", chapterText: "初始正文", insertImage: "插入图片", imageResource: "书内图片", imageDescription: "图片描述",
+    newChapter: "新建章节", chapterText: "初始正文", splitChapter: "拆分章节", splitBefore: "从此处开始新章节", insertImage: "插入图片", imageResource: "书内图片", imageDescription: "图片描述",
     chooseTocTarget: "选择目录目标", chapterStart: "章节开头", chooseAnchor: "选择锚点",
     generateTocPage: "生成书内目录页", tocPageTitle: "目录", tocLevel: "目录层级", tocPatternHelp: "留空则按章节标题生成；填写正则后按一级、二级、三级匹配正文标题。第一个捕获组可用作目录名称。", tocFromFilesHelp: "按阅读顺序为每个章节文件创建一级目录；优先使用章标题，否则使用页面标题或文件名。", tocPatternPlaceholder: "例如 ^第(.+)章", fromHeadings: "标题 / 正则", fromFiles: "阅读顺序文件",
     previewToc: "预览提取结果", addSibling: "在下方添加同级", addChild: "添加子目录", newTocEntry: "新目录项",
