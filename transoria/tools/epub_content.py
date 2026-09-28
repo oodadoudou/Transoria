@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import html
 import json
 import mimetypes
@@ -20,6 +21,7 @@ from lxml import etree
 from lxml import html as lxml_html
 
 from transoria.formats.epub_paths import (
+    decode_epub_href,
     find_archive_entry_by_normalized_path,
     resolve_epub_href,
 )
@@ -49,7 +51,7 @@ EDITABLE_TYPES = TEXT_TYPES | XML_TYPES | {
     "text/javascript",
 }
 MAX_TEXT_BYTES = 4_000_000
-MAX_PREVIEW_BYTES = 12_000_000
+MAX_PREVIEW_BYTES = 48_000_000
 
 
 def _xml(data: bytes) -> etree._Element:
@@ -318,7 +320,7 @@ class ContentSession:
         flags = 0 if case_sensitive else re.IGNORECASE
         pattern = re.compile(re.escape(query), flags)
         results: list[dict[str, object]] = []
-        for path in paths:
+        for path in dict.fromkeys(paths):
             item = self._file(path, editable=True)
             if int(item["size"]) > MAX_TEXT_BYTES and path not in self.changes:
                 continue
@@ -356,7 +358,7 @@ class ContentSession:
         pattern = re.compile(re.escape(query), 0 if case_sensitive else re.IGNORECASE)
         pending: dict[str, bytes] = {}
         total = 0
-        for path in paths:
+        for path in dict.fromkeys(paths):
             item = self._file(path, editable=True)
             if int(item["size"]) > MAX_TEXT_BYTES and path not in self.changes:
                 raise ValueError(f"Resource exceeds the editor limit: {path}")
@@ -416,11 +418,13 @@ class ContentSession:
                 draft_content, _decode(self._bytes(draft_path))[1]
             )
         markup_bytes = drafts.get(path, self._bytes(path))
-        root = (
-            lxml_html.fromstring(markup_bytes)
-            if item["media_type"] == "text/html"
-            else _xml(markup_bytes)
-        )
+        if item["media_type"] == "text/html":
+            root = lxml_html.fromstring(markup_bytes)
+        else:
+            try:
+                root = _xml(markup_bytes)
+            except etree.XMLSyntaxError:
+                root = lxml_html.fromstring(markup_bytes)
         for node in list(root.iter()):
             local = (
                 etree.QName(node).localname.lower() if isinstance(node.tag, str) else ""
@@ -430,6 +434,10 @@ class ContentSession:
                 if parent is not None:
                     parent.remove(node)
                 continue
+            if local == "style" and node.text:
+                node.text = _inline_css(node.text, path, self, drafts)
+            if node.get("style"):
+                node.set("style", _inline_css(node.get("style", ""), path, self, drafts))
             for key in list(node.attrib):
                 if etree.QName(key).localname.lower().startswith("on"):
                     del node.attrib[key]
@@ -451,8 +459,8 @@ class ContentSession:
                     and known["media_type"] == "text/css"
                 ):
                     css = _decode(drafts.get(target, self._bytes(target)))[0]
-                    style = etree.Element(f"{{{XHTML}}}style")
-                    style.text = _inline_css(css, target, self)
+                    style = etree.Element(f"{{{XHTML}}}style" if etree.QName(root).namespace == XHTML else "style")
+                    style.text = _inline_css(css, target, self, drafts)
                     node.getparent().replace(node, style)
                     break
                 if (
@@ -471,13 +479,13 @@ class ContentSession:
                     node.attrib.pop(attr, None)
         markup = etree.tostring(root, encoding="unicode", method="html")
         if len(markup.encode("utf-8")) > MAX_PREVIEW_BYTES:
-            raise ValueError("Preview exceeds the 12 MB limit.")
+            raise ValueError("Preview exceeds the 48 MB limit.")
         csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"
         fit_media = (
             "<style>img,svg,video{max-width:100%!important;"
             "max-height:calc(100vh - 24px)!important;"
             "width:auto!important;height:auto!important;object-fit:contain!important}"
-            "html,body{max-width:100%;box-sizing:border-box}</style>"
+            "html,body{max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}</style>"
         )
         return (
             f'<meta http-equiv="Content-Security-Policy" content="{html.escape(csp)}">'
@@ -805,7 +813,34 @@ def _write_ncx(data: bytes, path: str, entries: list[dict[str, object]]) -> byte
     return _serialize(root)
 
 
-def _inline_css(css: str, base: str, session: ContentSession) -> str:
+def _inline_css(
+    css: str, base: str, session: ContentSession,
+    drafts: dict[str, bytes] | None = None, visited: frozenset[str] = frozenset(),
+) -> str:
+    drafts = drafts or {}
+    if base in visited:
+        return ""
+    visited = visited | {base}
+
+    def import_css(match: re.Match[str]) -> str:
+        href = match.group(2) or match.group(4)
+        if not href or urlsplit(href).scheme or href.startswith("//"):
+            return ""
+        path = resolve_epub_href(posixpath.dirname(base), href)
+        item = next((file for file in session.files if file["path"] == path), None)
+        if not item or item["media_type"] != "text/css":
+            return ""
+        if len(session._bytes(path)) > MAX_TEXT_BYTES:
+            return ""
+        imported = _inline_css(_decode(drafts.get(path, session._bytes(path)))[0], path, session, drafts, visited)
+        media = match.group(5).strip()
+        return f"@media {media} {{{imported}}}" if media and not media.startswith(("layer", "supports")) else imported
+
+    css = re.sub(
+        r"@import\s+(?:url\(\s*(['\"]?)(.*?)\1\s*\)|(['\"])(.*?)\3)\s*([^;]*);",
+        import_css, css, flags=re.I,
+    )
+
     def replace(match: re.Match[str]) -> str:
         raw = match.group(2).strip()
         if (
@@ -814,20 +849,53 @@ def _inline_css(css: str, base: str, session: ContentSession) -> str:
             or urlsplit(raw).scheme
             or raw.startswith("//")
         ):
-            return "url()" if raw.startswith(("http", "//")) else match.group(0)
+            return "url()" if urlsplit(raw).scheme != "data" and not raw.startswith("#") else match.group(0)
         path = resolve_epub_href(posixpath.dirname(base), raw)
         item = next((file for file in session.files if file["path"] == path), None)
         if not item:
             return "url()"
-        data = session._bytes(path)
+        data = drafts.get(path, session._bytes(path))
         media = (
             str(item["media_type"])
             or mimetypes.guess_type(path)[0]
             or "application/octet-stream"
         )
+        if media.startswith("font/") or "font" in media or media in {
+            "application/vnd.ms-opentype", "application/x-font-ttf",
+            "application/x-font-otf", "application/octet-stream",
+        }:
+            media = mimetypes.guess_type(path)[0] or media
+            data = _preview_font_bytes(session, path, data)
         return f"url(data:{media};base64,{base64.b64encode(data).decode('ascii')})"
 
     return re.sub(r"url\(\s*(['\"]?)(.*?)\1\s*\)", replace, css, flags=re.I)
+
+
+def _preview_font_bytes(session: ContentSession, path: str, data: bytes) -> bytes:
+    with zipfile.ZipFile(session.path) as archive:
+        if "META-INF/encryption.xml" not in archive.namelist():
+            return data
+        try:
+            encryption = _xml(archive.read("META-INF/encryption.xml"))
+        except etree.XMLSyntaxError:
+            return data
+        for entry in encryption.xpath("//*[local-name()='EncryptedData']"):
+            method = entry.xpath("./*[local-name()='EncryptionMethod']/@Algorithm")
+            reference = entry.xpath("./*[local-name()='CipherData']/*[local-name()='CipherReference']/@URI")
+            if not method or not reference or decode_epub_href(reference[0]) != decode_epub_href(path):
+                continue
+            if method[0] != "http://www.idpf.org/2008/embedding":
+                return data
+            package = _xml(archive.read(session.opf_path))
+            identifier_id = package.get("unique-identifier", "")
+            identifiers = package.xpath("//*[local-name()='identifier' and @id=$id]/text()", id=identifier_id)
+            if not identifiers:
+                return data
+            identifier = re.sub(r"[ \t\r\n]", "", identifiers[0])
+            key = hashlib.sha1(identifier.encode("utf-8")).digest()
+            head = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(data[:1040]))
+            return head + data[1040:]
+    return data
 
 
 class ContentSessionStore:

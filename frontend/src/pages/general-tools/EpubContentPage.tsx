@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
+import type { EditorView } from "@codemirror/view";
 import { css } from "@codemirror/lang-css";
 import { xml } from "@codemirror/lang-xml";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerUpLeft, CornerUpRight, FileCode2, FileText, FolderOpen, ListTree, Save, Search, ShieldCheck, X } from "lucide-react";
@@ -48,6 +49,10 @@ function editedPath(path: string): string {
   return path.replace(/\.epub$/i, "_edited.epub");
 }
 
+function editorOffset(content: string, codePointOffset: number): number {
+  return Array.from(content).slice(0, codePointOffset).join("").length;
+}
+
 function subtreeEnd(entries: EpubTocEntry[], index: number): number {
   let end = index + 1;
   while (end < entries.length && entries[end].depth > entries[index].depth) end += 1;
@@ -74,6 +79,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const currentDraft = useRef<EpubEditorDraft | null>(null);
   const previewFrame = useRef<HTMLIFrameElement | null>(null);
   const bookFrame = useRef<HTMLIFrameElement | null>(null);
+  const sourceEditor = useRef<EditorView | null>(null);
   const [inputPath, setInputPath] = useState(initialPath);
   const [recent, setRecent] = useState(readRecent);
   const [restoring, setRestoring] = useState(Boolean(savedDraft.current && !initialPath));
@@ -100,6 +106,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [scope, setScope] = useState<Scope>("current");
   const [matches, setMatches] = useState<EpubContentMatch[]>([]);
+  const [matchIndex, setMatchIndex] = useState(-1);
   const [searchOpen, setSearchOpen] = useState(false);
   const [outputPath, setOutputPath] = useState("");
   const [overwriteSource, setOverwriteSource] = useState(false);
@@ -120,6 +127,17 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const dirty = Boolean(session?.dirty || sourceDirty || tocDirty);
   const currentFile = session?.files.find((file) => file.path === selectedPath);
   const isHtml = currentFile?.media_type === "application/xhtml+xml" || currentFile?.media_type === "text/html";
+
+  useEffect(() => {
+    const match = matches[matchIndex];
+    if (!match || match.path !== selectedPath || sideView === "book" || paneView !== "source") return;
+    const editor = sourceEditor.current;
+    if (!editor || editor.state.doc.toString() !== content) return;
+    const anchor = editorOffset(content, match.start);
+    const head = editorOffset(content, match.end);
+    editor.dispatch({ selection: { anchor, head }, scrollIntoView: true });
+    editor.focus();
+  }, [matches, matchIndex, selectedPath, content, sideView, paneView]);
 
   useEffect(() => {
     if (!session) return;
@@ -181,7 +199,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     setLoadedContent(next.content);
     setContent(next.content);
     const file = session?.files.find((item) => item.path === path);
-    if (file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html") {
+    if ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html") && path !== session?.nav_path) {
       setPreviewPath(path);
       try {
         setPreview((await epubContentBridge.preview(sid, path)).html);
@@ -191,6 +209,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         setPreviewError(cause instanceof Error ? cause.message : String(cause));
       }
     } else if (file?.media_type !== "text/css") {
+      setPreviewPath("");
       setPreview("");
       setPreviewError("");
     }
@@ -407,11 +426,26 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       await commitSource();
       const found = await epubContentBridge.search(session.session_id, query, scopePaths(), caseSensitive);
       setMatches(found.matches);
+      setMatchIndex(found.matches.length ? 0 : -1);
+      if (found.matches.length) {
+        setSideView("files");
+        setPaneView("source");
+        if (found.matches[0].path !== selectedPath) await loadResource(session.session_id, found.matches[0].path);
+      }
     });
   };
 
+  const navigateMatch = async (direction: -1 | 1) => {
+    if (!session || !matches.length) return;
+    const next = (matchIndex + direction + matches.length) % matches.length;
+    setMatchIndex(next);
+    setSideView("files");
+    setPaneView("source");
+    if (matches[next].path !== selectedPath) await selectResource(matches[next].path);
+  };
+
   const replaceAll = async () => {
-    if (!session || !query || !matches.length || !window.confirm(`${t.confirmReplace} (${matches.length} ${t.matches})`)) return;
+    if (!session || !query || !matches.length || matches.length >= 5000 || !window.confirm(`${t.confirmReplace} (${matches.length} ${t.matches})`)) return;
     await run(async () => {
       await commitSource();
       const result = await epubContentBridge.replace(session.session_id, query, replacement, scopePaths(), caseSensitive, matches.length);
@@ -419,6 +453,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       if (selectedPath) await loadResource(session.session_id, selectedPath);
       setFeedback(`${result.replacements} ${t.matches}`);
       setMatches([]);
+      setMatchIndex(-1);
     });
   };
 
@@ -430,6 +465,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setSession(next);
       if (selectedPath === match.path) await loadResource(session.session_id, selectedPath);
       setMatches([]);
+      setMatchIndex(-1);
       setFeedback(`1 ${t.matches}`);
     });
   };
@@ -605,14 +641,14 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     {feedback ? <div className={feedbackWarning ? styles.warning : styles.feedback} role="status">{feedback}</div> : null}
     {searchOpen && session ? <div className={styles.searchPanel}>
       <div className={styles.searchControls}>
-        <label>{t.query}<input value={query} onChange={(event) => { setQuery(event.target.value); setMatches([]); }} onKeyDown={(event) => { if (event.key === "Enter") void search(); }} /></label>
+        <label>{t.query}<input value={query} onChange={(event) => { setQuery(event.target.value); setMatches([]); setMatchIndex(-1); }} onKeyDown={(event) => { if (event.key === "Enter") { if (matches.length) void navigateMatch(event.shiftKey ? -1 : 1); else void search(); } }} /></label>
         <label>{t.replacement}<input value={replacement} onChange={(event) => setReplacement(event.target.value)} /></label>
-        <label><span>{t.files}</span><select value={scope} onChange={(event) => { setScope(event.target.value as Scope); setMatches([]); }}><option value="current">{t.current}</option><option value="text">{t.textFiles}</option><option value="styles">{t.styleFiles}</option><option value="all">{t.all}</option></select></label>
-        <label className={styles.checkbox}><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setMatches([]); }} />{t.caseSensitive}</label>
+        <label><span>{t.files}</span><select value={scope} onChange={(event) => { setScope(event.target.value as Scope); setMatches([]); setMatchIndex(-1); }}><option value="current">{t.current}</option><option value="text">{t.textFiles}</option><option value="styles">{t.styleFiles}</option><option value="all">{t.all}</option></select></label>
+        <label className={styles.checkbox}><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.caseSensitive}</label>
         <button type="button" disabled={!query || busy || !scopePaths().length} onClick={() => void search()}><Search size={16} />{t.find}</button>
-        <button type="button" disabled={!matches.length || busy} onClick={() => void replaceAll()}>{t.replaceAll}</button>
+        <div className={styles.matchNavigation} role="status"><span>{matches.length ? `${matchIndex + 1} / ${matches.length}${matches.length >= 5000 ? "+" : ""}` : t.noMatches}</span><button type="button" title={t.previousMatch} aria-label={t.previousMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(-1)}><ArrowUp size={16} /></button><button type="button" title={t.nextMatch} aria-label={t.nextMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(1)}><ArrowDown size={16} /></button><button type="button" disabled={matchIndex < 0 || busy} onClick={() => void replaceOne(matches[matchIndex])}>{t.replaceOne}</button></div>
+        <button type="button" disabled={!matches.length || matches.length >= 5000 || busy} title={matches.length >= 5000 ? t.narrowSearch : undefined} onClick={() => void replaceAll()}>{t.replaceAll}</button>
       </div>
-      {matches.length ? <div className={styles.results}><strong>{matches.length} {t.matches}</strong>{matches.map((match, index) => <div key={`${match.path}-${match.start}-${index}`} className={styles.match}><button type="button" onClick={() => void selectResource(match.path)}><span>{match.path}</span><small>{match.excerpt}</small></button><button type="button" onClick={() => void replaceOne(match)}>{t.replaceOne}</button></div>)}</div> : null}
     </div> : null}
     {!session ? <div className={styles.empty}>{t.noBook}</div> : <div className={styles.main} data-resizing={resizing} style={{ "--sidebar-width": `${sidebarWidth}%` } as CSSProperties}>
       <aside className={styles.sidebar}>
@@ -626,12 +662,12 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       </aside>
       {separator("sidebar", sidebarWidth)}
       <div className={styles.editorArea}>
-        {sideView === "book" ? <div className={styles.bookReader}><div className={styles.readerToolbar}><strong>{t.bookPreview}</strong><span>{bookIndex + 1} / {session.spine.length}</span><div><button type="button" title={t.previousChapter} aria-label={t.previousChapter} disabled={bookIndex === 0} onClick={() => setBookIndex((index) => index - 1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextChapter} aria-label={t.nextChapter} disabled={bookIndex >= session.spine.length - 1} onClick={() => setBookIndex((index) => index + 1)}><ArrowRight size={18} /></button></div></div>{bookError ? <div className={styles.readerError} role="status">{t.previewInvalid}: {bookError}</div> : bookLoading ? <div className={styles.noPreview}>{t.loading}</div> : <iframe key={session.spine[bookIndex]} ref={bookFrame} title={t.bookPreview} sandbox="" />}</div> : <>
+        {sideView === "book" ? <div className={styles.bookReader}><div className={styles.readerToolbar}><strong>{t.bookPreview}</strong><span>{bookIndex + 1} / {session.spine.length}</span><div><button type="button" title={t.previousChapter} aria-label={t.previousChapter} disabled={bookIndex === 0} onClick={() => setBookIndex((index) => index - 1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextChapter} aria-label={t.nextChapter} disabled={bookIndex >= session.spine.length - 1} onClick={() => setBookIndex((index) => index + 1)}><ArrowRight size={18} /></button></div></div>{bookError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : bookLoading ? <div className={styles.noPreview}>{t.loading}</div> : <div className={styles.bookPage}><iframe key={session.spine[bookIndex]} ref={bookFrame} title={t.bookPreview} sandbox="" /></div>}</div> : <>
         <div className={styles.fileHeading}><strong title={selectedPath}>{selectedPath}</strong><div className={styles.paneSwitch}><button type="button" aria-selected={paneView === "source"} onClick={() => setPaneView("source")}>{t.source}</button><button type="button" aria-selected={paneView === "preview"} onClick={() => setPaneView("preview")}>{t.preview}</button></div>{busy ? <span>{t.loading}</span> : null}</div>
         <div className={styles.split} data-mode={paneView} style={{ "--source-width": `${sourceWidth}%` } as CSSProperties}>
-          <section className={styles.sourcePane}><h3>{t.source}</h3><CodeMirror value={content} onChange={(value) => { setContent(value); setMatches([]); }} extensions={currentFile?.media_type === "text/css" ? [css()] : currentFile?.media_type === "text/plain" || currentFile?.media_type?.includes("javascript") ? [] : [xml()]} theme={colorTheme} height="100%" basicSetup={{ lineNumbers: true, foldGutter: true }} /></section>
+          <section className={styles.sourcePane}><h3>{t.source}</h3><CodeMirror value={content} onCreateEditor={(view) => { sourceEditor.current = view; }} onChange={(value) => { setContent(value); setMatches([]); setMatchIndex(-1); }} extensions={currentFile?.media_type === "text/css" ? [css()] : currentFile?.media_type === "text/plain" || currentFile?.media_type?.includes("javascript") ? [] : [xml()]} theme={colorTheme} height="100%" basicSetup={{ lineNumbers: true, foldGutter: true }} /></section>
           {separator("source", sourceWidth)}
-          <section className={styles.previewPane}><h3>{t.preview}</h3>{previewError ? <div className={styles.readerError} role="status">{t.previewInvalid}: {previewError}</div> : (isHtml || currentFile?.media_type === "text/css") && previewPath ? <iframe ref={previewFrame} title={t.preview} sandbox="" /> : <div className={styles.noPreview}>{t.noPreview}</div>}</section>
+          <section className={styles.previewPane}><h3>{t.preview}</h3>{previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : ((isHtml && selectedPath !== session.nav_path) || currentFile?.media_type === "text/css") && previewPath ? <iframe ref={previewFrame} title={t.preview} sandbox="" /> : <div className={styles.noPreview}>{t.noPreview}</div>}</section>
         </div>
         </>}
       </div>

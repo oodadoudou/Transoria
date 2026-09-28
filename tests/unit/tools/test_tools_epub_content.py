@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import zipfile
 from pathlib import Path
 
@@ -32,6 +34,16 @@ def _book(path: Path) -> None:
             ("OEBPS/Styles/book.css", "body { color: red; }"),
             ("OEBPS/Images/pixel.png", b"image-bytes"),
         ):
+            book.writestr(name, data)
+
+
+def _rewrite_book(path: Path, changes: dict[str, bytes | str]) -> None:
+    with zipfile.ZipFile(path) as book:
+        entries = [(info, book.read(info.filename)) for info in book.infolist()]
+    with zipfile.ZipFile(path, "w") as book:
+        for info, data in entries:
+            book.writestr(info, changes.pop(info.filename, data))
+        for name, data in changes.items():
             book.writestr(name, data)
 
 
@@ -201,3 +213,131 @@ def test_source_changed_and_bridge_errors(tmp_path: Path):
     register(router)
     with pytest.raises(BridgeError):
         router.call("epub_content.read", {"session_id": "missing", "path": "x"})
+
+
+@pytest.mark.parametrize(
+    ("query", "replacement", "case_sensitive", "expected"),
+    [
+        ("Hello", "New", False, 3),
+        ("hello", "New", True, 1),
+        ("a.b", r"\\1$", False, 2),
+        ("🌸", "", False, 2),
+    ],
+)
+def test_search_replace_multiple_files_and_literal_text(
+    tmp_path: Path, query: str, replacement: str, case_sensitive: bool, expected: int,
+):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>🌸 Hello hello a.b 🌸</p></body></html>',
+        "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Hello a.b</p></body></html>',
+    })
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    paths = session.spine
+    found = session.search(query, paths, case_sensitive)
+    assert len(found) == expected
+    for match in found:
+        content = session.read(match["path"])["content"]
+        assert content[match["start"]:match["end"]].casefold() == query.casefold()
+    with pytest.raises(ValueError, match="Search results changed"):
+        session.replace(query, replacement, paths, case_sensitive, expected + 1)
+    assert not session.dirty
+    result = session.replace(query, replacement, paths, case_sensitive, expected)
+    assert result["replacements"] == expected
+    assert len(session.search(query, paths, case_sensitive)) == 0
+    session.history("undo")
+    assert len(session.search(query, paths, case_sensitive)) == expected
+    session.history("redo")
+    assert source.read_bytes() == original
+
+
+def test_single_match_requires_current_offsets_and_keeps_other_files(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    one, two = session.spine
+    first = session.search("Hello", [one, two])[0]
+    session.replace_match(one, first["start"], first["end"], "Hello", "Done")
+    assert "Done world" in session.read(one)["content"]
+    assert "Hello again" in session.read(two)["content"]
+    with pytest.raises(ValueError, match="no longer current"):
+        session.replace_match(one, first["start"], first["end"], "Hello", "Again")
+
+
+def test_duplicate_paths_and_truncated_search_cannot_partially_replace(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    one = session.spine[0]
+    assert len(session.search("Hello", [one, one])) == 1
+    assert session.replace("Hello", "Hi", [one, one], expected_count=1)["replacements"] == 1
+    session.history("undo")
+    content = session.read(one)["content"].replace("Hello world.", "x " * 5001)
+    session.write(one, content)
+    assert len(session.search("x", [one])) == 5000
+    with pytest.raises(ValueError, match="Search results changed"):
+        session.replace("x", "y", [one], expected_count=5000)
+    assert "y " not in session.read(one)["content"]
+
+
+def test_malformed_xhtml_preview_recovers_without_changing_source(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    malformed = b"<html><head><style>p { color: teal }</style></head><body><div><p>Visible text</p></body></html>"
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": malformed})
+    session = ContentSession.open(str(source))
+    preview = session.preview(session.spine[0])
+    assert "Visible text" in preview
+    assert "color: teal" in preview
+    assert session._bytes(session.spine[0]) == malformed
+    assert not session.dirty
+
+
+def test_nonstandard_html_and_failed_encoding_leave_edits_atomic(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as book:
+        opf = book.read("OEBPS/book.opf")
+    opf = opf.replace(b'href="Text/two.xhtml" media-type="application/xhtml+xml"', b'href="Text/two.xhtml" media-type="text/html"')
+    _rewrite_book(source, {
+        "OEBPS/book.opf": opf,
+        "OEBPS/Text/one.xhtml": b'<?xml version="1.0" encoding="iso-8859-1"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p>caf\xe9</p></body></html>',
+        "OEBPS/Text/two.xhtml": b'<html><body><p style="color:purple">Unclosed <b>bold</p></body></html>',
+    })
+    session = ContentSession.open(str(source))
+    assert "Unclosed" in session.preview(session.spine[1])
+    assert "color:purple" in session.preview(session.spine[1])
+    with pytest.raises(ValueError, match="cannot be encoded"):
+        session.replace("caf\u00e9", "\u6c49", [session.spine[0]])
+    assert not session.dirty
+    assert "caf\u00e9" in session.read(session.spine[0])["content"]
+
+
+def test_preview_local_css_imports_inline_styles_and_obfuscated_font(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    font = b"OTTO" + bytes(range(256)) * 5
+    key = hashlib.sha1(b"test").digest()
+    obfuscated = bytes(byte ^ key[index % len(key)] for index, byte in enumerate(font[:1040])) + font[1040:]
+    with zipfile.ZipFile(source) as book:
+        opf = book.read("OEBPS/book.opf")
+    opf = opf.replace(b"</manifest>", b'<item id="font" href="Fonts/book.otf" media-type="font/otf"/><item id="extra" href="Styles/extra.css" media-type="text/css"/></manifest>')
+    encryption = b'''<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/><enc:CipherData><enc:CipherReference URI="OEBPS/Fonts/book.otf"/></enc:CipherData></enc:EncryptedData></encryption>'''
+    _rewrite_book(source, {
+        "OEBPS/book.opf": opf,
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/></head><body><p style="background:url(../Images/pixel.png)">Styled</p></body></html>',
+        "OEBPS/Styles/book.css": '@import url("extra.css") screen; p { font-family: TestFont; }',
+        "OEBPS/Styles/extra.css": '@import "book.css"; @font-face { font-family: TestFont; src: url("../Fonts/book.otf"); }',
+        "OEBPS/Fonts/book.otf": obfuscated,
+        "META-INF/encryption.xml": encryption,
+    })
+    session = ContentSession.open(str(source))
+    preview = session.preview(session.spine[0])
+    assert "@font-face" in preview and "font-family: TestFont" in preview
+    assert "@media screen" in preview
+    assert f"data:font/otf;base64,{base64.b64encode(font).decode('ascii')}" in preview
+    assert "data:image/png;base64," in preview
+    assert "@import" not in preview
+    assert obfuscated == session._bytes("OEBPS/Fonts/book.otf")

@@ -1282,6 +1282,7 @@ export interface Messages {
     choose: string; open: string; close: string; dirtyClose: string; files: string; source: string; preview: string;
     toc: string; spine: string; find: string; replace: string; query: string; replacement: string;
     current: string; textFiles: string; styleFiles: string; all: string; caseSensitive: string; matches: string;
+    noMatches: string; previousMatch: string; nextMatch: string; narrowSearch: string;
     replaceOne: string; replaceAll: string; confirmReplace: string; save: string; saveAs: string;
     overwrite: string; confirmOverwrite: string; outputPath: string; saved: string; undo: string;
     redo: string; applyToc: string; addEntry: string; removeEntry: string; target: string;

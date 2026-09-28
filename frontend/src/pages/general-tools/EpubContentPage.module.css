@@ -468,9 +468,20 @@
   background: var(--panel-soft);
 }
 
-.bookReader iframe {
+.bookPage {
   flex: 1;
   width: 100%;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  overflow: hidden;
+  background: var(--panel-soft);
+}
+
+.bookPage iframe {
+  width: min(100%, 720px);
+  height: 100%;
   border: 0;
   background: white;
 }
@@ -708,35 +719,30 @@
   accent-color: var(--ink);
 }
 
-.results {
-  max-height: 120px;
-  overflow: auto;
-  margin-top: 8px;
+.matchNavigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
+  color: var(--muted);
 }
 
-.match {
-  display: flex;
-  gap: 8px;
-  border-top: 1px solid var(--hairline);
+.matchNavigation span {
+  min-width: 44px;
+  text-align: center;
 }
 
-.match > button:first-child {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  align-items: start;
-  border: 0;
-  padding: 4px;
-}
-
-.match span,
-.match small {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.matchNavigation button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  padding: 4px 8px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
 }
 
 .match small {
@@ -840,10 +846,6 @@
   .searchPanel {
     max-height: min(220px, 30dvh);
     overflow: auto;
-  }
-
-  .results {
-    max-height: none;
   }
 
   .main {
