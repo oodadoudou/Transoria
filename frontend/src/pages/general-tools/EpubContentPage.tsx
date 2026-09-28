@@ -3,7 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
 import { css } from "@codemirror/lang-css";
 import { xml } from "@codemirror/lang-xml";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerDownRight, CornerUpLeft, CornerUpRight, Download, FileCode2, FileText, FolderOpen, ListTree, Pencil, Plus, Replace, Save, Search, Trash2, WrapText, X, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerDownRight, CornerUpLeft, CornerUpRight, Download, FileCode2, FileText, FolderOpen, ListTree, MoreHorizontal, Pencil, Plus, Replace, Save, Search, Trash2, WrapText, X, ZoomIn, ZoomOut } from "lucide-react";
 
 import { dialogsBridge, epubContentBridge, type EpubContentFile, type EpubContentMatch, type EpubContentSession, type EpubTocEntry } from "@/bridge";
 import { useMessages } from "@/locales";
@@ -11,7 +11,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 import { clearEditorDraft, clearStagedEditorDraft, readEditorDraft, stageEditorDraft, writeEditorDraft, type EpubEditorDraft } from "./epubEditorDraft";
 import styles from "./EpubContentPage.module.css";
 
-type SideView = "files" | "toc" | "spine" | "book";
+type SideView = "files" | "toc" | "book";
 type Scope = "current" | "text" | "styles" | "all" | "selection";
 type ResourceAction = "add" | "rename" | "replace" | "export" | "delete";
 type ReplaceProposal = Awaited<ReturnType<typeof epubContentBridge.previewReplace>> & {
@@ -29,8 +29,9 @@ function readRecent(): string[] {
   }
 }
 
-function fileTree(files: EpubContentFile[]): FileNode[] {
+function fileTree(files: EpubContentFile[], spine: string[]): FileNode[] {
   const roots: FileNode[] = [];
+  const readingIndex = new Map(spine.map((path, index) => [path, index]));
   for (const file of files) {
     const parts = file.path.split("/");
     let children = roots;
@@ -57,9 +58,13 @@ function fileTree(files: EpubContentFile[]): FileNode[] {
   const rankNode = (node: FileNode): number => node.kind === "file"
     ? rankFile(node.file)
     : Math.min(4, ...node.children.map(rankNode));
+  const orderNode = (node: FileNode): number => node.kind === "file"
+    ? readingIndex.get(node.file.path) ?? Number.POSITIVE_INFINITY
+    : Math.min(Number.POSITIVE_INFINITY, ...node.children.map(orderNode));
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
   const sort = (items: FileNode[]) => {
     items.sort((left, right) => rankNode(left) - rankNode(right)
+      || (rankNode(left) === 0 ? orderNode(left) - orderNode(right) || 0 : 0)
       || Number(right.kind === "folder") - Number(left.kind === "folder")
       || collator.compare(left.name, right.name));
     items.forEach((node) => { if (node.kind === "folder") sort(node.children); });
@@ -125,7 +130,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [resourceInput, setResourceInput] = useState("");
   const [resourceInSpine, setResourceInSpine] = useState(false);
   const [resourceReferences, setResourceReferences] = useState<string[]>([]);
-  const [spineCandidate, setSpineCandidate] = useState("");
+  const [spineMenuPath, setSpineMenuPath] = useState("");
+  const draggedSpinePath = useRef("");
+  const [tocControlsIndex, setTocControlsIndex] = useState<number | null>(null);
+  const [spineDrop, setSpineDrop] = useState<{ path: string; after: boolean } | null>(null);
   const [previewPath, setPreviewPath] = useState("");
   const [loadedContent, setLoadedContent] = useState("");
   const [content, setContent] = useState("");
@@ -179,7 +187,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const operationInFlight = useRef(false);
 
   const editableFiles = useMemo(() => session?.files.filter((file) => file.editable) ?? [], [session?.files]);
-  const nodes = useMemo(() => fileTree(session?.files ?? []), [session?.files]);
+  const nodes = useMemo(() => fileTree(session?.files ?? [], session?.spine ?? []), [session?.files, session?.spine]);
   const sourceDirty = content !== loadedContent;
   const tocDirty = Boolean(session && JSON.stringify(tocDraft) !== JSON.stringify(session.toc));
   const dirty = Boolean(session?.dirty || sourceDirty || tocDirty);
@@ -363,6 +371,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setOutputPath(editedPath(path));
       setOverwriteSource(false);
       setCollapsedFolders([]);
+      setSpineMenuPath("");
       setMatches([]);
       setFeedback("");
       setBookIndex(0);
@@ -400,7 +409,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setResourcePath(path);
       setOutputPath(editedPath(next.input_path));
       setTocDraft(Array.isArray(draft.tocDraft) ? draft.tocDraft : next.toc);
-      setSideView(["files", "toc", "spine", "book"].includes(draft.sideView) ? draft.sideView : "files");
+      setSideView(["files", "toc", "book"].includes(draft.sideView) ? draft.sideView as SideView : "files");
       setBookIndex(typeof draft.bookIndex === "number" && draft.bookIndex >= 0 && draft.bookIndex < next.spine.length ? draft.bookIndex : 0);
       setPaneView(draft.paneView === "preview" ? "preview" : "source");
       setSearchOpen(Boolean(draft.searchOpen));
@@ -598,12 +607,15 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     });
   };
 
-  const moveSpine = async (index: number, shift: number) => {
-    if (!session || index + shift < 0 || index + shift >= session.spine.length) return;
+  const moveSpine = async (path: string, target: string, after: boolean) => {
+    if (!session || path === target) return;
+    const order = session.spine.filter((item) => item !== path);
+    const targetIndex = order.indexOf(target);
+    if (targetIndex < 0) return;
+    order.splice(targetIndex + Number(after), 0, path);
+    if (order.every((item, index) => item === session.spine[index])) return;
     await run(async () => {
       await commitSource();
-      const order = session.spine.slice();
-      [order[index], order[index + shift]] = [order[index + shift], order[index]];
       setSession(await epubContentBridge.reorderSpine(session.session_id, order));
     });
   };
@@ -614,7 +626,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       await commitSource();
       const next = await epubContentBridge.setSpine(session.session_id, entries);
       setSession(next);
-      setSpineCandidate("");
+      setSpineMenuPath("");
     });
   };
 
@@ -830,7 +842,19 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const collapsed = collapsedFolders.includes(node.path);
       return <div key={node.path}><div className={styles.folderRow} style={{ paddingLeft: `${depth * 9 + 4}px` }}><button type="button" aria-expanded={!collapsed} title={node.path} onClick={() => setCollapsedFolders((current) => collapsed ? current.filter((path) => path !== node.path) : [...current, node.path])}>{collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}{node.name}</button></div>{!collapsed ? renderTree(node.children, depth + 1) : null}</div>;
     }
-    return <div key={node.file.path} className={`${styles.fileRow} ${resourcePath === node.file.path ? styles.active : ""}`} style={{ paddingLeft: `${depth * 9 + 4}px` }}><button type="button" onClick={() => void selectResource(node.file.path)} title={node.file.path}>{node.name}</button></div>;
+    const path = node.file.path;
+    const inSpine = session?.spine.includes(path) ?? false;
+    const dropClass = spineDrop?.path === path ? (spineDrop.after ? styles.dropAfter : styles.dropBefore) : "";
+    return <div key={path} className={`${styles.fileRow} ${resourcePath === path ? styles.active : ""} ${dropClass}`}
+      style={{ paddingLeft: `${depth * 9 + 4}px` }}
+      onDragOver={(event) => { if (!inSpine || !draggedSpinePath.current || draggedSpinePath.current === path) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; setSpineDrop({ path, after: event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.clientHeight / 2 }); }}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setSpineDrop(null); }}
+      onDrop={(event) => { event.preventDefault(); const source = draggedSpinePath.current; draggedSpinePath.current = ""; const bounds = event.currentTarget.getBoundingClientRect(); const after = event.clientY > bounds.top + bounds.height / 2; setSpineDrop(null); if (source && inSpine) void moveSpine(source, path, after); }}>
+      <button type="button" draggable={inSpine && !busy} onDragStart={(event) => { draggedSpinePath.current = path; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", path); }} onDragEnd={() => { draggedSpinePath.current = ""; setSpineDrop(null); }} onClick={() => void selectResource(path)} title={inSpine ? `${path}\n${t.dragReadingOrder}` : path}
+        onKeyDown={(event) => { if (!inSpine || !event.shiftKey || !(event.metaKey || event.ctrlKey)) return; const shift = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0; const index = session?.spine.indexOf(path) ?? -1; const target = session?.spine[index + shift]; if (shift && target) { event.preventDefault(); void moveSpine(path, target, shift > 0); } }}>
+        {node.name}{session?.spine_linear[path] === false ? <small className={styles.auxiliaryLabel}>{t.auxiliaryReading}</small> : null}
+      </button>
+    </div>;
   });
 
   const resizePane = (pane: "sidebar" | "source", clientX: number, handle: HTMLDivElement) => {
@@ -925,18 +949,26 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     </div> : null}
     {!session ? <div className={styles.empty}>{t.noBook}</div> : <div className={styles.main} data-resizing={resizing} style={{ "--sidebar-width": `${sidebarWidth}%` } as CSSProperties}>
       <aside className={styles.sidebar}>
-        <div className={styles.tabs}><button type="button" aria-selected={sideView === "files"} onClick={() => setSideView("files")}><FileCode2 size={16} />{t.files}</button><button type="button" aria-selected={sideView === "toc"} onClick={() => setSideView("toc")}><ListTree size={16} />{t.toc}</button><button type="button" aria-selected={sideView === "spine"} onClick={() => setSideView("spine")}>{t.spine}</button><button type="button" aria-selected={sideView === "book"} onClick={() => setSideView("book")}><BookOpen size={16} />{t.bookPreview}</button></div>
+        <div className={styles.tabs}><button type="button" aria-selected={sideView === "files"} onClick={() => setSideView("files")}><FileCode2 size={16} />{t.files}</button><button type="button" aria-selected={sideView === "toc"} onClick={() => setSideView("toc")}><ListTree size={16} />{t.toc}</button><button type="button" aria-selected={sideView === "book"} onClick={() => setSideView("book")}><BookOpen size={16} />{t.bookPreview}</button></div>
         {sideView === "files" ? <div className={styles.fileActions}>
           <button type="button" title={t.importResource} aria-label={t.importResource} disabled={busy} onClick={() => void openResourceAction("add")}><Plus size={16} /></button>
           <button type="button" title={t.renameResource} aria-label={t.renameResource} disabled={!currentResource || busy || resourcePath === session.nav_path || resourcePath === session.ncx_path} onClick={() => void openResourceAction("rename")}><Pencil size={16} /></button>
           <button type="button" title={t.replaceResource} aria-label={t.replaceResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("replace")}><Replace size={16} /></button>
           <button type="button" title={t.exportResource} aria-label={t.exportResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("export")}><Download size={16} /></button>
           <button type="button" title={t.deleteResource} aria-label={t.deleteResource} disabled={!currentResource || busy || resourcePath === session.nav_path || resourcePath === session.ncx_path} onClick={() => void openResourceAction("delete")}><Trash2 size={16} /></button>
+          {currentResource && (currentResource.media_type === "application/xhtml+xml" || currentResource.media_type === "text/html") && resourcePath !== session.nav_path ? <div className={styles.fileMoreWrap}>
+            <button type="button" title={t.fileOptions} aria-label={t.fileOptions} aria-expanded={spineMenuPath === resourcePath} disabled={busy} onClick={() => setSpineMenuPath((path) => path === resourcePath ? "" : resourcePath)}><MoreHorizontal size={16} /></button>
+            {spineMenuPath === resourcePath ? <div className={styles.fileMoreMenu}>
+              {session.spine.includes(resourcePath) ? <>
+                <button type="button" disabled={session.spine_linear[resourcePath] !== false && session.spine.filter((path) => session.spine_linear[path] !== false).length <= 1} onClick={() => void updateSpine(spineEntries().map((entry) => entry.path === resourcePath ? { ...entry, linear: !entry.linear } : entry))}>{session.spine_linear[resourcePath] === false ? t.markMain : t.markAuxiliary}</button>
+                <button type="button" disabled={session.spine.length <= 1 || session.toc.some((entry) => entry.href.split("#")[0] === resourcePath)} onClick={() => void updateSpine(spineEntries().filter((entry) => entry.path !== resourcePath))}>{t.removeFromOrder}</button>
+              </> : <button type="button" onClick={() => void updateSpine([...spineEntries(), { path: resourcePath, linear: true }])}>{t.addToOrder}</button>}
+            </div> : null}
+          </div> : null}
           {currentResource ? <span className={styles.resourceInfo} title={resourcePath}>{currentResource.media_type} · {currentResource.size} B{currentResource.editable ? "" : ` · ${t.resourceNotEditable}`}</span> : null}
         </div> : null}
         <div className={styles.sideBody}>
           {sideView === "files" ? renderTree(nodes) : null}
-          {sideView === "spine" ? <><div className={styles.orderAdd}><select aria-label={t.chooseChapter} value={spineCandidate} onChange={(event) => setSpineCandidate(event.target.value)}><option value="">{t.chooseChapter}</option>{session.files.filter((file) => (file.media_type === "application/xhtml+xml" || file.media_type === "text/html") && file.path !== session.nav_path && !session.spine.includes(file.path)).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select><button type="button" title={t.addToOrder} aria-label={t.addToOrder} disabled={!spineCandidate || busy} onClick={() => void updateSpine([...spineEntries(), { path: spineCandidate, linear: true }])}><Plus size={16} /></button></div>{session.spine.map((path, index) => <div key={path} className={styles.orderRow}><button type="button" onClick={() => void selectResource(path)}>{index + 1}. {path}</button><label className={styles.orderLinear} title={t.mainReading}><input type="checkbox" checked={session.spine_linear[path] !== false} disabled={busy} onChange={(event) => void updateSpine(spineEntries().map((entry) => entry.path === path ? { ...entry, linear: event.target.checked } : entry))} /><span>{t.mainReading}</span></label><button type="button" title={t.up} aria-label={`${t.up}: ${path}`} disabled={index === 0 || busy} onClick={() => void moveSpine(index, -1)}><ArrowUp size={16} /></button><button type="button" title={t.down} aria-label={`${t.down}: ${path}`} disabled={index === session.spine.length - 1 || busy} onClick={() => void moveSpine(index, 1)}><ArrowDown size={16} /></button><button type="button" title={t.removeFromOrder} aria-label={`${t.removeFromOrder}: ${path}`} disabled={session.spine.length <= 1 || busy} onClick={() => void updateSpine(spineEntries().filter((entry) => entry.path !== path))}><X size={16} /></button></div>)}</> : null}
           {sideView === "book" ? session.spine.map((path, index) => <button type="button" key={`${path}-${index}`} className={styles.bookChapter} aria-current={bookIndex === index ? "page" : undefined} title={path} onClick={() => setBookIndex(index)}><span>{index + 1}</span><strong>{session.toc.find((entry) => entry.href.split("#")[0] === path)?.label ?? path.split("/").at(-1)}</strong></button>) : null}
           {sideView === "toc" ? <>
             <div className={styles.tocActions}>
@@ -945,10 +977,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
               <button type="button" disabled={!tocDraft.length || busy} onClick={() => { setTocPageTitle(t.tocPageTitle); setTocPageOpen(true); }}>{t.generateTocPage}</button>
               <button type="button" disabled={!tocDirty || busy} onClick={() => void applyToc()}><Check size={16} />{t.applyToc}</button>
             </div>
-            {tocDraft.map((entry, index) => <div key={index} className={styles.tocRow} data-depth={entry.depth} style={{ marginLeft: `${Math.min(entry.depth, 8) * 18}px` }}>
-              <div className={styles.tocTitleRow}><span>{index + 1}</span><input aria-label={`${t.label} ${index + 1}`} value={entry.label} placeholder={t.label} onChange={(event) => updateEntry(index, { label: event.target.value })} /></div>
-              <div className={styles.tocTargetRow}><input aria-label={`${t.target} ${index + 1}`} value={entry.href} placeholder={t.target} onChange={(event) => updateEntry(index, { href: event.target.value })} /><button type="button" title={t.chooseTocTarget} aria-label={`${t.chooseTocTarget} ${index + 1}`} disabled={busy} onClick={() => void openTocPicker(index)}><ListTree size={15} /></button></div>
-              <div className={styles.tocButtons}>
+            {tocDraft.map((entry, index) => <div key={index} className={styles.tocRow} data-depth={entry.depth} style={{ marginLeft: `${Math.min(entry.depth, 8) * 12}px` }}>
+              <div className={styles.tocTitleRow}><span>{index + 1}</span><input aria-label={`${t.label} ${index + 1}`} title={entry.href} value={entry.label} placeholder={t.label} onChange={(event) => updateEntry(index, { label: event.target.value })} /><button type="button" className={styles.tocMore} title={t.chooseTocTarget} aria-label={`${t.chooseTocTarget} ${index + 1}`} disabled={busy} onClick={() => void openTocPicker(index)}><ListTree size={15} /></button><button type="button" className={styles.tocMore} title={t.tocEntryActions} aria-label={`${t.tocEntryActions} ${index + 1}`} aria-expanded={tocControlsIndex === index} onClick={() => setTocControlsIndex((current) => current === index ? null : index)}><MoreHorizontal size={16} /></button></div>
+              {tocControlsIndex === index ? <div className={styles.tocTargetRow}><input aria-label={`${t.target} ${index + 1}`} value={entry.href} placeholder={t.target} onChange={(event) => updateEntry(index, { href: event.target.value })} /></div> : null}
+              {tocControlsIndex === index ? <div className={styles.tocButtons}>
                 <button type="button" title={t.addSibling} aria-label={`${t.addSibling} ${index + 1}`} disabled={tocDraft.length >= 5000} onClick={() => addTocEntry(index)}><Plus size={15} /></button>
                 <button type="button" title={t.addChild} aria-label={`${t.addChild} ${index + 1}`} disabled={entry.depth >= 8 || tocDraft.length >= 5000} onClick={() => addTocEntry(index, true)}><CornerDownRight size={15} /></button>
                 <button type="button" title={t.up} aria-label={`${t.up} ${index + 1}`} disabled={siblingIndex(tocDraft, index, -1) < 0} onClick={() => moveEntry(index, -1)}><ArrowUp size={15} /></button>
@@ -956,7 +988,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
                 <button type="button" title={t.outdent} aria-label={`${t.outdent} ${index + 1}`} disabled={entry.depth === 0} onClick={() => outdentEntry(index)}><ArrowLeft size={15} /></button>
                 <button type="button" title={t.indent} aria-label={`${t.indent} ${index + 1}`} disabled={index === 0 || entry.depth >= tocDraft[index - 1].depth + 1 || tocDraft.slice(index, subtreeEnd(tocDraft, index)).some((child) => child.depth >= 8)} onClick={() => shiftDepth(index, 1)}><ArrowRight size={15} /></button>
                 <button type="button" title={t.removeEntry} aria-label={`${t.removeEntry} ${index + 1}`} onClick={() => removeEntry(index)}><X size={15} /></button>
-              </div>
+              </div> : null}
             </div>)}
           </> : null}
         </div>

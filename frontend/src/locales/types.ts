@@ -1280,7 +1280,7 @@ export interface Messages {
     bookPreview: string; previousChapter: string; nextChapter: string; previewInvalid: string;
     importTitle: string; importSubtitle: string; importPrompt: string; manualPath: string; recent: string; restoring: string;
     choose: string; open: string; close: string; dirtyClose: string; files: string; source: string; preview: string;
-    toc: string; spine: string; find: string; replace: string; query: string; replacement: string;
+    toc: string; find: string; replace: string; query: string; replacement: string;
     current: string; textFiles: string; styleFiles: string; all: string; selection: string; caseSensitive: string; regularExpression: string; matches: string;
     noMatches: string; previousMatch: string; nextMatch: string; narrowSearch: string;
     replaceOne: string; replaceAll: string; confirmReplace: string; save: string; saveAs: string;
@@ -1294,7 +1294,8 @@ export interface Messages {
     importResource: string; renameResource: string; replaceResource: string; exportResource: string; deleteResource: string;
     localFile: string; archivePath: string; addToSpine: string; applyResource: string; resourceSaved: string;
     resourceReferences: string; resourceNotEditable: string; confirmDeleteResource: string;
-    addToOrder: string; removeFromOrder: string; mainReading: string; chooseChapter: string;
+    addToOrder: string; removeFromOrder: string; chooseChapter: string;
+    fileOptions: string; markMain: string; markAuxiliary: string; auxiliaryReading: string; dragReadingOrder: string; tocEntryActions: string;
     chooseTocTarget: string; chapterStart: string; chooseAnchor: string;
     generateTocPage: string; tocPageTitle: string;
     chooseFile: string; confirmTarget: string;

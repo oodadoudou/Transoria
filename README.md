@@ -30,7 +30,7 @@ Transoria 是一个本地小说翻译桌面应用。导入 EPUB / TXT，完成�
 - **模型、Prompt 与预设**：支持主流供应商及 OpenAI 兼容接口；基础预设可一键切换模型、Prompt 和语言。翻译预设可选高级模式，设置总并发上限，并为各供应商线路分别指定 Prompt 与 RPM 上限；额度不足时等待，有额度的线路可接管尚未发出的分块，首轮失败后可按需使用兜底模型补救。
 - **术语提取与审查**：生成术语 XLSX 和参考文本，执行多轮审查、表格编辑并导入翻译术语表。
 - **请求记录与恢复**：查看耗时、token、回复和失败原因；保留截断或过滤回复中完整且可验证的分段，仅重试缺失内容，并可在任务停止、失败或应用重启后继续处理。
-- **EPUB / TXT 工具**：批量替换、压缩、合并、格式转换、支持编辑小说简介的元数据编辑和 EPUB 修复。内容编辑器可修改 XHTML/CSS，管理书内资源、目录与阅读顺序，按标题、分层正则或阅读顺序文件预览生成目录。源码可换行并缩放，章节与全书预览可缩放、切换自动换行，并显示内嵌样式与字体。搜索支持选区、文件范围及正则表达式，批量替换可先预览；修改可暂存到本地会话，正式保存时可另存或确认覆盖原书。
+- **EPUB / TXT 工具**：批量替换、压缩、合并、格式转换、支持编辑小说简介的元数据编辑和 EPUB 修复。内容编辑器可修改 XHTML/CSS，管理书内资源与紧凑的目录列表，在文件列表中拖动正文调整阅读顺序，并按标题、分层正则或阅读顺序文件预览生成目录。源码可换行并缩放，章节与全书预览可缩放、切换自动换行，并显示内嵌样式与字体。搜索支持选区、文件范围及正则表达式，批量替换可先预览；修改可暂存到本地会话，正式保存时可另存或确认覆盖原书。
 
 ### 推荐流程
 
@@ -93,7 +93,7 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 - **Models, prompts, and presets**: use major providers or OpenAI-compatible endpoints. Basic presets bundle model, prompt, and language settings; optional advanced translation presets set a shared concurrency ceiling, per-provider routes with their own prompts and RPM limits, and an optional fallback model for failed chunks. Routes with available capacity can take over unsent chunks while rate-limited routes wait.
 - **Glossary extraction and review**: generate glossary XLSX and reference text, run multi-round review, edit the final table, and import it into Translation.
 - **Request logs and recovery**: inspect latency, token usage, responses, and failures; preserve complete validated rows from truncated or filtered responses, retry only missing content, and continue unfinished work after stopping, failure, or application restart.
-- **EPUB / TXT tools**: batch replacement, compression, merging, conversion, metadata editing including book descriptions, and EPUB repair. The content editor supports XHTML/CSS, navigation and reading-order changes, page-width chapter previews with embedded styles and fonts, match navigation and scoped replacement, and restorable drafts before save-as or confirmed overwrite.
+- **EPUB / TXT tools**: batch replacement, compression, merging, conversion, metadata editing including book descriptions, and EPUB repair. The content editor supports XHTML/CSS and compact navigation editing, drag-to-reorder text files in the file list, page-width chapter previews with embedded styles and fonts, match navigation and scoped replacement, and restorable drafts before save-as or confirmed overwrite.
 
 ### Recommended Workflow
 

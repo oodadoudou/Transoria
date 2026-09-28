@@ -970,6 +970,25 @@ def test_malformed_xhtml_preview_recovers_without_changing_source(tmp_path: Path
     assert not session.dirty
 
 
+def test_preview_inlines_svg_cover_images_with_xlink_and_href(tmp_path: Path):
+    source = tmp_path / "svg-cover.epub"
+    _book(source)
+    cover = '''<html xmlns="http://www.w3.org/1999/xhtml"><body>
+      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 960 1440">
+        <image xlink:href="../Images/pixel.png" width="960" height="1440"/>
+        <image href="../Images/pixel.png" width="960" height="1440"/>
+        <image xlink:href="https://example.com/untrusted.png"/>
+      </svg></body></html>'''
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": cover})
+    session = ContentSession.open(str(source))
+    preview = session.preview(session.spine[0])
+    expected = f"data:image/png;base64,{base64.b64encode(b'image-bytes').decode('ascii')}"
+    assert preview.count(expected) == 2
+    assert "../Images/pixel.png" not in preview
+    assert "https://example.com" not in preview
+    assert not session.dirty
+
+
 def test_nonstandard_html_and_failed_encoding_leave_edits_atomic(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)

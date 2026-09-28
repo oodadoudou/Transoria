@@ -221,7 +221,6 @@
 .toolbar button,
 .tocActions button,
 .tocButtons button,
-.orderRow button,
 .searchControls button,
 .match button,
 .saveActions button {
@@ -240,7 +239,6 @@
 .toolbar button:hover:not(:disabled),
 .tocActions button:hover:not(:disabled),
 .tocButtons button:hover:not(:disabled),
-.orderRow button:hover:not(:disabled),
 .searchControls button:hover:not(:disabled),
 .match button:hover:not(:disabled),
 .saveActions button:hover:not(:disabled) {
@@ -419,6 +417,33 @@
   background: var(--panel-soft);
 }
 
+.fileMoreWrap {
+  position: relative;
+}
+
+.fileMoreMenu {
+  position: absolute;
+  z-index: 5;
+  top: 32px;
+  right: 0;
+  min-width: 170px;
+  padding: 4px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}
+
+.fileMoreMenu button {
+  width: 100%;
+  height: auto;
+  min-height: 30px;
+  justify-content: flex-start;
+  padding: 5px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
 .resourceInfo {
   flex: 1 1 100%;
   overflow: hidden;
@@ -545,7 +570,6 @@
 }
 
 .fileRow,
-.orderRow,
 .folderRow {
   display: flex;
   align-items: center;
@@ -555,6 +579,25 @@
 
 .fileRow.active {
   background: var(--panel-soft);
+}
+
+.fileRow button[draggable="true"] {
+  cursor: grab;
+  user-select: none;
+}
+
+.fileRow.dropBefore {
+  box-shadow: inset 0 2px var(--ink);
+}
+
+.fileRow.dropAfter {
+  box-shadow: inset 0 -2px var(--ink);
+}
+
+.auxiliaryLabel {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .folderRow button {
@@ -579,8 +622,7 @@
   flex-shrink: 0;
 }
 
-.fileRow button,
-.orderRow > button:first-child {
+.fileRow button {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -594,46 +636,6 @@
   font-size: 12px;
 }
 
-.orderRow > button:first-child {
-  justify-content: flex-start;
-}
-
-.orderAdd {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 2px 9px;
-}
-
-.orderAdd select {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 5px;
-  background: var(--panel);
-  color: var(--ink);
-}
-
-.orderAdd button {
-  width: 30px;
-  height: 30px;
-}
-
-.orderLinear {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  white-space: nowrap;
-  color: var(--ink-muted);
-  font-size: 11px;
-}
-
-.orderLinear input {
-  margin: 0;
-}
-
-.orderRow button:not(:first-child),
 .tocButtons button {
   width: 25px;
   min-height: 25px;
@@ -652,11 +654,11 @@
 
 .tocRow {
   display: grid;
-  gap: 3px;
-  margin-bottom: 6px;
-  border-left: 2px solid var(--hairline-strong);
+  gap: 0;
+  margin-bottom: 0;
+  border-left: 2px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
-  padding: 6px 7px 7px;
+  padding: 2px 3px 2px 5px;
 }
 
 .tocRow[data-depth="0"] {
@@ -667,28 +669,31 @@
 .tocTargetRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   min-width: 0;
 }
 
 .tocTitleRow > span {
-  flex: 0 0 20px;
+  flex: 0 0 18px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .tocRow input {
   flex: 1;
   min-width: 0;
   font-size: 12px;
+  min-height: 25px;
+  padding: 2px 4px;
 }
 
 .tocTitleRow input {
   font-weight: 600;
+  border-color: transparent;
 }
 
 .tocTargetRow {
-  padding-left: 26px;
+  padding-left: 21px;
 }
 
 .tocTargetRow input {
@@ -706,8 +711,18 @@
 .tocTargetRow button {
   display: grid;
   place-items: center;
-  flex: 0 0 26px;
-  min-height: 26px;
+  flex: 0 0 24px;
+  min-height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tocTitleRow .tocMore {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  min-height: 24px;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -715,6 +730,8 @@
 
 .tocButtons {
   justify-content: flex-end;
+  gap: 2px;
+  padding-top: 2px;
 }
 
 .tocPatternDialog {

@@ -1233,7 +1233,8 @@ class ContentSession:
             for key in list(node.attrib):
                 if etree.QName(key).localname.lower().startswith("on"):
                     del node.attrib[key]
-            for attr in ("src", "href", "poster"):
+            svg_href = "{http://www.w3.org/1999/xlink}href"
+            for attr in ("src", "href", "poster", svg_href):
                 value = node.get(attr)
                 if not value or value.startswith(("#", "data:")):
                     continue
@@ -1256,7 +1257,7 @@ class ContentSession:
                     node.getparent().replace(node, style)
                     break
                 if (
-                    attr in {"src", "poster"}
+                    (attr in {"src", "poster"} or (local == "image" and attr in {"href", svg_href}))
                     and known
                     and str(known["media_type"]).startswith("image/")
                 ):
@@ -1265,7 +1266,7 @@ class ContentSession:
                         attr,
                         f"data:{known['media_type']};base64,{base64.b64encode(data).decode('ascii')}",
                     )
-                elif attr == "href":
+                elif attr in {"href", svg_href}:
                     node.set(attr, "#")
                 else:
                     node.attrib.pop(attr, None)
