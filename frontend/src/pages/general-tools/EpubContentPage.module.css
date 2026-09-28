@@ -729,6 +729,28 @@
   font-size: 12px;
 }
 
+.tocSourceModes {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.tocSourceModes button {
+  border: 0;
+  border-radius: 0;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tocSourceModes button[aria-pressed="true"] {
+  background: var(--panel-soft);
+  color: var(--ink);
+  font-weight: 650;
+}
+
 .tocProposal {
   min-height: 0;
   max-height: 260px;

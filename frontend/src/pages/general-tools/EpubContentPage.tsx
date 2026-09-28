@@ -138,6 +138,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [tocPageOpen, setTocPageOpen] = useState(false);
   const [tocPageTitle, setTocPageTitle] = useState("");
   const [tocPatternOpen, setTocPatternOpen] = useState(false);
+  const [tocSource, setTocSource] = useState<"headings" | "files">("headings");
   const [tocPatterns, setTocPatterns] = useState(["", "", ""]);
   const [tocProposal, setTocProposal] = useState<EpubTocEntry[]>([]);
   const [sideView, setSideView] = useState<SideView>("files");
@@ -576,8 +577,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     if (!session) return;
     await run(async () => {
       await commitSource();
-      const patterns = tocPatterns.some(Boolean) ? tocPatterns : undefined;
-      const result = await epubContentBridge.previewToc(session.session_id, patterns);
+      const patterns = tocSource === "headings" && tocPatterns.some(Boolean) ? tocPatterns : undefined;
+      const result = await epubContentBridge.previewToc(session.session_id, patterns, tocSource);
       setTocProposal(result.entries);
     });
   };
@@ -585,8 +586,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const generateToc = async () => {
     if (!session || !tocProposal.length) return;
     await run(async () => {
-      const patterns = tocPatterns.some(Boolean) ? tocPatterns : undefined;
-      const next = await epubContentBridge.generateToc(session.session_id, patterns);
+      const patterns = tocSource === "headings" && tocPatterns.some(Boolean) ? tocPatterns : undefined;
+      const next = await epubContentBridge.generateToc(session.session_id, patterns, tocSource);
       setSession(next);
       setTocDraft(next.toc);
       setTocPatternOpen(false);
@@ -973,7 +974,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       </div>
     </div>}
     {replaceProposal ? <div className={styles.modalBackdrop}><div className={`${styles.saveDialog} ${styles.tocPatternDialog}`} role="dialog" aria-modal="true" aria-label={t.replacePreviewTitle}><h3>{t.replacePreviewTitle}</h3><p>{replaceProposal.replacements} {t.matches} · {replaceProposal.files_changed} {t.filesChanged}</p><div className={styles.tocProposal}>{replaceProposal.samples.map((sample, index) => <div key={`${sample.path}-${sample.start}-${index}`}><small>{sample.path}</small><span>{sample.before} → {sample.after}</span></div>)}</div><div className={styles.saveActions}><button type="button" onClick={() => setReplaceProposal(null)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy} onClick={() => void applyReplaceAll()}>{t.replaceAll}</button></div></div></div> : null}
-    {tocPatternOpen && session ? <div className={styles.modalBackdrop}><div className={`${styles.saveDialog} ${styles.tocPatternDialog}`} role="dialog" aria-modal="true" aria-label={t.generateToc}><h3>{t.generateToc}</h3><p>{t.tocPatternHelp}</p>{tocPatterns.map((pattern, index) => <label key={index}>{t.tocLevel} {index + 1}<input value={pattern} placeholder={t.tocPatternPlaceholder} onChange={(event) => { setTocPatterns((current) => current.map((value, position) => position === index ? event.target.value : value)); setTocProposal([]); }} /></label>)}<button type="button" disabled={busy} onClick={() => void previewGeneratedToc()}>{t.previewToc}</button>{tocProposal.length ? <div className={styles.tocProposal}>{tocProposal.map((entry, index) => <div key={`${entry.href}-${index}`} style={{ paddingLeft: `${entry.depth * 16}px` }}><strong>{entry.label}</strong><small>{entry.href}</small></div>)}</div> : null}<div className={styles.saveActions}><button type="button" onClick={() => setTocPatternOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={!tocProposal.length || busy} onClick={() => void generateToc()}>{t.applyToc}</button></div></div></div> : null}
+    {tocPatternOpen && session ? <div className={styles.modalBackdrop}><div className={`${styles.saveDialog} ${styles.tocPatternDialog}`} role="dialog" aria-modal="true" aria-label={t.generateToc}><h3>{t.generateToc}</h3><div className={styles.tocSourceModes}><button type="button" aria-pressed={tocSource === "headings"} onClick={() => { setTocSource("headings"); setTocProposal([]); }}>{t.fromHeadings}</button><button type="button" aria-pressed={tocSource === "files"} onClick={() => { setTocSource("files"); setTocProposal([]); }}>{t.fromFiles}</button></div><p>{tocSource === "files" ? t.tocFromFilesHelp : t.tocPatternHelp}</p>{tocSource === "headings" ? tocPatterns.map((pattern, index) => <label key={index}>{t.tocLevel} {index + 1}<input value={pattern} placeholder={t.tocPatternPlaceholder} onChange={(event) => { setTocPatterns((current) => current.map((value, position) => position === index ? event.target.value : value)); setTocProposal([]); }} /></label>) : null}<button type="button" disabled={busy} onClick={() => void previewGeneratedToc()}>{t.previewToc}</button>{tocProposal.length ? <div className={styles.tocProposal}>{tocProposal.map((entry, index) => <div key={`${entry.href}-${index}`} style={{ paddingLeft: `${entry.depth * 16}px` }}><strong>{entry.label}</strong><small>{entry.href}</small></div>)}</div> : null}<div className={styles.saveActions}><button type="button" onClick={() => setTocPatternOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={!tocProposal.length || busy} onClick={() => void generateToc()}>{t.applyToc}</button></div></div></div> : null}
     {tocPageOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.generateTocPage}><h3>{t.generateTocPage}</h3><label>{t.label}<input value={tocPageTitle} onChange={(event) => setTocPageTitle(event.target.value)} /></label><div className={styles.saveActions}><button type="button" onClick={() => setTocPageOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={!tocPageTitle.trim() || busy} onClick={() => void createTocPage()}>{t.generateTocPage}</button></div></div></div> : null}
     {tocPickerIndex !== null && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.chooseTocTarget}><h3>{t.chooseTocTarget}</h3><label>{t.chooseChapter}<select value={tocPickerPath} disabled={busy} onChange={(event) => void changeTocPickerPath(event.target.value)}>{session.files.filter((file) => (file.media_type === "application/xhtml+xml" || file.media_type === "text/html") && file.path !== session.nav_path).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select></label><label>{t.chooseAnchor}<select value={tocPickerAnchor} onChange={(event) => setTocPickerAnchor(event.target.value)}><option value="">{t.chapterStart}</option>{tocAnchors.map((anchor) => <option key={anchor.id} value={anchor.id}>{anchor.label} (#{anchor.id})</option>)}</select></label><div className={styles.saveActions}><button type="button" onClick={() => setTocPickerIndex(null)}>{t.cancel}</button><button type="button" className={styles.primary} onClick={() => { updateEntry(tocPickerIndex, { href: tocPickerPath + (tocPickerAnchor ? `#${encodeURIComponent(tocPickerAnchor)}` : "") }); setTocPickerIndex(null); }}>{t.confirmTarget}</button></div></div></div> : null}
     {resourceAction && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={{ add: t.importResource, rename: t.renameResource, replace: t.replaceResource, export: t.exportResource, delete: t.deleteResource }[resourceAction]}>

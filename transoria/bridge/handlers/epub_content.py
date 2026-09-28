@@ -154,11 +154,11 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
             elif action == "set_toc":
                 session.set_toc(_entries(payload))
             elif action == "generate_toc":
-                summary = session.generate_toc(_patterns(payload))
+                summary = session.generate_toc(_patterns(payload), source=str(payload.get("source", "headings")))
                 store.persist(session_id)
                 return {**summary, **session.info(session_id)}
             elif action == "preview_toc":
-                return session.generate_toc(_patterns(payload), preview_only=True)
+                return session.generate_toc(_patterns(payload), preview_only=True, source=str(payload.get("source", "headings")))
             elif action == "generate_toc_page":
                 path = session.generate_toc_page(expect_string(payload, "title"))
                 store.persist(session_id)

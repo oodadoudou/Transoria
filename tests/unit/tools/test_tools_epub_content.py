@@ -200,6 +200,42 @@ def test_regex_toc_rejects_invalid_patterns_without_mutating_session(tmp_path: P
         assert source.read_bytes() == source_before
 
 
+def test_toc_from_reading_order_files_previews_before_apply(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Generic</title></head><body><h1>First chapter</h1></body></html>',
+        "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>No heading</p></body></html>',
+    })
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    preview = session.generate_toc(source="files", preview_only=True)
+    assert preview["entries"] == [
+        {"label": "First chapter", "href": "OEBPS/Text/one.xhtml", "depth": 0},
+        {"label": "two", "href": "OEBPS/Text/two.xhtml", "depth": 0},
+    ]
+    assert not session.dirty
+    session.generate_toc(source="files")
+    assert session.toc == preview["entries"]
+    session.history("undo")
+    assert [entry["label"] for entry in session.toc] == ["One", "Two"]
+    assert source.read_bytes() == original
+
+
+def test_toc_file_mode_is_forwarded_through_bridge(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    preview = router.call("epub_content.preview_toc", {"session_id": sid, "source": "files"})
+    assert [entry["href"] for entry in preview["entries"]] == opened["spine"]
+    assert not router.call("epub_content.info", {"session_id": sid})["dirty"]
+    applied = router.call("epub_content.generate_toc", {"session_id": sid, "source": "files"})
+    assert applied["toc"] == preview["entries"]
+
+
 def test_toc_spine_save_as_and_source_protection(tmp_path: Path):
     source = tmp_path / "book.epub"
     target = tmp_path / "edited.epub"

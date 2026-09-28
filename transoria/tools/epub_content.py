@@ -818,10 +818,13 @@ class ContentSession:
             self.toc = normalized
 
     def generate_toc(
-        self, patterns: list[str] | None = None, preview_only: bool = False
+        self, patterns: list[str] | None = None, preview_only: bool = False,
+        source: str = "headings",
     ) -> dict[str, object]:
         if not self.nav_path and not self.ncx_path:
             raise ValueError("This EPUB has no editable navigation document.")
+        if source not in {"headings", "files"} or (source == "files" and patterns is not None):
+            raise ValueError("Choose headings or reading-order files for directory generation.")
         if patterns is not None and (
             not patterns or len(patterns) > 8 or not any(patterns)
             or any(not isinstance(pattern, str) or len(pattern) > 500 for pattern in patterns)
@@ -856,6 +859,18 @@ class ContentSession:
                     raise ValueError(f"Cannot read headings from malformed chapter: {path}") from exc
             except etree.ParserError as exc:
                 raise ValueError(f"Cannot read headings from chapter: {path}") from exc
+            if source == "files":
+                heading = next((node for node in root.iter() if isinstance(node.tag, str)
+                                and etree.QName(node).localname.lower() in {"h1", "h2"}), None)
+                title = next((node for node in root.iter() if isinstance(node.tag, str)
+                              and etree.QName(node).localname.lower() == "title"), None)
+                label = next((" ".join("".join(node.itertext()).split()) for node in (heading, title)
+                              if node is not None and " ".join("".join(node.itertext()).split())), "")
+                label = label[:200] or unquote(posixpath.splitext(posixpath.basename(path))[0])
+                if len(entries) >= 5000:
+                    raise ValueError("Table of contents is too large.")
+                entries.append((1, label, path))
+                continue
             body = next(
                 (node for node in root.iter() if isinstance(node.tag, str) and etree.QName(node).localname.lower() == "body"),
                 None,
