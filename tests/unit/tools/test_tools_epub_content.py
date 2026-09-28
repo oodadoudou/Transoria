@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import pytest
 from lxml import etree
 
 from transoria.bridge import BridgeError, BridgeRouter
 from transoria.bridge.handlers.epub_content import register
+from transoria.tools import epub_content as epub_content_module
 from transoria.tools.epub_content import ContentSession, ContentSessionStore
 
 
@@ -18,7 +22,7 @@ def _book(path: Path) -> None:
     opf = """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">test</dc:identifier><dc:title>Book</dc:title></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="one" href="Text/one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="Text/two.xhtml" media-type="application/xhtml+xml"/><item id="css" href="Styles/book.css" media-type="text/css"/><item id="img" href="Images/pixel.png" media-type="image/png"/></manifest><spine toc="ncx"><itemref idref="one"/><itemref idref="two"/></spine></package>"""
     nav = """<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="Text/one.xhtml">One</a></li><li><a href="Text/two.xhtml">Two</a></li></ol></nav><nav epub:type="landmarks"><ol><li><a href="Text/one.xhtml">Start</a></li></ol></nav></body></html>"""
     ncx = """<?xml version="1.0"?><ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><head/><docTitle><text>Book</text></docTitle><navMap><navPoint id="one" playOrder="1"><navLabel><text>One</text></navLabel><content src="Text/one.xhtml"/></navPoint><navPoint id="two" playOrder="2"><navLabel><text>Two</text></navLabel><content src="Text/two.xhtml"/></navPoint></navMap></ncx>"""
-    one = """<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/></head><body><p>Hello world.</p><img src="../Images/pixel.png"/><script>alert(1)</script><a href="https://example.com">Outside</a></body></html>"""
+    one = """<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/></head><body><p id="start">Hello world.</p><img src="../Images/pixel.png"/><script>alert(1)</script><a href="https://example.com">Outside</a></body></html>"""
     two = """<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>Hello again.</p></body></html>"""
     with zipfile.ZipFile(path, "w") as book:
         book.writestr(
@@ -174,12 +178,137 @@ def test_invalid_toc_and_xml_do_not_write_output(tmp_path: Path):
     session = ContentSession.open(str(source))
     with pytest.raises(ValueError, match="Invalid table-of-contents"):
         session.set_toc([{"label": "Bad", "href": "missing.xhtml", "depth": 0}])
+    with pytest.raises(ValueError, match="target is missing"):
+        session.set_toc([{"label": "Bad", "href": session.spine[0] + "#missing", "depth": 0}])
+    session.set_toc([{"label": "Start", "href": session.spine[0] + "#start", "depth": 0}])
     session.write(session.spine[0], "<html><bad></html>")
     with pytest.raises(ValueError, match="Invalid XML"):
         session.validate()
     with pytest.raises(ValueError, match="Invalid XML"):
         session.save(str(target), overwrite=False)
     assert not target.exists()
+
+
+def test_no_change_save_preserves_every_archive_entry(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "unchanged.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.save(str(output), overwrite=False)
+    with zipfile.ZipFile(source) as before, zipfile.ZipFile(output) as after:
+        assert before.namelist() == after.namelist()
+        assert [(info.filename, info.compress_type) for info in before.infolist()] == [
+            (info.filename, info.compress_type) for info in after.infolist()
+        ]
+        assert all(before.read(name) == after.read(name) for name in before.namelist())
+
+
+def test_one_paragraph_edit_only_changes_its_resource(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    session.write(path, session.read(path)["content"].replace("Hello world.", "Changed paragraph."))
+    session.save(str(output), overwrite=False)
+    with zipfile.ZipFile(source) as before, zipfile.ZipFile(output) as after:
+        assert before.namelist() == after.namelist()
+        assert [name for name in before.namelist() if before.read(name) != after.read(name)] == [path]
+
+
+def test_save_rejects_new_broken_toc_anchor_without_touching_source(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    session.set_toc([{"label": "Start", "href": path + "#start", "depth": 0}])
+    session.write(path, session.read(path)["content"].replace(' id="start"', ""))
+    with pytest.raises(ValueError, match="broken table-of-contents targets"):
+        session.save(str(output), overwrite=False)
+    assert source.read_bytes() == original
+    assert not output.exists()
+    assert session.dirty
+
+
+def test_existing_broken_toc_anchor_does_not_block_unrelated_save(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as book:
+        nav = book.read("OEBPS/nav.xhtml")
+    _rewrite_book(source, {"OEBPS/nav.xhtml": nav.replace(b'Text/one.xhtml"', b'Text/one.xhtml#old-missing"')})
+    session = ContentSession.open(str(source))
+    session.save(str(output), overwrite=False)
+    with zipfile.ZipFile(source) as before, zipfile.ZipFile(output) as after:
+        assert all(before.read(name) == after.read(name) for name in before.namelist())
+
+
+def test_bridge_serializes_save_and_later_edit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    session_id = opened["session_id"]
+    path = opened["spine"][0]
+    original_save = ContentSession.save
+    saving = Event()
+    release = Event()
+
+    def held_save(session: ContentSession, output_path: str, overwrite: bool):
+        saving.set()
+        assert release.wait(timeout=5)
+        return original_save(session, output_path, overwrite)
+
+    monkeypatch.setattr(ContentSession, "save", held_save)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        saved = executor.submit(
+            router.call,
+            "epub_content.save",
+            {"session_id": session_id, "output_path": str(output), "overwrite": False},
+        )
+        assert saving.wait(timeout=5)
+        edited = executor.submit(
+            router.call,
+            "epub_content.write",
+            {"session_id": session_id, "path": path, "content": opened["spine"][0] + " edited"},
+        )
+        time.sleep(0.05)
+        assert not edited.done()
+        release.set()
+        saved.result(timeout=5)
+        assert edited.result(timeout=5)["dirty"] is True
+    with zipfile.ZipFile(output) as archive:
+        assert b" edited" not in archive.read(path)
+
+
+def test_duplicate_and_unsafe_archive_paths_are_rejected(tmp_path: Path):
+    duplicate = tmp_path / "duplicate.epub"
+    _book(duplicate)
+    with zipfile.ZipFile(duplicate, "a") as archive:
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr("OEBPS/Text/one.xhtml", "<html/>")
+    with pytest.raises(ValueError, match="duplicate archive paths"):
+        ContentSession.open(str(duplicate))
+
+    unsafe = tmp_path / "unsafe.epub"
+    _book(unsafe)
+    with zipfile.ZipFile(unsafe, "a") as archive:
+        archive.writestr("../outside.txt", "outside")
+    with pytest.raises(ValueError, match="unsafe archive paths"):
+        ContentSession.open(str(unsafe))
+
+
+def test_preview_rejects_resources_over_budget_before_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    monkeypatch.setattr(epub_content_module, "MAX_PREVIEW_BYTES", 10)
+    with pytest.raises(ValueError, match="Preview resources exceed"):
+        session.preview(session.spine[0])
 
 
 def test_ncx_only_epub_can_edit_toc(tmp_path: Path):

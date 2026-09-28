@@ -119,6 +119,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [feedbackWarning, setFeedbackWarning] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
   const initialOpenStarted = useRef(false);
+  const operationInFlight = useRef(false);
 
   const editableFiles = useMemo(() => session?.files.filter((file) => file.editable) ?? [], [session]);
   const nodes = useMemo(() => fileTree(editableFiles), [editableFiles]);
@@ -178,6 +179,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   }, []);
 
   const run = useCallback(async <T,>(operation: () => Promise<T>): Promise<T | undefined> => {
+    if (operationInFlight.current) return undefined;
+    operationInFlight.current = true;
     setError("");
     setSessionExpired(false);
     setBusy(true);
@@ -189,6 +192,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setError(message);
       return undefined;
     } finally {
+      operationInFlight.current = false;
       setBusy(false);
     }
   }, []);
@@ -360,10 +364,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   const chooseBook = async () => {
-    await run(async () => {
-      const chosen = await dialogsBridge.chooseEpubFile(inputPath || undefined);
-      if (chosen.path) await openBook(chosen.path);
-    });
+    const chosen = await run(() => dialogsBridge.chooseEpubFile(inputPath || undefined));
+    if (chosen?.path) await openBook(chosen.path);
   };
 
   useEffect(() => {
@@ -519,6 +521,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   const requestClose = () => {
+    if (operationInFlight.current) return;
     if (!dirty) closeEditor();
     else setCloseOpen(true);
   };
@@ -665,7 +668,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         {sideView === "book" ? <div className={styles.bookReader}><div className={styles.readerToolbar}><strong>{t.bookPreview}</strong><span>{bookIndex + 1} / {session.spine.length}</span><div><button type="button" title={t.previousChapter} aria-label={t.previousChapter} disabled={bookIndex === 0} onClick={() => setBookIndex((index) => index - 1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextChapter} aria-label={t.nextChapter} disabled={bookIndex >= session.spine.length - 1} onClick={() => setBookIndex((index) => index + 1)}><ArrowRight size={18} /></button></div></div>{bookError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : bookLoading ? <div className={styles.noPreview}>{t.loading}</div> : <div className={styles.bookPage}><iframe key={session.spine[bookIndex]} ref={bookFrame} title={t.bookPreview} sandbox="" /></div>}</div> : <>
         <div className={styles.fileHeading}><strong title={selectedPath}>{selectedPath}</strong><div className={styles.paneSwitch}><button type="button" aria-selected={paneView === "source"} onClick={() => setPaneView("source")}>{t.source}</button><button type="button" aria-selected={paneView === "preview"} onClick={() => setPaneView("preview")}>{t.preview}</button></div>{busy ? <span>{t.loading}</span> : null}</div>
         <div className={styles.split} data-mode={paneView} style={{ "--source-width": `${sourceWidth}%` } as CSSProperties}>
-          <section className={styles.sourcePane}><h3>{t.source}</h3><CodeMirror value={content} onCreateEditor={(view) => { sourceEditor.current = view; }} onChange={(value) => { setContent(value); setMatches([]); setMatchIndex(-1); }} extensions={currentFile?.media_type === "text/css" ? [css()] : currentFile?.media_type === "text/plain" || currentFile?.media_type?.includes("javascript") ? [] : [xml()]} theme={colorTheme} height="100%" basicSetup={{ lineNumbers: true, foldGutter: true }} /></section>
+          <section className={styles.sourcePane}><h3>{t.source}</h3><CodeMirror value={content} editable={!busy} onCreateEditor={(view) => { sourceEditor.current = view; }} onChange={(value) => { setContent(value); setMatches([]); setMatchIndex(-1); }} extensions={currentFile?.media_type === "text/css" ? [css()] : currentFile?.media_type === "text/plain" || currentFile?.media_type?.includes("javascript") ? [] : [xml()]} theme={colorTheme} height="100%" basicSetup={{ lineNumbers: true, foldGutter: true }} /></section>
           {separator("source", sourceWidth)}
           <section className={styles.previewPane}><h3>{t.preview}</h3>{previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : ((isHtml && selectedPath !== session.nav_path) || currentFile?.media_type === "text/css") && previewPath ? <iframe ref={previewFrame} title={t.preview} sandbox="" /> : <div className={styles.noPreview}>{t.noPreview}</div>}</section>
         </div>

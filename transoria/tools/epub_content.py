@@ -15,7 +15,8 @@ import uuid
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from typing import Callable
+from urllib.parse import quote, unquote, urlsplit
 
 from lxml import etree
 from lxml import html as lxml_html
@@ -52,6 +53,9 @@ EDITABLE_TYPES = TEXT_TYPES | XML_TYPES | {
 }
 MAX_TEXT_BYTES = 4_000_000
 MAX_PREVIEW_BYTES = 48_000_000
+MAX_PACKAGE_BYTES = 32_000_000
+MAX_ARCHIVE_BYTES = 2_000_000_000
+MAX_ARCHIVE_ENTRIES = 100_000
 
 
 def _xml(data: bytes) -> etree._Element:
@@ -60,6 +64,12 @@ def _xml(data: bytes) -> etree._Element:
 
 def _serialize(root: etree._Element) -> bytes:
     return etree.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _package_bytes(archive: zipfile.ZipFile, path: str) -> bytes:
+    if archive.getinfo(path).file_size > MAX_PACKAGE_BYTES:
+        raise ValueError(f"EPUB package resource is too large: {path}")
+    return archive.read(path)
 
 
 def _fingerprint(path: Path) -> tuple[int, int]:
@@ -122,6 +132,49 @@ def _editor_text(data: bytes, media_type: str) -> str:
     return _decode(formatted)[0]
 
 
+def _document_ids(data: bytes) -> set[str]:
+    try:
+        root = _xml(data)
+    except etree.XMLSyntaxError:
+        root = lxml_html.fromstring(data, parser=lxml_html.HTMLParser(no_network=True))
+    return {
+        value
+        for node in root.iter()
+        if isinstance(node.tag, str)
+        for value in (
+            node.get("id"),
+            node.get("{http://www.w3.org/XML/1998/namespace}id"),
+            node.get("name"),
+        )
+        if value
+    }
+
+
+def _missing_toc_fragments(
+    archive: zipfile.ZipFile, entries: list[dict[str, object]]
+) -> set[str]:
+    ids_by_path: dict[str, set[str]] = {}
+    missing: set[str] = set()
+    for entry in entries:
+        href = str(entry["href"])
+        path, separator, raw_fragment = href.partition("#")
+        fragment = unquote(raw_fragment)
+        if not separator or not fragment or fragment.startswith("epubcfi("):
+            continue
+        if path not in ids_by_path:
+            try:
+                ids_by_path[path] = (
+                    _document_ids(archive.read(path))
+                    if archive.getinfo(path).file_size <= MAX_PREVIEW_BYTES
+                    else set()
+                )
+            except (KeyError, etree.ParserError, etree.XMLSyntaxError):
+                ids_by_path[path] = set()
+        if fragment not in ids_by_path[path]:
+            missing.add(href)
+    return missing
+
+
 @dataclass
 class ContentSession:
     path: Path
@@ -147,7 +200,18 @@ class ContentSession:
         if not source.is_file() or source.suffix.lower() != ".epub":
             raise ValueError("Select an existing EPUB file.")
         with zipfile.ZipFile(source) as archive:
-            container = _xml(archive.read("META-INF/container.xml"))
+            infos = archive.infolist()
+            names = [info.filename for info in infos]
+            if len(infos) > MAX_ARCHIVE_ENTRIES or sum(info.file_size for info in infos) > MAX_ARCHIVE_BYTES:
+                raise ValueError("EPUB exceeds the editor archive limit.")
+            if len(names) != len(set(names)):
+                raise ValueError("EPUB has duplicate archive paths; repair it before editing.")
+            if any(
+                name.startswith("/") or "\\" in name or ".." in name.split("/")
+                for name in names
+            ):
+                raise ValueError("EPUB has unsafe archive paths.")
+            container = _xml(_package_bytes(archive, "META-INF/container.xml"))
             rootfile = container.find(".//{*}rootfile")
             if rootfile is None or not rootfile.get("full-path"):
                 raise ValueError("EPUB package document is missing.")
@@ -156,7 +220,7 @@ class ContentSession:
             )
             if not opf_path:
                 raise ValueError("EPUB package document is missing.")
-            opf = _xml(archive.read(opf_path))
+            opf = _xml(_package_bytes(archive, opf_path))
             files: list[dict[str, object]] = []
             id_to_path: dict[str, str] = {}
             nav_path = ncx_path = ""
@@ -169,13 +233,16 @@ class ContentSession:
                 entry = find_archive_entry_by_normalized_path(archive, resolved)
                 if not entry:
                     continue
+                size = archive.getinfo(entry).file_size
+                if media in EDITABLE_TYPES and size > MAX_PREVIEW_BYTES:
+                    raise ValueError(f"EPUB text resource is too large to edit safely: {entry}")
                 id_to_path[item_id] = entry
                 files.append(
                     {
                         "path": entry,
                         "media_type": media,
                         "editable": media in EDITABLE_TYPES,
-                        "size": archive.getinfo(entry).file_size,
+                        "size": size,
                     }
                 )
                 if "nav" in item.get("properties", "").split():
@@ -289,6 +356,7 @@ class ContentSession:
             if item["media_type"] in {"application/xhtml+xml", "text/html"}
         }
         normalized: list[dict[str, object]] = []
+        target_ids: dict[str, set[str]] = {}
         for index, entry in enumerate(entries):
             label = str(entry.get("label", "")).strip()
             href = str(entry.get("href", "")).strip()
@@ -305,6 +373,14 @@ class ContentSession:
                 or (index > 0 and depth > int(normalized[-1]["depth"]) + 1)
             ):
                 raise ValueError(f"Invalid table-of-contents entry at row {index + 1}.")
+            fragment = unquote(href.partition("#")[2])
+            if fragment and not fragment.startswith("epubcfi("):
+                if target not in target_ids:
+                    target_ids[target] = _document_ids(self._bytes(target))
+                if fragment not in target_ids[target]:
+                    raise ValueError(
+                        f"Table-of-contents target is missing at row {index + 1}: {href}"
+                    )
             normalized.append({"label": label, "href": href, "depth": depth})
         if normalized != self.toc:
             self._record()
@@ -417,7 +493,24 @@ class ContentSession:
             drafts[draft_path] = _encode(
                 draft_content, _decode(self._bytes(draft_path))[1]
             )
-        markup_bytes = drafts.get(path, self._bytes(path))
+        preview_cache: dict[str, bytes] = {}
+        remaining = MAX_PREVIEW_BYTES
+
+        def preview_bytes(resource_path: str) -> bytes:
+            nonlocal remaining
+            if resource_path not in preview_cache:
+                if resource_path not in drafts and int(self._file(resource_path)["size"]) > remaining:
+                    raise ValueError("Preview resources exceed the 48 MB limit.")
+                data = drafts[resource_path] if resource_path in drafts else self._bytes(resource_path)
+                if len(data) > remaining:
+                    raise ValueError("Preview resources exceed the 48 MB limit.")
+                remaining -= len(data)
+                preview_cache[resource_path] = data
+            return preview_cache[resource_path]
+
+        if int(item["size"]) > MAX_PREVIEW_BYTES and path not in drafts:
+            raise ValueError("Preview resources exceed the 48 MB limit.")
+        markup_bytes = preview_bytes(path)
         if item["media_type"] == "text/html":
             root = lxml_html.fromstring(markup_bytes)
         else:
@@ -435,9 +528,9 @@ class ContentSession:
                     parent.remove(node)
                 continue
             if local == "style" and node.text:
-                node.text = _inline_css(node.text, path, self, drafts)
+                node.text = _inline_css(node.text, path, self, drafts, read_bytes=preview_bytes)
             if node.get("style"):
-                node.set("style", _inline_css(node.get("style", ""), path, self, drafts))
+                node.set("style", _inline_css(node.get("style", ""), path, self, drafts, read_bytes=preview_bytes))
             for key in list(node.attrib):
                 if etree.QName(key).localname.lower().startswith("on"):
                     del node.attrib[key]
@@ -458,9 +551,9 @@ class ContentSession:
                     and known
                     and known["media_type"] == "text/css"
                 ):
-                    css = _decode(drafts.get(target, self._bytes(target)))[0]
+                    css = _decode(preview_bytes(target))[0]
                     style = etree.Element(f"{{{XHTML}}}style" if etree.QName(root).namespace == XHTML else "style")
-                    style.text = _inline_css(css, target, self, drafts)
+                    style.text = _inline_css(css, target, self, drafts, read_bytes=preview_bytes)
                     node.getparent().replace(node, style)
                     break
                 if (
@@ -468,7 +561,7 @@ class ContentSession:
                     and known
                     and str(known["media_type"]).startswith("image/")
                 ):
-                    data = self._bytes(target)
+                    data = preview_bytes(target)
                     node.set(
                         attr,
                         f"data:{known['media_type']};base64,{base64.b64encode(data).decode('ascii')}",
@@ -564,6 +657,9 @@ class ContentSession:
                     except etree.XMLSyntaxError as exc:
                         raise ValueError(f"Invalid XML in {path}: {exc}") from exc
             before_check = inspect_epub_structure(self.path)
+            before_missing_fragments = _missing_toc_fragments(
+                source, _read_toc(source, self.nav_path, self.ncx_path)
+            )
             fd, temp_name = tempfile.mkstemp(
                 prefix=".epub-content-", suffix=".epub", dir=output.parent
             )
@@ -586,6 +682,15 @@ class ContentSession:
                     bad = check_archive.testzip()
                     if bad:
                         raise ValueError(f"EPUB archive corruption: {bad}")
+                    added_missing_fragments = _missing_toc_fragments(
+                        check_archive,
+                        _read_toc(check_archive, self.nav_path, self.ncx_path),
+                    ) - before_missing_fragments
+                    if added_missing_fragments:
+                        raise ValueError(
+                            "New broken table-of-contents targets: "
+                            + ", ".join(sorted(added_missing_fragments)[:5])
+                        )
                 after_check = inspect_epub_structure(temp)
                 if after_check["status"] == "failed":
                     raise ValueError(
@@ -632,7 +737,7 @@ def _read_toc(
     archive: zipfile.ZipFile, nav_path: str, ncx_path: str
 ) -> list[dict[str, object]]:
     if nav_path:
-        root = _xml(archive.read(nav_path))
+        root = _xml(_package_bytes(archive, nav_path))
         nav = next(
             (
                 n
@@ -658,7 +763,7 @@ def _read_toc(
             if ol is not None:
                 return _toc_from_nav(ol, nav_path, archive)
     if ncx_path:
-        root = _xml(archive.read(ncx_path))
+        root = _xml(_package_bytes(archive, ncx_path))
         nav_map = root.find(f".//{{{NCX}}}navMap")
         if nav_map is not None:
             result: list[dict[str, object]] = []
@@ -816,8 +921,10 @@ def _write_ncx(data: bytes, path: str, entries: list[dict[str, object]]) -> byte
 def _inline_css(
     css: str, base: str, session: ContentSession,
     drafts: dict[str, bytes] | None = None, visited: frozenset[str] = frozenset(),
+    read_bytes: Callable[[str], bytes] | None = None,
 ) -> str:
     drafts = drafts or {}
+    read_bytes = read_bytes or session._bytes
     if base in visited:
         return ""
     visited = visited | {base}
@@ -830,9 +937,9 @@ def _inline_css(
         item = next((file for file in session.files if file["path"] == path), None)
         if not item or item["media_type"] != "text/css":
             return ""
-        if len(session._bytes(path)) > MAX_TEXT_BYTES:
+        if len(read_bytes(path)) > MAX_TEXT_BYTES:
             return ""
-        imported = _inline_css(_decode(drafts.get(path, session._bytes(path)))[0], path, session, drafts, visited)
+        imported = _inline_css(_decode(read_bytes(path))[0], path, session, drafts, visited, read_bytes)
         media = match.group(5).strip()
         return f"@media {media} {{{imported}}}" if media and not media.startswith(("layer", "supports")) else imported
 
@@ -854,7 +961,7 @@ def _inline_css(
         item = next((file for file in session.files if file["path"] == path), None)
         if not item:
             return "url()"
-        data = drafts.get(path, session._bytes(path))
+        data = read_bytes(path)
         media = (
             str(item["media_type"])
             or mimetypes.guess_type(path)[0]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+from threading import RLock
 from typing import Mapping
 
 from lxml import etree
@@ -30,6 +31,7 @@ def _entries(payload: Mapping[str, object]) -> list[dict[str, object]]:
 
 def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
     store = ContentSessionStore(cache_root / "epub-editor-sessions" if cache_root else None)
+    lock = RLock()
 
     def run(payload: Mapping[str, object], action: str) -> dict[str, object]:
         try:
@@ -143,7 +145,11 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "validate",
         "save",
     ):
+        def locked_run(payload: Mapping[str, object], action: str = action) -> dict[str, object]:
+            with lock:
+                return run(payload, action)
+
         router.register(
             f"epub_content.{action}",
-            lambda payload, action=action: run(payload, action),
+            locked_run,
         )
