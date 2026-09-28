@@ -1135,6 +1135,9 @@ export const epubContentBridge = {
   info(sessionId: string): Promise<EpubContentSession> {
     return call("epub_content.info", { session_id: sessionId });
   },
+  checkpoint(sessionId: string): Promise<EpubContentSession> {
+    return call("epub_content.checkpoint", { session_id: sessionId });
+  },
   close(sessionId: string): Promise<{ closed: boolean }> {
     return call("epub_content.close", { session_id: sessionId });
   },
@@ -1174,11 +1177,14 @@ export const epubContentBridge = {
   validate(sessionId: string): Promise<{ structure_check: { status: string; warnings?: string[]; missing_entries?: string[] } }> {
     return call("epub_content.validate", { session_id: sessionId });
   },
-  search(sessionId: string, query: string, paths: string[], caseSensitive: boolean, regularExpression = false): Promise<{ matches: EpubContentMatch[] }> {
-    return call("epub_content.search", { session_id: sessionId, query, paths, case_sensitive: caseSensitive, regular_expression: regularExpression });
+  search(sessionId: string, query: string, paths: string[], caseSensitive: boolean, regularExpression = false, selection?: { path: string; start: number; end: number }): Promise<{ matches: EpubContentMatch[] }> {
+    return call("epub_content.search", { session_id: sessionId, query, paths, case_sensitive: caseSensitive, regular_expression: regularExpression, selection });
   },
-  replace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, expectedCount: number, regularExpression = false): Promise<EpubContentSession & { replacements: number; files_changed: number }> {
-    return call("epub_content.replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, expected_count: expectedCount, regular_expression: regularExpression });
+  previewReplace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, regularExpression = false, selection?: { path: string; start: number; end: number }): Promise<{ replacements: number; files_changed: number; fingerprints: Record<string, string>; samples: Array<{ path: string; start: number; before: string; after: string }> }> {
+    return call("epub_content.preview_replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, regular_expression: regularExpression, selection });
+  },
+  replace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, expectedCount: number, regularExpression = false, selection?: { path: string; start: number; end: number }, expectedFingerprints?: Record<string, string>): Promise<EpubContentSession & { replacements: number; files_changed: number }> {
+    return call("epub_content.replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, expected_count: expectedCount, regular_expression: regularExpression, selection, expected_fingerprints: expectedFingerprints });
   },
   replaceMatch(sessionId: string, query: string, replacement: string, match: EpubContentMatch, caseSensitive: boolean, regularExpression = false): Promise<EpubContentSession> {
     return call("epub_content.replace_match", { session_id: sessionId, query, replacement, ...match, case_sensitive: caseSensitive, regular_expression: regularExpression });
@@ -1192,8 +1198,11 @@ export const epubContentBridge = {
   setToc(sessionId: string, entries: EpubTocEntry[]): Promise<EpubContentSession> {
     return call("epub_content.set_toc", { session_id: sessionId, entries });
   },
-  generateToc(sessionId: string): Promise<EpubContentSession & { generated_entries: number; approximate_targets: number }> {
-    return call("epub_content.generate_toc", { session_id: sessionId });
+  generateToc(sessionId: string, patterns?: string[]): Promise<EpubContentSession & { generated_entries: number; approximate_targets: number }> {
+    return call("epub_content.generate_toc", { session_id: sessionId, patterns });
+  },
+  previewToc(sessionId: string, patterns?: string[]): Promise<{ generated_entries: number; approximate_targets: number; entries: EpubTocEntry[] }> {
+    return call("epub_content.preview_toc", { session_id: sessionId, patterns });
   },
   generateTocPage(sessionId: string, title: string): Promise<EpubContentSession & { generated_path: string }> {
     return call("epub_content.generate_toc_page", { session_id: sessionId, title });

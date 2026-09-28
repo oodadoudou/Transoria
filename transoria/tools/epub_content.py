@@ -103,6 +103,19 @@ def _search_pattern(query: str, case_sensitive: bool, regular_expression: bool):
         raise ValueError(f"Invalid regular expression: {exc}") from exc
 
 
+def _selection_bounds(path: str, content: str, selection: dict[str, object] | None) -> tuple[int, int]:
+    if selection is None:
+        return 0, len(content)
+    start = selection.get("start")
+    end = selection.get("end")
+    if (
+        selection.get("path") != path or not isinstance(start, int)
+        or not isinstance(end, int) or not 0 <= start < end <= len(content)
+    ):
+        raise ValueError("Selected text changed; select it again.")
+    return start, end
+
+
 def _encode(text: str, encoding: str) -> bytes:
     try:
         return text.encode(encoding)
@@ -115,6 +128,8 @@ def _encode(text: str, encoding: str) -> bytes:
 STRUCTURAL_TAGS = {
     "html", "head", "body", "nav", "ol", "ul", "li", "div", "section",
     "article", "table", "thead", "tbody", "tfoot", "tr", "dl", "dt", "dd",
+    "ncx", "navmap", "navpoint", "navlabel", "pagelist", "pagetarget",
+    "doctitle", "docauthor",
 }
 
 
@@ -802,9 +817,21 @@ class ContentSession:
             self._record()
             self.toc = normalized
 
-    def generate_toc(self) -> dict[str, int]:
+    def generate_toc(
+        self, patterns: list[str] | None = None, preview_only: bool = False
+    ) -> dict[str, object]:
         if not self.nav_path and not self.ncx_path:
             raise ValueError("This EPUB has no editable navigation document.")
+        if patterns is not None and (
+            not patterns or len(patterns) > 8 or not any(patterns)
+            or any(not isinstance(pattern, str) or len(pattern) > 500 for pattern in patterns)
+        ):
+            raise ValueError("Provide one to eight directory level patterns under 500 characters.")
+        compiled = [
+            _search_pattern(pattern, False, True) if pattern else None
+            for pattern in patterns or []
+        ]
+        deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
         entries: list[tuple[int, str, str]] = []
         pending: dict[str, bytes] = {}
         approximate_targets = 0
@@ -843,11 +870,45 @@ class ContentSession:
                 if not isinstance(node.tag, str):
                     continue
                 tag = etree.QName(node).localname.lower()
-                if tag not in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                if tag not in {"h1", "h2", "h3", "h4", "h5", "h6"} | ({"p", "div"} if patterns is not None else set()):
+                    continue
+                if tag == "div" and any(
+                    isinstance(child.tag, str) and etree.QName(child).localname.lower() in {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6"}
+                    for child in node
+                ):
+                    continue
+                if tag == "p" and any(
+                    isinstance(ancestor.tag, str)
+                    and etree.QName(ancestor).localname.lower() in {"h1", "h2", "h3", "h4", "h5", "h6"}
+                    for ancestor in node.iterancestors()
+                ):
                     continue
                 label = " ".join("".join(node.itertext()).split())
-                if not label:
+                if not label or len(label) > 200:
                     continue
+                level = int(tag[1]) if tag.startswith("h") else 1
+                if patterns is not None:
+                    matched = False
+                    for index, pattern in enumerate(compiled):
+                        if pattern is None:
+                            continue
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise ValueError("Directory extraction timed out; narrow the patterns.")
+                        try:
+                            hit = pattern.search(label, timeout=remaining)
+                        except TimeoutError as exc:
+                            raise ValueError("Directory extraction timed out; narrow the patterns.") from exc
+                        if hit:
+                            if hit.start() == hit.end():
+                                raise ValueError("Zero-width directory matches are not supported.")
+                            label = hit.groupdict().get("title") or (hit.group(1) if hit.lastindex else label)
+                            label = " ".join(label.split())
+                            level = index + 1
+                            matched = True
+                            break
+                    if not matched or not label:
+                        continue
                 if len(entries) >= 5000:
                     raise ValueError("Table of contents is too large.")
                 identifier = node.get("id", "")
@@ -856,7 +917,7 @@ class ContentSession:
                         if used_chapter_start:
                             continue
                         used_chapter_start = True
-                        entries.append((int(tag[1]), label, path))
+                        entries.append((level, label, path))
                         approximate_targets += 1
                         continue
                     index = len(entries) + 1
@@ -868,7 +929,7 @@ class ContentSession:
                     ids.add(identifier)
                     changed = True
                 used_targets.add(identifier)
-                entries.append((int(tag[1]), label, f"{path}#{quote(identifier, safe='-._~')}"))
+                entries.append((level, label, f"{path}#{quote(identifier, safe='-._~')}"))
             if changed:
                 pending[path] = etree.tostring(
                     root.getroottree() if media == "application/xhtml+xml" else root,
@@ -876,6 +937,8 @@ class ContentSession:
                     method="xml" if media == "application/xhtml+xml" else "html",
                 )
         if not entries:
+            if patterns is not None:
+                raise ValueError("No table-of-contents entries matched these patterns in the reading order.")
             raise ValueError("No chapter headings were found in the reading order.")
         base_level = min(level for level, _, _ in entries)
         generated: list[dict[str, object]] = []
@@ -883,11 +946,16 @@ class ContentSession:
             depth = min(8, level - base_level)
             depth = min(depth, int(generated[-1]["depth"]) + 1) if generated else 0
             generated.append({"label": label, "href": href, "depth": depth})
-        if pending or generated != self.toc:
+        if not preview_only and (pending or generated != self.toc):
             self._record()
             self.changes.update(pending)
             self.toc = generated
-        return {"generated_entries": len(generated), "approximate_targets": approximate_targets}
+        result: dict[str, object] = {
+            "generated_entries": len(generated), "approximate_targets": approximate_targets,
+        }
+        if preview_only:
+            result["entries"] = generated
+        return result
 
     def generate_toc_page(self, title: str) -> str:
         title = title.strip()
@@ -926,6 +994,7 @@ class ContentSession:
     def search(
         self, query: str, paths: list[str], case_sensitive: bool = False,
         regular_expression: bool = False,
+        selection: dict[str, object] | None = None,
     ) -> list[dict[str, object]]:
         if not query:
             return []
@@ -942,11 +1011,12 @@ class ContentSession:
             if len(data) > MAX_TEXT_BYTES:
                 continue
             content = _editor_text(data, str(item["media_type"]))
+            start, end = _selection_bounds(path, content, selection)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ValueError("Search timed out; narrow the scope or pattern.")
             try:
-                for match in pattern.finditer(content, timeout=remaining):
+                for match in pattern.finditer(content, pos=start, endpos=end, timeout=remaining):
                     if match.start() == match.end():
                         raise ValueError("Zero-width search matches are not supported.")
                     results.append(
@@ -975,13 +1045,50 @@ class ContentSession:
         case_sensitive: bool = False,
         expected_count: int | None = None,
         regular_expression: bool = False,
+        selection: dict[str, object] | None = None,
+        expected_fingerprints: dict[str, str] | None = None,
     ) -> dict[str, object]:
+        pending, total, _, _ = self._replacement_plan(
+            query, replacement, paths, case_sensitive, regular_expression,
+            selection, expected_fingerprints,
+        )
+        if expected_count is not None and total != expected_count:
+            raise ValueError("Search results changed; search again before replacing.")
+        if pending:
+            self._record()
+            self.changes.update(pending)
+        return {"replacements": total, "files_changed": len(pending)}
+
+    def preview_replace(
+        self, query: str, replacement: str, paths: list[str],
+        case_sensitive: bool = False, regular_expression: bool = False,
+        selection: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        pending, total, samples, fingerprints = self._replacement_plan(
+            query, replacement, paths, case_sensitive, regular_expression,
+            selection, None,
+        )
+        return {
+            "replacements": total, "files_changed": len(pending),
+            "samples": samples, "fingerprints": fingerprints,
+        }
+
+    def _replacement_plan(
+        self, query: str, replacement: str, paths: list[str],
+        case_sensitive: bool, regular_expression: bool,
+        selection: dict[str, object] | None,
+        expected_fingerprints: dict[str, str] | None,
+    ) -> tuple[dict[str, bytes], int, list[dict[str, object]], dict[str, str]]:
         if not query:
             raise ValueError("Search text is required.")
+        if len(query) > 2000:
+            raise ValueError("Search text is too long.")
         pattern = _search_pattern(query, case_sensitive, regular_expression)
         deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
         pending: dict[str, bytes] = {}
         total = 0
+        samples: list[dict[str, object]] = []
+        fingerprints: dict[str, str] = {}
         for path in dict.fromkeys(paths):
             item = self._file(path, editable=True)
             if int(item["size"]) > MAX_TEXT_BYTES and path not in self.changes:
@@ -989,30 +1096,42 @@ class ContentSession:
             data = self._bytes(path)
             if len(data) > MAX_TEXT_BYTES:
                 raise ValueError(f"Resource exceeds the editor limit: {path}")
+            fingerprint = hashlib.sha256(data).hexdigest()
+            if expected_fingerprints is not None and expected_fingerprints.get(path) != fingerprint:
+                raise ValueError("Search results changed; preview replacement again.")
+            fingerprints[path] = fingerprint
             content = _editor_text(data, str(item["media_type"]))
+            start, end = _selection_bounds(path, content, selection)
             encoding = _decode(data)[1]
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ValueError("Replacement timed out; narrow the scope or pattern.")
-            def substitute(match: regex.Match) -> str:
-                if match.start() == match.end():
-                    raise ValueError("Zero-width search matches are not supported.")
-                return match.expand(replacement) if regular_expression else replacement
+            pieces: list[str] = []
+            cursor = start
+            count = 0
             try:
-                updated, count = pattern.subn(substitute, content, timeout=remaining)
+                for match in pattern.finditer(content, pos=start, endpos=end, timeout=remaining):
+                    if match.start() == match.end():
+                        raise ValueError("Zero-width search matches are not supported.")
+                    after = match.expand(replacement) if regular_expression else replacement
+                    pieces.extend((content[cursor:match.start()], after))
+                    cursor = match.end()
+                    count += 1
+                    if len(samples) < 30:
+                        samples.append({
+                            "path": path, "start": match.start(),
+                            "before": match.group(), "after": after,
+                        })
             except TimeoutError as exc:
                 raise ValueError("Replacement timed out; narrow the scope or pattern.") from exc
             except (regex.error, IndexError, KeyError) as exc:
                 raise ValueError(f"Invalid replacement expression: {exc}") from exc
             if count:
-                pending[path] = _encode(updated, encoding)
+                pieces.append(content[cursor:end])
+                updated = "".join(pieces)
+                pending[path] = _encode(content[:start] + updated + content[end:], encoding)
                 total += count
-        if expected_count is not None and total != expected_count:
-            raise ValueError("Search results changed; search again before replacing.")
-        if pending:
-            self._record()
-            self.changes.update(pending)
-        return {"replacements": total, "files_changed": len(pending)}
+        return pending, total, samples, fingerprints
 
     def replace_match(
         self,

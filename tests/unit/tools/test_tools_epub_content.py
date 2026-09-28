@@ -130,6 +130,76 @@ def test_editor_session_survives_backend_restart(tmp_path: Path):
     assert source.read_bytes() == original
 
 
+def test_checkpoint_restores_draft_without_writing_epub(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    cache_root = tmp_path / "cache"
+    router = BridgeRouter()
+    register(router, cache_root=cache_root)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    session_id = opened["session_id"]
+    path = opened["spine"][0]
+    before = router.call("epub_content.read", {"session_id": session_id, "path": path})["content"]
+    router.call("epub_content.write", {"session_id": session_id, "path": path, "content": before.replace("Hello world", "Checkpoint text")})
+    assert router.call("epub_content.checkpoint", {"session_id": session_id})["dirty"]
+    restarted = BridgeRouter()
+    register(restarted, cache_root=cache_root)
+    assert "Checkpoint text" in restarted.call("epub_content.read", {"session_id": session_id, "path": path})["content"]
+    assert source.read_bytes() == original
+
+
+def test_navigation_source_is_indented_without_changing_archive(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    nav = session.read("OEBPS/nav.xhtml")["content"]
+    ncx = session.read("OEBPS/toc.ncx")["content"]
+    assert "\n    <nav" in nav
+    assert "\n  <navMap>" in ncx
+    assert "\n    <navPoint" in ncx
+    assert source.read_bytes() == original
+
+
+def test_regex_toc_preview_and_apply_are_separate(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Chapter 1 Intro</h1><p>Section 1.1 Scene</p><p>Hello.</p></body></html>',
+        "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Chapter 2 End</h1></body></html>',
+    })
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    previous = list(session.toc)
+    patterns = [r"^Chapter (.+)$", r"^Section (.+)$", ""]
+    preview = session.generate_toc(patterns, preview_only=True)
+    assert [(entry["label"], entry["depth"]) for entry in preview["entries"]] == [
+        ("1 Intro", 0), ("1.1 Scene", 1), ("2 End", 0),
+    ]
+    assert session.toc == previous
+    assert not session.dirty
+    applied = session.generate_toc(patterns)
+    assert applied["generated_entries"] == len(preview["entries"])
+    assert session.toc == preview["entries"]
+    assert session.dirty
+    assert source.read_bytes() == original
+
+
+def test_regex_toc_rejects_invalid_patterns_without_mutating_session(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    toc_before = list(session.toc)
+    source_before = source.read_bytes()
+    for patterns, message in [(["["], "regular expression"), ([r"(?=Hello)"], "Zero-width"), ([r"^Missing$"], "matched these patterns")]:
+        with pytest.raises(ValueError, match=message):
+            session.generate_toc(patterns)
+        assert session.toc == toc_before
+        assert not session.dirty
+        assert source.read_bytes() == source_before
+
+
 def test_toc_spine_save_as_and_source_protection(tmp_path: Path):
     source = tmp_path / "book.epub"
     target = tmp_path / "edited.epub"
@@ -478,6 +548,69 @@ def test_regex_bridge_calls_and_literal_compatibility(tmp_path: Path):
     })
     assert changed["replacements"] == 2
     assert "Hi world" in router.call("epub_content.read", {"session_id": sid, "path": paths[0]})["content"]
+
+
+def test_selection_scope_and_replacement_preview_share_exact_plan(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    content = session.read(path)["content"]
+    start = content.index("Hello")
+    selection = {"path": path, "start": start, "end": start + len("Hello world")}
+    matches = session.search(r"Hello (world)", [path], regular_expression=True, selection=selection)
+    assert len(matches) == 1 and matches[0]["start"] == start
+    preview = session.preview_replace(
+        r"Hello (world)", r"Hi \1", [path], regular_expression=True,
+        selection=selection,
+    )
+    assert preview["replacements"] == 1
+    assert preview["samples"] == [{"path": path, "start": start, "before": "Hello world", "after": "Hi world"}]
+    assert not session.dirty
+    result = session.replace(
+        r"Hello (world)", r"Hi \1", [path], expected_count=1,
+        regular_expression=True, selection=selection,
+        expected_fingerprints=preview["fingerprints"],
+    )
+    assert result["replacements"] == 1
+    assert "Hi world" in session.read(path)["content"]
+    session.history("undo")
+    assert "Hello world" in session.read(path)["content"]
+
+
+def test_selection_regex_lookbehind_matches_and_replaces_with_full_context(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    content = session.read(path)["content"]
+    start = content.index("world")
+    selection = {"path": path, "start": start, "end": start + len("world")}
+    query = r"(?<=Hello )world"
+    assert len(session.search(query, [path], regular_expression=True, selection=selection)) == 1
+    preview = session.preview_replace(query, "planet", [path], regular_expression=True, selection=selection)
+    assert preview["replacements"] == 1
+    assert preview["samples"][0]["start"] == start
+    assert "Hello world" in session.read(path)["content"]
+    session.replace(query, "planet", [path], expected_count=1, regular_expression=True,
+                    selection=selection, expected_fingerprints=preview["fingerprints"])
+    assert "Hello planet" in session.read(path)["content"]
+
+
+def test_replacement_preview_rejects_stale_file_and_invalid_selection(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    preview = session.preview_replace("Hello", "Hi", [path])
+    session.write(path, session.read(path)["content"].replace("Hello", "HELLO"))
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="preview replacement again"):
+        session.replace("Hello", "Hi", [path], expected_count=1,
+                        expected_fingerprints=preview["fingerprints"])
+    assert session._snapshot() == before
+    with pytest.raises(ValueError, match="Selected text changed"):
+        session.search("HELLO", [path], selection={"path": path, "start": 9999, "end": 10000})
 
 
 def test_regex_timeout_leaves_session_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

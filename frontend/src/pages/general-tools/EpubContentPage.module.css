@@ -490,6 +490,10 @@
   margin-left: auto;
 }
 
+.readerToolbar .zoomControls {
+  margin-left: 0;
+}
+
 .readerToolbar button {
   display: grid;
   place-items: center;
@@ -516,9 +520,18 @@
 }
 
 .bookPage iframe {
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: top left;
+  border: 0;
+  background: white;
+}
+
+.bookViewport {
+  position: relative;
   width: min(100%, 720px);
   height: 100%;
-  border: 0;
+  overflow: hidden;
   background: white;
 }
 
@@ -639,19 +652,102 @@
 
 .tocRow {
   display: grid;
-  gap: 4px;
-  margin-bottom: 10px;
+  gap: 3px;
+  margin-bottom: 6px;
+  border-left: 2px solid var(--hairline-strong);
   border-bottom: 1px solid var(--hairline);
-  padding: 0 4px 10px;
+  padding: 6px 7px 7px;
+}
+
+.tocRow[data-depth="0"] {
+  border-left-color: transparent;
+}
+
+.tocTitleRow,
+.tocTargetRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tocTitleRow > span {
+  flex: 0 0 20px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .tocRow input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
+}
+
+.tocTitleRow input {
+  font-weight: 600;
+}
+
+.tocTargetRow {
+  padding-left: 26px;
+}
+
+.tocTargetRow input {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tocTargetRow input:focus {
+  border: 1px solid var(--hairline-strong);
+  background: var(--panel);
+}
+
+.tocTargetRow button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  min-height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
 }
 
 .tocButtons {
   justify-content: flex-end;
+}
+
+.tocPatternDialog {
+  width: min(620px, calc(100% - 24px));
+  max-height: min(740px, 90dvh);
+  overflow: auto;
+}
+
+.tocPatternDialog p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tocProposal {
+  min-height: 0;
+  max-height: 260px;
+  overflow: auto;
+  border-block: 1px solid var(--hairline);
+  padding-block: 6px;
+}
+
+.tocProposal > div {
+  display: grid;
+  gap: 2px;
+  padding-block: 5px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+}
+
+.tocProposal small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .editorArea {
@@ -721,26 +817,107 @@
   min-width: 0;
 }
 
-.sourcePane h3,
-.previewPane h3 {
-  margin: 0;
+.paneHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
   border-bottom: 1px solid var(--hairline);
-  padding: 7px 12px;
+  padding: 3px 10px;
+}
+
+.paneHeader h3 {
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
 }
 
-.sourcePane > div {
+.sourcePane > div:not(.paneHeader) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  font-size: 13px;
+  font-size: var(--source-font-size, 13px);
+}
+
+.sourcePane .cm-content,
+.sourcePane .cm-gutters {
+  font-size: var(--source-font-size, 13px);
+}
+
+.zoomControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 160px;
+  min-width: 92px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.zoomControls button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.zoomControls input {
+  min-width: 0;
+  width: 100%;
+  accent-color: var(--ink);
+}
+
+.zoomControls span {
+  min-width: 32px;
+  text-align: right;
+}
+
+.previewHeaderControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.wrapControl {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.wrapActive {
+  background: var(--panel-soft);
+  color: var(--ink);
+}
+
+.previewViewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: white;
 }
 
 .previewPane iframe {
-  flex: 1;
-  width: 100%;
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: top left;
   border: 0;
   background: white;
 }

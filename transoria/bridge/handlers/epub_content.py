@@ -29,6 +29,35 @@ def _entries(payload: Mapping[str, object]) -> list[dict[str, object]]:
     return value
 
 
+def _selection(payload: Mapping[str, object]) -> dict[str, object] | None:
+    value = payload.get("selection")
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("selection must describe an EPUB text range.")
+    return value
+
+
+def _fingerprints(payload: Mapping[str, object]) -> dict[str, str] | None:
+    value = payload.get("expected_fingerprints")
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not all(
+        isinstance(path, str) and isinstance(digest, str) for path, digest in value.items()
+    ):
+        raise ValueError("expected_fingerprints must map resource paths to hashes.")
+    return value
+
+
+def _patterns(payload: Mapping[str, object]) -> list[str] | None:
+    value = payload.get("patterns")
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError("patterns must be a list of directory level expressions.")
+    return value
+
+
 def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
     store = ContentSessionStore(cache_root / "epub-editor-sessions" if cache_root else None)
     lock = RLock()
@@ -43,6 +72,9 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {"closed": True}
             session = store.get(session_id)
             if action == "info":
+                return session.info(session_id)
+            if action == "checkpoint":
+                store.persist(session_id)
                 return session.info(session_id)
             if action == "read":
                 return session.read(expect_string(payload, "path"))
@@ -68,8 +100,18 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                         _paths(payload),
                         bool(payload.get("case_sensitive", False)),
                         bool(payload.get("regular_expression", False)),
+                        _selection(payload),
                     )
                 }
+            elif action == "preview_replace":
+                return session.preview_replace(
+                    expect_string(payload, "query"),
+                    expect_string(payload, "replacement", allow_empty=True),
+                    _paths(payload),
+                    bool(payload.get("case_sensitive", False)),
+                    bool(payload.get("regular_expression", False)),
+                    _selection(payload),
+                )
             elif action == "replace":
                 expected_count = payload.get("expected_count")
                 if expected_count is not None and (
@@ -83,6 +125,8 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     bool(payload.get("case_sensitive", False)),
                     expected_count,
                     bool(payload.get("regular_expression", False)),
+                    _selection(payload),
+                    _fingerprints(payload),
                 )
                 store.persist(session_id)
                 return {**result, **session.info(session_id)}
@@ -110,9 +154,11 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
             elif action == "set_toc":
                 session.set_toc(_entries(payload))
             elif action == "generate_toc":
-                summary = session.generate_toc()
+                summary = session.generate_toc(_patterns(payload))
                 store.persist(session_id)
                 return {**summary, **session.info(session_id)}
+            elif action == "preview_toc":
+                return session.generate_toc(_patterns(payload), preview_only=True)
             elif action == "generate_toc_page":
                 path = session.generate_toc_page(expect_string(payload, "title"))
                 store.persist(session_id)
@@ -178,18 +224,21 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "open",
         "close",
         "info",
+        "checkpoint",
         "read",
         "anchors",
         "references",
         "export_resource",
         "write",
         "search",
+        "preview_replace",
         "replace",
         "replace_match",
         "reorder_spine",
         "set_spine",
         "set_toc",
         "generate_toc",
+        "preview_toc",
         "generate_toc_page",
         "add_resource",
         "replace_resource",
