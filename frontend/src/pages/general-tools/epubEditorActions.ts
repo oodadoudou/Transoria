@@ -22,3 +22,19 @@ export function nextMatchIndex(matches: Array<{ path: string; start: number }>, 
   });
   return next < 0 ? 0 : next;
 }
+
+export function resourceAfterHistory(
+  selected: string,
+  previousSpine: string[],
+  files: Array<{ path: string; editable: boolean }>,
+): string {
+  const available = new Set(files.filter((file) => file.editable).map((file) => file.path));
+  if (available.has(selected)) return selected;
+  const index = previousSpine.indexOf(selected);
+  if (index >= 0) {
+    for (let offset = index - 1; offset >= 0; offset -= 1) {
+      if (available.has(previousSpine[offset])) return previousSpine[offset];
+    }
+  }
+  return files.find((file) => file.editable)?.path ?? "";
+}

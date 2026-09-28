@@ -8,7 +8,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown
 import { dialogsBridge, epubContentBridge, type EpubContentFile, type EpubContentMatch, type EpubContentSession, type EpubTocEntry } from "@/bridge";
 import { useMessages } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { nextMatchIndex, relativeResourceHref, xmlAttribute } from "./epubEditorActions";
+import { nextMatchIndex, relativeResourceHref, resourceAfterHistory, xmlAttribute } from "./epubEditorActions";
 import { clearEditorDraft, clearStagedEditorDraft, readEditorDraft, stageEditorDraft, writeEditorDraft, type EpubEditorDraft } from "./epubEditorDraft";
 import styles from "./EpubContentPage.module.css";
 
@@ -732,7 +732,9 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const next = await epubContentBridge.history(session.session_id, direction);
       setSession(next);
       setTocDraft(next.toc);
-      if (selectedPath) await loadResource(session.session_id, selectedPath);
+      const path = resourceAfterHistory(selectedPath, session.spine, next.files);
+      if (path) await loadResource(session.session_id, path, next);
+      else { setSelectedPath(""); setResourcePath(""); setContent(""); setLoadedContent(""); setPreview(""); setPreviewPath(""); }
       setMatches([]);
     });
   };

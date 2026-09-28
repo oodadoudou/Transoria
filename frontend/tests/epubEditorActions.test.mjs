@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextMatchIndex, relativeResourceHref, xmlAttribute } from "../src/pages/general-tools/epubEditorActions.ts";
+import { nextMatchIndex, relativeResourceHref, resourceAfterHistory, xmlAttribute } from "../src/pages/general-tools/epubEditorActions.ts";
 
 test("search starts at the source cursor, crosses files, and wraps", () => {
   const paths = ["Text/one.xhtml", "Text/two.xhtml", "Styles/book.css"];
@@ -21,4 +21,17 @@ test("search starts at the source cursor, crosses files, and wraps", () => {
 test("image insertion keeps relative paths and quotes XML attributes", () => {
   assert.equal(relativeResourceHref("OEBPS/Text/part/chapter.xhtml", "OEBPS/Images/a #'.png"), "../../Images/a%20%23%27.png");
   assert.equal(xmlAttribute('A & "B" < C'), 'A &amp; &quot;B&quot; &lt; C');
+});
+
+test("undo after creating a chapter selects an existing neighbor", () => {
+  const previous = ["Text/one.xhtml", "Text/new.xhtml", "Text/two.xhtml"];
+  const files = [
+    { path: "Text/one.xhtml", editable: true },
+    { path: "Text/two.xhtml", editable: true },
+    { path: "Images/cover.png", editable: false },
+  ];
+  assert.equal(resourceAfterHistory("Text/new.xhtml", previous, files), "Text/one.xhtml");
+  assert.equal(resourceAfterHistory("Text/two.xhtml", previous, files), "Text/two.xhtml");
+  assert.equal(resourceAfterHistory("missing", previous, files), "Text/one.xhtml");
+  assert.equal(resourceAfterHistory("Text/new.xhtml", previous, [{ path: "Images/cover.png", editable: false }]), "");
 });
