@@ -572,6 +572,222 @@ def test_generate_toc_recovers_malformed_chapter_without_rewriting_it(tmp_path: 
     assert not session.dirty
 
 
+def test_resource_add_move_and_delete_preserve_links_after_reopen(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.add_resource("OEBPS/Styles/base.css", b"p { color: blue; }")
+    session.write("OEBPS/Styles/book.css", '@import "base.css"; body { background: url(../Images/pixel.png); }')
+    assert session.rename_resource(
+        "OEBPS/Styles/book.css", "OEBPS/Assets/Styles/book.css",
+    )["files_changed"] >= 3
+    chapter = session.read("OEBPS/Text/one.xhtml")["content"]
+    assert '../Assets/Styles/book.css' in chapter
+    css = session.read("OEBPS/Assets/Styles/book.css")["content"]
+    assert '../../Styles/base.css' in css
+    assert '../../Images/pixel.png' in css
+    assert "OEBPS/Styles/book.css" not in {item["path"] for item in session.files}
+    session.save(str(output), overwrite=False)
+    reopened = ContentSession.open(str(output))
+    assert '../Assets/Styles/book.css' in reopened.read("OEBPS/Text/one.xhtml")["content"]
+    assert '../../Images/pixel.png' in reopened.read("OEBPS/Assets/Styles/book.css")["content"]
+    assert "OEBPS/Styles/book.css" not in {item["path"] for item in reopened.files}
+    assert reopened.resource_references("OEBPS/Styles/base.css") == ["OEBPS/Assets/Styles/book.css"]
+    with pytest.raises(ValueError, match="still referenced"):
+        reopened.delete_resource("OEBPS/Styles/base.css")
+    assert not reopened.dirty
+
+
+def test_resource_operation_undo_and_session_restore(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    store = ContentSessionStore(tmp_path / "sessions")
+    opened = store.open(str(source))
+    sid = opened["session_id"]
+    session = store.get(sid)
+    session.add_resource("OEBPS/Styles/unused.css", b"p { color: red; }")
+    store.persist(sid)
+    restored = ContentSessionStore(tmp_path / "sessions").get(sid)
+    assert "OEBPS/Styles/unused.css" in {item["path"] for item in restored.files}
+    restored.delete_resource("OEBPS/Styles/unused.css")
+    assert "OEBPS/Styles/unused.css" not in {item["path"] for item in restored.files}
+    restored.history("undo")
+    assert "OEBPS/Styles/unused.css" in {item["path"] for item in restored.files}
+    restored.history("undo")
+    assert "OEBPS/Styles/unused.css" not in {item["path"] for item in restored.files}
+    assert not restored.dirty
+
+
+def test_resource_rename_percent_and_fragment_filename(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    target = "OEBPS/Images/新 图#50%.png"
+    session.rename_resource("OEBPS/Images/pixel.png", target)
+    assert "../Images/%E6%96%B0%20%E5%9B%BE%2350%25.png" in session.read(session.spine[0])["content"]
+    session.save(str(output), overwrite=False)
+    with zipfile.ZipFile(output) as archive:
+        assert target in archive.namelist()
+        assert "OEBPS/Images/pixel.png" not in archive.namelist()
+    reopened = ContentSession.open(str(output))
+    assert target in {item["path"] for item in reopened.files}
+
+
+def test_resource_import_into_spine_replace_export_and_delete(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    exported = tmp_path / "image.png"
+    _book(source)
+    original_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    session = ContentSession.open(str(source))
+    extra = "OEBPS/Text/extra.xhtml"
+    session.add_resource(extra, b'<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Extra</p></body></html>', in_spine=True)
+    session.replace_resource("OEBPS/Images/pixel.png", b"new-image")
+    assert "bmV3LWltYWdl" in session.preview(session.spine[0])
+    session.export_resource("OEBPS/Images/pixel.png", str(exported), False)
+    assert exported.read_bytes() == b"new-image"
+    with pytest.raises(ValueError, match="exists"):
+        session.export_resource("OEBPS/Images/pixel.png", str(exported), False)
+    session.add_resource("OEBPS/Styles/temporary.css", b"p { color: red; }")
+    session.delete_resource("OEBPS/Styles/temporary.css")
+    session.save(str(output), overwrite=False)
+    reopened = ContentSession.open(str(output))
+    assert reopened.spine[-1] == extra
+    assert reopened.read(extra)["content"].find("Extra") > -1
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("OEBPS/Images/pixel.png") == b"new-image"
+        assert "OEBPS/Styles/temporary.css" not in archive.namelist()
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == original_hash
+
+
+def test_resource_rename_failure_keeps_session_unchanged(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Styles/book.css": "body { background: url(../missing.png); }"})
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="unresolved link"):
+        session.rename_resource("OEBPS/Styles/book.css", "OEBPS/Assets/book.css")
+    assert session._snapshot() == before
+    assert not session.dirty
+
+
+def test_resource_bridge_round_trip(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    local = tmp_path / "new.css"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    local.write_bytes(b"p { color: blue; }")
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    added = router.call("epub_content.add_resource", {
+        "session_id": sid, "input_path": str(local), "path": "OEBPS/Styles/new.css",
+    })
+    assert added["dirty"] and added["files"][-1]["path"] == "OEBPS/Styles/new.css"
+    assert router.call("epub_content.references", {
+        "session_id": sid, "path": "OEBPS/Styles/new.css",
+    })["inbound"] == []
+    saved = router.call("epub_content.save", {
+        "session_id": sid, "output_path": str(output), "overwrite": False,
+    })
+    assert saved["output_path"] == str(output)
+    assert ContentSession.open(str(output)).read("OEBPS/Styles/new.css")["content"] == "p { color: blue; }"
+
+
+def test_toc_anchor_picker_reads_current_draft_without_mutation(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    router = BridgeRouter()
+    register(router)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    path = opened["spine"][0]
+    assert router.call("epub_content.anchors", {"session_id": sid, "path": path})["anchors"] == [
+        {"id": "start", "label": "Hello world."},
+    ]
+    content = router.call("epub_content.read", {"session_id": sid, "path": path})["content"]
+    router.call("epub_content.write", {"session_id": sid, "path": path, "content": content.replace(
+        '<p id="start">', '<p id="start">',
+    ).replace("Hello world.", 'Hello world.</p><h2 id="next">Next part</h2><p>')})
+    anchors = router.call("epub_content.anchors", {"session_id": sid, "path": path})["anchors"]
+    assert anchors[-1] == {"id": "next", "label": "Next part"}
+    router.call("epub_content.set_toc", {"session_id": sid, "entries": [
+        {"label": "Next part", "href": path + "#next", "depth": 0},
+    ]})
+    assert router.call("epub_content.info", {"session_id": sid})["toc"][0]["href"] == path + "#next"
+    with pytest.raises(BridgeError, match="XHTML or HTML"):
+        router.call("epub_content.anchors", {"session_id": sid, "path": "OEBPS/Styles/book.css"})
+
+
+def test_toc_anchor_picker_recovers_malformed_html_and_skips_duplicate_ids(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": b'<html><body><h2 id="a">One<h2 id="a">Two</body></html>'})
+    session = ContentSession.open(str(source))
+    assert session.anchors(session.spine[0]) == [{"id": "a", "label": "OneTwo"}]
+    assert not session.dirty
+
+
+def test_generate_in_book_toc_page_is_reversible_and_preserves_nav(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        original_nav = archive.read("OEBPS/nav.xhtml")
+        original_ncx = archive.read("OEBPS/toc.ncx")
+    session = ContentSession.open(str(source))
+    generated = session.generate_toc_page("Contents")
+    assert generated == "OEBPS/Text/transoria_contents.xhtml"
+    assert session.spine[0] == generated
+    assert "../Text/one.xhtml" not in session.read(generated)["content"]
+    assert "one.xhtml" in session.read(generated)["content"]
+    assert len(session.undo_stack) == 1
+    with pytest.raises(ValueError, match="already exists"):
+        session.generate_toc_page("Contents")
+    session.history("undo")
+    assert generated not in {file["path"] for file in session.files}
+    session.history("redo")
+    session.save(str(output), overwrite=False)
+    reopened = ContentSession.open(str(output))
+    assert reopened.spine[0] == generated
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("OEBPS/nav.xhtml") == original_nav
+        assert archive.read("OEBPS/toc.ncx") == original_ncx
+
+
+def test_spine_membership_and_linear_flag_preserve_resource_and_itemref(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    output = tmp_path / "edited.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        opf = archive.read("OEBPS/book.opf")
+    _rewrite_book(source, {"OEBPS/book.opf": opf.replace(
+        b'<itemref idref="two"/>', b'<itemref idref="two" linear="no" id="vendor-ref"/>',
+    )})
+    session = ContentSession.open(str(source))
+    one, two = session.spine
+    assert not session.spine_linear[two]
+    session.reorder_spine([two, one])
+    session.save(str(output), overwrite=False)
+    with zipfile.ZipFile(output) as archive:
+        spine = etree.fromstring(archive.read("OEBPS/book.opf")).find(".//{http://www.idpf.org/2007/opf}spine")
+        assert [item.get("idref") for item in spine] == ["two", "one"]
+        assert spine[0].get("linear") == "no" and spine[0].get("id") == "vendor-ref"
+    session.set_spine([{"path": one, "linear": True}])
+    session.save(str(output), overwrite=True)
+    reopened = ContentSession.open(str(output))
+    assert reopened.spine == [one]
+    assert two in {item["path"] for item in reopened.files}
+    assert reopened.toc[-1]["href"] == two
+    reopened.set_spine([{"path": one, "linear": True}, {"path": two, "linear": False}])
+    reopened.save(str(output), overwrite=True)
+    assert ContentSession.open(str(output)).spine_linear[two] is False
+
+
 def test_malformed_xhtml_preview_recovers_without_changing_source(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)

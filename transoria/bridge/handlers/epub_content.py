@@ -46,6 +46,16 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return session.info(session_id)
             if action == "read":
                 return session.read(expect_string(payload, "path"))
+            if action == "anchors":
+                return {"anchors": session.anchors(expect_string(payload, "path"))}
+            if action == "references":
+                return {"inbound": session.resource_references(expect_string(payload, "path"))}
+            if action == "export_resource":
+                return {"output_path": session.export_resource(
+                    expect_string(payload, "path"),
+                    expect_string(payload, "output_path"),
+                    bool(payload.get("overwrite", False)),
+                )}
             if action == "write":
                 session.write(
                     expect_string(payload, "path"),
@@ -92,12 +102,42 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 )
             elif action == "reorder_spine":
                 session.reorder_spine(_paths(payload))
+            elif action == "set_spine":
+                entries = payload.get("entries")
+                if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
+                    raise ValueError("entries must be a list of reading-order items.")
+                session.set_spine(entries)
             elif action == "set_toc":
                 session.set_toc(_entries(payload))
             elif action == "generate_toc":
                 summary = session.generate_toc()
                 store.persist(session_id)
                 return {**summary, **session.info(session_id)}
+            elif action == "generate_toc_page":
+                path = session.generate_toc_page(expect_string(payload, "title"))
+                store.persist(session_id)
+                return {"generated_path": path, **session.info(session_id)}
+            elif action in {"add_resource", "replace_resource"}:
+                input_path = Path(expect_string(payload, "input_path")).expanduser().resolve()
+                if not input_path.is_file() or input_path.stat().st_size > 48_000_000:
+                    raise ValueError("Select a local resource under 48 MB.")
+                data = input_path.read_bytes()
+                if action == "add_resource":
+                    session.add_resource(
+                        expect_string(payload, "path"), data,
+                        expect_string(payload, "media_type", allow_empty=True) if "media_type" in payload else "",
+                        bool(payload.get("in_spine", False)),
+                    )
+                else:
+                    session.replace_resource(expect_string(payload, "path"), data)
+            elif action == "rename_resource":
+                summary = session.rename_resource(
+                    expect_string(payload, "path"), expect_string(payload, "target"),
+                )
+                store.persist(session_id)
+                return {**summary, **session.info(session_id)}
+            elif action == "delete_resource":
+                session.delete_resource(expect_string(payload, "path"))
             elif action in {"undo", "redo"}:
                 session.history(action)
             elif action == "preview":
@@ -121,7 +161,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {**result, **session.info(session_id)}
             else:
                 raise ValueError("Unknown EPUB content editor action.")
-            if action in {"write", "replace_match", "reorder_spine", "set_toc", "undo", "redo"}:
+            if action in {"write", "replace_match", "reorder_spine", "set_spine", "set_toc", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
                 store.persist(session_id)
             return session.info(session_id)
         except (
@@ -139,13 +179,22 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "close",
         "info",
         "read",
+        "anchors",
+        "references",
+        "export_resource",
         "write",
         "search",
         "replace",
         "replace_match",
         "reorder_spine",
+        "set_spine",
         "set_toc",
         "generate_toc",
+        "generate_toc_page",
+        "add_resource",
+        "replace_resource",
+        "rename_resource",
+        "delete_resource",
         "undo",
         "redo",
         "preview",

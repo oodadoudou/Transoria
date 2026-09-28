@@ -664,6 +664,13 @@ export const en: Messages = {
     failed: "Failed",
   },
   epubContentTool: {
+    importResource: "Import resource", renameResource: "Move or rename", replaceResource: "Replace resource", exportResource: "Export resource", deleteResource: "Delete resource",
+    localFile: "Local file", archivePath: "Path in EPUB", addToSpine: "Add to reading order", applyResource: "Apply", resourceSaved: "Resource operation completed",
+    resourceReferences: "References to this resource", resourceNotEditable: "This resource cannot be edited in the source pane", confirmDeleteResource: "Delete the selected resource? This can be undone.",
+    addToOrder: "Add to reading order", removeFromOrder: "Remove from reading order", mainReading: "Main sequence", chooseChapter: "Choose chapter",
+    chooseTocTarget: "Choose TOC target", chapterStart: "Chapter start", chooseAnchor: "Choose anchor",
+    generateTocPage: "Create in-book contents page", tocPageTitle: "Contents",
+    chooseFile: "Choose file", confirmTarget: "Use target",
     resizeFiles: "Resize file pane", resizePreview: "Resize source and preview panes",
     bookPreview: "Book preview", previousChapter: "Previous chapter", nextChapter: "Next chapter", previewInvalid: "Current content cannot be previewed",
     importTitle: "Import EPUB", importSubtitle: "Choose a local book to start editing", importPrompt: "Choose an EPUB file", manualPath: "Or enter a local file path", recent: "Recently opened", restoring: "Restoring editor session…",

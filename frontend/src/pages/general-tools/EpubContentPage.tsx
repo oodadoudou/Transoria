@@ -3,7 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import type { EditorView } from "@codemirror/view";
 import { css } from "@codemirror/lang-css";
 import { xml } from "@codemirror/lang-xml";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerUpLeft, CornerUpRight, FileCode2, FileText, FolderOpen, ListTree, Save, Search, ShieldCheck, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerUpLeft, CornerUpRight, Download, FileCode2, FileText, FolderOpen, ListTree, Pencil, Plus, Replace, Save, Search, ShieldCheck, Trash2, X } from "lucide-react";
 
 import { dialogsBridge, epubContentBridge, type EpubContentFile, type EpubContentMatch, type EpubContentSession, type EpubTocEntry } from "@/bridge";
 import { useMessages } from "@/locales";
@@ -13,6 +13,7 @@ import styles from "./EpubContentPage.module.css";
 
 type SideView = "files" | "toc" | "spine" | "book";
 type Scope = "current" | "text" | "styles" | "all";
+type ResourceAction = "add" | "rename" | "replace" | "export" | "delete";
 type FileNode = { kind: "folder"; name: string; path: string; children: FileNode[] } | { kind: "file"; name: string; file: EpubContentFile };
 const RECENT_KEY = "transoria.epubEditor.recent";
 
@@ -85,11 +86,24 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [restoring, setRestoring] = useState(Boolean(savedDraft.current && !initialPath));
   const [session, setSession] = useState<EpubContentSession | null>(null);
   const [selectedPath, setSelectedPath] = useState("");
+  const [resourcePath, setResourcePath] = useState("");
+  const [resourceAction, setResourceAction] = useState<ResourceAction | null>(null);
+  const [resourceTarget, setResourceTarget] = useState("");
+  const [resourceInput, setResourceInput] = useState("");
+  const [resourceInSpine, setResourceInSpine] = useState(false);
+  const [resourceReferences, setResourceReferences] = useState<string[]>([]);
+  const [spineCandidate, setSpineCandidate] = useState("");
   const [previewPath, setPreviewPath] = useState("");
   const [loadedContent, setLoadedContent] = useState("");
   const [content, setContent] = useState("");
   const [preview, setPreview] = useState("");
   const [tocDraft, setTocDraft] = useState<EpubTocEntry[]>([]);
+  const [tocPickerIndex, setTocPickerIndex] = useState<number | null>(null);
+  const [tocPickerPath, setTocPickerPath] = useState("");
+  const [tocPickerAnchor, setTocPickerAnchor] = useState("");
+  const [tocAnchors, setTocAnchors] = useState<Array<{ id: string; label: string }>>([]);
+  const [tocPageOpen, setTocPageOpen] = useState(false);
+  const [tocPageTitle, setTocPageTitle] = useState("");
   const [sideView, setSideView] = useState<SideView>("files");
   const [paneView, setPaneView] = useState<"source" | "preview">("source");
   const [bookIndex, setBookIndex] = useState(0);
@@ -122,12 +136,13 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const initialOpenStarted = useRef(false);
   const operationInFlight = useRef(false);
 
-  const editableFiles = useMemo(() => session?.files.filter((file) => file.editable) ?? [], [session]);
-  const nodes = useMemo(() => fileTree(editableFiles), [editableFiles]);
+  const editableFiles = useMemo(() => session?.files.filter((file) => file.editable) ?? [], [session?.files]);
+  const nodes = useMemo(() => fileTree(session?.files ?? []), [session?.files]);
   const sourceDirty = content !== loadedContent;
   const tocDirty = Boolean(session && JSON.stringify(tocDraft) !== JSON.stringify(session.toc));
   const dirty = Boolean(session?.dirty || sourceDirty || tocDirty);
   const currentFile = session?.files.find((file) => file.path === selectedPath);
+  const currentResource = session?.files.find((file) => file.path === resourcePath);
   const isHtml = currentFile?.media_type === "application/xhtml+xml" || currentFile?.media_type === "text/html";
 
   useEffect(() => {
@@ -199,13 +214,14 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     }
   }, []);
 
-  const loadResource = useCallback(async (sid: string, path: string) => {
+  const loadResource = useCallback(async (sid: string, path: string, summary = session) => {
     const next = await epubContentBridge.read(sid, path);
     setSelectedPath(path);
+    setResourcePath(path);
     setLoadedContent(next.content);
     setContent(next.content);
-    const file = session?.files.find((item) => item.path === path);
-    if ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html") && path !== session?.nav_path) {
+    const file = summary?.files.find((item) => item.path === path);
+    if ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html") && path !== summary?.nav_path) {
       setPreviewPath(path);
       try {
         setPreview((await epubContentBridge.preview(sid, path)).html);
@@ -219,7 +235,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setPreview("");
       setPreviewError("");
     }
-  }, [session?.files]);
+  }, [session]);
 
   const commitSource = useCallback(async () => {
     if (!session || !selectedPath || content === loadedContent) return session;
@@ -294,6 +310,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       if (session) await epubContentBridge.close(session.session_id);
       savedDraft.current = null;
       setSession(next);
+      setResourcePath("");
       setInputPath(path);
       setTocDraft(next.toc);
       setOutputPath(editedPath(path));
@@ -309,6 +326,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       if (first) {
         const file = await epubContentBridge.read(next.session_id, first);
         setSelectedPath(first);
+        setResourcePath(first);
         setLoadedContent(file.content);
         setContent(file.content);
         if (first.toLowerCase().endsWith(".xhtml") || first.toLowerCase().endsWith(".html")) {
@@ -332,6 +350,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         ? draft.selectedPath
         : next.spine.find((item) => next.files.some((file) => file.path === item && file.editable)) ?? "";
       setInputPath(next.input_path);
+      setResourcePath(path);
       setOutputPath(editedPath(next.input_path));
       setTocDraft(Array.isArray(draft.tocDraft) ? draft.tocDraft : next.toc);
       setSideView(["files", "toc", "spine", "book"].includes(draft.sideView) ? draft.sideView : "files");
@@ -379,10 +398,75 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   }, [initialPath]);
 
   const selectResource = async (path: string) => {
-    if (!session || path === selectedPath) return;
+    if (!session) return;
+    setResourcePath(path);
+    if (!session.files.find((file) => file.path === path)?.editable || path === selectedPath) return;
     await run(async () => {
       await commitSource();
       await loadResource(session.session_id, path);
+    });
+  };
+
+  const openResourceAction = async (action: ResourceAction) => {
+    if (!session || (action !== "add" && !currentResource)) return;
+    setResourceAction(action);
+    setResourceTarget(action === "rename" ? resourcePath : "");
+    setResourceInput("");
+    setResourceInSpine(false);
+    setResourceReferences([]);
+    if (action === "delete") {
+      const result = await run(() => epubContentBridge.references(session.session_id, resourcePath));
+      if (result) setResourceReferences(result.inbound);
+    }
+  };
+
+  const chooseResourceFile = async () => {
+    const chosen = await run(() => dialogsBridge.chooseAnyFile(resourceInput || undefined));
+    if (!chosen?.path) return;
+    setResourceInput(chosen.path);
+    if (resourceAction === "add" && !resourceTarget) {
+      const root = (session?.nav_path || session?.files[0]?.path || "").split("/").slice(0, -1).join("/");
+      setResourceTarget([root, chosen.path.split(/[\\/]/).at(-1)].filter(Boolean).join("/"));
+    }
+  };
+
+  const chooseResourceOutput = async () => {
+    const name = resourcePath.split("/").at(-1) || "resource";
+    const extension = name.split(".").at(-1) || "";
+    const chosen = await run(() => dialogsBridge.chooseSavePath(name, extension ? [extension] : []));
+    if (chosen?.path) setResourceTarget(chosen.path);
+  };
+
+  const applyResourceAction = async () => {
+    if (!session || !resourceAction) return;
+    await run(async () => {
+      await commitSource();
+      let next: EpubContentSession | null = null;
+      if (resourceAction === "add") next = await epubContentBridge.addResource(session.session_id, resourceInput, resourceTarget, resourceInSpine);
+      if (resourceAction === "replace") next = await epubContentBridge.replaceResource(session.session_id, resourcePath, resourceInput);
+      if (resourceAction === "rename") next = await epubContentBridge.renameResource(session.session_id, resourcePath, resourceTarget);
+      if (resourceAction === "delete") next = await epubContentBridge.deleteResource(session.session_id, resourcePath);
+      if (resourceAction === "export") await epubContentBridge.exportResource(session.session_id, resourcePath, resourceTarget, false);
+      if (next) {
+        setSession(next);
+        setTocDraft(next.toc);
+        const preferred = resourceAction === "rename" || resourceAction === "add" ? resourceTarget : resourcePath;
+        setResourcePath(resourceAction === "delete" ? "" : preferred);
+        if (resourceAction === "delete" && selectedPath === resourcePath) {
+          const fallback = next.files.find((file) => file.editable)?.path;
+          if (fallback) await loadResource(session.session_id, fallback, next);
+          else { setSelectedPath(""); setContent(""); setLoadedContent(""); setPreview(""); }
+        } else if (resourceAction === "rename" && selectedPath === resourcePath) {
+          await loadResource(session.session_id, resourceTarget, next);
+        } else if (resourceAction === "replace" && selectedPath === resourcePath && currentResource?.editable) {
+          await loadResource(session.session_id, resourcePath, next);
+        } else if (resourceAction === "add" && next.files.find((file) => file.path === resourceTarget)?.editable) {
+          await loadResource(session.session_id, resourceTarget, next);
+        }
+      }
+      setResourceAction(null);
+      setFeedback(t.resourceSaved);
+      setFeedbackWarning(false);
     });
   };
 
@@ -393,6 +477,48 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const next = await epubContentBridge.setToc(session.session_id, tocDraft);
       setSession(next);
       setTocDraft(next.toc);
+    });
+  };
+
+  const openTocPicker = async (index: number) => {
+    if (!session) return;
+    const href = tocDraft[index].href;
+    const path = href.split("#", 1)[0];
+    const selected = session.files.some((file) => file.path === path && file.path !== session.nav_path) ? path : session.spine.find((item) => item !== session.nav_path) ?? "";
+    const result = await run(async () => {
+      await commitSource();
+      return epubContentBridge.anchors(session.session_id, selected);
+    });
+    if (!result) return;
+    setTocPickerIndex(index);
+    setTocPickerPath(selected);
+    setTocAnchors(result.anchors);
+    try { setTocPickerAnchor(decodeURIComponent(href.split("#")[1] ?? "")); }
+    catch { setTocPickerAnchor(""); }
+  };
+
+  const changeTocPickerPath = async (path: string) => {
+    if (!session) return;
+    const result = await run(() => epubContentBridge.anchors(session.session_id, path));
+    if (!result) return;
+    setTocPickerPath(path);
+    setTocPickerAnchor("");
+    setTocAnchors(result.anchors);
+  };
+
+  const createTocPage = async () => {
+    if (!session) return;
+    await run(async () => {
+      await commitSource();
+      if (tocDirty) await epubContentBridge.setToc(session.session_id, tocDraft);
+      const next = await epubContentBridge.generateTocPage(session.session_id, tocPageTitle);
+      setSession(next);
+      setTocDraft(next.toc);
+      setTocPageOpen(false);
+      setSideView("files");
+      await loadResource(session.session_id, next.generated_path, next);
+      setFeedback(t.generateTocPage);
+      setFeedbackWarning(false);
     });
   };
 
@@ -418,6 +544,18 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setSession(await epubContentBridge.reorderSpine(session.session_id, order));
     });
   };
+
+  const updateSpine = async (entries: Array<{ path: string; linear: boolean }>) => {
+    if (!session) return;
+    await run(async () => {
+      await commitSource();
+      const next = await epubContentBridge.setSpine(session.session_id, entries);
+      setSession(next);
+      setSpineCandidate("");
+    });
+  };
+
+  const spineEntries = () => session?.spine.map((path) => ({ path, linear: session.spine_linear[path] !== false })) ?? [];
 
   const history = async (direction: "undo" | "redo") => {
     if (!session) return;
@@ -586,7 +724,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const collapsed = collapsedFolders.includes(node.path);
       return <div key={node.path}><div className={styles.folderRow} style={{ paddingLeft: `${depth * 9 + 4}px` }}><button type="button" aria-expanded={!collapsed} title={node.path} onClick={() => setCollapsedFolders((current) => collapsed ? current.filter((path) => path !== node.path) : [...current, node.path])}>{collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}{node.name}</button></div>{!collapsed ? renderTree(node.children, depth + 1) : null}</div>;
     }
-    return <div key={node.file.path} className={`${styles.fileRow} ${selectedPath === node.file.path ? styles.active : ""}`} style={{ paddingLeft: `${depth * 9 + 4}px` }}><button type="button" onClick={() => void selectResource(node.file.path)} title={node.file.path}>{node.name}</button></div>;
+    return <div key={node.file.path} className={`${styles.fileRow} ${resourcePath === node.file.path ? styles.active : ""}`} style={{ paddingLeft: `${depth * 9 + 4}px` }}><button type="button" onClick={() => void selectResource(node.file.path)} title={node.file.path}>{node.name}</button></div>;
   });
 
   const resizePane = (pane: "sidebar" | "source", clientX: number, handle: HTMLDivElement) => {
@@ -673,11 +811,19 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     {!session ? <div className={styles.empty}>{t.noBook}</div> : <div className={styles.main} data-resizing={resizing} style={{ "--sidebar-width": `${sidebarWidth}%` } as CSSProperties}>
       <aside className={styles.sidebar}>
         <div className={styles.tabs}><button type="button" aria-selected={sideView === "files"} onClick={() => setSideView("files")}><FileCode2 size={16} />{t.files}</button><button type="button" aria-selected={sideView === "toc"} onClick={() => setSideView("toc")}><ListTree size={16} />{t.toc}</button><button type="button" aria-selected={sideView === "spine"} onClick={() => setSideView("spine")}>{t.spine}</button><button type="button" aria-selected={sideView === "book"} onClick={() => setSideView("book")}><BookOpen size={16} />{t.bookPreview}</button></div>
+        {sideView === "files" ? <div className={styles.fileActions}>
+          <button type="button" title={t.importResource} aria-label={t.importResource} disabled={busy} onClick={() => void openResourceAction("add")}><Plus size={16} /></button>
+          <button type="button" title={t.renameResource} aria-label={t.renameResource} disabled={!currentResource || busy || resourcePath === session.nav_path || resourcePath === session.ncx_path} onClick={() => void openResourceAction("rename")}><Pencil size={16} /></button>
+          <button type="button" title={t.replaceResource} aria-label={t.replaceResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("replace")}><Replace size={16} /></button>
+          <button type="button" title={t.exportResource} aria-label={t.exportResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("export")}><Download size={16} /></button>
+          <button type="button" title={t.deleteResource} aria-label={t.deleteResource} disabled={!currentResource || busy || resourcePath === session.nav_path || resourcePath === session.ncx_path} onClick={() => void openResourceAction("delete")}><Trash2 size={16} /></button>
+          {currentResource ? <span className={styles.resourceInfo} title={resourcePath}>{currentResource.media_type} · {currentResource.size} B{currentResource.editable ? "" : ` · ${t.resourceNotEditable}`}</span> : null}
+        </div> : null}
         <div className={styles.sideBody}>
           {sideView === "files" ? renderTree(nodes) : null}
-          {sideView === "spine" ? session.spine.map((path, index) => <div key={path} className={styles.orderRow}><button type="button" onClick={() => void selectResource(path)}>{index + 1}. {path}</button><button type="button" title={t.up} aria-label={`${t.up}: ${path}`} disabled={index === 0} onClick={() => void moveSpine(index, -1)}><ArrowUp size={16} /></button><button type="button" title={t.down} aria-label={`${t.down}: ${path}`} disabled={index === session.spine.length - 1} onClick={() => void moveSpine(index, 1)}><ArrowDown size={16} /></button></div>) : null}
+          {sideView === "spine" ? <><div className={styles.orderAdd}><select aria-label={t.chooseChapter} value={spineCandidate} onChange={(event) => setSpineCandidate(event.target.value)}><option value="">{t.chooseChapter}</option>{session.files.filter((file) => (file.media_type === "application/xhtml+xml" || file.media_type === "text/html") && file.path !== session.nav_path && !session.spine.includes(file.path)).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select><button type="button" title={t.addToOrder} aria-label={t.addToOrder} disabled={!spineCandidate || busy} onClick={() => void updateSpine([...spineEntries(), { path: spineCandidate, linear: true }])}><Plus size={16} /></button></div>{session.spine.map((path, index) => <div key={path} className={styles.orderRow}><button type="button" onClick={() => void selectResource(path)}>{index + 1}. {path}</button><label className={styles.orderLinear} title={t.mainReading}><input type="checkbox" checked={session.spine_linear[path] !== false} disabled={busy} onChange={(event) => void updateSpine(spineEntries().map((entry) => entry.path === path ? { ...entry, linear: event.target.checked } : entry))} /><span>{t.mainReading}</span></label><button type="button" title={t.up} aria-label={`${t.up}: ${path}`} disabled={index === 0 || busy} onClick={() => void moveSpine(index, -1)}><ArrowUp size={16} /></button><button type="button" title={t.down} aria-label={`${t.down}: ${path}`} disabled={index === session.spine.length - 1 || busy} onClick={() => void moveSpine(index, 1)}><ArrowDown size={16} /></button><button type="button" title={t.removeFromOrder} aria-label={`${t.removeFromOrder}: ${path}`} disabled={session.spine.length <= 1 || busy} onClick={() => void updateSpine(spineEntries().filter((entry) => entry.path !== path))}><X size={16} /></button></div>)}</> : null}
           {sideView === "book" ? session.spine.map((path, index) => <button type="button" key={`${path}-${index}`} className={styles.bookChapter} aria-current={bookIndex === index ? "page" : undefined} title={path} onClick={() => setBookIndex(index)}><span>{index + 1}</span><strong>{session.toc.find((entry) => entry.href.split("#")[0] === path)?.label ?? path.split("/").at(-1)}</strong></button>) : null}
-          {sideView === "toc" ? <><div className={styles.tocActions}><button type="button" disabled={!session.nav_path && !session.ncx_path} onClick={() => setTocDraft([...tocDraft, { label: "", href: selectedPath || session.spine[0] || "", depth: 0 }])}>{t.addEntry}</button><button type="button" disabled={!session.nav_path && !session.ncx_path || busy} onClick={() => void generateToc()}>{t.generateToc}</button><button type="button" disabled={!tocDirty || busy} onClick={() => void applyToc()}><Check size={16} />{t.applyToc}</button></div>{tocDraft.map((entry, index) => <div key={index} className={styles.tocRow} style={{ paddingLeft: `${Math.min(entry.depth, 8) * 12 + 8}px` }}><input aria-label={`${t.label} ${index + 1}`} value={entry.label} placeholder={t.label} onChange={(event) => updateEntry(index, { label: event.target.value })} /><input aria-label={`${t.target} ${index + 1}`} value={entry.href} placeholder={t.target} onChange={(event) => updateEntry(index, { href: event.target.value })} /><div className={styles.tocButtons}><button type="button" title={t.up} disabled={siblingIndex(tocDraft, index, -1) < 0} onClick={() => moveEntry(index, -1)}><ArrowUp size={15} /></button><button type="button" title={t.down} disabled={siblingIndex(tocDraft, index, 1) < 0} onClick={() => moveEntry(index, 1)}><ArrowDown size={15} /></button><button type="button" title={t.outdent} disabled={entry.depth === 0} onClick={() => outdentEntry(index)}><ArrowLeft size={15} /></button><button type="button" title={t.indent} disabled={index === 0 || entry.depth >= tocDraft[index - 1].depth + 1 || tocDraft.slice(index, subtreeEnd(tocDraft, index)).some((child) => child.depth >= 8)} onClick={() => shiftDepth(index, 1)}><ArrowRight size={15} /></button><button type="button" title={t.removeEntry} onClick={() => removeEntry(index)}><X size={15} /></button></div></div>)}</> : null}
+          {sideView === "toc" ? <><div className={styles.tocActions}><button type="button" disabled={!session.nav_path && !session.ncx_path} onClick={() => setTocDraft([...tocDraft, { label: "", href: selectedPath || session.spine[0] || "", depth: 0 }])}>{t.addEntry}</button><button type="button" disabled={!session.nav_path && !session.ncx_path || busy} onClick={() => void generateToc()}>{t.generateToc}</button><button type="button" disabled={!tocDraft.length || busy} onClick={() => { setTocPageTitle(t.tocPageTitle); setTocPageOpen(true); }}>{t.generateTocPage}</button><button type="button" disabled={!tocDirty || busy} onClick={() => void applyToc()}><Check size={16} />{t.applyToc}</button></div>{tocDraft.map((entry, index) => <div key={index} className={styles.tocRow} style={{ paddingLeft: `${Math.min(entry.depth, 8) * 12 + 8}px` }}><input aria-label={`${t.label} ${index + 1}`} value={entry.label} placeholder={t.label} onChange={(event) => updateEntry(index, { label: event.target.value })} /><input aria-label={`${t.target} ${index + 1}`} value={entry.href} placeholder={t.target} onChange={(event) => updateEntry(index, { href: event.target.value })} /><div className={styles.tocButtons}><button type="button" title={t.chooseTocTarget} aria-label={`${t.chooseTocTarget} ${index + 1}`} disabled={busy} onClick={() => void openTocPicker(index)}><ListTree size={15} /></button><button type="button" title={t.up} disabled={siblingIndex(tocDraft, index, -1) < 0} onClick={() => moveEntry(index, -1)}><ArrowUp size={15} /></button><button type="button" title={t.down} disabled={siblingIndex(tocDraft, index, 1) < 0} onClick={() => moveEntry(index, 1)}><ArrowDown size={15} /></button><button type="button" title={t.outdent} disabled={entry.depth === 0} onClick={() => outdentEntry(index)}><ArrowLeft size={15} /></button><button type="button" title={t.indent} disabled={index === 0 || entry.depth >= tocDraft[index - 1].depth + 1 || tocDraft.slice(index, subtreeEnd(tocDraft, index)).some((child) => child.depth >= 8)} onClick={() => shiftDepth(index, 1)}><ArrowRight size={15} /></button><button type="button" title={t.removeEntry} onClick={() => removeEntry(index)}><X size={15} /></button></div></div>)}</> : null}
         </div>
       </aside>
       {separator("sidebar", sidebarWidth)}
@@ -692,6 +838,16 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         </>}
       </div>
     </div>}
+    {tocPageOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.generateTocPage}><h3>{t.generateTocPage}</h3><label>{t.label}<input value={tocPageTitle} onChange={(event) => setTocPageTitle(event.target.value)} /></label><div className={styles.saveActions}><button type="button" onClick={() => setTocPageOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={!tocPageTitle.trim() || busy} onClick={() => void createTocPage()}>{t.generateTocPage}</button></div></div></div> : null}
+    {tocPickerIndex !== null && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.chooseTocTarget}><h3>{t.chooseTocTarget}</h3><label>{t.chooseChapter}<select value={tocPickerPath} disabled={busy} onChange={(event) => void changeTocPickerPath(event.target.value)}>{session.files.filter((file) => (file.media_type === "application/xhtml+xml" || file.media_type === "text/html") && file.path !== session.nav_path).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select></label><label>{t.chooseAnchor}<select value={tocPickerAnchor} onChange={(event) => setTocPickerAnchor(event.target.value)}><option value="">{t.chapterStart}</option>{tocAnchors.map((anchor) => <option key={anchor.id} value={anchor.id}>{anchor.label} (#{anchor.id})</option>)}</select></label><div className={styles.saveActions}><button type="button" onClick={() => setTocPickerIndex(null)}>{t.cancel}</button><button type="button" className={styles.primary} onClick={() => { updateEntry(tocPickerIndex, { href: tocPickerPath + (tocPickerAnchor ? `#${encodeURIComponent(tocPickerAnchor)}` : "") }); setTocPickerIndex(null); }}>{t.confirmTarget}</button></div></div></div> : null}
+    {resourceAction && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={{ add: t.importResource, rename: t.renameResource, replace: t.replaceResource, export: t.exportResource, delete: t.deleteResource }[resourceAction]}>
+      <h3>{{ add: t.importResource, rename: t.renameResource, replace: t.replaceResource, export: t.exportResource, delete: t.deleteResource }[resourceAction]}</h3>
+      {resourceAction === "add" || resourceAction === "replace" ? <label>{t.localFile}<div className={styles.resourcePick}><input value={resourceInput} onChange={(event) => setResourceInput(event.target.value)} /><button type="button" title={t.chooseFile} aria-label={t.chooseFile} onClick={() => void chooseResourceFile()}><FolderOpen size={17} /></button></div></label> : null}
+      {resourceAction === "add" || resourceAction === "rename" || resourceAction === "export" ? <label>{resourceAction === "export" ? t.outputPath : t.archivePath}<div className={styles.resourcePick}><input value={resourceTarget} onChange={(event) => setResourceTarget(event.target.value)} />{resourceAction === "export" ? <button type="button" title={t.chooseFile} aria-label={t.chooseFile} onClick={() => void chooseResourceOutput()}><FolderOpen size={17} /></button> : null}</div></label> : null}
+      {resourceAction === "add" ? <label className={styles.checkbox}><input type="checkbox" checked={resourceInSpine} onChange={(event) => setResourceInSpine(event.target.checked)} />{t.addToSpine}</label> : null}
+      {resourceAction === "delete" ? <><p>{t.confirmDeleteResource}</p>{resourceReferences.length ? <div className={styles.resourceReferences}><strong>{t.resourceReferences}</strong>{resourceReferences.map((reference) => <div key={reference}>{reference}</div>)}</div> : null}</> : null}
+      <div className={styles.saveActions}><button type="button" onClick={() => setResourceAction(null)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || ((resourceAction === "add" || resourceAction === "replace") && !resourceInput.trim()) || ((resourceAction === "add" || resourceAction === "rename" || resourceAction === "export") && !resourceTarget.trim()) || (resourceAction === "delete" && resourceReferences.length > 0)} onClick={() => void applyResourceAction()}>{t.applyResource}</button></div>
+    </div></div> : null}
     {saveOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.save}><h3>{t.save}</h3><label className={styles.checkbox}><input type="checkbox" checked={overwriteSource} onChange={(event) => setOverwriteSource(event.target.checked)} />{t.overwrite}</label>{!overwriteSource ? <label>{t.outputPath}<input value={outputPath} onChange={(event) => setOutputPath(event.target.value)} /></label> : <p>{session.input_path}</p>}<div className={styles.saveActions}><button type="button" onClick={() => setSaveOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy} onClick={() => void saveBook()}><Save size={16} />{overwriteSource ? t.overwrite : t.saveAs}</button></div></div></div> : null}
     {closeOpen ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.closeTitle}><h3>{t.closeTitle}</h3><p>{t.dirtyClose}</p><div className={styles.saveActions}><button type="button" onClick={() => setCloseOpen(false)}>{t.cancel}</button><button type="button" onClick={closeEditor}>{t.discardClose}</button><button type="button" onClick={() => { setCloseOpen(false); setCloseAfterSave(true); setOverwriteSource(false); setSaveOpen(true); }}>{t.saveAs}</button><button type="button" className={styles.primary} onClick={() => { setCloseOpen(false); setCloseAfterSave(true); setOverwriteSource(true); setSaveOpen(true); }}>{t.overwrite}</button></div></div></div> : null}
   </div>;

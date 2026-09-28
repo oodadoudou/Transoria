@@ -11,6 +11,7 @@ import posixpath
 import re
 import tempfile
 import time
+import unicodedata
 import uuid
 import zipfile
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from urllib.parse import quote, unquote, urlsplit
 from lxml import etree
 from lxml import html as lxml_html
 import regex
+import tinycss2
 
 from transoria.formats.epub_paths import (
     decode_epub_href,
@@ -58,6 +60,10 @@ MAX_PACKAGE_BYTES = 32_000_000
 MAX_ARCHIVE_BYTES = 2_000_000_000
 MAX_ARCHIVE_ENTRIES = 100_000
 SEARCH_TIMEOUT_SECONDS = 3.0
+SessionSnapshot = tuple[
+    dict[str, bytes], list[str], list[dict[str, object]],
+    list[dict[str, object]], set[str], str, str, dict[str, bool],
+]
 
 
 def _xml(data: bytes) -> etree._Element:
@@ -160,6 +166,155 @@ def _document_ids(data: bytes) -> set[str]:
     }
 
 
+def _rewrite_resource_links(
+    data: bytes, media: str, source_path: str, destination_path: str,
+    renamed: dict[str, str], known_paths: set[str],
+) -> tuple[bytes, set[str]]:
+    referenced: set[str] = set()
+    changed = False
+
+    def rewrite_url(raw: str) -> str:
+        nonlocal changed
+        if not raw or raw.startswith(("#", "data:", "//")) or urlsplit(raw).scheme:
+            return raw
+        parts = urlsplit(raw)
+        target = posixpath.normpath(posixpath.join(
+            posixpath.dirname(source_path), unquote(parts.path),
+        ))
+        if target not in known_paths:
+            if source_path != destination_path:
+                raise ValueError(f"Cannot move a resource with an unresolved link: {raw}")
+            return raw
+        referenced.add(target)
+        new_target = renamed.get(target, target)
+        if source_path == destination_path and new_target == target:
+            return raw
+        relative = posixpath.relpath(new_target, posixpath.dirname(destination_path) or ".")
+        updated = quote(relative, safe="/-._~")
+        if parts.query:
+            updated += f"?{parts.query}"
+        if parts.fragment:
+            updated += f"#{parts.fragment}"
+        changed |= updated != raw
+        return updated
+
+    def rewrite_css(css: str, *, declarations: bool = False) -> str:
+        was_changed = changed
+        rules = (
+            tinycss2.parse_declaration_list(css, skip_comments=False, skip_whitespace=False)
+            if declarations else tinycss2.parse_stylesheet(css, skip_comments=False, skip_whitespace=False)
+        )
+
+        def walk(tokens: list[object]) -> None:
+            for token in tokens:
+                token_type = getattr(token, "type", "")
+                if token_type == "error":
+                    raise ValueError("Cannot safely rewrite malformed CSS references.")
+                if token_type == "url":
+                    updated = rewrite_url(token.value)
+                    if updated != token.value:
+                        token.value = updated
+                        token.representation = f"url({json.dumps(updated, ensure_ascii=False)})"
+                elif token_type == "function" and token.lower_name == "url":
+                    values = [part for part in token.arguments if part.type != "whitespace"]
+                    if len(values) == 1 and values[0].type == "string":
+                        value = values[0]
+                        updated = rewrite_url(value.value)
+                        if updated != value.value:
+                            value.value = updated
+                            value.representation = json.dumps(updated, ensure_ascii=False)
+                    else:
+                        raise ValueError("Cannot safely rewrite a complex CSS url().")
+                elif hasattr(token, "content") and token.content is not None:
+                    walk(token.content)
+                elif hasattr(token, "arguments"):
+                    walk(token.arguments)
+
+        for rule in rules:
+            if rule.type == "error":
+                raise ValueError("Cannot safely rewrite malformed CSS references.")
+            if rule.type == "at-rule" and rule.lower_at_keyword == "import":
+                first = next((token for token in rule.prelude if token.type not in {"whitespace", "comment"}), None)
+                if first is not None and first.type == "string":
+                    updated = rewrite_url(first.value)
+                    if updated != first.value:
+                        first.value = updated
+                        first.representation = json.dumps(updated, ensure_ascii=False)
+            if hasattr(rule, "prelude"):
+                walk(rule.prelude)
+            if getattr(rule, "value", None) is not None and isinstance(rule.value, list):
+                walk(rule.value)
+            if getattr(rule, "content", None) is not None:
+                walk(rule.content)
+        return tinycss2.serialize(rules) if changed != was_changed else css
+
+    if media == "text/css":
+        content, encoding = _decode(data)
+        updated = rewrite_css(content)
+        return (_encode(updated, encoding) if changed else data), referenced
+
+    if media not in {
+        "application/xhtml+xml", "text/html", "application/x-dtbncx+xml",
+        "application/xml", "text/xml", "image/svg+xml",
+    }:
+        if media.startswith("text/") or media.endswith("+xml") or "javascript" in media:
+            if source_path != destination_path or any(
+                posixpath.basename(path).encode("utf-8") in data
+                or quote(posixpath.basename(path)).encode("ascii") in data
+                for path in renamed
+            ):
+                raise ValueError(f"Cannot safely rewrite unsupported text resource: {source_path}")
+        return data, referenced
+    try:
+        root = (
+            lxml_html.fromstring(data, parser=lxml_html.HTMLParser(no_network=True))
+            if media == "text/html" else _xml(data)
+        )
+    except (etree.XMLSyntaxError, etree.ParserError) as exc:
+        if source_path != destination_path or any(
+            posixpath.basename(path).encode("utf-8") in data
+            or quote(posixpath.basename(path)).encode("ascii") in data
+            for path in renamed
+        ):
+            raise ValueError(f"Cannot safely rewrite malformed document: {source_path}") from exc
+        return data, referenced
+    for node in root.iter():
+        if not isinstance(node.tag, str):
+            continue
+        for key, value in list(node.attrib.items()):
+            name = etree.QName(key).localname.lower()
+            if name in {"href", "src", "poster", "data"}:
+                updated = rewrite_url(value)
+                if updated != value:
+                    node.set(key, updated)
+            elif name == "srcset":
+                items = []
+                for part in value.split(","):
+                    match = re.match(r"(\s*)(\S+)(.*)", part, flags=re.S)
+                    if not match:
+                        items.append(part)
+                        continue
+                    items.append(match.group(1) + rewrite_url(match.group(2)) + match.group(3))
+                updated = ",".join(items)
+                if updated != value:
+                    node.set(key, updated)
+            elif name == "style":
+                css = rewrite_css(value, declarations=True)
+                if css != value:
+                    node.set(key, css)
+        if etree.QName(node).localname.lower() == "style" and node.text:
+            css = rewrite_css(node.text)
+            if css != node.text:
+                node.text = css
+    if not changed:
+        return data, referenced
+    return etree.tostring(
+        root.getroottree() if media != "text/html" else root,
+        encoding=_decode(data)[1], xml_declaration=media != "text/html",
+        method="html" if media == "text/html" else "xml",
+    ), referenced
+
+
 def _missing_toc_fragments(
     archive: zipfile.ZipFile, entries: list[dict[str, object]]
 ) -> set[str]:
@@ -195,14 +350,12 @@ class ContentSession:
     toc: list[dict[str, object]]
     nav_path: str
     ncx_path: str
+    spine_linear: dict[str, bool] = field(default_factory=dict)
     changes: dict[str, bytes] = field(default_factory=dict)
+    removed: set[str] = field(default_factory=set)
     dirty: bool = False
-    undo_stack: list[tuple[dict[str, bytes], list[str], list[dict[str, object]]]] = (
-        field(default_factory=list)
-    )
-    redo_stack: list[tuple[dict[str, bytes], list[str], list[dict[str, object]]]] = (
-        field(default_factory=list)
-    )
+    undo_stack: list[SessionSnapshot] = field(default_factory=list)
+    redo_stack: list[SessionSnapshot] = field(default_factory=list)
 
     @classmethod
     def open(cls, path: str) -> ContentSession:
@@ -259,11 +412,12 @@ class ContentSession:
                     nav_path = entry
                 if media == "application/x-dtbncx+xml":
                     ncx_path = entry
-            spine = [
-                id_to_path[item.get("idref", "")]
+            spine_items = [
+                (id_to_path[item.get("idref", "")], item.get("linear") != "no")
                 for item in opf.findall(f".//{{{OPF}}}spine/{{{OPF}}}itemref")
                 if item.get("idref", "") in id_to_path
             ]
+            spine = [path for path, _ in spine_items]
             toc = _read_toc(archive, nav_path, ncx_path)
         return cls(
             source,
@@ -274,6 +428,7 @@ class ContentSession:
             toc,
             nav_path,
             ncx_path,
+            dict(spine_items),
         )
 
     def info(self, session_id: str) -> dict[str, object]:
@@ -282,6 +437,7 @@ class ContentSession:
             "input_path": str(self.path),
             "files": self.files,
             "spine": self.spine,
+            "spine_linear": self.spine_linear,
             "toc": self.toc,
             "nav_path": self.nav_path,
             "ncx_path": self.ncx_path,
@@ -290,8 +446,12 @@ class ContentSession:
             "can_redo": bool(self.redo_stack),
         }
 
-    def _snapshot(self) -> tuple[dict[str, bytes], list[str], list[dict[str, object]]]:
-        return self.changes.copy(), self.spine.copy(), copy.deepcopy(self.toc)
+    def _snapshot(self) -> SessionSnapshot:
+        return (
+            self.changes.copy(), self.spine.copy(), copy.deepcopy(self.toc),
+            copy.deepcopy(self.files), self.removed.copy(), self.nav_path,
+            self.ncx_path, self.spine_linear.copy(),
+        )
 
     def _record(self) -> None:
         self.undo_stack.append(self._snapshot())
@@ -305,7 +465,10 @@ class ContentSession:
         if not source:
             raise ValueError("Nothing to undo or redo.")
         target.append(self._snapshot())
-        self.changes, self.spine, self.toc = source.pop()
+        (
+            self.changes, self.spine, self.toc, self.files, self.removed,
+            self.nav_path, self.ncx_path, self.spine_linear,
+        ) = source.pop()
         self.dirty = bool(self.undo_stack)
 
     def _file(self, path: str, *, editable: bool = False) -> dict[str, object]:
@@ -317,6 +480,8 @@ class ContentSession:
     def _bytes(self, path: str) -> bytes:
         if path in self.changes:
             return self.changes[path]
+        if path in self.removed:
+            raise ValueError("Resource was removed from the editor session.")
         with zipfile.ZipFile(self.path) as archive:
             return archive.read(path)
 
@@ -335,6 +500,34 @@ class ContentSession:
         encoding = _decode(data)[1]
         return {"path": path, "content": content, "encoding": encoding}
 
+    def anchors(self, path: str) -> list[dict[str, str]]:
+        item = self._file(path)
+        if item["media_type"] not in {"application/xhtml+xml", "text/html"}:
+            raise ValueError("TOC targets must be XHTML or HTML resources.")
+        data = self._bytes(path)
+        if len(data) > MAX_TEXT_BYTES:
+            raise ValueError("Chapter exceeds the 4 MB editor limit.")
+        try:
+            root = _xml(data)
+        except etree.XMLSyntaxError:
+            root = lxml_html.fromstring(data, parser=lxml_html.HTMLParser(no_network=True))
+        anchors: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for node in root.iter():
+            if not isinstance(node.tag, str):
+                continue
+            identifier = node.get("id") or node.get("{http://www.w3.org/XML/1998/namespace}id")
+            if not identifier and etree.QName(node).localname.lower() == "a":
+                identifier = node.get("name")
+            if not identifier or identifier in seen:
+                continue
+            seen.add(identifier)
+            label = " ".join("".join(node.itertext()).split())[:80]
+            anchors.append({"id": identifier, "label": label or identifier})
+            if len(anchors) >= 5000:
+                break
+        return anchors
+
     def write(self, path: str, content: str) -> None:
         self._file(path, editable=True)
         if len(content.encode("utf-8")) > MAX_TEXT_BYTES:
@@ -346,6 +539,201 @@ class ContentSession:
         self._record()
         self.changes[path] = updated
 
+    def _resource_paths(self) -> set[str]:
+        with zipfile.ZipFile(self.path) as archive:
+            return (set(archive.namelist()) - self.removed) | set(self.changes)
+
+    def _check_new_path(self, path: str) -> None:
+        if (
+            not path or path.startswith("/") or "\\" in path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+            or any(ord(char) < 32 for char in path)
+            or path.startswith("META-INF/") or path == "mimetype"
+            or path == self.opf_path
+        ):
+            raise ValueError("Unsafe EPUB resource path.")
+        names = self._resource_paths()
+        key = unicodedata.normalize("NFC", unquote(path)).casefold()
+        if any(unicodedata.normalize("NFC", unquote(name)).casefold() == key for name in names):
+            raise ValueError("EPUB resource path already exists.")
+
+    def _package(self) -> etree._Element:
+        return _xml(self._bytes(self.opf_path))
+
+    def add_resource(
+        self, path: str, data: bytes, media_type: str = "", in_spine: bool = False,
+    ) -> None:
+        self._check_new_path(path)
+        if len(data) > MAX_PREVIEW_BYTES:
+            raise ValueError("Resource exceeds the 48 MB editor limit.")
+        media = media_type or mimetypes.guess_type(path)[0] or "application/octet-stream"
+        if in_spine and media not in {"application/xhtml+xml", "text/html"}:
+            raise ValueError("Only XHTML/HTML resources can enter the reading order.")
+        if media in XML_TYPES | {"application/xhtml+xml"}:
+            try:
+                _xml(data)
+            except etree.XMLSyntaxError as exc:
+                raise ValueError(f"Invalid XML in {path}: {exc}") from exc
+        package = self._package()
+        manifest = package.find(f"{{{OPF}}}manifest")
+        spine = package.find(f"{{{OPF}}}spine")
+        if manifest is None or spine is None:
+            raise ValueError("EPUB manifest or reading order is missing.")
+        used = {item.get("id") for item in manifest}
+        index = 1
+        while f"transoria-resource-{index}" in used:
+            index += 1
+        item_id = f"transoria-resource-{index}"
+        href = quote(posixpath.relpath(path, posixpath.dirname(self.opf_path) or "."), safe="/-._~")
+        etree.SubElement(manifest, f"{{{OPF}}}item", id=item_id, href=href, **{"media-type": media})
+        if in_spine:
+            etree.SubElement(spine, f"{{{OPF}}}itemref", idref=item_id)
+        self._record()
+        self.changes[self.opf_path] = _serialize(package)
+        self.changes[path] = data
+        self.files.append({
+            "path": path, "media_type": media,
+            "editable": media in EDITABLE_TYPES, "size": len(data),
+        })
+        if in_spine:
+            self.spine.append(path)
+            self.spine_linear[path] = True
+
+    def replace_resource(self, path: str, data: bytes) -> None:
+        self._file(path)
+        if len(data) > MAX_PREVIEW_BYTES:
+            raise ValueError("Resource exceeds the 48 MB editor limit.")
+        if data == self._bytes(path):
+            return
+        self._record()
+        self.changes[path] = data
+        self._file(path)["size"] = len(data)
+
+    def export_resource(self, path: str, output_path: str, overwrite: bool) -> str:
+        self._file(path)
+        output = Path(output_path).expanduser().resolve()
+        if not output.parent.is_dir():
+            raise ValueError("Output folder does not exist.")
+        if output == self.path:
+            raise ValueError("Resource export cannot overwrite the source EPUB.")
+        if output.exists() and not overwrite:
+            raise ValueError("Output exists; confirm overwrite first.")
+        data = self._bytes(path)
+        fd, temp_name = tempfile.mkstemp(prefix=".epub-resource-", dir=output.parent)
+        temp = Path(temp_name)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+            if overwrite:
+                os.replace(temp, output)
+            else:
+                try:
+                    os.link(temp, output)
+                except FileExistsError as exc:
+                    raise ValueError("Output exists; confirm overwrite first.") from exc
+        finally:
+            temp.unlink(missing_ok=True)
+        return str(output)
+
+    def resource_references(self, path: str) -> list[str]:
+        self._file(path)
+        known = self._resource_paths()
+        inbound = []
+        for item in self.files:
+            source_path = str(item["path"])
+            if source_path == path:
+                continue
+            media = str(item["media_type"])
+            if media not in EDITABLE_TYPES and not media.endswith("+xml"):
+                continue
+            _, targets = _rewrite_resource_links(
+                self._bytes(source_path), media,
+                source_path, source_path, {path: path}, known,
+            )
+            if path in targets:
+                inbound.append(source_path)
+        with zipfile.ZipFile(self.path) as archive:
+            manifest_paths = {str(item["path"]) for item in self.files}
+            names = (set(archive.namelist()) - self.removed) - manifest_paths
+            for source_path in names - {self.opf_path, "mimetype"}:
+                info = archive.getinfo(source_path)
+                if info.file_size > MAX_TEXT_BYTES:
+                    continue
+                data = self.changes.get(source_path, archive.read(source_path))
+                if any(candidate in data for candidate in {
+                    path.encode("utf-8"), quote(path).encode("ascii"),
+                    posixpath.basename(path).encode("utf-8"),
+                }):
+                    inbound.append(source_path)
+        if path in self.spine:
+            inbound.append("OPF spine")
+        if any(str(entry["href"]).split("#", 1)[0] == path for entry in self.toc):
+            inbound.append("EPUB navigation")
+        return inbound
+
+    def rename_resource(self, path: str, target: str) -> dict[str, int]:
+        item = self._file(path)
+        if path in {self.nav_path, self.ncx_path}:
+            raise ValueError("Navigation resources cannot be moved yet.")
+        self._check_new_path(target)
+        with zipfile.ZipFile(self.path) as archive:
+            if "META-INF/encryption.xml" in archive.namelist():
+                encrypted = archive.read("META-INF/encryption.xml")
+                if path.encode("utf-8") in encrypted or quote(path).encode("ascii") in encrypted:
+                    raise ValueError("Encrypted resources cannot be moved safely.")
+        known = self._resource_paths()
+        renamed = {path: target}
+        pending: dict[str, bytes] = {}
+        sources = [(self.opf_path, "application/xml")] + [
+            (str(file["path"]), str(file["media_type"])) for file in self.files
+        ]
+        for source_path, media in sources:
+            destination = target if source_path == path else source_path
+            data, _ = _rewrite_resource_links(
+                self._bytes(source_path), media, source_path, destination,
+                renamed, known,
+            )
+            if destination != source_path or data != self._bytes(source_path):
+                pending[destination] = data
+        updated_toc = [
+            {**entry, "href": target + str(entry["href"])[len(path):]}
+            if str(entry["href"]).split("#", 1)[0] == path else entry
+            for entry in self.toc
+        ]
+        self._record()
+        self.removed.add(path)
+        self.changes.pop(path, None)
+        self.changes.update(pending)
+        item["path"] = target
+        self.spine = [target if current == path else current for current in self.spine]
+        if path in self.spine_linear:
+            self.spine_linear[target] = self.spine_linear.pop(path)
+        self.toc = updated_toc
+        return {"files_changed": len(pending)}
+
+    def delete_resource(self, path: str) -> None:
+        self._file(path)
+        if path in {self.nav_path, self.ncx_path}:
+            raise ValueError("Navigation resources cannot be deleted yet.")
+        inbound = self.resource_references(path)
+        if inbound:
+            raise ValueError("Resource is still referenced by: " + ", ".join(inbound[:5]))
+        package = self._package()
+        manifest = package.find(f"{{{OPF}}}manifest")
+        if manifest is None:
+            raise ValueError("EPUB manifest is missing.")
+        item = next((entry for entry in manifest if resolve_epub_href(
+            posixpath.dirname(self.opf_path), entry.get("href", ""),
+        ) == path), None)
+        if item is None:
+            raise ValueError("Resource is missing from the EPUB manifest.")
+        manifest.remove(item)
+        self._record()
+        self.changes[self.opf_path] = _serialize(package)
+        self.changes.pop(path, None)
+        self.removed.add(path)
+        self.files = [entry for entry in self.files if entry["path"] != path]
+
     def reorder_spine(self, paths: list[str]) -> None:
         if len(paths) != len(self.spine) or set(paths) != set(self.spine):
             raise ValueError(
@@ -354,6 +742,24 @@ class ContentSession:
         if paths != self.spine:
             self._record()
             self.spine = paths.copy()
+
+    def set_spine(self, entries: list[dict[str, object]]) -> None:
+        available = {
+            str(item["path"]) for item in self.files
+            if item["media_type"] in {"application/xhtml+xml", "text/html"}
+        }
+        paths = [entry.get("path") for entry in entries]
+        if (
+            not paths or len(paths) != len(set(paths))
+            or not all(isinstance(path, str) and path in available for path in paths)
+            or not all(isinstance(entry.get("linear"), bool) for entry in entries)
+        ):
+            raise ValueError("Reading order needs unique XHTML/HTML resources and linear flags.")
+        linear = {str(entry["path"]): bool(entry["linear"]) for entry in entries}
+        if paths != self.spine or linear != self.spine_linear:
+            self._record()
+            self.spine = [str(path) for path in paths]
+            self.spine_linear = linear
 
     def set_toc(self, entries: list[dict[str, object]]) -> None:
         if not self.nav_path and not self.ncx_path:
@@ -482,6 +888,40 @@ class ContentSession:
             self.changes.update(pending)
             self.toc = generated
         return {"generated_entries": len(generated), "approximate_targets": approximate_targets}
+
+    def generate_toc_page(self, title: str) -> str:
+        title = title.strip()
+        if not title or len(title) > 200 or not self.toc:
+            raise ValueError("A title and at least one TOC entry are required.")
+        path = posixpath.join(posixpath.dirname(self.opf_path), "Text/transoria_contents.xhtml")
+        self._check_new_path(path)
+        valid = {str(item["path"]) for item in self.files}
+        for entry in self.toc:
+            if str(entry["href"]).split("#", 1)[0] not in valid:
+                raise ValueError("TOC contains a missing resource; repair it before generating a page.")
+        root = etree.Element(f"{{{XHTML}}}html", nsmap={None: XHTML})
+        head = etree.SubElement(root, f"{{{XHTML}}}head")
+        etree.SubElement(head, f"{{{XHTML}}}title").text = title
+        body = etree.SubElement(root, f"{{{XHTML}}}body")
+        etree.SubElement(body, f"{{{XHTML}}}h1").text = title
+        top = etree.SubElement(body, f"{{{XHTML}}}ol")
+        levels = [top]
+        for entry in self.toc:
+            depth = int(entry["depth"])
+            if depth < 0 or depth > 8 or depth > len(levels):
+                raise ValueError("TOC nesting is invalid.")
+            while len(levels) > depth + 1:
+                levels.pop()
+            if depth + 1 > len(levels):
+                if not len(levels[-1]):
+                    raise ValueError("TOC nesting is invalid.")
+                levels.append(etree.SubElement(levels[-1][-1], f"{{{XHTML}}}ol"))
+            li = etree.SubElement(levels[-1], f"{{{XHTML}}}li")
+            etree.SubElement(li, f"{{{XHTML}}}a", href=_relative_href(path, str(entry["href"]))).text = str(entry["label"])
+        self.add_resource(path, _serialize(root), "application/xhtml+xml", in_spine=True)
+        self.spine.remove(path)
+        self.spine.insert(0, path)
+        return path
 
     def search(
         self, query: str, paths: list[str], case_sensitive: bool = False,
@@ -732,27 +1172,40 @@ class ContentSession:
             if spine_node is None:
                 raise ValueError("EPUB reading order is missing.")
             itemrefs = list(spine_node)
-            ref_by_path = {}
+            ref_by_path: dict[str, etree._Element] = {}
+            id_by_path: dict[str, str] = {}
+            for item_id, item in manifest.items():
+                resolved = resolve_epub_href(posixpath.dirname(self.opf_path), item.get("href", ""))
+                entry = (
+                    resolved if any(file["path"] == resolved for file in self.files)
+                    else find_archive_entry_by_normalized_path(source, resolved)
+                )
+                if entry:
+                    id_by_path[entry] = item_id
+            path_by_id = {item_id: path for path, item_id in id_by_path.items()}
             for itemref in itemrefs:
-                item = manifest.get(itemref.get("idref", ""))
-                if item is not None:
-                    resolved = resolve_epub_href(
-                        posixpath.dirname(self.opf_path), item.get("href", "")
-                    )
-                    entry = find_archive_entry_by_normalized_path(source, resolved)
-                    if entry:
-                        ref_by_path[entry] = itemref
-            if set(self.spine) != set(ref_by_path):
+                path = path_by_id.get(itemref.get("idref", ""), "")
+                if not path or path in ref_by_path:
+                    raise ValueError("Reading order contains unresolved or duplicate items.")
+                ref_by_path[path] = itemref
+            if set(self.spine) != set(self.spine_linear) or any(path not in id_by_path for path in self.spine):
                 raise ValueError("Reading order no longer matches the package.")
-            if list(ref_by_path) != self.spine:
-                if len(itemrefs) != len(ref_by_path):
-                    raise ValueError(
-                        "Reading order contains unresolved items; cannot reorder safely."
-                    )
+            wanted_refs = []
+            spine_changed = False
+            for path in self.spine:
+                itemref = ref_by_path.get(path)
+                if itemref is None:
+                    itemref = etree.Element(f"{{{OPF}}}itemref", idref=id_by_path[path])
+                    spine_changed = True
+                if (itemref.get("linear") != "no") != self.spine_linear[path]:
+                    itemref.set("linear", "yes" if self.spine_linear[path] else "no")
+                    spine_changed = True
+                wanted_refs.append(itemref)
+            if wanted_refs != itemrefs or spine_changed:
                 for itemref in itemrefs:
                     spine_node.remove(itemref)
-                for path in self.spine:
-                    spine_node.append(ref_by_path[path])
+                for itemref in wanted_refs:
+                    spine_node.append(itemref)
                 pending[self.opf_path] = _serialize(opf)
             if self.toc != _read_toc(source, self.nav_path, self.ncx_path):
                 if self.nav_path:
@@ -793,16 +1246,19 @@ class ContentSession:
             try:
                 with zipfile.ZipFile(temp, "w") as target:
                     for info in source.infolist():
+                        if info.filename in self.removed:
+                            continue
                         data = (
                             pending.pop(info.filename)
                             if info.filename in pending
                             else source.read(info.filename)
                         )
                         target.writestr(info, data)
-                if pending:
-                    raise ValueError(
-                        f"Edited resource is missing from archive: {next(iter(pending))}"
-                    )
+                    for path, data in pending.items():
+                        if any(item["path"] == path for item in self.files):
+                            target.writestr(path, data)
+                        else:
+                            raise ValueError(f"Edited resource is missing from manifest: {path}")
                 with zipfile.ZipFile(temp) as check_archive:
                     bad = check_archive.testzip()
                     if bad:
@@ -840,9 +1296,17 @@ class ContentSession:
                         ) from exc
             finally:
                 temp.unlink(missing_ok=True)
-        self.path = output
-        self.fingerprint = _fingerprint(output)
+        reopened = ContentSession.open(str(output))
+        self.path = reopened.path
+        self.fingerprint = reopened.fingerprint
+        self.files = reopened.files
+        self.spine = reopened.spine
+        self.spine_linear = reopened.spine_linear
+        self.toc = reopened.toc
+        self.nav_path = reopened.nav_path
+        self.ncx_path = reopened.ncx_path
         self.changes.clear()
+        self.removed.clear()
         self.undo_stack.clear()
         self.redo_stack.clear()
         self.dirty = False
@@ -851,7 +1315,10 @@ class ContentSession:
     def validate(self) -> dict[str, object]:
         candidate = copy.copy(self)
         candidate.changes = self.changes.copy()
+        candidate.removed = self.removed.copy()
+        candidate.files = copy.deepcopy(self.files)
         candidate.spine = self.spine.copy()
+        candidate.spine_linear = self.spine_linear.copy()
         candidate.toc = copy.deepcopy(self.toc)
         with tempfile.TemporaryDirectory(prefix="transoria-epub-check-") as folder:
             result = candidate.save(str(Path(folder) / "checked.epub"), overwrite=False)
@@ -1148,16 +1615,24 @@ class ContentSessionStore:
         return self.state_root / f"{session_id}.json"
 
     @staticmethod
-    def _pack(snapshot: tuple[dict[str, bytes], list[str], list[dict[str, object]]]) -> dict[str, object]:
-        changes, spine, toc = snapshot
+    def _pack(snapshot: SessionSnapshot) -> dict[str, object]:
+        changes, spine, toc, files, removed, nav_path, ncx_path, spine_linear = snapshot
         return {
             "changes": {path: base64.b64encode(data).decode("ascii") for path, data in changes.items()},
             "spine": spine,
             "toc": toc,
+            "files": files,
+            "removed": sorted(removed),
+            "nav_path": nav_path,
+            "ncx_path": ncx_path,
+            "spine_linear": spine_linear,
         }
 
     @staticmethod
-    def _unpack(value: dict[str, object]) -> tuple[dict[str, bytes], list[str], list[dict[str, object]]]:
+    def _unpack(
+        value: dict[str, object], base_files: list[dict[str, object]],
+        nav_path: str, ncx_path: str, base_linear: dict[str, bool],
+    ) -> SessionSnapshot:
         changes = value["changes"]
         if not isinstance(changes, dict):
             raise ValueError("Invalid saved editor session.")
@@ -1165,6 +1640,11 @@ class ContentSessionStore:
             {str(path): base64.b64decode(str(data), validate=True) for path, data in changes.items()},
             list(value["spine"]),
             list(value["toc"]),
+            copy.deepcopy(value.get("files", base_files)),
+            set(value.get("removed", [])),
+            str(value.get("nav_path", nav_path)),
+            str(value.get("ncx_path", ncx_path)),
+            dict(value.get("spine_linear", base_linear)),
         )
 
     def persist(self, session_id: str) -> None:
@@ -1173,7 +1653,7 @@ class ContentSessionStore:
             return
         session = self.sessions[session_id]
         payload = {
-            "version": 1,
+            "version": 2,
             "path": str(session.path),
             "fingerprint": session.fingerprint,
             "current": self._pack(session._snapshot()),
@@ -1204,14 +1684,27 @@ class ContentSessionStore:
                 raise ValueError("Editor session expired. Reopen the EPUB.")
             try:
                 payload = json.loads(state.read_text(encoding="utf-8"))
-                if payload["version"] != 1:
+                if payload["version"] not in {1, 2}:
                     raise ValueError("Unsupported editor session version.")
                 session = ContentSession.open(payload["path"])
                 if list(session.fingerprint) != payload["fingerprint"]:
                     raise ValueError("Source EPUB changed on disk; reopen it before editing.")
-                session.changes, session.spine, session.toc = self._unpack(payload["current"])
-                session.undo_stack = [self._unpack(item) for item in payload["undo"]]
-                session.redo_stack = [self._unpack(item) for item in payload["redo"]]
+                base_files = session.files
+                nav_path, ncx_path = session.nav_path, session.ncx_path
+                base_linear = session.spine_linear
+                (
+                    session.changes, session.spine, session.toc, session.files,
+                    session.removed, session.nav_path, session.ncx_path,
+                    session.spine_linear,
+                ) = self._unpack(payload["current"], base_files, nav_path, ncx_path, base_linear)
+                session.undo_stack = [
+                    self._unpack(item, base_files, nav_path, ncx_path, base_linear)
+                    for item in payload["undo"]
+                ]
+                session.redo_stack = [
+                    self._unpack(item, base_files, nav_path, ncx_path, base_linear)
+                    for item in payload["redo"]
+                ]
                 session.dirty = bool(payload["dirty"])
             except (KeyError, TypeError, json.JSONDecodeError, base64.binascii.Error) as exc:
                 raise ValueError("Editor session could not be restored; reopen the EPUB.") from exc

@@ -80,6 +80,7 @@ export interface EpubContentSession {
   ncx_path: string;
   files: EpubContentFile[];
   spine: string[];
+  spine_linear: Record<string, boolean>;
   toc: EpubTocEntry[];
   dirty: boolean;
   can_undo: boolean;

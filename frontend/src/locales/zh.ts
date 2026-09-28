@@ -647,6 +647,13 @@ export const zh: Messages = {
     failed: "失败",
   },
   epubContentTool: {
+    importResource: "导入资源", renameResource: "移动或改名", replaceResource: "替换资源", exportResource: "导出资源", deleteResource: "删除资源",
+    localFile: "本地文件", archivePath: "书内路径", addToSpine: "加入阅读顺序", applyResource: "执行", resourceSaved: "资源操作完成",
+    resourceReferences: "引用此资源的位置", resourceNotEditable: "此资源不能在源码栏编辑", confirmDeleteResource: "删除所选资源？此操作可以撤销。",
+    addToOrder: "加入阅读顺序", removeFromOrder: "移出阅读顺序", mainReading: "主序列", chooseChapter: "选择章节",
+    chooseTocTarget: "选择目录目标", chapterStart: "章节开头", chooseAnchor: "选择锚点",
+    generateTocPage: "生成书内目录页", tocPageTitle: "目录",
+    chooseFile: "选择文件", confirmTarget: "使用此目标",
     resizeFiles: "调整文件栏宽度", resizePreview: "调整源码与预览宽度",
     bookPreview: "全书预览", previousChapter: "上一章", nextChapter: "下一章", previewInvalid: "当前内容无法预览",
     importTitle: "导入 EPUB", importSubtitle: "选择本地电子书开始编辑", importPrompt: "选择一本 EPUB 文件", manualPath: "或输入本地文件路径", recent: "最近打开", restoring: "正在恢复编辑会话…",

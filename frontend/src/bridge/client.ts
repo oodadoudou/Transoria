@@ -230,6 +230,9 @@ export const dialogsBridge = {
   chooseReplacementRulesFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, []);
   },
+  chooseAnyFile(initialPath?: string): Promise<DialogPathResult> {
+    return nativeDialogs.chooseFile(initialPath, []);
+  },
   chooseEpubFile(initialPath?: string): Promise<DialogPathResult> {
     return nativeDialogs.chooseFile(initialPath, ["epub"]);
   },
@@ -1138,6 +1141,27 @@ export const epubContentBridge = {
   read(sessionId: string, path: string): Promise<{ path: string; content: string; encoding: string }> {
     return call("epub_content.read", { session_id: sessionId, path });
   },
+  anchors(sessionId: string, path: string): Promise<{ anchors: Array<{ id: string; label: string }> }> {
+    return call("epub_content.anchors", { session_id: sessionId, path });
+  },
+  references(sessionId: string, path: string): Promise<{ inbound: string[] }> {
+    return call("epub_content.references", { session_id: sessionId, path });
+  },
+  addResource(sessionId: string, inputPath: string, path: string, inSpine: boolean): Promise<EpubContentSession> {
+    return call("epub_content.add_resource", { session_id: sessionId, input_path: inputPath, path, in_spine: inSpine });
+  },
+  replaceResource(sessionId: string, path: string, inputPath: string): Promise<EpubContentSession> {
+    return call("epub_content.replace_resource", { session_id: sessionId, path, input_path: inputPath });
+  },
+  renameResource(sessionId: string, path: string, target: string): Promise<EpubContentSession & { files_changed: number }> {
+    return call("epub_content.rename_resource", { session_id: sessionId, path, target });
+  },
+  deleteResource(sessionId: string, path: string): Promise<EpubContentSession> {
+    return call("epub_content.delete_resource", { session_id: sessionId, path });
+  },
+  exportResource(sessionId: string, path: string, outputPath: string, overwrite: boolean): Promise<{ output_path: string }> {
+    return call("epub_content.export_resource", { session_id: sessionId, path, output_path: outputPath, overwrite });
+  },
   write(sessionId: string, path: string, content: string): Promise<EpubContentSession> {
     return call("epub_content.write", { session_id: sessionId, path, content });
   },
@@ -1162,11 +1186,17 @@ export const epubContentBridge = {
   reorderSpine(sessionId: string, paths: string[]): Promise<EpubContentSession> {
     return call("epub_content.reorder_spine", { session_id: sessionId, paths });
   },
+  setSpine(sessionId: string, entries: Array<{ path: string; linear: boolean }>): Promise<EpubContentSession> {
+    return call("epub_content.set_spine", { session_id: sessionId, entries });
+  },
   setToc(sessionId: string, entries: EpubTocEntry[]): Promise<EpubContentSession> {
     return call("epub_content.set_toc", { session_id: sessionId, entries });
   },
   generateToc(sessionId: string): Promise<EpubContentSession & { generated_entries: number; approximate_targets: number }> {
     return call("epub_content.generate_toc", { session_id: sessionId });
+  },
+  generateTocPage(sessionId: string, title: string): Promise<EpubContentSession & { generated_path: string }> {
+    return call("epub_content.generate_toc_page", { session_id: sessionId, title });
   },
   history(sessionId: string, direction: "undo" | "redo"): Promise<EpubContentSession> {
     return direction === "undo"

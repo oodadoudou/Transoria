@@ -1290,6 +1290,13 @@ export interface Messages {
     noBook: string; noPreview: string; error: string; cancel: string; editor: string;
     discardClose: string; closeTitle: string;
     validate: string; validationOk: string; validationWarning: string; sessionExpired: string; reopen: string;
+    importResource: string; renameResource: string; replaceResource: string; exportResource: string; deleteResource: string;
+    localFile: string; archivePath: string; addToSpine: string; applyResource: string; resourceSaved: string;
+    resourceReferences: string; resourceNotEditable: string; confirmDeleteResource: string;
+    addToOrder: string; removeFromOrder: string; mainReading: string; chooseChapter: string;
+    chooseTocTarget: string; chapterStart: string; chooseAnchor: string;
+    generateTocPage: string; tocPageTitle: string;
+    chooseFile: string; confirmTarget: string;
   };
   epubRepairTool: {
     title: string;

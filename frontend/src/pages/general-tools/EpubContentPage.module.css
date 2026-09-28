@@ -392,6 +392,42 @@
   padding: 6px;
 }
 
+.fileActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.fileActions button,
+.resourcePick button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.fileActions button:hover:not(:disabled),
+.resourcePick button:hover:not(:disabled) {
+  background: var(--panel-soft);
+}
+
+.resourceInfo {
+  flex: 1 1 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .bookChapter {
   display: flex;
   align-items: baseline;
@@ -547,6 +583,41 @@
 
 .orderRow > button:first-child {
   justify-content: flex-start;
+}
+
+.orderAdd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 2px 9px;
+}
+
+.orderAdd select {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.orderAdd button {
+  width: 30px;
+  height: 30px;
+}
+
+.orderLinear {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.orderLinear input {
+  margin: 0;
 }
 
 .orderRow button:not(:first-child),
@@ -776,6 +847,40 @@
 
 .saveDialog input:not([type="checkbox"]) {
   width: 100%;
+}
+
+.saveDialog select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 5px 9px;
+}
+
+.resourcePick {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.resourcePick input {
+  min-width: 0;
+}
+
+.resourcePick button {
+  flex: 0 0 30px;
+}
+
+.resourceReferences {
+  max-height: 130px;
+  overflow: auto;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .saveDialog p {
