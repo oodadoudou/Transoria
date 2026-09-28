@@ -1234,6 +1234,9 @@ export interface Messages {
     outputFilename: string;
     titleLabel: string;
     authorLabel: string;
+    descriptionLabel: string;
+    descriptionPlaceholder: string;
+    noDescription: string;
     coverFile: string;
     chooseEpub: string;
     chooseOutput: string;

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import io
 import zipfile
+from html import escape
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import pytest
 from PIL import Image
 
+from transoria.bridge import BridgeError, BridgeRouter
+from transoria.bridge.handlers.epub_metadata import register
 from transoria.tools.epub_metadata import (
     apply_epub_metadata,
     read_cover_preview,
@@ -33,6 +37,7 @@ def _write_epub(
     archive_opf_path: str = "OEBPS/content.opf",
     cover_href: str = "Images/cover.jpg",
     archive_cover_path: str = "OEBPS/Images/cover.jpg",
+    description: str | None = None,
 ) -> None:
     container = f"""<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -47,12 +52,18 @@ def _write_epub(
         else ""
     )
     cover_meta = '<meta name="cover" content="cover-image"/>' if with_cover else ""
+    description_node = (
+        f"<dc:description>{escape(description)}</dc:description>"
+        if description is not None
+        else ""
+    )
     opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="{OPF_NS}" unique-identifier="bookid" version="3.0">
   <metadata xmlns:dc="{DC_NS}">
     <dc:identifier id="bookid">id</dc:identifier>
     <dc:title>Old Title</dc:title>
     <dc:creator>Old Author</dc:creator>
+    {description_node}
     {cover_meta}
   </metadata>
   <manifest>
@@ -123,7 +134,7 @@ def test_read_cover_preview_returns_thumbnail_data_url(tmp_path: Path):
 def test_apply_metadata_updates_only_package_metadata(tmp_path: Path):
     epub = tmp_path / "book.epub"
     out = tmp_path / "book_metadata.epub"
-    _write_epub(epub)
+    _write_epub(epub, description="Existing synopsis")
 
     result = apply_epub_metadata(
         epub,
@@ -139,11 +150,72 @@ def test_apply_metadata_updates_only_package_metadata(tmp_path: Path):
     updated = read_epub_metadata(out)
     assert updated.title == "New Title"
     assert updated.authors == ("New Author",)
+    assert updated.description == "Existing synopsis"
     with zipfile.ZipFile(epub) as before, zipfile.ZipFile(out) as after:
         assert before.read("OEBPS/nav.xhtml") == after.read("OEBPS/nav.xhtml")
         assert before.read("OEBPS/Text/ch1.xhtml") == after.read("OEBPS/Text/ch1.xhtml")
     opf = _read_opf(out)
     assert opf.find(f".//{{{OPF_NS}}}spine/{{{OPF_NS}}}itemref").attrib["idref"] == "ch1"
+
+
+def test_apply_metadata_writes_multiline_description_without_changing_book_content(tmp_path: Path):
+    epub = tmp_path / "book.epub"
+    out = tmp_path / "book_metadata.epub"
+    _write_epub(epub, description="Old synopsis")
+    description = "第一段：相遇 & 重逢。\n\n第二段：<终章>"
+
+    result = apply_epub_metadata(epub, out, description=description)
+
+    assert result.metadata_updated is True
+    assert result.description == description
+    assert read_epub_metadata(out).description == description
+    assert read_epub_metadata(epub).description == "Old synopsis"
+    opf = _read_opf(out)
+    nodes = opf.findall(f".//{{{DC_NS}}}description")
+    assert len(nodes) == 1
+    assert nodes[0].text == description
+    with zipfile.ZipFile(epub) as before, zipfile.ZipFile(out) as after:
+        assert before.read("OEBPS/nav.xhtml") == after.read("OEBPS/nav.xhtml")
+        assert before.read("OEBPS/Text/ch1.xhtml") == after.read("OEBPS/Text/ch1.xhtml")
+
+
+def test_apply_metadata_can_add_and_remove_description(tmp_path: Path):
+    epub = tmp_path / "book.epub"
+    with_description = tmp_path / "with_description.epub"
+    without_description = tmp_path / "without_description.epub"
+    _write_epub(epub)
+    assert read_epub_metadata(epub).description == ""
+
+    apply_epub_metadata(epub, with_description, description="New synopsis")
+    assert read_epub_metadata(with_description).description == "New synopsis"
+
+    result = apply_epub_metadata(with_description, without_description, description="  \n")
+    assert result.metadata_updated is True
+    assert result.description == ""
+    assert _read_opf(without_description).find(f".//{{{DC_NS}}}description") is None
+
+
+def test_metadata_bridge_roundtrips_description_and_rejects_non_string(tmp_path: Path):
+    epub = tmp_path / "book.epub"
+    out = tmp_path / "book_metadata.epub"
+    _write_epub(epub, description="Old synopsis")
+    router = BridgeRouter()
+    register(router)
+    payload = {
+        "input_path": str(epub),
+        "output_path": str(out),
+        "title": "",
+        "author": "",
+        "cover_path": "",
+    }
+
+    assert router.call("epub_metadata.read", {"input_path": str(epub)})["description"] == "Old synopsis"
+    with pytest.raises(BridgeError):
+        router.call("epub_metadata.apply", {**payload, "description": None})
+
+    result = router.call("epub_metadata.apply", {**payload, "description": "New synopsis"})
+    assert result["description"] == "New synopsis"
+    assert router.call("epub_metadata.read", {"input_path": str(out)})["description"] == "New synopsis"
 
 
 def test_apply_metadata_rejects_same_path_without_overwrite(tmp_path: Path):

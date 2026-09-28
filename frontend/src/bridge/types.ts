@@ -1000,6 +1000,7 @@ export interface EpubMetadataInfo {
   package_path: string;
   title: string;
   authors: string[];
+  description: string;
   cover_href: string;
   cover_archive_path: string;
   has_cover: boolean;
@@ -1012,6 +1013,7 @@ export interface EpubMetadataApplyResult {
   output_path: string;
   title: string;
   authors: string[];
+  description: string;
   cover_updated: boolean;
   metadata_updated: boolean;
   compressed: boolean;

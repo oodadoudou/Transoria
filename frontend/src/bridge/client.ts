@@ -1107,6 +1107,7 @@ export const epubMetadataBridge = {
     coverPath: string,
     overwrite = false,
     compress = false,
+    description?: string,
   ): Promise<EpubMetadataApplyResult> {
     return call("epub_metadata.apply", {
       input_path: inputPath,
@@ -1116,6 +1117,7 @@ export const epubMetadataBridge = {
       cover_path: coverPath,
       overwrite,
       compress,
+      ...(description === undefined ? {} : { description }),
     });
   },
 };

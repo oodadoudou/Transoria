@@ -612,7 +612,7 @@ export const en: Messages = {
   },
   epubMetadataTool: {
     title: "EPUB Metadata Editor",
-    sub: "Choose an EPUB, edit title, author, and cover, then write a title-named EPUB without rebuilding chapters, navigation, or body text.",
+    sub: "Choose an EPUB, edit title, author, description, and cover, then write a title-named EPUB without rebuilding chapters, navigation, or body text.",
     inputFile: "Input EPUB",
     inputPlaceholder: "Choose or paste an .epub file path",
     outputFile: "Output EPUB",
@@ -621,6 +621,9 @@ export const en: Messages = {
     outputFilename: "Output filename",
     titleLabel: "Title",
     authorLabel: "Author",
+    descriptionLabel: "Book description",
+    descriptionPlaceholder: "Leave empty to remove the existing description",
+    noDescription: "No description",
     coverFile: "Cover image",
     chooseEpub: "Choose EPUB",
     chooseOutput: "Choose output",
@@ -651,7 +654,7 @@ export const en: Messages = {
     coverPresent: "Cover present",
     coverMissing: "No cover",
     noMetadata:
-      "Choose an EPUB to read its current title, authors, and cover status.",
+      "Choose an EPUB to read its current title, authors, description, and cover status.",
     saved: "New EPUB written.",
     savedCompressed: "New compressed EPUB written.",
     structure: "Structure check",

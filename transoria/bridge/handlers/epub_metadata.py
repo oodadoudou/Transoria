@@ -26,6 +26,11 @@ def register(router: BridgeRouter) -> None:
                 expect_string(payload, "output_path"),
                 title=expect_string(payload, "title", allow_empty=True),
                 author=expect_string(payload, "author", allow_empty=True),
+                description=(
+                    expect_string(payload, "description", allow_empty=True)
+                    if "description" in payload
+                    else None
+                ),
                 cover_path=expect_string(payload, "cover_path", allow_empty=True),
                 overwrite=bool(payload.get("overwrite", False)),
                 compress=bool(payload.get("compress", False)),

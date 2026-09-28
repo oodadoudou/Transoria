@@ -45,6 +45,7 @@ class EpubMetadataInfo:
     package_path: str
     title: str
     authors: tuple[str, ...]
+    description: str
     cover_href: str
     cover_archive_path: str
     has_cover: bool
@@ -57,6 +58,7 @@ class EpubMetadataInfo:
             "package_path": self.package_path,
             "title": self.title,
             "authors": list(self.authors),
+            "description": self.description,
             "cover_href": self.cover_href,
             "cover_archive_path": self.cover_archive_path,
             "has_cover": self.has_cover,
@@ -71,6 +73,7 @@ class EpubMetadataApplyResult:
     output_path: Path
     title: str
     authors: tuple[str, ...]
+    description: str
     cover_updated: bool
     metadata_updated: bool
     compressed: bool
@@ -84,6 +87,7 @@ class EpubMetadataApplyResult:
             "output_path": str(self.output_path),
             "title": self.title,
             "authors": list(self.authors),
+            "description": self.description,
             "cover_updated": self.cover_updated,
             "metadata_updated": self.metadata_updated,
             "compressed": self.compressed,
@@ -112,6 +116,12 @@ def read_epub_metadata(input_path: str | Path) -> EpubMetadataInfo:
             for creator in root.findall(f".//{{{DC_NS}}}creator")
             if (text := (creator.text or "").strip())
         )
+        description_node = root.find(f".//{{{DC_NS}}}description")
+        description = (
+            "".join(description_node.itertext()).strip()
+            if description_node is not None
+            else ""
+        )
         cover = _find_cover(root, package_path)
         cover_preview_data_url = _cover_preview_from_archive(archive, cover)
     return EpubMetadataInfo(
@@ -119,6 +129,7 @@ def read_epub_metadata(input_path: str | Path) -> EpubMetadataInfo:
         package_path=package_path,
         title=title,
         authors=authors,
+        description=description,
         cover_href=cover.href if cover else "",
         cover_archive_path=cover.archive_path if cover else "",
         has_cover=cover is not None,
@@ -150,6 +161,7 @@ def apply_epub_metadata(
     *,
     title: str = "",
     author: str = "",
+    description: str | None = None,
     cover_path: str = "",
     overwrite: bool = False,
     compress: bool = False,
@@ -176,8 +188,8 @@ def apply_epub_metadata(
     cover_source = Path(cover_path).expanduser() if cover_path.strip() else None
     if cover_source is not None and not cover_source.is_file():
         raise FileNotFoundError(f"Cover image not found: {cover_source}")
-    if not next_title and not next_author and cover_source is None:
-        raise ValueError("Provide at least a title, author, or cover image.")
+    if not next_title and not next_author and description is None and cover_source is None:
+        raise ValueError("Provide at least a title, author, description, or cover image.")
 
     temp_paths: list[Path] = []
     source_check = inspect_epub_structure(epub_path)
@@ -198,6 +210,8 @@ def apply_epub_metadata(
                 _set_single_text(metadata, f"{{{DC_NS}}}title", next_title)
             if next_author:
                 _set_creators(metadata, next_author)
+            if description is not None:
+                _set_description(metadata, description.strip())
             if cover_source is not None:
                 cover, cover_bytes = _prepare_cover_update(
                     root,
@@ -265,8 +279,9 @@ def apply_epub_metadata(
         output_path=out_path,
         title=updated.title,
         authors=updated.authors,
+        description=updated.description,
         cover_updated=cover_source is not None,
-        metadata_updated=bool(next_title or next_author),
+        metadata_updated=bool(next_title or next_author or description is not None),
         compressed=compress,
         outcome=(
             "success_with_warnings"
@@ -463,6 +478,23 @@ def _set_creators(metadata: ET.Element, value: str) -> None:
     else:
         creator = ET.SubElement(metadata, f"{{{DC_NS}}}creator")
         creator.text = value
+
+
+def _set_description(metadata: ET.Element, value: str) -> None:
+    descriptions = metadata.findall(f"{{{DC_NS}}}description")
+    if not value:
+        for node in descriptions:
+            metadata.remove(node)
+        return
+    if descriptions:
+        first = descriptions[0]
+        for child in list(first):
+            first.remove(child)
+        first.text = value
+        for node in descriptions[1:]:
+            metadata.remove(node)
+    else:
+        ET.SubElement(metadata, f"{{{DC_NS}}}description").text = value
 
 
 def _prepare_cover_update(

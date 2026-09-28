@@ -91,6 +91,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
   const [coverPreviewUrl, setCoverPreviewUrl] = useState("");
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [description, setDescription] = useState("");
   const [syncOutputFilename, setSyncOutputFilename] = useState(true);
   const [customOutputFilename, setCustomOutputFilename] = useState("");
   const [compressOutput, setCompressOutput] = useState(false);
@@ -123,6 +124,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
       setInfo(next);
       setTitle(next.title);
       setAuthor(next.authors.join(", "));
+      setDescription(next.description ?? "");
       setCoverPath("");
       setCoverPreviewUrl(next.cover_preview_data_url);
       setSyncOutputFilename(true);
@@ -194,6 +196,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
         coverPath,
         overwrite,
         compressOutput,
+        description,
       );
       setResult(next);
       setFeedback(next.compressed ? text.savedCompressed : text.saved);
@@ -284,6 +287,10 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
               label={text.currentAuthors}
               value={info.authors.length ? info.authors.join(", ") : "-"}
             />
+            <div className={styles.descriptionStat}>
+              <span className={styles.statLabel}>{text.descriptionLabel}</span>
+              <p className={styles.descriptionPreview}>{info.description || text.noDescription}</p>
+            </div>
             <Stat
               label={text.currentCover}
               value={info.has_cover ? text.coverPresent : text.coverMissing}
@@ -416,6 +423,16 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
                   <input
                     value={author}
                     onChange={(event) => setAuthor(event.target.value)}
+                  />
+                </label>
+                <label className={styles.field}>
+                  <span>{text.descriptionLabel}</span>
+                  <textarea
+                    className={styles.descriptionInput}
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    rows={8}
+                    placeholder={text.descriptionPlaceholder}
                   />
                 </label>
                 <label className={styles.field}>
