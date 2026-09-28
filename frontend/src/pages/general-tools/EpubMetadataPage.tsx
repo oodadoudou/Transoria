@@ -79,7 +79,7 @@ function joinPath(dir: string, name: string): string {
   return `${folder.replace(/[\\/]+$/, "")}${separator}${name}`;
 }
 
-export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded?: boolean; onEditContent?: (path: string) => void } = {}) {
   const messages = useMessages();
   const text = messages.epubMetadataTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
@@ -332,6 +332,7 @@ export function EpubMetadataPage({ embedded = false }: { embedded?: boolean } = 
             <Pill onClick={handleOpenEditor} disabled={!inputPath || loading}>
               {text.openEditor}
             </Pill>
+            {onEditContent ? <Pill variant="ghost" onClick={() => onEditContent(result?.output_path || inputPath.trim())} disabled={!inputPath || loading}>{text.editContent}</Pill> : null}
             <Pill
               variant="ghost"
               onClick={handleRevealOutput}

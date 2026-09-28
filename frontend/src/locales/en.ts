@@ -630,6 +630,7 @@ export const en: Messages = {
     chooseOutputFolder: "Choose folder",
     chooseCover: "Choose cover",
     openEditor: "Read and edit",
+    editContent: "Edit text and contents",
     read: "Read and edit",
     apply: "Save EPUB",
     openOutput: "Open output",
@@ -661,6 +662,15 @@ export const en: Messages = {
     success: "Success",
     successWithWarnings: "Success with warnings",
     failed: "Failed",
+  },
+  epubContentTool: {
+    resizeFiles: "Resize file pane", resizePreview: "Resize source and preview panes",
+    bookPreview: "Book preview", previousChapter: "Previous chapter", nextChapter: "Next chapter", previewInvalid: "Current content cannot be previewed",
+    importTitle: "Import EPUB", importSubtitle: "Choose a local book to start editing", importPrompt: "Choose an EPUB file", manualPath: "Or enter a local file path", recent: "Recently opened", restoring: "Restoring editor session…",
+    choose: "Choose EPUB", open: "Open", close: "Close", dirtyClose: "Some edits have not been saved to the EPUB.", files: "Files", source: "Source", preview: "Preview",
+    toc: "Contents", spine: "Reading order", find: "Find", replace: "Replace with", query: "Search text", replacement: "Replacement",
+    current: "Current file", textFiles: "All text files", styleFiles: "All style files", all: "All files", caseSensitive: "Match case", matches: "matches",
+    replaceOne: "Replace this", replaceAll: "Replace all in scope", confirmReplace: "Replace all matches in the selected scope?", save: "Save EPUB", saveAs: "Save as", overwrite: "Overwrite source", confirmOverwrite: "Overwrite the existing EPUB? The original file will be replaced.", outputPath: "Output path", saved: "EPUB saved", undo: "Undo", redo: "Redo", applyToc: "Apply contents", addEntry: "Add entry", removeEntry: "Remove", target: "Target chapter", label: "Title", indent: "Indent", outdent: "Outdent", up: "Move up", down: "Move down", loading: "Working…", noBook: "Choose an EPUB to start editing", noPreview: "Choose an XHTML chapter to preview", error: "Operation failed", cancel: "Cancel", editor: "Content editor", discardClose: "Discard and close", closeTitle: "Save your edits?", validate: "Check structure", validationOk: "EPUB structure check passed", validationWarning: "EPUB structure check has warnings", sessionExpired: "The editor session expired. Reopening will discard any unsaved edits.", reopen: "Reopen",
   },
   epubRepairTool: {
     title: "EPUB Repair",
@@ -832,6 +842,7 @@ export const en: Messages = {
       epubMerge: "Document Merger",
       epubConvert: "EPUB to TXT",
       epubMetadata: "EPUB Metadata",
+      epubContent: "EPUB Content Editor",
       epubRepair: "EPUB Repair",
       txtToEpub: "TXT to EPUB",
     },
@@ -1544,6 +1555,10 @@ export const en: Messages = {
     epubMetadata: {
       title: "EPUB Metadata Editor",
       sub: "Edit title, author, and cover, with optional compressed EPUB output.",
+    },
+    epubContent: {
+      title: "EPUB Content Editor",
+      sub: "Edit chapters, styles, TOC, and reading order; preview and replace within a chosen scope.",
     },
     epubRepair: {
       title: "EPUB Repair",

@@ -60,6 +60,39 @@ export type SettingsModule =
 
 export type PromptKind = "translation" | "glossary" | "glossary_review";
 
+export interface EpubContentFile {
+  path: string;
+  media_type: string;
+  editable: boolean;
+  size: number;
+}
+
+export interface EpubTocEntry {
+  label: string;
+  href: string;
+  depth: number;
+}
+
+export interface EpubContentSession {
+  session_id: string;
+  input_path: string;
+  nav_path: string;
+  ncx_path: string;
+  files: EpubContentFile[];
+  spine: string[];
+  toc: EpubTocEntry[];
+  dirty: boolean;
+  can_undo: boolean;
+  can_redo: boolean;
+}
+
+export interface EpubContentMatch {
+  path: string;
+  start: number;
+  end: number;
+  excerpt: string;
+}
+
 export interface AppMetadata {
   app_version: string;
   platform: Platform;

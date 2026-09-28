@@ -20,6 +20,8 @@ export function GeneralToolsModule({ page }: GeneralToolsModuleProps) {
       return <EpubToolsPage initialTool="epubConvert" />;
     case 'epubMetadata':
       return <EpubToolsPage initialTool="epubMetadata" />;
+    case 'epubContent':
+      return <EpubToolsPage initialTool="epubContent" />;
     case 'epubRepair':
       return <EpubToolsPage initialTool="epubRepair" />;
     case 'txtToEpub':

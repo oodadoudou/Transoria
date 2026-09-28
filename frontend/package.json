@@ -10,6 +10,10 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@uiw/react-codemirror": "^4.25.12",
+    "lucide-react": "^1.48.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.5"

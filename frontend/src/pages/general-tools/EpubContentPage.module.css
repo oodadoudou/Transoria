@@ -1,0 +1,862 @@
+.workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--ink);
+  background: var(--panel);
+}
+
+.importPage {
+  height: 100%;
+  overflow: auto;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.importHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  width: min(1040px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 42px 0 26px;
+}
+
+.importKicker {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.importHeader h2 {
+  margin: 7px 0 5px;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.importHeader p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.importHeader button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.importContent {
+  width: min(1040px, calc(100% - 48px));
+  margin: 0 auto;
+  padding-bottom: 44px;
+}
+
+.importPicker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 330px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: 8px;
+  padding: 30px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.importPicker h3 {
+  margin: 16px 0 22px;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.importPrimary,
+.importPath button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  padding: 8px 18px;
+  background: var(--ink);
+  color: var(--panel);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.importPrimary:disabled,
+.importPath button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.importPath {
+  width: min(560px, 100%);
+  margin-top: 28px;
+  text-align: left;
+}
+
+.importPath label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.importPath > div {
+  display: flex;
+  gap: 8px;
+}
+
+.importPath input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  padding: 8px 11px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.recentSection {
+  margin-top: 36px;
+}
+
+.recentSection h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.recentList {
+  border-top: 1px solid var(--hairline);
+}
+
+.recentList button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  padding: 13px 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.recentList button:hover {
+  background: var(--panel-soft);
+}
+
+.recentList button > span {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+
+.recentList strong,
+.recentList small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentList small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.workspace button,
+.workspace input,
+.workspace select {
+  font: inherit;
+}
+
+.workspace button {
+  cursor: pointer;
+}
+
+.workspace button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.toolbar,
+.toolbarActions,
+.bookPicker,
+.tabs,
+.tocActions,
+.tocButtons,
+.saveActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.toolbar button,
+.tocActions button,
+.tocButtons button,
+.orderRow button,
+.searchControls button,
+.match button,
+.saveActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.toolbar button:hover:not(:disabled),
+.tocActions button:hover:not(:disabled),
+.tocButtons button:hover:not(:disabled),
+.orderRow button:hover:not(:disabled),
+.searchControls button:hover:not(:disabled),
+.match button:hover:not(:disabled),
+.saveActions button:hover:not(:disabled) {
+  background: var(--panel-soft);
+}
+
+.toolbar .primary,
+.saveActions .primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--panel);
+}
+
+.toolbar .primary:hover:not(:disabled),
+.saveActions .primary:hover:not(:disabled) {
+  background: var(--ink);
+  opacity: .85;
+}
+
+.bookPicker {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.bookPicker input,
+.searchControls input:not([type="checkbox"]),
+.searchControls select,
+.tocRow input,
+.saveDialog input:not([type="checkbox"]) {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 5px 9px;
+}
+
+.bookPicker input {
+  flex: 1;
+}
+
+.error,
+.feedback,
+.warning {
+  padding: 7px 16px;
+  font-size: 13px;
+}
+
+.error {
+  color: #b34536;
+  background: color-mix(in srgb, #b34536 9%, var(--panel));
+}
+
+.error button {
+  margin-left: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.feedback {
+  color: #26794b;
+}
+
+.warning {
+  color: #a9651c;
+}
+
+.empty,
+.noPreview {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  color: var(--muted);
+}
+
+.main {
+  display: grid;
+  grid-template-columns: minmax(0, var(--sidebar-width, 28%)) 8px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.resizeHandle {
+  position: relative;
+  z-index: 2;
+  width: 8px;
+  min-height: 0;
+  background: var(--panel);
+  border-left: 1px solid var(--hairline);
+  border-right: 1px solid var(--hairline);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizeHandle:hover,
+.resizeHandle:focus-visible,
+.resizeHandle:active {
+  background: var(--panel-soft);
+  border-color: var(--hairline-strong);
+  outline: none;
+}
+
+.main[data-resizing="true"] iframe {
+  pointer-events: none;
+}
+
+.tabs {
+  gap: 0;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0 8px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 0 auto;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 12px 6px 9px;
+  font-size: 13px;
+}
+
+.tabs button[aria-selected="true"] {
+  color: var(--ink);
+  border-color: var(--ink);
+  font-weight: 700;
+}
+
+.sideBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+}
+
+.bookChapter {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bookChapter:hover,
+.bookChapter[aria-current="page"] {
+  background: var(--panel-soft);
+}
+
+.bookChapter span {
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 22px;
+}
+
+.bookChapter strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bookReader {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.readerToolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 4px 12px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.readerToolbar span {
+  color: var(--muted);
+}
+
+.readerToolbar > div {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.readerToolbar button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.readerToolbar button:hover:not(:disabled) {
+  background: var(--panel-soft);
+}
+
+.bookReader iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: white;
+}
+
+.readerError {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  color: #b34536;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.fileRow,
+.orderRow,
+.folderRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+}
+
+.fileRow.active {
+  background: var(--panel-soft);
+}
+
+.folderRow button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 5px 4px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderRow svg {
+  flex-shrink: 0;
+}
+
+.fileRow button,
+.orderRow > button:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  padding: 5px 4px;
+  font-size: 12px;
+}
+
+.orderRow > button:first-child {
+  justify-content: flex-start;
+}
+
+.orderRow button:not(:first-child),
+.tocButtons button {
+  width: 25px;
+  min-height: 25px;
+  padding: 2px;
+  border: 0;
+}
+
+.tocActions {
+  justify-content: space-between;
+  padding: 6px 2px 10px;
+}
+
+.tocActions button {
+  font-size: 12px;
+}
+
+.tocRow {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0 4px 10px;
+}
+
+.tocRow input {
+  width: 100%;
+  font-size: 12px;
+}
+
+.tocButtons {
+  justify-content: flex-end;
+}
+
+.editorArea {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fileHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.fileHeading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paneSwitch {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.paneSwitch button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.paneSwitch button[aria-selected="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, var(--source-width, 50%)) 8px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.sourcePane,
+.previewPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sourcePane {
+  min-width: 0;
+}
+
+.sourcePane h3,
+.previewPane h3 {
+  margin: 0;
+  border-bottom: 1px solid var(--hairline);
+  padding: 7px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sourcePane > div {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-size: 13px;
+}
+
+.previewPane iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: white;
+}
+
+.searchPanel {
+  border-bottom: 1px solid var(--hairline);
+  padding: 9px 14px;
+  flex-shrink: 0;
+  max-height: min(240px, 35dvh);
+  overflow: auto;
+}
+
+.searchControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.searchControls label,
+.saveDialog label:not(.checkbox) {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.searchControls label:first-child,
+.searchControls label:nth-child(2) {
+  flex: 1 1 175px;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.checkbox input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.results {
+  max-height: 120px;
+  overflow: auto;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.match {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
+.match > button:first-child {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: start;
+  border: 0;
+  padding: 4px;
+}
+
+.match span,
+.match small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match small {
+  color: var(--muted);
+}
+
+.modalBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / .42);
+}
+
+.saveDialog {
+  display: grid;
+  gap: 18px;
+  width: min(500px, calc(100% - 24px));
+  border: 1px solid var(--hairline-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 20px;
+  box-shadow: 0 12px 35px rgb(0 0 0 / .25);
+}
+
+.saveDialog h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.saveDialog input:not([type="checkbox"]) {
+  width: 100%;
+}
+
+.saveDialog p {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.saveActions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 850px) {
+  .main {
+    grid-template-columns: minmax(0, var(--sidebar-width, 37%)) 8px minmax(0, 1fr);
+  }
+
+  .paneSwitch {
+    display: flex;
+  }
+
+  .split {
+    display: block;
+  }
+
+  .split > .resizeHandle {
+    display: none;
+  }
+
+  .sourcePane,
+  .previewPane {
+    height: 100%;
+    border: 0;
+  }
+
+  .split[data-mode="source"] .previewPane,
+  .split[data-mode="preview"] .sourcePane {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .importHeader,
+  .importContent {
+    width: calc(100% - 32px);
+  }
+
+  .importHeader {
+    padding: 28px 0 22px;
+  }
+
+  .importHeader h2 {
+    font-size: 24px;
+  }
+
+  .importPicker {
+    min-height: 310px;
+    padding: 24px 16px;
+  }
+
+  .importPath > div {
+    flex-wrap: wrap;
+  }
+
+  .importPath button {
+    width: 100%;
+  }
+
+  .searchPanel {
+    max-height: min(220px, 30dvh);
+    overflow: auto;
+  }
+
+  .results {
+    max-height: none;
+  }
+
+  .main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(105px, 32%) minmax(0, 1fr);
+  }
+
+  .main > .resizeHandle {
+    display: none;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+}

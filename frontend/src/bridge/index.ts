@@ -16,6 +16,7 @@ export {
   epubCompressBridge,
   epubConvertBridge,
   epubMetadataBridge,
+  epubContentBridge,
   epubMergeBridge,
   epubRepairBridge,
   txtToEpubBridge,

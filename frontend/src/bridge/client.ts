@@ -17,6 +17,9 @@ import type {
   EpubConvertReport,
   EpubMetadataApplyResult,
   EpubMetadataInfo,
+  EpubContentSession,
+  EpubContentMatch,
+  EpubTocEntry,
   EpubMergeAction,
   EpubMergeArtifacts,
   EpubMergeOptions,
@@ -1119,6 +1122,56 @@ export const epubMetadataBridge = {
       compress,
       ...(description === undefined ? {} : { description }),
     });
+  },
+};
+
+export const epubContentBridge = {
+  open(inputPath: string): Promise<EpubContentSession> {
+    return call("epub_content.open", { input_path: inputPath });
+  },
+  info(sessionId: string): Promise<EpubContentSession> {
+    return call("epub_content.info", { session_id: sessionId });
+  },
+  close(sessionId: string): Promise<{ closed: boolean }> {
+    return call("epub_content.close", { session_id: sessionId });
+  },
+  read(sessionId: string, path: string): Promise<{ path: string; content: string; encoding: string }> {
+    return call("epub_content.read", { session_id: sessionId, path });
+  },
+  write(sessionId: string, path: string, content: string): Promise<EpubContentSession> {
+    return call("epub_content.write", { session_id: sessionId, path, content });
+  },
+  preview(sessionId: string, path: string): Promise<{ html: string }> {
+    return call("epub_content.preview", { session_id: sessionId, path });
+  },
+  previewDraft(sessionId: string, path: string, draftPath: string, draftContent: string): Promise<{ html: string }> {
+    return call("epub_content.preview_draft", { session_id: sessionId, path, draft_path: draftPath, draft_content: draftContent });
+  },
+  validate(sessionId: string): Promise<{ structure_check: { status: string; warnings?: string[]; missing_entries?: string[] } }> {
+    return call("epub_content.validate", { session_id: sessionId });
+  },
+  search(sessionId: string, query: string, paths: string[], caseSensitive: boolean): Promise<{ matches: EpubContentMatch[] }> {
+    return call("epub_content.search", { session_id: sessionId, query, paths, case_sensitive: caseSensitive });
+  },
+  replace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, expectedCount: number): Promise<EpubContentSession & { replacements: number; files_changed: number }> {
+    return call("epub_content.replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, expected_count: expectedCount });
+  },
+  replaceMatch(sessionId: string, query: string, replacement: string, match: EpubContentMatch, caseSensitive: boolean): Promise<EpubContentSession> {
+    return call("epub_content.replace_match", { session_id: sessionId, query, replacement, ...match, case_sensitive: caseSensitive });
+  },
+  reorderSpine(sessionId: string, paths: string[]): Promise<EpubContentSession> {
+    return call("epub_content.reorder_spine", { session_id: sessionId, paths });
+  },
+  setToc(sessionId: string, entries: EpubTocEntry[]): Promise<EpubContentSession> {
+    return call("epub_content.set_toc", { session_id: sessionId, entries });
+  },
+  history(sessionId: string, direction: "undo" | "redo"): Promise<EpubContentSession> {
+    return direction === "undo"
+      ? call("epub_content.undo", { session_id: sessionId })
+      : call("epub_content.redo", { session_id: sessionId });
+  },
+  save(sessionId: string, outputPath: string, overwrite: boolean): Promise<EpubContentSession & { output_path: string; structure_check: Record<string, unknown> }> {
+    return call("epub_content.save", { session_id: sessionId, output_path: outputPath, overwrite });
   },
 };
 

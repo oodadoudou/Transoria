@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import type { GeneralToolsPage } from "@/store/useTaskStore";
+import { useTaskStore } from "@/store/useTaskStore";
 import { BatchReplacementPage } from "./BatchReplacementPage";
 import { EpubCompressPage } from "./EpubCompressPage";
 import { EpubConvertPage } from "./EpubConvertPage";
@@ -12,9 +13,11 @@ import { EpubMergePage } from "./EpubMergePage";
 import { EpubMetadataPage } from "./EpubMetadataPage";
 import { EpubRepairPage } from "./EpubRepairPage";
 import { TxtToEpubPage } from "./TxtToEpubPage";
+import { editorWasOpen, markEditorOpen } from "./epubEditorDraft";
 import styles from "./EpubToolsPage.module.css";
 
 type EpubToolPage = Exclude<GeneralToolsPage, "epubTools">;
+const EpubContentPage = lazy(() => import("./EpubContentPage").then((module) => ({ default: module.EpubContentPage })));
 
 interface EpubToolsPageProps {
   initialTool?: EpubToolPage | null;
@@ -23,7 +26,9 @@ interface EpubToolsPageProps {
 export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   const messages = useMessages();
   const text = messages.generalTools.epubTools;
-  const [activeTool, setActiveTool] = useState<EpubToolPage | null>(initialTool);
+  const navigate = useTaskStore((state) => state.navigate);
+  const [activeTool, setActiveTool] = useState<EpubToolPage | null>(() => initialTool ?? (editorWasOpen() ? "epubContent" : null));
+  const [contentPath, setContentPath] = useState("");
   const tools = useMemo(
     () =>
       [
@@ -53,6 +58,11 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
           sub: messages.generalTools.epubMetadata.sub,
         },
         {
+          id: "epubContent",
+          title: messages.generalTools.epubContent.title,
+          sub: messages.generalTools.epubContent.sub,
+        },
+        {
           id: "epubRepair",
           title: messages.generalTools.epubRepair.title,
           sub: messages.generalTools.epubRepair.sub,
@@ -68,9 +78,22 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   const activeSpec = tools.find((tool) => tool.id === activeTool) ?? null;
 
   useEffect(() => {
-    setActiveTool(initialTool);
+    if (initialTool) setActiveTool(initialTool);
+    else if (editorWasOpen()) setActiveTool("epubContent");
   }, [initialTool]);
-  useEscapeKey(() => setActiveTool(null), activeTool !== null);
+  useEscapeKey(() => setActiveTool(null), activeTool !== null && activeTool !== "epubContent");
+
+  const openContent = (path: string) => {
+    markEditorOpen(true);
+    setContentPath(path);
+    setActiveTool("epubContent");
+  };
+
+  const closeContent = () => {
+    markEditorOpen(false);
+    setActiveTool(null);
+    if (initialTool === "epubContent") navigate({ module: "general-tools", page: "epubTools" });
+  };
 
   return (
     <>
@@ -81,7 +104,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
               key={tool.id}
               type="button"
               className={styles.toolButton}
-              onClick={() => setActiveTool(tool.id)}
+              onClick={() => { if (tool.id === "epubContent") openContent(""); else setActiveTool(tool.id); }}
             >
               <span>{tool.title}</span>
               <small>{tool.sub}</small>
@@ -94,7 +117,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
       {activeTool && activeSpec ? (
         <div className={styles.overlay} role="presentation">
           <section
-            className={styles.dialog}
+            className={`${styles.dialog} ${activeTool === "epubContent" ? styles.contentDialog : ""}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="epub-tool-dialog-title"
@@ -106,16 +129,16 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
                   <HelpTip>{activeSpec.sub}</HelpTip>
                 </div>
               </div>
-              <button
+              {activeTool !== "epubContent" ? <button
                 type="button"
                 className={styles.closeButton}
                 onClick={() => setActiveTool(null)}
                 aria-label={text.close}
               >
                 ×
-              </button>
+              </button> : null}
             </div>
-            <div className={styles.dialogBody}>{renderTool(activeTool)}</div>
+            <div className={`${styles.dialogBody} ${activeTool === "epubContent" ? styles.contentBody : ""}`}>{activeTool === "epubContent" ? <Suspense fallback={null}><EpubContentPage onClose={closeContent} initialPath={contentPath} /></Suspense> : renderTool(activeTool, openContent)}</div>
           </section>
         </div>
       ) : null}
@@ -123,7 +146,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   );
 }
 
-function renderTool(tool: EpubToolPage) {
+function renderTool(tool: EpubToolPage, openContent: (path: string) => void) {
   switch (tool) {
     case "epubCompress":
       return <EpubCompressPage embedded />;
@@ -134,7 +157,9 @@ function renderTool(tool: EpubToolPage) {
     case "txtToEpub":
       return <TxtToEpubPage embedded />;
     case "epubMetadata":
-      return <EpubMetadataPage embedded />;
+      return <EpubMetadataPage embedded onEditContent={openContent} />;
+    case "epubContent":
+      return null;
     case "epubRepair":
       return <EpubRepairPage embedded />;
     case "batchReplacement":

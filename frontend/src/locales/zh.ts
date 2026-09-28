@@ -615,6 +615,7 @@ export const zh: Messages = {
     chooseOutputFolder: "选择文件夹",
     chooseCover: "选择封面",
     openEditor: "读取并编辑",
+    editContent: "编辑正文和目录",
     read: "读取并编辑",
     apply: "保存 EPUB",
     openOutput: "打开输出",
@@ -644,6 +645,15 @@ export const zh: Messages = {
     success: "成功",
     successWithWarnings: "成功但有警告",
     failed: "失败",
+  },
+  epubContentTool: {
+    resizeFiles: "调整文件栏宽度", resizePreview: "调整源码与预览宽度",
+    bookPreview: "全书预览", previousChapter: "上一章", nextChapter: "下一章", previewInvalid: "当前内容无法预览",
+    importTitle: "导入 EPUB", importSubtitle: "选择本地电子书开始编辑", importPrompt: "选择一本 EPUB 文件", manualPath: "或输入本地文件路径", recent: "最近打开", restoring: "正在恢复编辑会话…",
+    choose: "选择 EPUB", open: "打开", close: "关闭", dirtyClose: "有尚未保存到 EPUB 的修改。", files: "文件", source: "源码", preview: "预览",
+    toc: "目录", spine: "阅读顺序", find: "查找", replace: "替换为", query: "查找内容", replacement: "替换内容",
+    current: "当前文件", textFiles: "所有文本文件", styleFiles: "所有样式文件", all: "全部文件", caseSensitive: "区分大小写", matches: "处命中",
+    replaceOne: "替换此处", replaceAll: "替换范围内全部", confirmReplace: "确认替换所选范围的所有命中？", save: "保存 EPUB", saveAs: "另存为", overwrite: "覆盖原文件", confirmOverwrite: "确定覆盖现有 EPUB？原文件将被替换。", outputPath: "输出位置", saved: "已保存 EPUB", undo: "撤销", redo: "重做", applyToc: "应用目录", addEntry: "添加目录项", removeEntry: "删除", target: "目标章节", label: "标题", indent: "降级", outdent: "升级", up: "上移", down: "下移", loading: "处理中…", noBook: "选择 EPUB 开始编辑", noPreview: "选择 XHTML 章节以预览", error: "操作失败", cancel: "取消", editor: "内容编辑器", discardClose: "丢弃并关闭", closeTitle: "保存编辑内容？", validate: "检查结构", validationOk: "EPUB 结构检查通过", validationWarning: "EPUB 结构检查有警告", sessionExpired: "编辑会话已失效；若有未保存修改，重新打开会丢失这些修改。", reopen: "重新打开",
   },
   epubRepairTool: {
     title: "EPUB 修复",
@@ -809,6 +819,7 @@ export const zh: Messages = {
       epubMerge: "文档合并",
       epubConvert: "EPUB 转 TXT",
       epubMetadata: "EPUB 元数据",
+      epubContent: "EPUB 内容编辑",
       epubRepair: "EPUB 修复",
       txtToEpub: "TXT 转 EPUB",
     },
@@ -1493,6 +1504,10 @@ export const zh: Messages = {
     epubMetadata: {
       title: "EPUB 元数据编辑",
       sub: "修改书名、作者和封面，并可选输出压缩后的 EPUB。",
+    },
+    epubContent: {
+      title: "EPUB 内容编辑",
+      sub: "编辑章节、样式、目录与阅读顺序；预览并按范围查找替换。",
     },
     epubRepair: {
       title: "EPUB 修复",

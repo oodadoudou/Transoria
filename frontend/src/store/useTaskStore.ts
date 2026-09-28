@@ -35,6 +35,7 @@ export type GeneralToolsPage =
   | "epubMerge"
   | "epubConvert"
   | "epubMetadata"
+  | "epubContent"
   | "epubRepair"
   | "txtToEpub";
 
@@ -45,6 +46,7 @@ const GENERAL_TOOLS_PAGES = [
   "epubMerge",
   "epubConvert",
   "epubMetadata",
+  "epubContent",
   "epubRepair",
   "txtToEpub",
 ] as const;

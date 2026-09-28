@@ -200,6 +200,23 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "epub_metadata.read",
     "epub_metadata.cover_preview",
     "epub_metadata.apply",
+    # EPUB content editor
+    "epub_content.open",
+    "epub_content.close",
+    "epub_content.info",
+    "epub_content.read",
+    "epub_content.write",
+    "epub_content.search",
+    "epub_content.replace",
+    "epub_content.replace_match",
+    "epub_content.reorder_spine",
+    "epub_content.set_toc",
+    "epub_content.undo",
+    "epub_content.redo",
+    "epub_content.preview",
+    "epub_content.preview_draft",
+    "epub_content.validate",
+    "epub_content.save",
     # EPUB repair
     "epub_repair.preview",
     "epub_repair.apply",
@@ -245,7 +262,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 155
+    assert len(actual) == 171
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -524,6 +541,22 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
         "author": "",
         "cover_path": "",
     },
+    "epub_content.open": {"input_path": "/nonexistent.epub"},
+    "epub_content.close": {"session_id": "missing"},
+    "epub_content.info": {"session_id": "missing"},
+    "epub_content.read": {"session_id": "missing", "path": "missing"},
+    "epub_content.write": {"session_id": "missing", "path": "missing", "content": ""},
+    "epub_content.search": {"session_id": "missing", "query": "x", "paths": []},
+    "epub_content.replace": {"session_id": "missing", "query": "x", "replacement": "y", "paths": []},
+    "epub_content.replace_match": {"session_id": "missing", "path": "missing", "query": "x", "replacement": "y", "start": 0, "end": 1},
+    "epub_content.reorder_spine": {"session_id": "missing", "paths": []},
+    "epub_content.set_toc": {"session_id": "missing", "entries": []},
+    "epub_content.undo": {"session_id": "missing"},
+    "epub_content.redo": {"session_id": "missing"},
+    "epub_content.preview": {"session_id": "missing", "path": "missing"},
+    "epub_content.preview_draft": {"session_id": "missing", "path": "missing", "draft_path": "missing", "draft_content": ""},
+    "epub_content.validate": {"session_id": "missing"},
+    "epub_content.save": {"session_id": "missing", "output_path": "/tmp/out.epub"},
     "epub_repair.apply": {
         "input_path": "/nonexistent.epub",
         "output_path": "",

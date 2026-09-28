@@ -59,6 +59,8 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
+  box-sizing: border-box;
+  overflow: hidden;
   background: rgb(0 0 0 / 0.46);
 }
 
@@ -117,6 +119,23 @@
   padding: 16px 18px 20px;
 }
 
+.contentDialog {
+  width: min(1600px, 100%);
+  height: min(980px, calc(100dvh - 40px));
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.contentBody {
+  min-height: 0;
+  max-height: none;
+  height: 100%;
+  overflow: hidden;
+  display: block;
+  padding: 0;
+}
+
 @media (max-width: 760px) {
   .toolGrid {
     grid-template-columns: minmax(0, 1fr);
@@ -134,6 +153,15 @@
   .dialogBody {
     max-height: calc(100dvh - 104px);
     padding: 14px;
+  }
+
+  .contentBody {
+    max-height: none;
+    padding: 0;
+  }
+
+  .contentDialog {
+    height: calc(100dvh - 20px);
   }
 }
 
