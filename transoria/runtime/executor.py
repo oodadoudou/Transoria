@@ -17,7 +17,7 @@ from typing import Awaitable, Callable, Mapping, Protocol
 
 from transoria.domain import SubtaskStatus, TaskStatus
 from transoria.runtime.cache import TaskCache
-from transoria.runtime.rate_limit import RpmLimiter
+from transoria.runtime.rate_limit import RpmLimiter, request_stop_scope
 from transoria.runtime.request_log import request_log_scope
 from transoria.runtime.subtask import Subtask
 from transoria.runtime.task_record import TaskSnapshot
@@ -374,7 +374,7 @@ class TaskExecutor:
         self._active_runners += 1
         try:
             try:
-                with request_log_scope(
+                with request_stop_scope(self._stop_event.is_set), request_log_scope(
                     self.cache,
                     task_id=task_id,
                     subtask_id=running.id,

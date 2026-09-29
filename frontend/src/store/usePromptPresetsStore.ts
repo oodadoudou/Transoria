@@ -165,7 +165,7 @@ export const usePromptPresetsStore = create<PromptPresetsState>((set, get) => {
       set({ mutationError: null });
       try {
         await promptsBridge.delete(id);
-        await Promise.all([refresh("translation"), refresh("glossary")]);
+        await Promise.all([refresh("translation"), refresh("glossary"), refresh("glossary_review")]);
         return true;
       } catch (error) {
         set({ mutationError: asBridgeError(error) });

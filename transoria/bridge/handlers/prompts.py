@@ -13,7 +13,7 @@ from secrets import token_hex
 from typing import Callable, Mapping
 
 from transoria.bridge.errors import BridgeError
-from transoria.bridge.handlers._utils import expect_string
+from transoria.bridge.handlers._utils import expect_string, save_selection
 from transoria.bridge.router import BridgeRouter
 from transoria.llm.config import ThinkingLevel
 from transoria.model_profiles import ModelProfileStore
@@ -119,7 +119,8 @@ def _build_handlers(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
-    on_translation_selection_changed: Callable[[], None] | None = None,
+    on_selection_changed: Callable[[str], None] | None = None,
+    on_prompt_deleted: Callable[[str, str], None] | None = None,
 ) -> dict[str, object]:
     def list_presets(payload: Mapping[str, object]) -> dict[str, object]:
         kind = _expect_kind(payload)
@@ -253,6 +254,8 @@ def _build_handlers(
                 field = ACTIVE_FIELD_BY_KIND[kind.value]
                 if getattr(current.app, field) == preset_id:
                     settings_store.save_partial("app", {field: None})
+                if on_prompt_deleted:
+                    on_prompt_deleted(kind.value, preset_id)
                 return {}
         raise BridgeError.not_found(
             f"prompt preset {preset_id!r} does not exist."
@@ -276,9 +279,7 @@ def _build_handlers(
         patch: dict[str, object] = {field: preset_id}
         if kind is PromptKind.TRANSLATION:
             patch["active_translation_workflow_preset_id"] = None
-        updated = settings_store.save_partial("app", patch)
-        if kind is PromptKind.TRANSLATION and on_translation_selection_changed:
-            on_translation_selection_changed()
+        updated = save_selection(settings_store, kind.value, patch, None, on_selection_changed)
         from dataclasses import asdict  # noqa: PLC0415
 
         return {"app": asdict(updated.app)}
@@ -415,11 +416,13 @@ def register(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
-    on_translation_selection_changed: Callable[[], None] | None = None,
+    on_selection_changed: Callable[[str], None] | None = None,
+    on_prompt_deleted: Callable[[str, str], None] | None = None,
 ) -> None:
     handlers = _build_handlers(
         cache_root, settings_store, profile_store,
-        on_translation_selection_changed=on_translation_selection_changed,
+        on_selection_changed=on_selection_changed,
+        on_prompt_deleted=on_prompt_deleted,
     )
     for method, handler in handlers.items():
         router.register(method, handler)  # type: ignore[arg-type]

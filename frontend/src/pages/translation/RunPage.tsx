@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMessages, useI18n } from "@/locales";
+import { BridgeError } from "@/bridge";
 import {
   DEFAULT_PROOFREADING_FILTERS,
   useTaskStore,
@@ -20,7 +21,8 @@ import {
   useModelProfiles,
   useModelProfilesStore,
 } from "@/store/useModelProfilesStore";
-import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { usePromptPresets, usePromptPresetsStore } from "@/store/usePromptPresetsStore";
+import { applyRunSelection } from "@/store/runSelection";
 import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
 import {
   useWorkflowPresets,
@@ -279,16 +281,31 @@ export function RunPage() {
       ? messages.runConfig.noPresetHint
       : `${messages.language.options[sourceLanguage]} → ${messages.language.options[targetLanguage]}`;
 
+  const reportSelectionError = (error: BridgeError | null) => {
+    useRuntimeStore.getState().setLastError("translation", error);
+  };
   const handleSelectModel = async (id: string) => {
-    await useModelProfilesStore.getState().selectActive("translation", id);
+    await applyRunSelection(
+      () => useModelProfilesStore.getState().selectActive("translation", id),
+      () => useModelProfilesStore.getState().mutationError,
+      reportSelectionError,
+    );
     await useWorkflowPresetsStore.getState().refresh("translation");
   };
   const handleSelectPrompt = async (id: string) => {
-    await prompts.selectActive("translation", id);
+    await applyRunSelection(
+      () => prompts.selectActive("translation", id),
+      () => usePromptPresetsStore.getState().mutationError,
+      reportSelectionError,
+    );
     await useWorkflowPresetsStore.getState().refresh("translation");
   };
   const handleSelectPreset = async (id: string) => {
-    await workflow.applyPreset("translation", id);
+    await applyRunSelection(
+      () => workflow.applyPreset("translation", id),
+      () => useWorkflowPresetsStore.getState().mutationError,
+      reportSelectionError,
+    );
   };
   const persistNextStepDismissed = () => {
     saveNextStepDismissed();
@@ -423,6 +440,7 @@ export function RunPage() {
           activeId={workflowSlice.matchedId}
           emptyMessage={messages.quickSwitch.emptyPreset}
           onSelect={handleSelectPreset}
+          allowReselect={Boolean(advancedPreset)}
           onClose={() => setSwitchOpen(null)}
           onManage={() => navigate({ module: "translation", page: "presets" })}
         />

@@ -25,7 +25,7 @@ from typing import Callable, Mapping
 import httpx
 
 from transoria.bridge.errors import BridgeError
-from transoria.bridge.handlers._utils import expect_string
+from transoria.bridge.handlers._utils import expect_string, save_selection
 from transoria.bridge.router import BridgeRouter
 from transoria.llm.client import (
     ChatRequest,
@@ -60,7 +60,8 @@ def _build_handlers(
     *,
     chat_transport_factory,
     http_client_factory,
-    on_translation_selection_changed=None,
+    on_selection_changed=None,
+    on_profile_deleted=None,
 ) -> dict[str, object]:
     def list_profiles(_payload: Mapping[str, object]) -> dict[str, object]:
         profiles = profile_store.load()
@@ -152,6 +153,8 @@ def _build_handlers(
             patch["active_glossary_review_model_id"] = None
         if patch:
             settings_store.save_partial("app", patch)
+        if on_profile_deleted:
+            on_profile_deleted(profile_id)
         return {}
 
     def duplicate(payload: Mapping[str, object]) -> dict[str, object]:
@@ -232,9 +235,7 @@ def _build_handlers(
         patch: dict[str, object] = {field: profile_id}
         if module == "translation":
             patch["active_translation_workflow_preset_id"] = None
-        updated = settings_store.save_partial("app", patch)
-        if module == "translation" and on_translation_selection_changed:
-            on_translation_selection_changed()
+        updated = save_selection(settings_store, module, patch, None, on_selection_changed)
         return {"app": _app_settings_dict(updated.app)}
 
     def test_connection(payload: Mapping[str, object]) -> dict[str, object]:
@@ -682,7 +683,8 @@ def register(
     settings_store: SettingsStore,
     chat_transport_factory: Callable[[], ChatTransport] | None = None,
     http_client_factory: Callable[..., httpx.Client] | None = None,
-    on_translation_selection_changed: Callable[[], None] | None = None,
+    on_selection_changed: Callable[[str], None] | None = None,
+    on_profile_deleted: Callable[[str], None] | None = None,
 ) -> None:
     handlers = _build_handlers(
         profile_store,
@@ -697,7 +699,8 @@ def register(
             if http_client_factory is not None
             else _proxy_aware_http_client_factory(settings_store)
         ),
-        on_translation_selection_changed=on_translation_selection_changed,
+        on_selection_changed=on_selection_changed,
+        on_profile_deleted=on_profile_deleted,
     )
     for method, handler in handlers.items():
         router.register(method, handler)  # type: ignore[arg-type]

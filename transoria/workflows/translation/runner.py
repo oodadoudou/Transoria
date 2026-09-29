@@ -66,7 +66,6 @@ from transoria.workflows.translation.rules import (
     GlossaryEntry,
     ReplacementRule,
 )
-from transoria.workflows.translation.routing import RouteLimitedClient
 from transoria.workflows.translation.segment_state import (
     ACCEPTED_OVERRIDE_SEGMENTS_KEY,
     PRESERVED_CANDIDATE_SEGMENTS_KEY,
@@ -836,11 +835,8 @@ class TranslationSubtaskRunner:
     async def _await_llm_request(
         self, operation: Awaitable[ChatResponse], timeout_seconds: float
     ) -> ChatResponse:
-        if isinstance(self.client, RouteLimitedClient):
-            # Advanced routes may wait through multiple RPM windows. Their
-            # transport starts the per-request clock only after admission.
-            return await operation
-        return await asyncio.wait_for(operation, timeout=timeout_seconds)
+        # Each HTTP attempt starts its timeout after RPM admission in the client.
+        return await operation
 
     async def run(self, subtask: Subtask) -> SubtaskResult:
         chunk, metadata = _decode_subtask_payload(subtask.request_payload)

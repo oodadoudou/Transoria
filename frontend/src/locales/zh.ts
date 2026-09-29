@@ -158,6 +158,8 @@ export const zh: Messages = {
     dismiss: "关闭",
     retry: "重试",
     bridgeMessages: {
+      "task.selection_incompatible":
+        "新预设改变了当前任务的文件目录或语言，已保留原配置并继续运行。请停止当前任务后再应用此预设。",
       "translation.input_equals_output":
         "翻译的输入文件夹和输出文件夹必须不同 —— 把译文写回输入会导致下次运行被重复扫描和重复翻译。",
       "translation.output_inside_input":

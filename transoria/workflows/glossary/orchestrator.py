@@ -281,7 +281,7 @@ class GlossaryOrchestrator:
             cache=self.cache,
             runner=runner,
             concurrency_limit=actual_concurrency,
-            rpm_limit=max(0, config.model.rpm_limit),
+            rpm_limit=0,
             progress=self.progress,
             clock=self.clock,
             # Drain in-flight LLM calls naturally on stop instead of

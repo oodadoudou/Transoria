@@ -21,7 +21,8 @@ import {
   useModelProfiles,
   useModelProfilesStore,
 } from "@/store/useModelProfilesStore";
-import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { usePromptPresets, usePromptPresetsStore } from "@/store/usePromptPresetsStore";
+import { applyRunSelection } from "@/store/runSelection";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import {
   useWorkflowPresets,
@@ -171,16 +172,31 @@ export function RunPage() {
     };
   });
 
+  const reportSelectionError = (error: BridgeError | null) => {
+    useRuntimeStore.getState().setLastError("glossary_review", error);
+  };
   const handleSelectModel = async (id: string) => {
-    await useModelProfilesStore.getState().selectActive("glossary_review", id);
+    await applyRunSelection(
+      () => useModelProfilesStore.getState().selectActive("glossary_review", id),
+      () => useModelProfilesStore.getState().mutationError,
+      reportSelectionError,
+    );
     await useWorkflowPresetsStore.getState().refresh("glossary_review");
   };
   const handleSelectPrompt = async (id: string) => {
-    await prompts.selectActive("glossary_review", id);
+    await applyRunSelection(
+      () => prompts.selectActive("glossary_review", id),
+      () => usePromptPresetsStore.getState().mutationError,
+      reportSelectionError,
+    );
     await useWorkflowPresetsStore.getState().refresh("glossary_review");
   };
   const handleSelectPreset = async (id: string) => {
-    await workflow.applyPreset("glossary_review", id);
+    await applyRunSelection(
+      () => workflow.applyPreset("glossary_review", id),
+      () => useWorkflowPresetsStore.getState().mutationError,
+      reportSelectionError,
+    );
   };
 
   const handleAcceptCompletion = () => {

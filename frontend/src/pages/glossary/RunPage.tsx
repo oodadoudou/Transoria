@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { glossaryBridge } from "@/bridge";
+import { BridgeError, glossaryBridge } from "@/bridge";
 import { useMessages, useI18n } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
@@ -16,7 +16,8 @@ import {
   useModelProfiles,
   useModelProfilesStore,
 } from "@/store/useModelProfilesStore";
-import { usePromptPresets } from "@/store/usePromptPresetsStore";
+import { usePromptPresets, usePromptPresetsStore } from "@/store/usePromptPresetsStore";
+import { applyRunSelection } from "@/store/runSelection";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import {
   useWorkflowPresets,
@@ -200,16 +201,31 @@ export function RunPage() {
     };
   });
 
+  const reportSelectionError = (error: BridgeError | null) => {
+    useRuntimeStore.getState().setLastError("glossary", error);
+  };
   const handleSelectModel = async (id: string) => {
-    await useModelProfilesStore.getState().selectActive("glossary", id);
+    await applyRunSelection(
+      () => useModelProfilesStore.getState().selectActive("glossary", id),
+      () => useModelProfilesStore.getState().mutationError,
+      reportSelectionError,
+    );
     await useWorkflowPresetsStore.getState().refresh("glossary");
   };
   const handleSelectPrompt = async (id: string) => {
-    await prompts.selectActive("glossary", id);
+    await applyRunSelection(
+      () => prompts.selectActive("glossary", id),
+      () => usePromptPresetsStore.getState().mutationError,
+      reportSelectionError,
+    );
     await useWorkflowPresetsStore.getState().refresh("glossary");
   };
   const handleSelectPreset = async (id: string) => {
-    await workflow.applyPreset("glossary", id);
+    await applyRunSelection(
+      () => workflow.applyPreset("glossary", id),
+      () => useWorkflowPresetsStore.getState().mutationError,
+      reportSelectionError,
+    );
   };
 
   const total = snapshot.progress.total;

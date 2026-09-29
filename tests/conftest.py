@@ -6,11 +6,18 @@ import os
 
 import pytest
 
+from transoria.runtime import rate_limit
+
 
 # Suppress LLM IO logs during tests — the runner prints SEND/RECV lines
 # to stderr by default (see ``transoria/llm/io_log.py``); under pytest
 # this would flood the captured output and slow runs.
 os.environ.setdefault("TRANSORIA_LLM_LOG", "off")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_request_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rate_limit, "_shared_rpm", {})
 
 
 @pytest.fixture(autouse=True)

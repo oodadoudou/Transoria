@@ -20,6 +20,7 @@ from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.io_log import log_error, log_recv, log_send
 from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
+from transoria.runtime.rate_limit import check_request_stop, shared_rpm_limiter
 from transoria.runtime.request_log import RequestLogHandle, begin_llm_request
 
 
@@ -917,18 +918,24 @@ class LlmClient:
         timeout: float,
         request_log: RequestLogHandle | None,
         detect_stream_repetition: bool = False,
+        *,
+        model: ModelConfig,
     ) -> TransportResult:
+        check_request_stop()
+        handles_rpm = getattr(self.transport, "handles_rpm", False)
+        if not handles_rpm:
+            await shared_rpm_limiter(model.id).acquire(model.rpm_limit)
+        check_request_stop()
         observed = getattr(self.transport, "execute_observed", None)
         if callable(observed):
-            return await observed(
-                url,
-                headers,
-                payload,
-                timeout,
-                request_log,
-                detect_stream_repetition,
+            operation = observed(
+                url, headers, payload, timeout, request_log, detect_stream_repetition
             )
-        return await self.transport.execute(url, headers, payload, timeout)
+        else:
+            operation = self.transport.execute(url, headers, payload, timeout)
+        if handles_rpm:
+            return await operation
+        return await asyncio.wait_for(operation, timeout=timeout)
 
     async def chat(self, request: ChatRequest) -> ChatResponse:
         provider = request.model.provider_format
@@ -1155,6 +1162,7 @@ class LlmClient:
                 request.model.timeout_seconds,
                 fallback_log,
                 request.detect_stream_repetition,
+                model=request.model,
             )
         except LlmDegenerateOutputError:
             raise
@@ -1262,6 +1270,7 @@ class LlmClient:
                     request.model.timeout_seconds,
                     request_log,
                     request.detect_stream_repetition,
+                    model=request.model,
                 )
             except LlmDegenerateOutputError:
                 raise
@@ -1427,6 +1436,7 @@ class LlmClient:
                     request.model.timeout_seconds,
                     request_log,
                     request.detect_stream_repetition,
+                    model=request.model,
                 )
             except LlmDegenerateOutputError:
                 raise

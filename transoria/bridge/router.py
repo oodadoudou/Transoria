@@ -211,7 +211,8 @@ def build_default_router(
         router,
         profile_store=profile_store,
         settings_store=settings_store,
-        on_translation_selection_changed=task_service.translation_selection_changed,
+        on_selection_changed=task_service.selection_changed,
+        on_profile_deleted=task_service.profile_deleted,
     )
     register_model_templates(router)
     register_prompts(
@@ -219,14 +220,16 @@ def build_default_router(
         cache_root=cache_root,
         settings_store=settings_store,
         profile_store=profile_store,
-        on_translation_selection_changed=task_service.translation_selection_changed,
+        on_selection_changed=task_service.selection_changed,
+        on_prompt_deleted=task_service.prompt_deleted,
     )
     register_workflow_presets(
         router,
         cache_root=cache_root,
         settings_store=settings_store,
         profile_store=profile_store,
-        on_translation_selection_changed=task_service.translation_selection_changed,
+        on_selection_changed=task_service.selection_changed,
+        on_selection_invalidated=task_service.selection_invalidated,
     )
     def _allowed_dialog_roots() -> list[Path]:
         # Restrict open_directory / reveal_file to the user's

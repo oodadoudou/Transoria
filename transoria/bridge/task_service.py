@@ -2038,8 +2038,10 @@ class TaskService:
             "epub_convert": threading.Lock(),
             "txt_to_epub": threading.Lock(),
         }
-        self._translation_switch_lock = threading.Lock()
-        self._translation_switch_pending: set[str] = set()
+        self._selection_switch_lock = threading.RLock()
+        self._selection_switch_pending: dict[
+            str, TranslationConfig | GlossaryConfig | GlossaryReviewConfig
+        ] = {}
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
         self._retranslate_task_locks: dict[str, threading.Lock] = {}
@@ -5762,10 +5764,11 @@ class TaskService:
         self._maybe_cleanup_cache("txt_to_epub", task_id)
 
     def stop_task(self, *, kind: str, task_id: str) -> dict[str, object]:
-        if kind == "translation":
-            with self._translation_switch_lock:
-                self._translation_switch_pending.discard(task_id)
+        with self._selection_switch_lock:
+            self._selection_switch_pending.pop(task_id, None)
         running = self.registry.get(task_id)
+        if running is not None and running.is_done:
+            running = None
         if running is None:
             try:
                 snapshot = self._cache_for_task(task_id).load(task_id)
@@ -5797,39 +5800,85 @@ class TaskService:
         self._mark_status(task_id, TaskStatus.STOPPING)
         return self.read_snapshot(kind=kind, task_id=task_id)
 
-    def translation_selection_changed(self) -> None:
+    def selection_changed(self, kind: str) -> None:
         """Apply an explicit selection to the remaining work of a live task."""
-        with self._translation_switch_lock:
-            for running in self.registry.list_by_kind("translation"):
-                if running.is_done or running.task_id in self._translation_switch_pending:
+        with self._selection_switch_lock:
+            changes = []
+            for running in self.registry.list_by_kind(kind):
+                if running.is_done and running.task_id not in self._selection_switch_pending:
                     continue
                 try:
-                    record = self._cache_for_kind("translation").load_record(
+                    record = self._cache_for_kind(kind).load_record(
                         running.task_id
                     )
                 except TaskNotFoundError:
                     continue
-                if record.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+                if (
+                    record.status not in (TaskStatus.PENDING, TaskStatus.RUNNING)
+                    and running.task_id not in self._selection_switch_pending
+                ):
                     continue
-                self._translation_switch_pending.add(running.task_id)
+                config = self._build_selection_config(kind, record)
+                changes.append((running, config))
+            for running, config in changes:
+                already_pending = running.task_id in self._selection_switch_pending
+                self._selection_switch_pending[running.task_id] = config
+                if already_pending:
+                    continue
                 running.request_stop()
                 self._mark_status(running.task_id, TaskStatus.STOPPING)
                 threading.Thread(
-                    target=self._resume_translation_after_switch,
+                    target=self._resume_after_selection_switch,
                     args=(running,),
                     name=f"switch-{running.task_id}",
                     daemon=True,
                 ).start()
 
-    def _resume_translation_after_switch(self, old_running: RunningTask) -> None:
+    def _build_selection_config(
+        self, kind: str, record: TaskRecord
+    ) -> TranslationConfig | GlossaryConfig | GlossaryReviewConfig:
+        if kind == "translation":
+            config, _, _ = self._build_translation_config(task_metadata=record.metadata)
+            output_dir = config.output_dir
+        elif kind == "glossary":
+            config, _, _ = self._build_glossary_config()
+            output_dir = config.output_dir
+        else:
+            config, _, _ = self._build_glossary_review_config()
+            output_dir = config.input_dir
+        if (
+            str(config.input_dir) != record.metadata.get("input_dir")
+            or str(output_dir) != record.metadata.get("output_dir")
+            or config.source_language.value != record.metadata.get(
+                "source_language", config.source_language.value
+            )
+            or config.target_language.value != record.metadata.get(
+                "target_language", config.target_language.value
+            )
+            or (
+                isinstance(config, GlossaryReviewConfig)
+                and config.output_filename != record.metadata.get(
+                    "output_filename", config.output_filename
+                )
+            )
+        ):
+            raise BridgeError.invalid_argument(
+                "The selected preset changes this task's files or languages; "
+                "start a new task to use it.",
+                field="preset",
+                message_key="task.selection_incompatible",
+            )
+        return config
+
+    def _resume_after_selection_switch(self, old_running: RunningTask) -> None:
         task_id = old_running.task_id
         if old_running.thread is not None:
             old_running.thread.join()
-        with self._translation_switch_lock:
-            if task_id not in self._translation_switch_pending:
+        with self._selection_switch_lock:
+            config = self._selection_switch_pending.pop(task_id, None)
+            if config is None:
                 return
-            self._translation_switch_pending.remove(task_id)
-            cache = self._cache_for_kind("translation")
+            cache = self._cache_for_kind(old_running.kind)
             try:
                 try:
                     record = cache.load_record(task_id)
@@ -5840,28 +5889,98 @@ class TaskService:
                 progress = cache.load(task_id).progress()
                 if progress.pending == 0 and progress.failed == 0:
                     return
-                config = self._prepare_translation_selection(task_id, record)
-                self._continue_translation(task_id, config_override=config)
+                if isinstance(config, TranslationConfig):
+                    config = self._prepare_translation_selection(
+                        task_id, record, config=config
+                    )
+                    self._continue_translation(task_id, config_override=config)
+                elif isinstance(config, GlossaryConfig):
+                    self._continue_glossary(task_id, config_override=config)
+                else:
+                    self._continue_glossary_review(task_id, config_override=config)
             except BaseException as exc:  # noqa: BLE001
                 self._on_task_failure(task_id, exc)
 
+    def profile_deleted(self, profile_id: str) -> None:
+        for kind in ("translation", "glossary", "glossary_review"):
+            self._stop_tasks_using_selection(kind, profile_id=profile_id)
+
+    def prompt_deleted(self, kind: str, preset_id: str) -> None:
+        self._stop_tasks_using_selection(kind, preset_id=preset_id)
+
+    def selection_invalidated(self, kind: str) -> None:
+        with self._selection_switch_lock:
+            try:
+                self.selection_changed(kind)
+            except BridgeError:
+                for running in self.registry.list_by_kind(kind):
+                    self._selection_switch_pending.pop(running.task_id, None)
+                    if not running.is_done:
+                        self.stop_task(kind=kind, task_id=running.task_id)
+
+    def _stop_tasks_using_selection(
+        self, kind: str, *, profile_id: str | None = None, preset_id: str | None = None
+    ) -> None:
+        with self._selection_switch_lock:
+            for running in self.registry.list_by_kind(kind):
+                if running.is_done and running.task_id not in self._selection_switch_pending:
+                    continue
+                try:
+                    record = running.cache.load_record(running.task_id)
+                except TaskNotFoundError:
+                    continue
+                if (
+                    record.status not in (
+                        TaskStatus.PENDING, TaskStatus.RUNNING,
+                        TaskStatus.STOPPING, TaskStatus.PAUSING,
+                    )
+                    and running.task_id not in self._selection_switch_pending
+                ):
+                    continue
+                profiles = {
+                    record.metadata.get("active_model_id") or record.metadata.get("model_id")
+                }
+                prompts = {
+                    record.metadata.get("active_prompt_id") or record.metadata.get("prompt_preset_id")
+                }
+                routing = record.metadata.get("advanced_routing")
+                if isinstance(routing, Mapping):
+                    routes = list(routing.get("routes") or [])
+                    routes.append(routing.get("fallback_route"))
+                    for route in routes:
+                        if isinstance(route, Mapping):
+                            model = route.get("model")
+                            prompt = route.get("prompt_preset")
+                            if isinstance(model, Mapping):
+                                profiles.add(model.get("id"))
+                            if isinstance(prompt, Mapping):
+                                prompts.add(prompt.get("id"))
+                pending = self._selection_switch_pending.get(running.task_id)
+                if pending is not None:
+                    profiles.add(pending.model.id)
+                    prompts.add(pending.prompt_preset.id)
+                    if isinstance(pending, TranslationConfig):
+                        routes = list(pending.routes)
+                        if pending.fallback_route:
+                            routes.append(pending.fallback_route)
+                        profiles.update(route.model.id for route in routes)
+                        prompts.update(route.prompt_preset.id for route in routes)
+                if not (
+                    profile_id is not None and profile_id in profiles
+                    or preset_id is not None and preset_id in prompts
+                ):
+                    continue
+                self._selection_switch_pending.pop(running.task_id, None)
+                if running.is_done:
+                    continue
+                running.request_stop()
+                self._mark_status(running.task_id, TaskStatus.STOPPING)
+
     def _prepare_translation_selection(
-        self, task_id: str, record: TaskRecord
+        self, task_id: str, record: TaskRecord, *, config: TranslationConfig | None = None
     ) -> TranslationConfig:
-        config, _model, _preset = self._build_translation_config(
-            task_metadata=record.metadata
-        )
-        if (
-            str(config.input_dir) != record.metadata.get("input_dir")
-            or str(config.output_dir) != record.metadata.get("output_dir")
-            or config.source_language.value != record.metadata.get("source_language")
-            or config.target_language.value != record.metadata.get("target_language")
-        ):
-            raise BridgeError.invalid_argument(
-                "The selected preset changes this task's files or languages; "
-                "start a new task to use it.",
-                field="preset",
-            )
+        if config is None:
+            config = self._build_selection_config("translation", record)
         metadata = dict(record.metadata)
         metadata.update(
             model_id=config.model.id,
@@ -6046,6 +6165,7 @@ class TaskService:
         metadata = dict(record.metadata)
         metadata["active_model_id"] = config.model.id
         metadata["active_prompt_id"] = config.prompt_preset.id
+        metadata["timeout_seconds"] = float(config.model.timeout_seconds)
         cache.save_task(replace(record, metadata=metadata))
         running = RunningTask(
             task_id=task_id,
@@ -6062,8 +6182,13 @@ class TaskService:
         self._spawn_thread(running, target=_async_runner, task_id=task_id)
         return {"task_id": task_id, "started_at": started_at}
 
-    def _continue_glossary(self, task_id: str) -> dict[str, object]:
-        config, _model, _preset = self._build_glossary_config()
+    def _continue_glossary(
+        self, task_id: str, *, config_override: GlossaryConfig | None = None
+    ) -> dict[str, object]:
+        config = config_override or self._build_selection_config(
+            "glossary", self._cache_for_kind("glossary").load_record(task_id)
+        )
+        self._save_continued_selection("glossary", task_id, config)
         started_at = _utc_now_iso()
         running = RunningTask(
             task_id=task_id,
@@ -6080,8 +6205,13 @@ class TaskService:
         self._spawn_thread(running, target=_async_runner, task_id=task_id)
         return {"task_id": task_id, "started_at": started_at}
 
-    def _continue_glossary_review(self, task_id: str) -> dict[str, object]:
-        config, _model, _preset = self._build_glossary_review_config()
+    def _continue_glossary_review(
+        self, task_id: str, *, config_override: GlossaryReviewConfig | None = None
+    ) -> dict[str, object]:
+        config = config_override or self._build_selection_config(
+            "glossary_review", self._cache_for_kind("glossary_review").load_record(task_id)
+        )
+        self._save_continued_selection("glossary_review", task_id, config)
         started_at = _utc_now_iso()
         running = RunningTask(
             task_id=task_id,
@@ -6097,6 +6227,19 @@ class TaskService:
 
         self._spawn_thread(running, target=_async_runner, task_id=task_id)
         return {"task_id": task_id, "started_at": started_at}
+
+    def _save_continued_selection(
+        self, kind: str, task_id: str, config: GlossaryConfig | GlossaryReviewConfig
+    ) -> None:
+        cache = self._cache_for_kind(kind)
+        record = cache.load_record(task_id)
+        metadata = dict(record.metadata)
+        metadata.update(
+            active_model_id=config.model.id,
+            active_prompt_id=config.prompt_preset.id,
+            timeout_seconds=float(config.model.timeout_seconds),
+        )
+        cache.save_task(replace(record, metadata=metadata))
 
     def probe_continuable(self, *, kind: str) -> dict[str, object]:
         """Return whether a continuable cache exists for ``kind`` under

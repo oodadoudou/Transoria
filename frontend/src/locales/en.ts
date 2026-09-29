@@ -121,6 +121,8 @@ export const en: Messages = {
     dismiss: "Dismiss",
     retry: "Retry",
     bridgeMessages: {
+      "task.selection_incompatible":
+        "This preset changes the current task's files or languages. The original configuration is still in use. Stop the current task before applying this preset.",
       "translation.input_equals_output":
         "Translation input and output folders must be different — writing translated files back into the input would cause them to be re-scanned and re-translated on the next run.",
       "translation.output_inside_input":

@@ -214,7 +214,7 @@ class GlossaryReviewOrchestrator:
                 cache=self.cache,
                 runner=runner,
                 concurrency_limit=actual_concurrency,
-                rpm_limit=max(0, config.model.rpm_limit),
+                rpm_limit=0,
                 progress=self._round_progress_listener(
                     task_id=task_id,
                     total_rounds=total_rounds,

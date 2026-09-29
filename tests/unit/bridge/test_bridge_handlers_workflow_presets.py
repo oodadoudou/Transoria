@@ -116,7 +116,8 @@ def test_translation_model_and_prompt_selection_notify_running_task(tmp_path: Pa
     )
     selected: list[tuple[str | None, str | None]] = []
 
-    def on_selection() -> None:
+    def on_selection(kind: str) -> None:
+        assert kind == "translation"
         app = settings_store.load_all().app
         selected.append(
             (app.active_translation_model_id, app.active_translation_prompt_id)
@@ -127,14 +128,14 @@ def test_translation_model_and_prompt_selection_notify_running_task(tmp_path: Pa
         router,
         profile_store=profile_store,
         settings_store=settings_store,
-        on_translation_selection_changed=on_selection,
+        on_selection_changed=on_selection,
     )
     register_prompts(
         router,
         cache_root=tmp_path,
         settings_store=settings_store,
         profile_store=profile_store,
-        on_translation_selection_changed=on_selection,
+        on_selection_changed=on_selection,
     )
     router.call(
         "model_profiles.select_active",
@@ -171,6 +172,34 @@ def test_create_rejects_missing_model(env):
 
     assert caught.value.code == "bridge.not_found"
     assert caught.value.payload.details["field"] == "model_profile_id"
+
+
+def test_editing_active_advanced_preset_does_not_reapply_and_delete_notifies(env):
+    _, settings_store = env
+    router = BridgeRouter()
+    changed = []
+    invalidated = []
+    register(
+        router, cache_root=settings_store.path.parent, settings_store=settings_store,
+        profile_store=ModelProfileStore.from_cache_root(settings_store.path.parent),
+        on_selection_changed=changed.append, on_selection_invalidated=invalidated.append,
+    )
+    router.call("workflow_presets.create", {"kind": "translation", "preset": {
+        "id": "active", "name": "Active", "model_profile_id": "model-1",
+        "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID,
+        "source_language": "kr", "target_language": "zh", "advanced": True,
+        "routes": [{"model_profile_id": "model-1", "prompt_preset_id": DEFAULT_TRANSLATION_PRESET_ID}],
+        "group_concurrency": 2,
+    }})
+    router.call("workflow_presets.apply", {"kind": "translation", "id": "active"})
+    before = settings_store.load_all()
+    router.call("workflow_presets.update", {"id": "active", "patch": {"name": "Renamed"}})
+    router.call("workflow_presets.update", {"id": "active", "patch": {"source_language": "ja", "group_concurrency": 3}})
+    assert changed == ["translation"]
+    assert settings_store.load_all() == before
+    router.call("workflow_presets.delete", {"id": "active"})
+    assert invalidated == ["translation"]
+    assert settings_store.load_all().app.active_translation_workflow_preset_id is None
 
 
 def test_advanced_translation_preset_applies_routes_without_changing_basic_match(env):

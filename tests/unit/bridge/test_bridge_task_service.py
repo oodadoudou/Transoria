@@ -1440,7 +1440,7 @@ def test_switch_from_advanced_to_basic_stops_old_routes_for_remaining_chunks(
         cache_root=service.prompts_cache_root,
         settings_store=service.settings_store,
         profile_store=service.profile_store,
-        on_translation_selection_changed=service.translation_selection_changed,
+        on_selection_changed=service.selection_changed,
     )
     task_id = service.start_translation(request_id="switch-model-test")["task_id"]
     try:
@@ -1504,9 +1504,16 @@ def test_manual_stop_cancels_pending_translation_auto_resume(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("sample", encoding="utf-8")
+    _seed_translation_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
     task_id = "translation-cancel-switch"
     service.cache.write_seed(
-        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.RUNNING),
+        TaskRecord(
+            id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.RUNNING,
+            metadata={"input_dir": str(input_dir), "output_dir": str(tmp_path / "out")},
+        ),
         [Subtask(id="chunk-00000", task_id=task_id)],
     )
     release = threading.Event()
@@ -1531,12 +1538,12 @@ def test_manual_stop_cancels_pending_translation_auto_resume(
     )
     thread.start()
     try:
-        service.translation_selection_changed()
+        service.selection_changed("translation")
         service.stop_task(kind="translation", task_id=task_id)
     finally:
         release.set()
         thread.join(timeout=2)
-    _wait_until(lambda: task_id not in service._translation_switch_pending)
+    _wait_until(lambda: task_id not in service._selection_switch_pending)
     assert service.cache.load_record(task_id).status is TaskStatus.STOPPED
 
 

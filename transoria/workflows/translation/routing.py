@@ -6,11 +6,11 @@ import asyncio
 from collections import Counter
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
-from typing import Mapping
+from typing import ClassVar, Mapping
 
 from transoria.llm.client import ChatRequest, ChatResponse, ChatTransport, LlmClient, TransportResult
 from transoria.runtime.executor import SubtaskFailedWithResult, SubtaskResult, SubtaskRunner
-from transoria.runtime.rate_limit import SharedRpmLimiter, shared_rpm_limiter
+from transoria.runtime.rate_limit import SharedRpmLimiter, check_request_stop, shared_rpm_limiter
 from transoria.runtime.subtask import Subtask
 from transoria.workflows.translation.config import TranslationRouteConfig
 
@@ -70,11 +70,13 @@ class _PreparedRoute:
 
 @dataclass
 class RouteRateLimitedTransport:
+    handles_rpm: ClassVar[bool] = True
     transport: ChatTransport
     profile_id: str
     rpm_limit: int
 
     async def _admit(self) -> None:
+        check_request_stop()
         admission = _route_admission.get()
         if (
             admission is not None
@@ -85,6 +87,7 @@ class RouteRateLimitedTransport:
             if admission.limiter.claim(admission.ticket):
                 return
         await shared_rpm_limiter(self.profile_id).acquire(self.rpm_limit)
+        check_request_stop()
 
     async def execute(
         self,

@@ -6,8 +6,30 @@ import asyncio
 import time
 import threading
 from collections import deque
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Callable, Deque, Tuple
+
+
+_request_stopped: ContextVar[Callable[[], bool] | None] = ContextVar(
+    "request_stopped", default=None
+)
+
+
+@contextmanager
+def request_stop_scope(stopped: Callable[[], bool]):
+    token = _request_stopped.set(stopped)
+    try:
+        yield
+    finally:
+        _request_stopped.reset(token)
+
+
+def check_request_stop() -> None:
+    stopped = _request_stopped.get()
+    if stopped is not None and stopped():
+        raise asyncio.CancelledError
 
 
 @dataclass
@@ -175,6 +197,7 @@ class SharedRpmLimiter:
             return max(0.01, 60.0 - (now - self._timestamps[0][0]))
 
     async def acquire(self, limit: int) -> None:
+        check_request_stop()
         if limit <= 0:
             return
         ticket = object()
@@ -182,6 +205,7 @@ class SharedRpmLimiter:
             self._waiters.append(ticket)
         try:
             while True:
+                check_request_stop()
                 with self._lock:
                     now = self.clock()
                     self._evict(now)

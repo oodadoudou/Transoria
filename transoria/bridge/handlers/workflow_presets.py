@@ -8,7 +8,7 @@ from secrets import token_hex
 from typing import Callable, Mapping
 
 from transoria.bridge.errors import BridgeError
-from transoria.bridge.handlers._utils import expect_string
+from transoria.bridge.handlers._utils import expect_string, save_selection
 from transoria.bridge.router import BridgeRouter
 from transoria.domain import Language
 from transoria.model_profiles import ModelProfileStore
@@ -285,7 +285,8 @@ def _build_handlers(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
-    on_translation_selection_changed: Callable[[], None] | None = None,
+    on_selection_changed: Callable[[str], None] | None = None,
+    on_selection_invalidated: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
     def list_presets(payload: Mapping[str, object]) -> dict[str, object]:
         kind = _expect_kind(payload)
@@ -335,12 +336,6 @@ def _build_handlers(
                 body=body,
             )
             store.replace_one(updated)
-            if (
-                kind is PromptKind.TRANSLATION
-                and settings_store.load_all().app.active_translation_workflow_preset_id
-                == preset_id
-            ):
-                apply({"kind": "translation", "id": preset_id})
             return {"preset": _summary(updated)}
         raise BridgeError.not_found(f"workflow preset {preset_id!r} does not exist.")
 
@@ -374,6 +369,8 @@ def _build_handlers(
                     settings_store.save_partial(
                         "app", {"active_translation_workflow_preset_id": None}
                     )
+                    if on_selection_invalidated:
+                        on_selection_invalidated(kind.value)
                 return {}
         raise BridgeError.not_found(f"workflow preset {preset_id!r} does not exist.")
 
@@ -399,19 +396,16 @@ def _build_handlers(
             app_patch["active_translation_workflow_preset_id"] = (
                 preset.id if preset.advanced else None
             )
-        settings_store.save_partial(
-            "app",
-            app_patch,
-        )
-        updated = settings_store.save_partial(
+        updated = save_selection(
+            settings_store,
             SETTINGS_MODULE_BY_KIND[kind],
+            app_patch,
             {
                 "source_language": preset.source_language,
                 "target_language": preset.target_language,
             },
+            on_selection_changed,
         )
-        if kind is PromptKind.TRANSLATION and on_translation_selection_changed:
-            on_translation_selection_changed()
         module_name = SETTINGS_MODULE_BY_KIND[kind]
         return {
             "app": asdict(updated.app),
@@ -434,13 +428,15 @@ def register(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
-    on_translation_selection_changed: Callable[[], None] | None = None,
+    on_selection_changed: Callable[[str], None] | None = None,
+    on_selection_invalidated: Callable[[str], None] | None = None,
 ) -> None:
     for method, handler in _build_handlers(
         cache_root=cache_root,
         settings_store=settings_store,
         profile_store=profile_store,
-        on_translation_selection_changed=on_translation_selection_changed,
+        on_selection_changed=on_selection_changed,
+        on_selection_invalidated=on_selection_invalidated,
     ).items():
         router.register(method, handler)
 
