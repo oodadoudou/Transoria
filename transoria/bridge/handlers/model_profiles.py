@@ -60,6 +60,7 @@ def _build_handlers(
     *,
     chat_transport_factory,
     http_client_factory,
+    on_translation_selection_changed=None,
 ) -> dict[str, object]:
     def list_profiles(_payload: Mapping[str, object]) -> dict[str, object]:
         profiles = profile_store.load()
@@ -232,6 +233,8 @@ def _build_handlers(
         if module == "translation":
             patch["active_translation_workflow_preset_id"] = None
         updated = settings_store.save_partial("app", patch)
+        if module == "translation" and on_translation_selection_changed:
+            on_translation_selection_changed()
         return {"app": _app_settings_dict(updated.app)}
 
     def test_connection(payload: Mapping[str, object]) -> dict[str, object]:
@@ -679,6 +682,7 @@ def register(
     settings_store: SettingsStore,
     chat_transport_factory: Callable[[], ChatTransport] | None = None,
     http_client_factory: Callable[..., httpx.Client] | None = None,
+    on_translation_selection_changed: Callable[[], None] | None = None,
 ) -> None:
     handlers = _build_handlers(
         profile_store,
@@ -693,6 +697,7 @@ def register(
             if http_client_factory is not None
             else _proxy_aware_http_client_factory(settings_store)
         ),
+        on_translation_selection_changed=on_translation_selection_changed,
     )
     for method, handler in handlers.items():
         router.register(method, handler)  # type: ignore[arg-type]

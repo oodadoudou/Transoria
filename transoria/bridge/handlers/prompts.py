@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from secrets import token_hex
-from typing import Mapping
+from typing import Callable, Mapping
 
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
@@ -119,6 +119,7 @@ def _build_handlers(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
+    on_translation_selection_changed: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     def list_presets(payload: Mapping[str, object]) -> dict[str, object]:
         kind = _expect_kind(payload)
@@ -276,6 +277,8 @@ def _build_handlers(
         if kind is PromptKind.TRANSLATION:
             patch["active_translation_workflow_preset_id"] = None
         updated = settings_store.save_partial("app", patch)
+        if kind is PromptKind.TRANSLATION and on_translation_selection_changed:
+            on_translation_selection_changed()
         from dataclasses import asdict  # noqa: PLC0415
 
         return {"app": asdict(updated.app)}
@@ -412,8 +415,12 @@ def register(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
+    on_translation_selection_changed: Callable[[], None] | None = None,
 ) -> None:
-    handlers = _build_handlers(cache_root, settings_store, profile_store)
+    handlers = _build_handlers(
+        cache_root, settings_store, profile_store,
+        on_translation_selection_changed=on_translation_selection_changed,
+    )
     for method, handler in handlers.items():
         router.register(method, handler)  # type: ignore[arg-type]
 

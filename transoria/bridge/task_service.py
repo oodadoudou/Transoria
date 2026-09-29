@@ -128,7 +128,7 @@ from transoria.workflows.glossary.orchestrator import (
 )
 from transoria.workflows.glossary.statistics import GLOSSARY_STATISTICS_FILENAME_JSON
 from transoria.workflows.translation.config import TranslationConfig, TranslationRouteConfig
-from transoria.workflows.translation.routing import RouteLimitedClient
+from transoria.workflows.translation.routing import RouteLimitedClient, route_snapshot
 from transoria.workflow_presets import PresetRoute, WorkflowPresetStore
 from transoria.workflows.translation.glossary_report import (
     GLOSSARY_REPORT_FILENAME_JSON,
@@ -2038,6 +2038,8 @@ class TaskService:
             "epub_convert": threading.Lock(),
             "txt_to_epub": threading.Lock(),
         }
+        self._translation_switch_lock = threading.Lock()
+        self._translation_switch_pending: set[str] = set()
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
         self._retranslate_task_locks: dict[str, threading.Lock] = {}
@@ -4110,19 +4112,19 @@ class TaskService:
                     if name in frozen
                 }
                 translation = replace(translation, **fields)
-            if task_metadata is not None:
-                rule_fields = {
-                    "glossary": "translation_glossary",
-                    "text_preserve_rules": "text_preserve_rules",
-                    "pre_replacements": "pre_replacements",
-                    "post_replacements": "post_replacements",
-                }
-                saved = {
-                    target: tuple(task_metadata[source])
-                    for source, target in rule_fields.items()
-                    if isinstance(task_metadata.get(source), list)
-                }
-                translation = replace(translation, **saved)
+        if task_metadata is not None:
+            rule_fields = {
+                "glossary": "translation_glossary",
+                "text_preserve_rules": "text_preserve_rules",
+                "pre_replacements": "pre_replacements",
+                "post_replacements": "post_replacements",
+            }
+            saved = {
+                target: tuple(task_metadata[source])
+                for source, target in rule_fields.items()
+                if isinstance(task_metadata.get(source), list)
+            }
+            translation = replace(translation, **saved)
 
         input_dir = _require_directory(translation.input_folder, field="input_folder")
         _require_input_with_supported_files(input_dir, field="input_folder")
@@ -5760,6 +5762,9 @@ class TaskService:
         self._maybe_cleanup_cache("txt_to_epub", task_id)
 
     def stop_task(self, *, kind: str, task_id: str) -> dict[str, object]:
+        if kind == "translation":
+            with self._translation_switch_lock:
+                self._translation_switch_pending.discard(task_id)
         running = self.registry.get(task_id)
         if running is None:
             try:
@@ -5791,6 +5796,111 @@ class TaskService:
         running.request_stop()
         self._mark_status(task_id, TaskStatus.STOPPING)
         return self.read_snapshot(kind=kind, task_id=task_id)
+
+    def translation_selection_changed(self) -> None:
+        """Apply an explicit selection to the remaining work of a live task."""
+        with self._translation_switch_lock:
+            for running in self.registry.list_by_kind("translation"):
+                if running.is_done or running.task_id in self._translation_switch_pending:
+                    continue
+                try:
+                    record = self._cache_for_kind("translation").load_record(
+                        running.task_id
+                    )
+                except TaskNotFoundError:
+                    continue
+                if record.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+                    continue
+                self._translation_switch_pending.add(running.task_id)
+                running.request_stop()
+                self._mark_status(running.task_id, TaskStatus.STOPPING)
+                threading.Thread(
+                    target=self._resume_translation_after_switch,
+                    args=(running,),
+                    name=f"switch-{running.task_id}",
+                    daemon=True,
+                ).start()
+
+    def _resume_translation_after_switch(self, old_running: RunningTask) -> None:
+        task_id = old_running.task_id
+        if old_running.thread is not None:
+            old_running.thread.join()
+        with self._translation_switch_lock:
+            if task_id not in self._translation_switch_pending:
+                return
+            self._translation_switch_pending.remove(task_id)
+            cache = self._cache_for_kind("translation")
+            try:
+                try:
+                    record = cache.load_record(task_id)
+                except TaskNotFoundError:
+                    return
+                if record.status not in (TaskStatus.STOPPED, TaskStatus.FAILED):
+                    return
+                progress = cache.load(task_id).progress()
+                if progress.pending == 0 and progress.failed == 0:
+                    return
+                config = self._prepare_translation_selection(task_id, record)
+                self._continue_translation(task_id, config_override=config)
+            except BaseException as exc:  # noqa: BLE001
+                self._on_task_failure(task_id, exc)
+
+    def _prepare_translation_selection(
+        self, task_id: str, record: TaskRecord
+    ) -> TranslationConfig:
+        config, _model, _preset = self._build_translation_config(
+            task_metadata=record.metadata
+        )
+        if (
+            str(config.input_dir) != record.metadata.get("input_dir")
+            or str(config.output_dir) != record.metadata.get("output_dir")
+            or config.source_language.value != record.metadata.get("source_language")
+            or config.target_language.value != record.metadata.get("target_language")
+        ):
+            raise BridgeError.invalid_argument(
+                "The selected preset changes this task's files or languages; "
+                "start a new task to use it.",
+                field="preset",
+            )
+        metadata = dict(record.metadata)
+        metadata.update(
+            model_id=config.model.id,
+            prompt_preset_id=config.prompt_preset.id,
+            prompt_preset=config.prompt_preset.to_dict(),
+        )
+        metadata.pop("advanced_retry_state", None)
+        if config.routes:
+            previous = metadata.get("advanced_routing")
+            frozen = previous.get("settings") if isinstance(previous, Mapping) else None
+            metadata["advanced_routing"] = {
+                "preset_id": config.workflow_preset_id,
+                "routes": [route_snapshot(route) for route in config.routes],
+                "fallback_route": (
+                    route_snapshot(config.fallback_route)
+                    if config.fallback_route else None
+                ),
+                "group_concurrency": config.group_concurrency,
+                "retry_failed": config.retry_failed,
+                "settings": frozen if isinstance(frozen, Mapping) else {
+                    "input_folder": str(config.input_dir),
+                    "output_folder": str(config.output_dir),
+                    "source_language": config.source_language.value,
+                    "target_language": config.target_language.value,
+                    "bilingual_enabled": config.bilingual_enabled,
+                    "bilingual_dedupe_identical": config.bilingual_dedup_when_same,
+                    "bilingual_subfolder_name": config.bilingual_subfolder,
+                    "context_lines": config.context_line_count,
+                    "low_confidence_max_retries": config.low_confidence_max_retries,
+                    "request_retry_attempts": config.request_retry_attempts,
+                    "timeout_seconds": int(config.model.timeout_seconds),
+                },
+            }
+        else:
+            metadata.pop("advanced_routing", None)
+        self._cache_for_kind("translation").save_task(
+            replace(record, metadata=metadata)
+        )
+        return config
 
     def pause_task(self, *, kind: str, task_id: str) -> dict[str, object]:
         if kind in {
@@ -5908,16 +6018,30 @@ class TaskService:
             return self._continue_glossary(task_id)
         return self._continue_glossary_review(task_id)
 
-    def _continue_translation(self, task_id: str) -> dict[str, object]:
+    def _continue_translation(
+        self, task_id: str, *, config_override: TranslationConfig | None = None
+    ) -> dict[str, object]:
         cache = self._cache_for_kind("translation")
         record = cache.load_record(task_id)
         routing_snapshot = record.metadata.get("advanced_routing")
-        config, _model, _preset = self._build_translation_config(
-            routing_snapshot=(
-                routing_snapshot if isinstance(routing_snapshot, Mapping) else None
-            ),
-            task_metadata=record.metadata,
-        )
+        selected_id = self.settings_store.load_all().app.active_translation_workflow_preset_id
+        if (
+            config_override is None
+            and isinstance(routing_snapshot, Mapping)
+            and routing_snapshot.get("preset_id") != selected_id
+        ):
+            config_override = self._prepare_translation_selection(task_id, record)
+            record = cache.load_record(task_id)
+            routing_snapshot = record.metadata.get("advanced_routing")
+        if config_override is None:
+            config, _model, _preset = self._build_translation_config(
+                routing_snapshot=(
+                    routing_snapshot if isinstance(routing_snapshot, Mapping) else None
+                ),
+                task_metadata=record.metadata,
+            )
+        else:
+            config = config_override
         started_at = _utc_now_iso()
         metadata = dict(record.metadata)
         metadata["active_model_id"] = config.model.id

@@ -102,6 +102,55 @@ def test_apply_updates_model_prompt_and_source_language(env):
     assert settings.translation.target_language == Language.CHINESE_TRADITIONAL.value
 
 
+def test_translation_model_and_prompt_selection_notify_running_task(tmp_path: Path):
+    settings_store = SettingsStore(path=tmp_path / "settings.json")
+    profile_store = ModelProfileStore.from_cache_root(tmp_path)
+    profile_store.create(
+        ModelConfig(
+            id="model-1",
+            display_name="Model 1",
+            provider_format=ProviderFormat.OPENAI,
+            base_url="https://example.test/v1",
+            model_id="example-model",
+        )
+    )
+    selected: list[tuple[str | None, str | None]] = []
+
+    def on_selection() -> None:
+        app = settings_store.load_all().app
+        selected.append(
+            (app.active_translation_model_id, app.active_translation_prompt_id)
+        )
+
+    router = BridgeRouter()
+    register_model_profiles(
+        router,
+        profile_store=profile_store,
+        settings_store=settings_store,
+        on_translation_selection_changed=on_selection,
+    )
+    register_prompts(
+        router,
+        cache_root=tmp_path,
+        settings_store=settings_store,
+        profile_store=profile_store,
+        on_translation_selection_changed=on_selection,
+    )
+    router.call(
+        "model_profiles.select_active",
+        {"module": "translation", "profile_id": "model-1"},
+    )
+    router.call(
+        "prompts.select_active",
+        {"kind": "translation", "preset_id": DEFAULT_TRANSLATION_PRESET_ID},
+    )
+
+    assert selected == [
+        ("model-1", None),
+        ("model-1", DEFAULT_TRANSLATION_PRESET_ID),
+    ]
+
+
 def test_create_rejects_missing_model(env):
     router, _settings_store = env
 

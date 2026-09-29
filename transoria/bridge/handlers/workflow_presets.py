@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, replace
 from pathlib import Path
 from secrets import token_hex
-from typing import Mapping
+from typing import Callable, Mapping
 
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
@@ -285,6 +285,7 @@ def _build_handlers(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
+    on_translation_selection_changed: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     def list_presets(payload: Mapping[str, object]) -> dict[str, object]:
         kind = _expect_kind(payload)
@@ -409,6 +410,8 @@ def _build_handlers(
                 "target_language": preset.target_language,
             },
         )
+        if kind is PromptKind.TRANSLATION and on_translation_selection_changed:
+            on_translation_selection_changed()
         module_name = SETTINGS_MODULE_BY_KIND[kind]
         return {
             "app": asdict(updated.app),
@@ -431,11 +434,13 @@ def register(
     cache_root: Path,
     settings_store: SettingsStore,
     profile_store: ModelProfileStore,
+    on_translation_selection_changed: Callable[[], None] | None = None,
 ) -> None:
     for method, handler in _build_handlers(
         cache_root=cache_root,
         settings_store=settings_store,
         profile_store=profile_store,
+        on_translation_selection_changed=on_translation_selection_changed,
     ).items():
         router.register(method, handler)
 

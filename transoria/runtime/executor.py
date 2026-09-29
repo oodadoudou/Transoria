@@ -111,6 +111,7 @@ class TaskExecutor:
     _pause_observed: bool = field(default=False, init=False, repr=False)
     _next_launch_at: float = field(default=0.0, init=False, repr=False)
     _launch_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    _run_returned: bool = field(default=False, init=False, repr=False)
 
     def request_stop(self) -> None:
         """Signal cooperative shutdown. Safe to call from any thread/coroutine."""
@@ -157,12 +158,20 @@ class TaskExecutor:
         left as-is.
         """
 
+        if self._run_returned:
+            self._stop_event = asyncio.Event()
+            self._run_returned = False
         snapshot = self.cache.load(task_id)
         pending = [s for s in snapshot.subtasks if s.status is SubtaskStatus.PENDING]
         if not pending:
-            return self._finalize(task_id, stopped=False, paused=False)
+            result = self._finalize(task_id, stopped=False, paused=False)
+            self._run_returned = True
+            return result
+        if self._stop_event.is_set():
+            stopped = self._finalize(task_id, stopped=True, paused=False)
+            self._run_returned = True
+            return stopped
 
-        self._stop_event = asyncio.Event()
         self._pause_request = asyncio.Event()
         self._pause_gate = asyncio.Event()
         self._pause_gate.set()  # gate open by default
@@ -174,9 +183,11 @@ class TaskExecutor:
 
         await self._drive(task_id, pending)
 
-        return self._finalize(
+        result = self._finalize(
             task_id, stopped=self._stop_event.is_set(), paused=self._pause_observed
         )
+        self._run_returned = True
+        return result
 
     async def rerun_failed(self, task_id: str) -> TaskSnapshot:
         """Reset every FAILED subtask to PENDING, then :meth:`run`."""

@@ -315,6 +315,25 @@ def test_request_stop_transitions_through_stopping_to_stopped(tmp_path: Path) ->
     assert by_id["s3"].status is SubtaskStatus.PENDING
 
 
+def test_stop_before_executor_run_never_dispatches(tmp_path: Path) -> None:
+    cache = TaskCache(root=tmp_path)
+    _seed(cache, "t1", count=2)
+    runner = _FakeRunner()
+    executor = TaskExecutor(cache=cache, runner=runner, concurrency_limit=2)
+    executor.request_stop()
+
+    snapshot = asyncio.run(executor.run("t1"))
+
+    assert snapshot.record.status is TaskStatus.STOPPED
+    assert executor.is_stopping
+    assert not runner.started
+    assert all(item.status is SubtaskStatus.PENDING for item in snapshot.subtasks)
+
+    resumed = asyncio.run(executor.run("t1"))
+    assert resumed.record.status is TaskStatus.COMPLETED
+    assert runner.started == ["s0", "s1"]
+
+
 def test_stop_with_drain_lets_in_flight_finish_naturally(tmp_path: Path) -> None:
     """Production stop semantics: when ``stop_drain_seconds > 0``,
     in-flight LLM calls are allowed to complete naturally instead of

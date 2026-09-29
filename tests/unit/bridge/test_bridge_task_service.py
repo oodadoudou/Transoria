@@ -1354,6 +1354,192 @@ def test_advanced_translation_config_resolves_route_prompts_and_group_limits(tmp
     assert resumed.routes[0].prompt_preset.to_dict() == config.routes[0].prompt_preset.to_dict()
 
 
+def test_switch_from_advanced_to_basic_stops_old_routes_for_remaining_chunks(
+    tmp_path: Path,
+) -> None:
+    import asyncio
+
+    from transoria.bridge.handlers.workflow_presets import register as register_presets
+    from transoria.bridge.router import BridgeRouter
+    from transoria.llm.config import ModelConfig, ProviderFormat
+    from transoria.prompts import DEFAULT_TRANSLATION_PRESET_ID, PromptKind
+    from transoria.workflow_presets import PresetRoute, WorkflowPreset, WorkflowPresetStore
+
+    class BlockingTransport:
+        def __init__(self) -> None:
+            self.release = threading.Event()
+            self.calls: list[str] = []
+            self.lock = threading.Lock()
+            self.echo = EchoTranslationTransport(prefix="中文", include_source=False)
+
+        async def execute(self, url, headers, payload, timeout):
+            with self.lock:
+                self.calls.append(url)
+                index = len(self.calls)
+            if index <= 2:
+                await asyncio.to_thread(self.release.wait, 10)
+            return await self.echo.execute(url, headers, payload, timeout)
+
+    transport = BlockingTransport()
+    service = _service(tmp_path, transport=transport)
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text(
+        "\n".join(f"한국어 문장 {index}." for index in range(200)), encoding="utf-8"
+    )
+    _seed_translation_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
+    primary = service.settings_store.load_all().app.active_translation_model_id
+    service.profile_store.create(
+        ModelConfig(
+            id="other-route",
+            display_name="Other",
+            provider_format=ProviderFormat.OPENAI,
+            base_url="https://other.example/v1",
+            model_id="other-model",
+        )
+    )
+    service.profile_store.set_api_keys("other-route", ("test-key",))
+    presets = WorkflowPresetStore(
+        service.prompts_cache_root / "workflow_presets.translation.json",
+        PromptKind.TRANSLATION,
+    )
+    presets.save(
+        (
+            WorkflowPreset(
+                id="multi",
+                name="Multi",
+                kind=PromptKind.TRANSLATION,
+                model_profile_id=primary,
+                prompt_preset_id=DEFAULT_TRANSLATION_PRESET_ID,
+                source_language="kr",
+                target_language="zh",
+                advanced=True,
+                routes=(
+                    PresetRoute(primary, DEFAULT_TRANSLATION_PRESET_ID),
+                    PresetRoute("other-route", DEFAULT_TRANSLATION_PRESET_ID),
+                ),
+                group_concurrency=2,
+            ),
+            WorkflowPreset(
+                id="single",
+                name="Single",
+                kind=PromptKind.TRANSLATION,
+                model_profile_id=primary,
+                prompt_preset_id=DEFAULT_TRANSLATION_PRESET_ID,
+                source_language="kr",
+                target_language="zh",
+            ),
+        )
+    )
+    service.settings_store.save_partial(
+        "app", {"active_translation_workflow_preset_id": "multi"}
+    )
+    router = BridgeRouter()
+    register_presets(
+        router,
+        cache_root=service.prompts_cache_root,
+        settings_store=service.settings_store,
+        profile_store=service.profile_store,
+        on_translation_selection_changed=service.translation_selection_changed,
+    )
+    task_id = service.start_translation(request_id="switch-model-test")["task_id"]
+    try:
+        _wait_until(lambda: len(transport.calls) >= 2)
+        assert len(service.cache.load_subtasks(task_id)) > 2
+        router.call("workflow_presets.apply", {"kind": "translation", "id": "single"})
+    finally:
+        transport.release.set()
+
+    _wait_until(
+        lambda: service.cache.load_record(task_id).status
+        in (TaskStatus.COMPLETED, TaskStatus.FAILED),
+        timeout=20,
+    )
+    assert service.cache.load_record(task_id).status is TaskStatus.COMPLETED
+    assert len(transport.calls) > 2
+    assert all("other.example" not in url for url in transport.calls[2:])
+    assert "advanced_routing" not in service.cache.load_record(task_id).metadata
+
+
+def test_continue_after_restart_uses_explicitly_selected_single_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("안녕하세요", encoding="utf-8")
+    output_dir = tmp_path / "out"
+    _seed_translation_settings(service, input_dir=input_dir, output_dir=output_dir)
+    task_id = "translation-old-advanced-route"
+    service.cache.write_seed(
+        TaskRecord(
+            id=task_id,
+            kind=TaskKind.TRANSLATION,
+            status=TaskStatus.STOPPED,
+            metadata={
+                "input_dir": str(input_dir),
+                "output_dir": str(output_dir),
+                "source_language": "kr",
+                "target_language": "zh",
+                "advanced_routing": {
+                    "preset_id": "old-multi-preset",
+                    "routes": [{"model": {}, "prompt_preset": {}}],
+                },
+            },
+        ),
+        [Subtask(id="chunk-00000", task_id=task_id)],
+    )
+    monkeypatch.setattr(service, "_spawn_thread", lambda *_args, **_kwargs: None)
+
+    service.continue_task(kind="translation", task_id=task_id)
+
+    record = service.cache.load_record(task_id)
+    assert "advanced_routing" not in record.metadata
+    assert record.metadata["active_model_id"] == (
+        service.settings_store.load_all().app.active_translation_model_id
+    )
+
+
+def test_manual_stop_cancels_pending_translation_auto_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    task_id = "translation-cancel-switch"
+    service.cache.write_seed(
+        TaskRecord(id=task_id, kind=TaskKind.TRANSLATION, status=TaskStatus.RUNNING),
+        [Subtask(id="chunk-00000", task_id=task_id)],
+    )
+    release = threading.Event()
+
+    def finish_old_run() -> None:
+        release.wait(5)
+        service._mark_status(task_id, TaskStatus.STOPPED)
+        running.mark_done()
+
+    thread = threading.Thread(target=finish_old_run, daemon=True)
+    running = RunningTask(
+        task_id=task_id,
+        kind="translation",
+        cache=service.cache,
+        created_at="2026-05-01T00:00:00+00:00",
+        thread=thread,
+    )
+    service.registry.add(running)
+    monkeypatch.setattr(
+        service, "_continue_translation",
+        lambda *_args, **_kwargs: pytest.fail("manual stop must cancel auto-resume"),
+    )
+    thread.start()
+    try:
+        service.translation_selection_changed()
+        service.stop_task(kind="translation", task_id=task_id)
+    finally:
+        release.set()
+        thread.join(timeout=2)
+    _wait_until(lambda: task_id not in service._translation_switch_pending)
+    assert service.cache.load_record(task_id).status is TaskStatus.STOPPED
+
+
 def test_translation_glossary_regex_setting_threads_and_matches(tmp_path: Path):
     """Regex glossary rows persisted by the frontend must stay active at run start."""
 

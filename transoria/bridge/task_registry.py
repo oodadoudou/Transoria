@@ -55,6 +55,9 @@ class RunningTask:
         with self._lock:
             self._executor = executor
             self._last_heartbeat_monotonic = time.monotonic()
+            should_stop = self._stop_flag
+        if should_stop:
+            executor.request_stop()
 
     def touch(self) -> None:
         with self._lock:
