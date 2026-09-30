@@ -122,6 +122,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const savedDraft = useRef(readEditorDraft());
   const currentDraft = useRef<EpubEditorDraft | null>(null);
   const sourceEditor = useRef<EditorView | null>(null);
+  const previewSelectingSource = useRef(false);
+  const previewSource = useRef({ path: "", content: "" });
   const editorStates = useRef(new Map<string, { state: EditorState; scroll: number }>());
   const [editorEpoch, setEditorEpoch] = useState(0);
   const reloadCursor = useRef<{ path: string; position: number } | null>(null);
@@ -215,8 +217,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [bookReady, setBookReady] = useState(false);
   const [pageStep, setPageStep] = useState(0);
   const [inspectPreview, setInspectPreview] = useState(false);
-  const [syncPreview, setSyncPreview] = useState(false);
+  const [syncPreview, setSyncPreview] = useState(true);
   const [sourceLine, setSourceLine] = useState(0);
+  const [sourceColumn, setSourceColumn] = useState(0);
+  const [sourceRequest, setSourceRequest] = useState(0);
   const [localHistory, setLocalHistory] = useState({ undo: 0, redo: 0 });
   const [previewFragment, setPreviewFragment] = useState({ path: "", fragment: "", request: 0 });
   const [computedStyles, setComputedStyles] = useState<Record<string, string> | null>(null);
@@ -378,6 +382,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     const previous = sourceEditor.current;
     if (previous && selectedPath) editorStates.current.set(selectedPath, { state: previous.state, scroll: previous.scrollDOM.scrollTop });
     const next = await epubContentBridge.read(sid, path);
+    setSourceLine(0);
     setSelectedPath(path);
     setResourcePath(path);
     setLoadedContent(next.content);
@@ -388,6 +393,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setPreviewPath(target);
       try {
         setPreview((await epubContentBridge.preview(sid, target)).html);
+        previewSource.current = { path, content: target === path ? next.content : "" };
         setPreviewError("");
       } catch (cause) {
         setPreview("");
@@ -437,7 +443,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     let active = true;
     const timer = window.setTimeout(() => {
       void epubContentBridge.previewDraft(sid, previewPath, path, content)
-        .then((rendered) => { if (active) { setPreview(rendered.html); setPreviewError(""); } })
+        .then((rendered) => { if (active) { previewSource.current = { path, content }; setPreview(rendered.html); setPreviewError(""); } })
         .catch((cause: unknown) => { if (active) { setPreview(""); setPreviewError(cause instanceof Error ? cause.message : String(cause)); } });
     }, 900);
     return () => { active = false; window.clearTimeout(timer); };
@@ -806,6 +812,23 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       reloadCursor.current = null;
     }
   };
+
+  const locateSource = (line: number, column = 0) => {
+    if (!syncPreview || previewPath !== selectedPath || previewSource.current.path !== selectedPath || previewSource.current.content !== content) return;
+    const editor = sourceEditor.current;
+    if (!editor || editor.state.doc.toString() !== content || line < 1 || line > editor.state.doc.lines) return;
+    const target = editor.state.doc.line(line);
+    const position = target.from + editorOffset(target.text, column);
+    previewSelectingSource.current = true;
+    try {
+      editor.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: "center", x: "nearest" }) });
+      setSourceLine(0);
+    } finally {
+      previewSelectingSource.current = false;
+    }
+  };
+
+
 
   const openBookPreview = () => {
     const editor = sourceEditor.current;
@@ -1438,7 +1461,14 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
             </div></div>
             <CodeMirror key={`${selectedPath}:${editorEpoch}`} value={content} editable={!busy} onCreateEditor={restoreSourceEditor}
               initialState={savedEditorHistory(editorStates.current.get(selectedPath)?.state, content)}
-              onUpdate={(update) => { const depth = { undo: undoDepth(update.state), redo: redoDepth(update.state) }; setLocalHistory((previous) => previous.undo === depth.undo && previous.redo === depth.redo ? previous : depth); if (syncPreview && update.selectionSet) setSourceLine(update.state.doc.lineAt(update.state.selection.main.head).number); }}
+              onUpdate={(update) => {
+                const depth = { undo: undoDepth(update.state), redo: redoDepth(update.state) };
+                setLocalHistory((previous) => previous.undo === depth.undo && previous.redo === depth.redo ? previous : depth);
+                if (syncPreview && update.selectionSet && !previewSelectingSource.current && isPreviewable && selectedPath === previewPath) {
+                  const position = update.state.selection.main.head, line = update.state.doc.lineAt(position);
+                  setSourceLine(line.number); setSourceColumn(Array.from(line.text.slice(0, position - line.from)).length); setSourceRequest((request) => request + 1);
+                }
+              }}
               onChange={(value) => { if (value === content) return; setContent(value); setSelectionRange(null); setMatches([]); setMatchIndex(-1); }}
               extensions={[EditorView.lineWrapping, ...(currentFile?.media_type === "text/css" ? [css()] : currentFile?.media_type === "text/plain" || currentFile?.media_type?.includes("javascript") ? [] : [xml()])]}
               theme={colorTheme} height="100%" basicSetup={{ lineNumbers: true, foldGutter: true }} />
@@ -1452,7 +1482,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
             </div></div>
             {computedStyles ? <div className={styles.styleInspector}><strong>{t.styles}</strong><button type="button" title={t.close} onClick={() => setComputedStyles(null)}><X size={14} /></button><dl>{Object.entries(computedStyles).map(([property, value]) => <div key={property}><dt>{property}</dt><dd>{value}</dd></div>)}</dl></div> : null}
             {previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : ((isPreviewable && selectedPath !== session.nav_path) || currentFile?.media_type === "text/css") && previewPath ? <div className={styles.previewViewport}>
-              <EpubPreviewFrame key={previewPath} html={chapterPreviewHtml} title={t.preview} zoom={previewZoom} inspect={inspectPreview} sourceLine={syncPreview ? sourceLine : 0} fragment={previewFragment.path === previewPath ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[`source:${previewPath}`]} onLocation={(location) => rememberLocation(`source:${previewPath}`, location)} onInspect={inspectElement} onLink={previewLink} />
+              <EpubPreviewFrame key={previewPath} html={chapterPreviewHtml} title={t.preview} zoom={previewZoom} inspect={inspectPreview} sourceLine={syncPreview ? sourceLine : 0} sourceColumn={sourceColumn} sourceRequest={sourceRequest} fragment={previewFragment.path === previewPath ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[`source:${previewPath}`]} onLocation={(location) => { rememberLocation(`source:${previewPath}`, location); if (location.anchorLine && (location.origin === "user" || (location.origin === "layout" && !sourceLine))) locateSource(location.anchorLine, location.anchorColumn); }} onLocate={locateSource} onInspect={inspectElement} onLink={previewLink} />
             </div> : <div className={styles.noPreview}>{t.noPreview}</div>}
           </section>
         </div>

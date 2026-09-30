@@ -115,18 +115,6 @@ def test_batch_delete_protects_package_dependencies_and_removes_refinements(tmp_
     assert not session._package().xpath('//*[@refines="#one"]')
 
 
-def test_batch_copy_encryption_is_atomic(tmp_path: Path):
-    source = tmp_path / "encrypted-copy.epub"
-    _book(source)
-    _rewrite_book(source, {"META-INF/encryption.xml": '<encryption><CipherReference URI="OEBPS/Images/pixel.png"/></encryption>'})
-    session = ContentSession.open(str(source))
-    before = session._snapshot()
-    with pytest.raises(ValueError, match="Encrypted"):
-        session.copy_resources(["OEBPS/Text/two.xhtml", "OEBPS/Images/pixel.png"])
-    assert session._snapshot() == before
-    assert not session.undo_stack
-
-
 def test_batch_mutations_reject_partial_failure_and_navigation(tmp_path: Path):
     source = tmp_path / "atomic.epub"
     _book(source)
@@ -411,6 +399,54 @@ def test_html5_source_mapping_survives_table_reparenting_and_ignores_forged_line
     assert root.xpath('//*[@id="moved"]/@data-transoria-line') == ["3"]
     assert root.xpath('//*[@id="last"]/@data-transoria-line') == ["5"]
     assert not root.xpath('//*[@*[starts-with(name(), "data-transoria-source-")]]')
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_preview_maps_distinct_columns_in_minified_unicode_source(tmp_path: Path, malformed: bool):
+    source = tmp_path / "columns.epub"
+    _book(source)
+    content = '<html xmlns="http://www.w3.org/1999/xhtml"><body><!-- comment --><p id="first">字😀</p><p id="second" data-transoria-column="999">Second</p><p id="third">Third</p></body></html>'
+    if malformed:
+        content = content.replace("</p></body>", "</body>")
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": content})
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    displayed = session.read(session.spine[0])["content"]
+    root = epub_content_module.lxml_html.fromstring(session.preview(session.spine[0]))
+    for name in ("first", "second", "third"):
+        node = root.xpath(f'//*[@id="{name}"]')[0]
+        start = displayed.index(f'<p id="{name}"')
+        assert int(node.get("data-transoria-line")) == displayed[:start].count("\n") + 1
+        assert int(node.get("data-transoria-column")) == start - displayed.rfind("\n", 0, start) - 1
+    assert session._snapshot() == before
+    assert session._bytes(session.spine[0]) == content.encode()
+
+
+def test_batch_copy_encryption_is_atomic(tmp_path: Path):
+    source = tmp_path / "encrypted-copy.epub"
+    _book(source)
+    _rewrite_book(source, {"META-INF/encryption.xml": '<encryption><CipherReference URI="OEBPS/Images/pixel.png"/></encryption>'})
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="Encrypted"):
+        session.copy_resources(["OEBPS/Text/two.xhtml", "OEBPS/Images/pixel.png"])
+    assert session._snapshot() == before
+    assert not session.undo_stack
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "iso-8859-1"])
+def test_live_preview_maps_exact_draft_whitespace_and_encoding(tmp_path: Path, encoding: str):
+    source = tmp_path / "draft-map.epub"
+    _book(source)
+    content = f'<?xml version="1.0" encoding="{encoding}"?><html xmlns="http://www.w3.org/1999/xhtml"><body>\n\n     <p id="one">First</p>\n <p id="two">Second</p></body></html>'
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": content.encode(encoding)})
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    root = epub_content_module.lxml_html.fromstring(session.preview(session.spine[0], session.spine[0], content))
+    for name, line, column in (("one", 3, 5), ("two", 4, 1)):
+        node = root.xpath(f'//*[@id="{name}"]')[0]
+        assert (int(node.get("data-transoria-line")), int(node.get("data-transoria-column"))) == (line, column)
+    assert session._snapshot() == before
 
 
 def test_preview_preserves_conditional_imports_and_link_media(tmp_path: Path):

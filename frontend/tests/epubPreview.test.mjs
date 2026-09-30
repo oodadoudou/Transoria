@@ -3,6 +3,50 @@ import test from "node:test";
 import vm from "node:vm";
 import { interactivePreview, previewAtZoom, PreviewCommands } from "../src/pages/general-tools/epubPreview.ts";
 
+test("source columns, preview clicks and scroll origins stay synchronized", async () => {
+  const script = interactivePreview("<html></html>", "sync123").match(/<script nonce="sync123">([\s\S]*)<\/script>$/)[1];
+  const handlers = new Map(), frames = [], messages = [];
+  const parent = { postMessage: (message) => messages.push(message) };
+  let time = 1000;
+  const context = {
+    parent, innerWidth: 400, innerHeight: 200, scrollX: 0, scrollY: 0,
+    Date: { now: () => time },
+    getComputedStyle: () => ({ getPropertyValue: (key) => key === "writing-mode" ? "horizontal-tb" : "ltr" }),
+    addEventListener: (event, callback) => handlers.set(event, callback),
+    requestAnimationFrame: (callback) => { frames.push(callback); return frames.length; },
+    scrollTo: (x, y) => { context.scrollX = x; context.scrollY = y; },
+  };
+  const nodes = [100, 200, 300].map((column, index) => ({
+    tagName: index === 2 ? "DIV" : "P", textContent: "Paragraph", dataset: { transoriaLine: "1", transoriaColumn: String(column) },
+    getBoundingClientRect: () => ({ width: 300, height: 180, left: 0, right: 300, top: index * 200 - context.scrollY, bottom: index * 200 + 180 - context.scrollY }),
+    scrollIntoView: () => { context.scrollY = index * 200; },
+  }));
+  context.document = {
+    body: {}, documentElement: { scrollWidth: 400, scrollHeight: 600 }, head: { append() {} }, images: [], fonts: { ready: Promise.resolve() },
+    createElement: () => ({ textContent: "" }), addEventListener: (event, callback) => handlers.set(event, callback),
+    querySelector: () => null, querySelectorAll: () => nodes,
+  };
+  vm.runInNewContext(script, context);
+  await new Promise((resolve) => setImmediate(resolve));
+  const flush = () => { while (frames.length) frames.shift()(); };
+  const send = (data) => handlers.get("message")({ source: parent, data: { token: "sync123", ...data } });
+  send({ event: "configure", mode: "continuous", revision: 7 }); flush();
+  send({ event: "line", line: 1, column: 250 });
+  assert.equal(context.scrollY, 200);
+  assert.equal(messages.at(-1).anchorColumn, 200);
+  assert.equal(messages.at(-1).origin, "source");
+  handlers.get("scroll")(); flush();
+  assert.equal(messages.at(-1).origin, "source");
+  time = 2000; context.scrollY = 410;
+  handlers.get("scroll")(); flush();
+  assert.equal(messages.at(-1).anchorColumn, 300);
+  assert.equal(messages.at(-1).origin, "user");
+  handlers.get("click")({ target: { closest: (selector) => selector.startsWith("a[") ? null : nodes[2] } });
+  assert.equal(messages.at(-1).event, "locate");
+  assert.equal(messages.at(-1).column, 300);
+
+});
+
 test("preview controller parses and runs in an opaque sandbox with a nonce", () => {
   const markup = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><html><head></head><body>Test</body></html>`;
   const result = interactivePreview(markup, "test123");

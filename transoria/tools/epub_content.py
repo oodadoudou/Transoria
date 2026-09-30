@@ -87,16 +87,33 @@ def _is_toc(node: etree._Element) -> bool:
 
 
 def _preview_root(data: bytes, *, html_document: bool = False) -> etree._Element:
+    text = _decode(data)[0]
+    positions: dict[str, list[tuple[int, int]]] = {}
+
+    class Positions(HTMLParser):
+        def handle_starttag(self, tag: str, attrs) -> None:
+            positions.setdefault(_local_name(tag).lower(), []).append(self.getpos())
+
+        handle_startendtag = handle_starttag
+
+    Positions(convert_charrefs=False).feed(text)
     if not html_document:
         try:
-            return _xml(data)
+            root = _xml(data)
+            indices: dict[str, int] = {}
+            for node in root.iter():
+                if not isinstance(node.tag, str):
+                    continue
+                tag = _local_name(node.tag).lower()
+                index = indices.get(tag, 0)
+                choices = positions.get(tag, [])
+                line, column = choices[index] if index < len(choices) else (node.sourceline or 1, 0)
+                node.set("data-transoria-line", str(line))
+                node.set("data-transoria-column", str(column))
+                indices[tag] = index + 1
+            return root
         except etree.XMLSyntaxError:
             pass
-    text = _decode(data)[0]
-    # Remove declared XHTML prefixes only in the disposable HTML5 rendering copy.
-    for prefix in re.findall(r'xmlns:([\w.-]+)=[\"\']http://www.w3.org/1999/xhtml[\"\']', text):
-        text = re.sub(r'(<\s*/?\s*)' + re.escape(prefix) + ':', r'\1', text)
-        text = re.sub(r'\s+xmlns:' + re.escape(prefix) + r'=[\"\']http://www.w3.org/1999/xhtml[\"\']', '', text)
     marker = "data-transoria-source-" + uuid.uuid4().hex
     offsets = [0]
     for line in text.split("\n"):
@@ -108,7 +125,7 @@ def _preview_root(data: bytes, *, html_document: bool = False) -> etree._Element
             line, column = self.getpos()
             opening = re.match(r"<[^\s/>]+", self.get_starttag_text())
             if opening:
-                insertions.append((offsets[line - 1] + column + opening.end(), f' {marker}="{line}"'))
+                insertions.append((offsets[line - 1] + column + opening.end(), f' {marker}="{line}:{column}"'))
 
         handle_startendtag = handle_starttag
 
@@ -119,10 +136,17 @@ def _preview_root(data: bytes, *, html_document: bool = False) -> etree._Element
         pieces.extend((text[cursor:position], attribute))
         cursor = position
     pieces.append(text[cursor:])
-    root = html5lib.parse("".join(pieces), treebuilder="lxml", namespaceHTMLElements=True).getroot()
+    marked = "".join(pieces)
+    # Strip XHTML prefixes only after recording original source coordinates.
+    for prefix in re.findall(r'xmlns:([\w.-]+)=[\"\']http://www.w3.org/1999/xhtml[\"\']', marked):
+        marked = re.sub(r'(<\s*/?\s*)' + re.escape(prefix) + ':', r'\1', marked)
+        marked = re.sub(r'\s+xmlns:' + re.escape(prefix) + r'=[\"\']http://www.w3.org/1999/xhtml[\"\']', '', marked)
+    root = html5lib.parse(marked, treebuilder="lxml", namespaceHTMLElements=True).getroot()
     for node in root.iter():
         if isinstance(node.tag, str):
-            node.set("data-transoria-line", node.attrib.pop(marker, "1"))
+            line, _, column = node.attrib.pop(marker, "1:0").partition(":")
+            node.set("data-transoria-line", line)
+            node.set("data-transoria-column", column or "0")
     return root
 
 
@@ -1837,10 +1861,9 @@ class ContentSession:
         if int(item["size"]) > MAX_PREVIEW_BYTES and path not in drafts:
             raise ValueError("Preview resources exceed the 48 MB limit.")
         markup_bytes = preview_bytes(path)
-        if len(markup_bytes) <= MAX_TEXT_BYTES:
+        if path not in drafts and len(markup_bytes) <= MAX_TEXT_BYTES:
             formatted = _editor_text(markup_bytes, str(item["media_type"]))
-            formatted = re.sub(r'(<\?xml[^>]*encoding\s*=\s*)[\'\"][^\'\"]+[\'\"]', r'\1"utf-8"', formatted, count=1)
-            markup_bytes = formatted.encode("utf-8")
+            markup_bytes = _encode(formatted, _decode(markup_bytes)[1])
         root = _preview_root(markup_bytes, html_document=item["media_type"] == "text/html")
         from transoria.tools.epub_rendition import rendition
         rendering = rendition(_xml(drafts.get(self.opf_path, self._bytes(self.opf_path))), root, self.opf_path, path)
@@ -1857,7 +1880,8 @@ class ContentSession:
                 # Browser HTML parsing does not recognize prefixed XHTML element names.
                 node.tag = _local_name(node.tag)
             if local:
-                node.set("data-transoria-line", str(node.sourceline) if node.sourceline is not None else node.get("data-transoria-line", "1"))
+                node.set("data-transoria-line", node.get("data-transoria-line", "1"))
+                node.set("data-transoria-column", node.get("data-transoria-column", "0"))
                 node.attrib.pop("data-transoria-target", None)
             if local in {"script", "iframe", "object", "embed", "form", "base"}:
                 parent = node.getparent()

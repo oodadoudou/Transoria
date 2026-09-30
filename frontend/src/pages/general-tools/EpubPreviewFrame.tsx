@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { interactivePreview, PreviewCommands, type ReadingLocation } from "./epubPreview";
 import { fixedPageSize, previewRendition } from "./epubRendition";
 
-export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", location, fragment = "", navigation = 0, inspect = false, sourceLine = 0, step = 0, onLocation, onInspect, onLink, onWarning, onReady }: {
+export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", location, fragment = "", navigation = 0, inspect = false, sourceLine = 0, sourceColumn = 0, sourceRequest = 0, step = 0, onLocation, onLocate, onInspect, onLink, onWarning, onReady }: {
   html: string; title: string; zoom: number; mode?: "continuous" | "paged"; location?: ReadingLocation;
-  fragment?: string; navigation?: number; inspect?: boolean; sourceLine?: number; step?: number;
-  onLocation?: (location: ReadingLocation & { pages: number }) => void;
+  fragment?: string; navigation?: number; inspect?: boolean; sourceLine?: number; sourceColumn?: number; sourceRequest?: number; step?: number;
+  onLocation?: (location: ReadingLocation & { pages: number; origin: string }) => void;
+  onLocate?: (line: number, column: number) => void;
   onInspect?: (line: number, styles: Record<string, string>) => void;
   onLink?: (target: string) => void;
   onWarning?: (reason: string) => void;
@@ -28,10 +29,10 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
     commands.current = new PreviewCommands(token);
     previousStep.current = step;
   }
-  const latestLine = useRef(sourceLine);
-  latestLine.current = sourceLine;
-  const callbacks = useRef({ onLocation, onInspect, onLink, onWarning, onReady });
-  callbacks.current = { onLocation, onInspect, onLink, onWarning, onReady };
+  const latestPoint = useRef({ line: sourceLine, column: sourceColumn });
+  latestPoint.current = { line: sourceLine, column: sourceColumn };
+  const callbacks = useRef({ onLocation, onLocate, onInspect, onLink, onWarning, onReady });
+  callbacks.current = { onLocation, onLocate, onInspect, onLink, onWarning, onReady };
   const config = useRef({ mode, inspect, ...location, fragment, navigation });
   config.current = { mode, inspect, ...location, fragment, navigation };
   const send = (data: Record<string, unknown>) => frame.current?.contentWindow?.postMessage({ token: commands.current.token, ...data }, "*");
@@ -46,7 +47,7 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
       const data = event.data;
       if (data.event === "ready") { commands.current.loaded = true; configure(); }
       if (data.event === "configured" && commands.current.acknowledge(data.revision)) {
-        if (latestLine.current > 0) send({ event: "line", line: latestLine.current });
+        if (latestPoint.current.line > 0) send({ event: "line", ...latestPoint.current });
         const direction = commands.current.drain();
         if (direction) send({ event: "step", direction });
         callbacks.current.onReady?.(true);
@@ -55,8 +56,9 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
         const left = Number.isFinite(data.clipLeft) ? Math.max(0, Math.min(10000, data.clipLeft)) : 0;
         const right = Number.isFinite(data.clipRight) ? Math.max(0, Math.min(10000, data.clipRight)) : 0;
         if (frame.current) frame.current.style.clipPath = left || right ? `inset(0 ${right}px 0 ${left}px)` : "";
-        callbacks.current.onLocation?.({ page: data.page, pages: data.pages, scroll: data.scroll, scrollX: Number.isFinite(data.scrollX) ? data.scrollX : 0, anchorLine: Number.isFinite(data.anchorLine) ? data.anchorLine : 0 });
+        callbacks.current.onLocation?.({ page: data.page, pages: data.pages, scroll: data.scroll, scrollX: Number.isFinite(data.scrollX) ? data.scrollX : 0, anchorLine: Number.isFinite(data.anchorLine) ? data.anchorLine : 0, anchorColumn: Number.isFinite(data.anchorColumn) ? data.anchorColumn : 0, origin: typeof data.origin === "string" ? data.origin : "layout" });
       }
+      if (data.event === "locate" && commands.current.configured && data.revision === commands.current.revision && Number.isInteger(data.line) && data.line > 0 && Number.isInteger(data.column) && data.column >= 0) callbacks.current.onLocate?.(data.line, data.column);
       if (data.event === "warning" && typeof data.reason === "string") callbacks.current.onWarning?.(data.reason);
       if (data.event === "inspect" && Number.isFinite(data.line) && data.styles && typeof data.styles === "object") callbacks.current.onInspect?.(data.line, data.styles);
       if (data.event === "link" && typeof data.target === "string") callbacks.current.onLink?.(data.target);
@@ -65,7 +67,7 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
     return () => window.removeEventListener("message", receive);
   }, []);
   useEffect(configure, [token, mode, inspect, zoom, fragment, navigation]);
-  useEffect(() => { if (commands.current.configured && sourceLine > 0) send({ event: "line", line: sourceLine }); }, [sourceLine]);
+  useEffect(() => { if (commands.current.configured && sourceLine > 0) send({ event: "line", line: sourceLine, column: sourceColumn }); }, [sourceLine, sourceColumn, sourceRequest]);
   useEffect(() => {
     const direction = commands.current.step(step - previousStep.current);
     if (direction) send({ event: "step", direction });

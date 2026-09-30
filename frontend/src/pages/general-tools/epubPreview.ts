@@ -18,7 +18,7 @@ export function columnPageOffsets(rectangles: Array<[number, number]>, viewport:
   return result;
 }
 
-export type ReadingLocation = { page: number; scroll: number; scrollX?: number; anchorLine?: number };
+export type ReadingLocation = { page: number; scroll: number; scrollX?: number; anchorLine?: number; anchorColumn?: number };
 
 export class PreviewCommands {
   loaded = false;
@@ -71,6 +71,7 @@ export function interactivePreview(markup: string, token: string): string {
     const token = ${JSON.stringify(token)};
     let page = 0, mode = 'continuous', inspect = false, restoring = false, lastNavigation = -1;
     let ready = false, sign = 1, vertical = false, offsets = [], configuration = 0, revision = 0;
+    let programmaticUntil = 0, scrollFrame = 0;
     const paginateColumns = ${columnPageOffsets.toString()};
     const send = (data) => parent.postMessage({type:'epub-preview',token,...data}, '*');
     const fixed = document.querySelector('meta[name="transoria-rendition"]')?.content.includes('pre-paginated');
@@ -82,25 +83,33 @@ export function interactivePreview(markup: string, token: string): string {
       for(let index=1;index<offsets.length;index++) if(Math.abs(offsets[index]-distance)<Math.abs(offsets[best]-distance)) best=index;
       return best;
     };
-    const anchorLine = () => {
-      let best=Infinity, line=0;
+    const anchorPoint = () => {
+      let best=Infinity, line=0, column=0;
       for(const node of document.querySelectorAll('[data-transoria-line]')) {
-        if(!node.getBoundingClientRect || !/^(P|H[1-6]|LI|DT|DD|IMG|SVG)$/.test(node.tagName)) continue;
+        if(!node.getBoundingClientRect) continue;
+        const semantic=/^(P|H[1-6]|LI|DT|DD|IMG|SVG|PRE|BLOCKQUOTE|TABLE|FIGURE)$/i.test(node.tagName);
+        const leaf=/^(DIV|SPAN|SECTION|ARTICLE)$/i.test(node.tagName) && !node.querySelector?.('[data-transoria-line]') && node.textContent?.trim();
+        if(!semantic && !leaf) continue;
         const rect=node.getBoundingClientRect();
         const distance=vertical ? (sign < 0 ? innerWidth-rect.right : rect.left) : rect.top;
-        if(rect.width && rect.height && distance>=-1 && distance<best) { best=distance; line=Number(node.dataset.transoriaLine); }
+        const end=vertical ? (sign < 0 ? innerWidth-rect.left : rect.right) : rect.bottom;
+        const other=vertical ? rect.bottom>0 && rect.top<innerHeight : rect.right>0 && rect.left<innerWidth;
+        if(rect.width && rect.height && end>0 && other && Math.max(0,distance)<best) { best=Math.max(0,distance); line=Number(node.dataset.transoriaLine); column=Number(node.dataset.transoriaColumn)||0; }
       }
-      return line;
+      return {line,column};
     };
-    const report = () => {
+    const pointNode = (line, column = 0) => [...document.querySelectorAll('[data-transoria-line]')].find((node) => Number(node.dataset.transoriaLine) === Number(line) && (Number(node.dataset.transoriaColumn)||0) === Number(column));
+    const report = (origin = 'layout') => {
       const gap=mode==='paged' && vertical && offsets[page+1]!==undefined ? Math.max(0,innerWidth-(offsets[page+1]-offsets[page]+12)) : 0;
       const leading=mode==='paged' && vertical && page>0 ? 12 : 0;
-      send({event:'location',revision,page,pages:pages(),scroll:scrollY,scrollX,anchorLine:anchorLine(),clipLeft:sign<0?gap:leading,clipRight:sign<0?leading:gap});
+      const point=anchorPoint();
+      send({event:'location',revision,origin,page,pages:pages(),scroll:scrollY,scrollX,anchorLine:point.line,anchorColumn:point.column,clipLeft:sign<0?gap:leading,clipRight:sign<0?leading:gap});
     };
-    const go = () => {
+    const go = (origin = 'layout') => {
       restoring = true;
+      programmaticUntil = Date.now()+180;
       scrollTo(mode === 'paged' ? sign * (offsets[page] ?? page * innerWidth) : scrollX, mode === 'paged' ? 0 : scrollY);
-      restoring = false; report();
+      restoring = false; report(origin);
     };
     const extentNode = document.createElement('div');
     extentNode.setAttribute?.('aria-hidden','true');
@@ -146,6 +155,7 @@ export function interactivePreview(markup: string, token: string): string {
       const data = event.data;
       if(data.event === 'configure') {
         ready = false;
+        programmaticUntil = Date.now()+250;
         const requested = ++configuration;
         revision = data.revision;
         mode = !fixed && data.mode === 'paged' ? 'paged' : 'continuous'; inspect = !!data.inspect;
@@ -161,25 +171,35 @@ export function interactivePreview(markup: string, token: string): string {
           const end = Number(data.page) === -1;
           page = end ? pages()-1 : Math.max(0, Math.min(Number(data.page) || 0, pages()-1));
           scrollTo(mode === 'paged' ? sign*(offsets[page] ?? page*innerWidth) : end && vertical ? sign*Math.max(0,document.documentElement.scrollWidth-innerWidth) : Number(data.scrollX)||0, mode === 'paged' ? 0 : end && !vertical ? Math.max(0,document.documentElement.scrollHeight-innerHeight) : Number(data.scroll)||0);
-          if(!end && data.anchorLine && mode==='paged' && !data.fragment) document.querySelector('[data-transoria-line="'+Number(data.anchorLine)+'"]')?.scrollIntoView();
+          if(!end && data.anchorLine && mode==='paged' && !data.fragment) pointNode(data.anchorLine,data.anchorColumn)?.scrollIntoView();
           if(data.fragment && data.navigation !== lastNavigation) { document.getElementById(data.fragment)?.scrollIntoView(); lastNavigation = data.navigation; }
           if(mode==='paged') { page = currentPage(); go(); }
           ready = true; send({event:'configured',revision}); report();
         }));
       } else if(data.event === 'step' && ready) {
-        page = Math.max(0, Math.min(page + data.direction, pages()-1)); go();
+        page = Math.max(0, Math.min(page + data.direction, pages()-1)); go('user');
       } else if(data.event === 'line' && ready) {
-        const nodes = [...document.querySelectorAll('[data-transoria-line]')];
-        const target = nodes.reverse().find((node) => Number(node.dataset.transoriaLine) <= data.line);
-        target?.scrollIntoView({block:'center'}); if(mode==='paged') { page = currentPage(); go(); } else report();
+        const nodes = [...document.querySelectorAll('[data-transoria-line]')].filter((node)=>node.getBoundingClientRect?.().height && !/^(HTML|HEAD|BODY|META|TITLE|STYLE|LINK)$/i.test(node.tagName));
+        let target=null, best=-1;
+        for(const node of nodes) {
+          const line=Number(node.dataset.transoriaLine), column=Number(node.dataset.transoriaColumn)||0;
+          const position=line*10000000+column;
+          if((line<data.line || line===data.line && column<=(data.column||0)) && position>best) { target=node;best=position; }
+        }
+        programmaticUntil=Date.now()+250;
+        (target||nodes[0])?.scrollIntoView({block:'center',inline:'center'});
+        if(mode==='paged') { page = currentPage(); go('source'); } else report('source');
       }
     });
-    addEventListener('scroll', () => { if(ready && !restoring) { if(mode==='paged') page=currentPage(); report(); } }, {passive:true});
+    addEventListener('scroll', () => {
+      if(!ready || restoring || scrollFrame) return;
+      scrollFrame=requestAnimationFrame(()=>{scrollFrame=0;if(mode==='paged') page=currentPage();report(Date.now()>programmaticUntil?'user':'source');});
+    }, {passive:true});
     const reflow = () => {
       if(!ready) return;
-      const previousPage=page, line=anchorLine(); measure();
-      if(line) document.querySelector('[data-transoria-line="'+line+'"]')?.scrollIntoView();
-      page=Math.min(line?currentPage():previousPage,pages()-1); go();
+      const previousPage=page, point=anchorPoint(); measure();
+      if(mode==='paged' && point.line) pointNode(point.line,point.column)?.scrollIntoView();
+      page=Math.min(point.line?currentPage():previousPage,pages()-1); go();
     };
     addEventListener('resize', reflow);
     document.fonts.addEventListener?.('loadingdone',reflow);
@@ -188,6 +208,7 @@ export function interactivePreview(markup: string, token: string): string {
       if(!target) return;
       const link = event.target.closest('a[data-transoria-target]');
       if(link && !inspect) { event.preventDefault(); send({event:'link',target:link.dataset.transoriaTarget}); return; }
+      send({event:'locate',revision,line:Number(target.dataset.transoriaLine),column:Number(target.dataset.transoriaColumn)||0});
       if(!inspect) return;
       event.preventDefault();
       const style = getComputedStyle(target);
