@@ -1237,10 +1237,10 @@ export const epubContentBridge = {
   setToc(sessionId: string, entries: EpubTocEntry[]): Promise<EpubContentSession> {
     return call("epub_content.set_toc", { session_id: sessionId, entries });
   },
-  generateToc(sessionId: string, patterns?: string[], source: "headings" | "files" = "headings"): Promise<EpubContentSession & { generated_entries: number; approximate_targets: number }> {
+  generateToc(sessionId: string, patterns?: string[], source: "headings" | "files" | "xpath" = "headings"): Promise<EpubContentSession & { generated_entries: number; approximate_targets: number }> {
     return call("epub_content.generate_toc", { session_id: sessionId, patterns, source });
   },
-  previewToc(sessionId: string, patterns?: string[], source: "headings" | "files" = "headings"): Promise<{ generated_entries: number; approximate_targets: number; entries: EpubTocEntry[] }> {
+  previewToc(sessionId: string, patterns?: string[], source: "headings" | "files" | "xpath" = "headings"): Promise<{ generated_entries: number; approximate_targets: number; entries: EpubTocEntry[] }> {
     return call("epub_content.preview_toc", { session_id: sessionId, patterns, source });
   },
   generateTocPage(sessionId: string, title: string): Promise<EpubContentSession & { generated_path: string }> {

@@ -1190,6 +1190,43 @@ def test_navigation_source_is_indented_without_changing_archive(tmp_path: Path):
     assert source.read_bytes() == original
 
 
+def test_xpath_toc_hierarchy_targets_preview_and_undo(tmp_path: Path):
+    book = tmp_path / "xpath.epub"
+    _book(book)
+    _rewrite_book(book, {"OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Excluded</title></head><body><p class="chapter">Chapter A</p><h2 id="part">Part one</h2><p>Not a title</p><p class="chapter">Chapter B</p></body></html>'})
+    session = ContentSession.open(str(book))
+    patterns = ["//h:p[@class='chapter']", "//xhtml:h2"]
+    before = session._bytes("OEBPS/Text/one.xhtml")
+    result = session.generate_toc(patterns, preview_only=True, source="xpath")
+    assert [(item["label"], item["depth"]) for item in result["entries"]] == [("Chapter A", 0), ("Part one", 1), ("Chapter B", 0)]
+    assert not session.changes
+    session.generate_toc(patterns, source="xpath")
+    assert session.toc[1]["href"].endswith("#part")
+    assert b'transoria-heading-1' in session._bytes("OEBPS/Text/one.xhtml")
+    session.history("undo")
+    assert session._bytes("OEBPS/Text/one.xhtml") == before
+
+
+@pytest.mark.parametrize("expression", ["//*[", "count(//h:h1)", "//h:head", "//h:p/@id", "//h:body", "//unknown:h1"])
+def test_xpath_toc_rejects_invalid_or_nonbody_targets(tmp_path: Path, expression: str):
+    book = tmp_path / "xpath-invalid.epub"
+    _book(book)
+    session = ContentSession.open(str(book))
+    with pytest.raises(ValueError):
+        session.generate_toc([expression], source="xpath")
+    assert not session.changes
+
+
+def test_xpath_toc_handles_unnamespaced_legacy_html(tmp_path: Path):
+    book = tmp_path / "xpath-html.epub"
+    _book(book)
+    _rewrite_book(book, {"OEBPS/Text/one.xhtml": '<html><body><h1 id="legacy">Legacy chapter</h1><p>Text</p></body></html>'})
+    session = ContentSession.open(str(book))
+    result = session.generate_toc(["//*[local-name()='h1']"], preview_only=True, source="xpath")
+    assert result["entries"][0]["label"] == "Legacy chapter"
+    assert result["entries"][0]["href"].endswith("#legacy")
+
+
 def test_regex_toc_preview_and_apply_are_separate(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)

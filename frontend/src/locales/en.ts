@@ -667,6 +667,7 @@ export const en: Messages = {
   },
   epubContentTool: {
     savedSearches: "Saved searches", saveSearch: "Save current search", loadSearch: "Load", selectSearch: "Select search",
+    tocXPathHelp: "Select chapter-body elements at each level. The h, x and xhtml prefixes refer to XHTML. Examples: //h:h1, //h:p[@class='chapter'], or //*[local-name()='h1'] for unnamespaced HTML. Titles follow document and reading order; missing IDs are added on apply.",
     toolApplied: "Applied to draft", dictionaryMissing: "No dictionary loaded: this report checks typography only.", reportTruncated: "Report limit reached; additional items are not displayed.", checkExit: "Checker exit code",
     importOther: "Import another book format", converter: "Installed ebook-convert executable",
     mergeFiles: "Merge files", mergeOrder: "Merge order (first file is retained)", closeTab: "Close file tab", splitStyle: "Split stylesheet",

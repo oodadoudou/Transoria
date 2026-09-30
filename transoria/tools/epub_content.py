@@ -1235,17 +1235,23 @@ class ContentSession:
     ) -> dict[str, object]:
         if not self.nav_path and not self.ncx_path:
             raise ValueError("This EPUB has no editable navigation document.")
-        if source not in {"headings", "files"} or (source == "files" and patterns is not None):
-            raise ValueError("Choose headings or reading-order files for directory generation.")
+        if source not in {"headings", "files", "xpath"} or (source == "files" and patterns is not None):
+            raise ValueError("Choose headings, XPath or reading-order files for directory generation.")
+        if source == "xpath" and patterns is None:
+            raise ValueError("Provide at least one XPath directory expression.")
         if patterns is not None and (
             not patterns or len(patterns) > 8 or not any(patterns)
             or any(not isinstance(pattern, str) or len(pattern) > 500 for pattern in patterns)
         ):
             raise ValueError("Provide one to eight directory level patterns under 500 characters.")
-        compiled = [
-            _search_pattern(pattern, False, True) if pattern else None
-            for pattern in patterns or []
-        ]
+        try:
+            compiled = [
+                (etree.XPath(pattern, namespaces={"h": XHTML, "x": XHTML, "xhtml": XHTML, "epub": "http://www.idpf.org/2007/ops"}, regexp=False)
+                 if source == "xpath" else _search_pattern(pattern, False, True)) if pattern else None
+                for pattern in patterns or []
+            ]
+        except etree.XPathError as exc:
+            raise ValueError(f"Invalid directory XPath: {exc}") from exc
         deadline = time.monotonic() + SEARCH_TIMEOUT_SECONDS
         entries: list[tuple[int, str, str]] = []
         pending: dict[str, bytes] = {}
@@ -1290,6 +1296,22 @@ class ContentSession:
             if body is None:
                 continue
             ids = _document_ids(data)
+            xpath_levels: dict[etree._Element, int] = {}
+            if source == "xpath":
+                body_nodes = set(body.iter())
+                for index, expression in enumerate(compiled):
+                    if expression is None:
+                        continue
+                    if time.monotonic() > deadline:
+                        raise ValueError("Directory extraction timed out; narrow the XPath expressions.")
+                    try:
+                        nodes = expression(root)
+                    except etree.XPathError as exc:
+                        raise ValueError(f"Invalid directory XPath: {exc}") from exc
+                    if not isinstance(nodes, list) or any(not isinstance(node, etree._Element) or not isinstance(node.tag, str) or node not in body_nodes or node is body for node in nodes):
+                        raise ValueError("Directory XPath must select elements inside the chapter body.")
+                    for node in nodes:
+                        xpath_levels.setdefault(node, index + 1)
             used_targets: set[str] = set()
             changed = False
             used_chapter_start = False
@@ -1297,14 +1319,16 @@ class ContentSession:
                 if not isinstance(node.tag, str):
                     continue
                 tag = etree.QName(node).localname.lower()
-                if tag not in {"h1", "h2", "h3", "h4", "h5", "h6"} | ({"p", "div"} if patterns is not None else set()):
+                if source == "xpath" and node not in xpath_levels:
                     continue
-                if tag == "div" and any(
+                if source != "xpath" and tag not in {"h1", "h2", "h3", "h4", "h5", "h6"} | ({"p", "div"} if patterns is not None else set()):
+                    continue
+                if source != "xpath" and tag == "div" and any(
                     isinstance(child.tag, str) and etree.QName(child).localname.lower() in {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6"}
                     for child in node
                 ):
                     continue
-                if tag == "p" and any(
+                if source != "xpath" and tag == "p" and any(
                     isinstance(ancestor.tag, str)
                     and etree.QName(ancestor).localname.lower() in {"h1", "h2", "h3", "h4", "h5", "h6"}
                     for ancestor in node.iterancestors()
@@ -1313,8 +1337,8 @@ class ContentSession:
                 label = " ".join("".join(node.itertext()).split())
                 if not label or len(label) > 200:
                     continue
-                level = int(tag[1]) if tag.startswith("h") else 1
-                if patterns is not None:
+                level = xpath_levels[node] if source == "xpath" else (int(tag[1]) if tag in {"h1", "h2", "h3", "h4", "h5", "h6"} else 1)
+                if patterns is not None and source != "xpath":
                     matched = False
                     for index, pattern in enumerate(compiled):
                         if pattern is None:
