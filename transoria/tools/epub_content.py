@@ -441,6 +441,10 @@ class ContentSession:
     undo_stack: list[SessionSnapshot] = field(default_factory=list)
     redo_stack: list[SessionSnapshot] = field(default_factory=list)
     checkpoints: dict[str, SessionSnapshot] = field(default_factory=dict)
+    clean_snapshot: SessionSnapshot = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.clean_snapshot = self._snapshot()
 
     @classmethod
     def open(cls, path: str) -> ContentSession:
@@ -584,6 +588,7 @@ class ContentSession:
             self.changes, self.spine, self.toc, self.files, self.removed,
             self.nav_path, self.ncx_path, self.spine_linear,
         ) = copy.deepcopy(self.checkpoints[name])
+        self.dirty = self._snapshot() != self.clean_snapshot
 
     def history(self, direction: str) -> None:
         source = self.undo_stack if direction == "undo" else self.redo_stack
@@ -595,7 +600,7 @@ class ContentSession:
             self.changes, self.spine, self.toc, self.files, self.removed,
             self.nav_path, self.ncx_path, self.spine_linear,
         ) = source.pop()
-        self.dirty = bool(self.undo_stack)
+        self.dirty = self._snapshot() != self.clean_snapshot
 
     def _file(self, path: str, *, editable: bool = False) -> dict[str, object]:
         found = next((item for item in self.files if item["path"] == path), None)
@@ -1970,6 +1975,7 @@ class ContentSession:
         self.redo_stack.clear()
         self.checkpoints.clear()
         self.dirty = False
+        self.clean_snapshot = self._snapshot()
         return {"output_path": str(output), "structure_check": after_check}
 
     def validate(self) -> dict[str, object]:
@@ -2493,7 +2499,7 @@ class ContentSessionStore:
                     self._unpack(item, base_files, nav_path, ncx_path, base_linear)
                     for item in payload["redo"]
                 ]
-                session.dirty = bool(payload["dirty"])
+                session.dirty = session._snapshot() != session.clean_snapshot
                 checkpoints = payload.get("checkpoints", {})
                 if not isinstance(checkpoints, dict) or len(checkpoints) > 10 or any(
                     not isinstance(name, str) or not name.strip() or len(name) > 80

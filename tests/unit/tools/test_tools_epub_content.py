@@ -53,6 +53,59 @@ def _rewrite_book(path: Path, changes: dict[str, bytes | str]) -> None:
             book.writestr(name, data)
 
 
+def test_trimmed_undo_history_never_marks_remaining_changes_clean(tmp_path: Path):
+    source = tmp_path / "history.epub"
+    _book(source)
+    store = ContentSessionStore(tmp_path / "sessions")
+    sid = str(store.open(str(source))["session_id"])
+    session = store.get(sid)
+    path = session.spine[0]
+    original = session.read(path)["content"]
+    for index in range(40):
+        session.write(path, original.replace("Hello", f"Edit {index}"))
+    assert len(session.undo_stack) == 30
+    for _ in range(30):
+        session.history("undo")
+    assert "Edit 9" in session.read(path)["content"]
+    assert session.dirty and not session.undo_stack
+    store.persist(sid)
+    # Old caches may have persisted the incorrect clean flag.
+    import json
+    state = store._state_path(sid)
+    payload = json.loads(state.read_text())
+    payload["dirty"] = False
+    state.write_text(json.dumps(payload))
+    restored = ContentSessionStore(tmp_path / "sessions").get(sid)
+    assert restored.dirty
+    restored.history("redo")
+    restored.history("undo")
+    assert restored.dirty
+    output = tmp_path / "saved.epub"
+    restored.save(str(output), overwrite=False)
+    assert not restored.dirty
+    saved = restored.read(path)["content"]
+    restored.write(path, saved.replace("Edit 9", "Later edit"))
+    restored.history("undo")
+    assert not restored.dirty
+    assert source.read_bytes() != output.read_bytes()
+
+
+def test_restoring_clean_checkpoint_tracks_content_not_undo_depth(tmp_path: Path):
+    source = tmp_path / "checkpoint.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.named_checkpoint("Clean")
+    path = session.spine[0]
+    session.write(path, session.read(path)["content"].replace("Hello", "Hi"))
+    session.restore_checkpoint("Clean")
+    assert not session.dirty
+    assert session.undo_stack
+    session.history("undo")
+    assert session.dirty
+    session.history("redo")
+    assert not session.dirty
+
+
 @pytest.mark.parametrize("scope", ["current", "text", "styles", "all", "selection"])
 @pytest.mark.parametrize("regular_expression", [False, True])
 @pytest.mark.parametrize("ignore_markup", [False, True])
