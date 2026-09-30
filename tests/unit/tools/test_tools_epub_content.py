@@ -1190,6 +1190,104 @@ def test_navigation_source_is_indented_without_changing_archive(tmp_path: Path):
     assert source.read_bytes() == original
 
 
+def test_css_transform_rules_cover_stylesheets_inline_and_embedded(tmp_path: Path):
+    book = tmp_path / "transform-css.epub"
+    _book(book)
+    _rewrite_book(book, {
+        "OEBPS/Styles/book.css": '@media screen {p{color:red!important;font-size:12px}} @supports(display:grid){div{font-size:2em}} @font-face{font-family:Book;src:url(../Fonts/book.ttf)}',
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><style>p{color:red}</style></head><body><p style="color:red;font-size:10px">Hello</p></body></html>',
+    })
+    session = ContentSession.open(str(book))
+    rules = [dict(property="color", operator="equals", match="red", action="set", value="green"), dict(property="font-size", operator="any", action="multiply", value="2")]
+    paths = ["OEBPS/Styles/book.css", "OEBPS/Text/one.xhtml"]
+    proposal = run_tool(session, "transform_css", dict(rules=rules, paths=paths))
+    assert proposal["count"] == 2 and proposal["matched"] == 6
+    assert not session.dirty
+    run_tool(session, "transform_css", dict(rules=rules, paths=paths, apply=True, fingerprint=proposal["fingerprint"]))
+    css = session.read(paths[0])["content"]
+    assert 'color:green!important' in css and 'font-size:24px' in css and 'font-size:4em' in css
+    assert 'style="font-size:20px;color:green;"' in session.read(paths[1])["content"]
+    session.history("undo")
+    assert not session.dirty
+
+
+def test_html_transform_order_wrap_unwrap_tail_and_anchor_safety(tmp_path: Path):
+    book = tmp_path / "transform-html.epub"
+    _book(book)
+    path = "OEBPS/Text/one.xhtml"
+    _rewrite_book(book, {path: '<html xmlns="http://www.w3.org/1999/xhtml"><body>Before <span>Hello <em>world</em>!</span> after.<p id="keep">Anchored</p></body></html>'})
+    session = ContentSession.open(str(book))
+    before = session._bytes(path)
+    rules = [dict(selector="span", action="unwrap"), dict(selector="em", action="rename", target="strong"), dict(selector="strong", action="wrap", target="section"), dict(selector="p", action="add_class", value="chapter")]
+    preview = run_tool(session, "transform_html", dict(rules=rules, paths=[path]))
+    assert preview["count"] == 1 and not session.dirty
+    run_tool(session, "transform_html", dict(rules=rules, paths=[path], apply=True, fingerprint=preview["fingerprint"]))
+    assert 'Before Hello <section><strong>world</strong></section>! after.' in session._bytes(path).decode()
+    assert 'id="keep" class="chapter"' in session.read(path)["content"]
+    session.history("undo")
+    assert session._bytes(path) == before
+    with pytest.raises(ValueError, match="anchor"):
+        run_tool(session, "transform_html", dict(rules=[dict(selector="p", action="remove")], paths=[path]))
+    assert not session.dirty
+
+
+@pytest.mark.parametrize("tool,rule", [
+    ("transform_html", dict(selector="[", action="rename", target="p")),
+    ("transform_html", dict(selector="p", action="set_attr", target="onclick", value="run()")),
+    ("transform_html", dict(selector="p", action="wrap", target="script")),
+    ("transform_css", dict(property="color", action="set", value="red;color:blue")),
+    ("transform_css", dict(property="font-size", action="multiply", value="nan")),
+])
+def test_transform_invalid_rules_never_mutate(tmp_path: Path, tool, rule):
+    book = tmp_path / "transform-invalid.epub"
+    _book(book)
+    session = ContentSession.open(str(book))
+    with pytest.raises(ValueError):
+        run_tool(session, tool, dict(rules=[rule], paths=["OEBPS/Text/one.xhtml"]))
+    assert not session.dirty
+
+
+def test_transform_apply_refuses_changed_rules_or_draft(tmp_path: Path):
+    book = tmp_path / "transform-stale.epub"
+    _book(book)
+    session = ContentSession.open(str(book))
+    path = "OEBPS/Text/one.xhtml"
+    options = dict(rules=[dict(selector="p", action="add_class", value="chapter")], paths=[path])
+    proposal = run_tool(session, "transform_html", options)
+    with pytest.raises(ValueError, match="changed"):
+        run_tool(session, "transform_html", {**options, "rules": [dict(selector="p", action="add_class", value="other")], "apply": True, "fingerprint": proposal["fingerprint"]})
+    assert not session.dirty
+
+
+def test_transform_actions_resources_and_atomic_failure(tmp_path: Path):
+    book = tmp_path / "transform-actions.epub"
+    _book(book)
+    path, css_path = "OEBPS/Text/one.xhtml", "OEBPS/Styles/book.css"
+    _rewrite_book(book, {path: '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Untouched</title></head><body><p class="old old keep" title="discard">Hello</p><div><span>remove</span></div></body></html>', css_path: 'p{font-size:12px;color:red;margin-left:20%} @layer book{@keyframes fade{from{opacity:.2}to{opacity:1}}}'})
+    session = ContentSession.open(str(book))
+    rules = [dict(selector="p", action="remove_class", value="old"), dict(selector="p", action="remove_attr", target="TITLE"), dict(selector="p", action="set_attr", target="href", value="two.xhtml"), dict(selector="div,span", action="remove")]
+    proposal = run_tool(session, "transform_html", dict(rules=rules, paths=[path]))
+    run_tool(session, "transform_html", dict(rules=rules, paths=[path], apply=True, fingerprint=proposal["fingerprint"]))
+    assert 'class="keep" href="two.xhtml"' in session.read(path)["content"]
+    assert "remove" not in session.read(path)["content"]
+    session.history("undo")
+    for rule in [dict(selector="title", action="rename", target="p"), dict(selector="p", action="set_attr", target="src", value="missing.jpg")]:
+        with pytest.raises(ValueError):
+            run_tool(session, "transform_html", dict(rules=[rule], paths=[path], apply=True))
+        assert not session.dirty
+    css_rules = [dict(property="color", operator="regex", match="^r.*", action="remove"), dict(property="font-size", action="rename", target="line-height"), dict(property="margin-left", action="add", value="5"), dict(property="opacity", action="multiply", value="2")]
+    proposal = run_tool(session, "transform_css", dict(rules=css_rules, paths=[css_path]))
+    run_tool(session, "transform_css", dict(rules=css_rules, paths=[css_path], apply=True, fingerprint=proposal["fingerprint"]))
+    css = session.read(css_path)["content"]
+    assert "color" not in css and "line-height:12px" in css and "margin-left:25%" in css and "opacity:0.4" in css
+    session.history("undo")
+    _rewrite_book(book, {"OEBPS/Text/two.xhtml": '<html><body><p>Broken</div></body></html>'})
+    session = ContentSession.open(str(book))
+    with pytest.raises(ValueError, match="Repair"):
+        run_tool(session, "transform_html", dict(rules=[dict(selector="p", action="add_class", value="edited")], paths=[path, "OEBPS/Text/two.xhtml"]))
+    assert not session.dirty
+
+
 def test_ignore_markup_search_replace_preserves_tags_and_source_positions(tmp_path: Path):
     book = tmp_path / "text-search.epub"
     _book(book)

@@ -1277,6 +1277,7 @@ export interface Messages {
   };
   epubContentTool: {
     savedSearches: string; saveSearch: string; loadSearch: string; selectSearch: string; ignoreMarkup: string;
+    transformLabels: Record<string, string>;
     toolApplied: string; dictionaryMissing: string; reportTruncated: string; checkExit: string;
     importOther: string; converter: string;
     mergeFiles: string; mergeOrder: string; closeTab: string; splitStyle: string;

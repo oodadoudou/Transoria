@@ -594,14 +594,17 @@ def run_tool(session: ContentSession, name: str, options: dict[str, object]) -> 
         "spine": session.spine, "linear": session.spine_linear, "toc": session.toc,
         "files": session.files, "nav": session.nav_path, "ncx": session.ncx_path,
         "removed": sorted(session.removed),
-        **({"rules": options.get("rules")} if name == "replace_sequence" else {}),
+        **({"rules": options.get("rules"), "paths": options.get("paths")} if name in {"replace_sequence", "transform_css", "transform_html"} else {}),
     }, sort_keys=True).encode()).hexdigest()
-    if name in {"cleanup_css", "images", "fonts", "replace_sequence"} and apply and options.get("fingerprint") != fingerprint:
+    if name in {"cleanup_css", "images", "fonts", "replace_sequence", "transform_css", "transform_html"} and apply and options.get("fingerprint") != fingerprint:
         raise ValueError("The draft changed; preview this operation again before applying it.")
     if name == "issues":
         return issues(session)
     if name == "replace_sequence":
         return {**replace_sequence(session, options.get("rules"), apply), "fingerprint": fingerprint}
+    if name in {"transform_css", "transform_html"}:
+        from transoria.tools.epub_transform import transform
+        return {**transform(session, name.removeprefix("transform_"), options.get("rules"), options.get("paths"), apply), "fingerprint": fingerprint}
     if name == "diff":
         return compare(session, str(options.get("checkpoint", "")))
     if name == "text_report":
