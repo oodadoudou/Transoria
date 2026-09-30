@@ -24,6 +24,7 @@ def main() -> None:
     parser.add_argument("--advanced-css", action="store_true")
     parser.add_argument("--inline-text", action="store_true")
     parser.add_argument("--fixed-layout", action="store_true")
+    parser.add_argument("--mixed-writing", action="store_true")
     parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
@@ -69,6 +70,11 @@ def main() -> None:
                 with zipfile.ZipFile(book) as archive:
                     opf = archive.read("OEBPS/book.opf")
                 fixtures["_rewrite_book"](book, {"OEBPS/book.opf": opf.replace(b'<spine toc=', b'<spine page-progression-direction="rtl" toc=').replace(b'page-spread-left" idref="one"', b'page-spread-right" idref="one"').replace(b'page-spread-right" idref="two"', b'page-spread-left" idref="two"')})
+        if args.mixed_writing:
+            fixtures["_rewrite_book"](book, {
+                "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/></head><body><h1>Mixed writing modes</h1><div class="columns"><section class="rl"><h2>右到左</h2><p>竖排正文与<ruby>汉字<rt>hàn zì</rt></ruby>注音。</p><p>第二列<span class="number">2026</span>年。</p><aside>Horizontal inset</aside></section><section class="lr"><h2>左到右</h2><p>不同书写方向保留自己的文字排列。</p><p>LTR vertical block</p></section></div><p class="rtl" dir="rtl">עברית English 123 العربية</p><p>Horizontal text below the vertical panels.</p></body></html>',
+                "OEBPS/Styles/book.css": 'body{font:20px/1.7 serif;margin:20px;writing-mode:horizontal-tb}.columns{display:flex;gap:24px}.columns section{width:45%;height:230px;border:2px solid #216f54;padding:12px;box-sizing:border-box}.rl{-epub-writing-mode:tb-rl}.lr{-ms-writing-mode:tb-lr}.number{-epub-text-combine:horizontal}aside{writing-mode:horizontal-tb;font-size:14px;background:#d5ebe2}ruby{ruby-position:over}.rtl{direction:rtl;unicode-bidi:isolate}',
+            })
         server = serve(port=0, cache_root=args.state_dir or folder / "cache", static_root=root / "frontend/dist")
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()

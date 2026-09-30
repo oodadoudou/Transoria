@@ -1797,7 +1797,7 @@ class ContentSession:
         fit_media = (
             "<style>img,svg,video{max-width:100%!important;"
             "max-height:calc(100vh - 24px)!important;"
-            "width:auto!important;height:auto!important;object-fit:contain!important}"
+            "object-fit:contain!important}"
             "html,body{max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}</style>"
         )
         if rendering["layout"] == "pre-paginated":
@@ -2312,7 +2312,7 @@ def _inline_css(
             elif hasattr(token, "content") and token.content is not None:
                 urls(token.content)
 
-    aliases = {"-epub-writing-mode": "writing-mode", "-epub-text-orientation": "text-orientation",
+    aliases = {"-epub-writing-mode": "writing-mode", "-webkit-writing-mode": "writing-mode", "-ms-writing-mode": "writing-mode", "-epub-text-orientation": "text-orientation",
                "-epub-text-combine-upright": "text-combine-upright", "-epub-ruby-position": "ruby-position",
                "-epub-text-combine": "text-combine-upright"}
 
@@ -2340,6 +2340,13 @@ def _inline_css(
                     if node.lower_name == "-epub-text-combine" and tinycss2.serialize(node.value).strip() == "horizontal":
                         alias.value = tinycss2.parse_component_value_list("all")
                     result.append(alias.serialize() + ";")
+                if node.lower_name in {"writing-mode", "-epub-writing-mode", "-webkit-writing-mode", "-ms-writing-mode"}:
+                    legacy = {"tb": "vertical-rl", "tb-rl": "vertical-rl", "tb-lr": "vertical-lr", "lr": "horizontal-tb", "lr-tb": "horizontal-tb", "rl": "horizontal-tb", "rl-tb": "horizontal-tb"}.get(tinycss2.serialize(node.value).strip().lower())
+                    if legacy:
+                        alias = copy.copy(node)
+                        alias.name = alias.lower_name = "writing-mode"
+                        alias.value = tinycss2.parse_component_value_list(legacy)
+                        result.append(alias.serialize() + ";")
             else:
                 result.append(node.serialize())
             size += len(result[-1])

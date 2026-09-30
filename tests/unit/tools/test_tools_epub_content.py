@@ -1240,6 +1240,18 @@ def test_fixed_svg_spine_preview_keeps_viewbox_and_local_image(tmp_path: Path):
     assert not session.dirty
 
 
+def test_mixed_writing_preview_retains_orthogonal_blocks_and_author_image_sizes(tmp_path: Path):
+    book = tmp_path / "mixed.epub"
+    _book(book)
+    _rewrite_book(book, {"OEBPS/Styles/book.css": 'body{writing-mode:horizontal-tb}.rl{-epub-writing-mode:tb-rl}.lr{-ms-writing-mode:tb-lr}.inset{writing-mode:horizontal-tb;direction:rtl}.year{-epub-text-combine:horizontal}img{width:120px;height:180px}', "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/></head><body><section class="rl"><ruby>字<rt>zi</rt></ruby><aside class="inset">Latin</aside></section><section class="lr">text</section></body></html>'})
+    original = book.read_bytes()
+    preview = ContentSession.open(str(book)).preview("OEBPS/Text/two.xhtml")
+    for fragment in ['writing-mode:vertical-rl', 'writing-mode:vertical-lr', 'writing-mode:horizontal-tb', 'text-combine-upright:all', 'direction:rtl', '<ruby', 'width:120px', 'height:180px']:
+        assert fragment in preview
+    assert 'width:auto!important' not in preview and 'height:auto!important' not in preview
+    assert original == book.read_bytes()
+
+
 def test_html_transform_order_wrap_unwrap_tail_and_anchor_safety(tmp_path: Path):
     book = tmp_path / "transform-html.epub"
     _book(book)
