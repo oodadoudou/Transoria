@@ -74,3 +74,46 @@ test("wrapping does not clip vertical flow or override author whitespace and wri
   assert.doesNotMatch(markup, /overflow-x:hidden|white-space:normal|word-break:break-word/);
   assert.equal(previewAtZoom(original, 100, false), original);
 });
+
+for (const [writingMode, sign] of [["vertical-rl", -1], ["vertical-lr", 1]]) {
+test(`native column rectangles determine complete ${writingMode} pages and edge clipping`, async () => {
+  const result = interactivePreview("<html><head></head><body></body></html>", "columns123");
+  const script = result.match(/<script nonce="columns123">([\s\S]*)<\/script>$/)[1];
+  const handlers = new Map(), messages = [];
+  const parent = { postMessage: (message) => messages.push(message) };
+  const positions = Array.from({ length: 24 }, (_, i) => [12 + i * 37, 38 + i * 37]);
+  let visited = false;
+  const context = {
+    parent, innerWidth: 320, scrollX: 0, scrollY: 0,
+    getComputedStyle: () => ({ getPropertyValue: (key) => key === "writing-mode" ? writingMode : "ltr" }),
+    addEventListener: (event, callback) => handlers.set(event, callback), requestAnimationFrame: (callback) => callback(),
+    scrollTo: (x, y) => { context.scrollX = x; context.scrollY = y; },
+    document: {
+      body: {}, documentElement: { scrollWidth: 910, append() {} }, head: { append() {} }, images: [],
+      fonts: { ready: Promise.resolve(), addEventListener: (event, callback) => handlers.set(event, callback) },
+      createElement: () => ({ textContent: "", style: {}, remove() {}, setAttribute() {} }),
+      createTreeWalker: () => { visited = false; return { nextNode: () => visited ? null : (visited = true, { textContent: "column text" }) }; },
+      createRange: () => ({ selectNodeContents() {}, getClientRects: () => positions.map(([start, end]) => ({ left: sign < 0 ? 320 - end : start, right: sign < 0 ? 320 - start : end, width: end - start, height: 270 })) }),
+      addEventListener() {}, querySelector: () => null, querySelectorAll: () => [], getElementById: () => null,
+    },
+  };
+  vm.runInNewContext(script, context);
+  await new Promise((resolve) => setImmediate(resolve));
+  const send = (data) => handlers.get("message")({ source: parent, data: { token: "columns123", ...data } });
+  send({ event: "configure", mode: "paged" });
+  assert.equal(messages.at(-1).pages, 3);
+  assert.ok(messages.at(-1)[sign < 0 ? "clipLeft" : "clipRight"] > 0);
+  send({ event: "step", direction: 1 });
+  assert.equal(messages.at(-1).page, 1);
+  assert.equal(context.scrollX, sign * 296);
+  send({ event: "step", direction: 1 });
+  assert.equal(messages.at(-1).page, 2);
+  assert.equal(context.scrollX, sign * 592);
+  assert.equal(messages.at(-1)[sign < 0 ? "clipLeft" : "clipRight"], 0);
+  assert.equal(messages.at(-1)[sign < 0 ? "clipRight" : "clipLeft"], 12);
+  send({ event: "step", direction: -1 });
+  assert.equal(context.scrollX, sign * 296);
+  assert.doesNotMatch(script, /documentElement\.style\.clipPath/);
+  assert.equal(typeof handlers.get("loadingdone"), "function");
+});
+}

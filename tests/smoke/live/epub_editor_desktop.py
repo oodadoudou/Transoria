@@ -40,13 +40,15 @@ def main() -> None:
         buffer = io.BytesIO()
         image.save(buffer, "PNG")
         paragraphs = "".join(f'<p id="p{index}">Paragraph {index}: Hello world. This is a synthetic chapter for pagination, search and source mapping.</p>' for index in range(120))
+        if args.writing_mode != "horizontal-tb":
+            paragraphs = "".join(f'<p id="p{index}">第{index}段：这是测试竖排分页的文字。不同字号与<ruby>汉字<rt>hàn zì</rt></ruby>注音应保持完整。' + "春风吹过窗外，读者能够逐列阅读，不遗漏文字。" * 4 + "</p>" for index in range(120))
         if args.inline_text:
             paragraphs = paragraphs.replace("Hello world", "Hello <em>world</em>")
         fixtures["_rewrite_book"](book, {
             "OEBPS/Images/pixel.png": buffer.getvalue(),
             "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Cover</title></head><body><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 600 900" width="100%" height="100%"><image xlink:href="../Images/pixel.png" width="600" height="900"/></svg><a href="two.xhtml#p55">Chapter two</a></body></html>',
             "OEBPS/Text/two.xhtml": f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test chapter</title><link rel="stylesheet" href="../Styles/book.css"/></head><body><h1>Test chapter</h1>{paragraphs}</body></html>',
-            "OEBPS/Styles/book.css": f'body {{font:16px/1.6 serif;color:#202020;margin:24px;writing-mode:{args.writing_mode};direction:{args.direction}}} p {{margin:1em 0}} .unused {{color:blue}}',
+            "OEBPS/Styles/book.css": f'body {{font:16px/1.6 serif;color:#202020;margin:24px;writing-mode:{args.writing_mode};direction:{args.direction}}} p {{margin:1em 0}} p:nth-child(5n){{font-size:22px}} .unused {{color:blue}}',
         })
         if args.advanced_css:
             with zipfile.ZipFile(book) as archive:
