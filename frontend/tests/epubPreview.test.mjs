@@ -33,7 +33,7 @@ test(`controller restores and navigates ${writingMode}/${direction} pages and co
     scrollTo: (x, y) => { context.scrollX = x; context.scrollY = y; },
     document: {
       body: {}, documentElement: { scrollWidth: 1600 }, head: { append() {} }, images: [], fonts: { ready: Promise.resolve() },
-      createElement: () => ({ textContent: "" }), addEventListener() {}, querySelectorAll: () => [],
+      createElement: () => ({ textContent: "" }), addEventListener() {}, querySelector: () => null, querySelectorAll: () => [],
       getElementById: () => ({ scrollIntoView: () => { navigations++; context.scrollX = sign * 800; } }),
     },
   };

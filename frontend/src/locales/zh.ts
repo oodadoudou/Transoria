@@ -655,7 +655,7 @@ export const zh: Messages = {
     toolApplied: "已应用到草稿", dictionaryMissing: "未加载词典：本次报告仅检查排版问题。", reportTruncated: "报告已达到显示上限，其他条目未显示。", checkExit: "检查器退出码",
     importOther: "导入其他书籍格式", converter: "本机 ebook-convert 可执行文件",
     mergeFiles: "合并文件", mergeOrder: "合并顺序（保留第一个文件）", closeTab: "关闭文件标签", splitStyle: "拆分样式表",
-    continuous: "连续", paged: "分页", page: "页", previousPage: "上一页", nextPage: "下一页", fitPage: "适合整页", inspectStyle: "查看元素样式", syncPreview: "跟随源码光标", styles: "计算样式",
+    continuous: "连续", paged: "分页", page: "页", previousPage: "上一页", nextPage: "下一页", fitPage: "适合整页", inspectStyle: "查看元素样式", syncPreview: "跟随源码光标", styles: "计算样式", spreads: "双页",
     tools: "书籍工具", issues: "文档问题", compare: "比较修改", textReport: "拼写与排版", cleanCss: "未使用的 CSS", images: "图片优化", fonts: "字体子集化", coverMetadata: "设置封面元数据", embedFont: "嵌入字体规则", upgrade: "升级到 EPUB 3", epubcheck: "EPUBCheck", runTool: "运行", previewTool: "预览", applyTool: "应用修改", confirmTool: "将这项操作应用到草稿？可以撤销，源 EPUB 文件不会改变。", toolEmpty: "未发现条目", dictionary: "Hunspell .dic/.aff 或 UTF-8 词表（可选）", ignoredWords: "忽略的词语（每行一个）", quality: "图片质量", maxDimension: "图片最长边（0 表示不变）", fontFamily: "字体名称", checkpointName: "检查点名称", newCheckpoint: "创建检查点", restoreCheckpoint: "恢复检查点", sourceBook: "原始 EPUB", checkJar: "本机 EPUBCheck JAR",
     before: "修改前", after: "修改后",
     importResource: "导入资源", renameResource: "移动或改名", replaceResource: "替换资源", exportResource: "导出资源", deleteResource: "删除资源",

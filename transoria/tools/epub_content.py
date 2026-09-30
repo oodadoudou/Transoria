@@ -1674,8 +1674,8 @@ class ContentSession:
         self, path: str, draft_path: str = "", draft_content: str | None = None
     ) -> str:
         item = self._file(path)
-        if item["media_type"] not in {"application/xhtml+xml", "text/html"}:
-            raise ValueError("Preview is available for XHTML/HTML resources only.")
+        if item["media_type"] not in {"application/xhtml+xml", "text/html", "image/svg+xml"}:
+            raise ValueError("Preview is available for XHTML/HTML/SVG resources only.")
         drafts: dict[str, bytes] = {}
         if draft_path and draft_content is not None:
             self._file(draft_path, editable=True)
@@ -1707,6 +1707,13 @@ class ContentSession:
             formatted = re.sub(r'(<\?xml[^>]*encoding\s*=\s*)[\'\"][^\'\"]+[\'\"]', r'\1"utf-8"', formatted, count=1)
             markup_bytes = formatted.encode("utf-8")
         root = _preview_root(markup_bytes, html_document=item["media_type"] == "text/html")
+        from transoria.tools.epub_rendition import rendition
+        rendering = rendition(_xml(drafts.get(self.opf_path, self._bytes(self.opf_path))), root, self.opf_path, path)
+        if item["media_type"] == "image/svg+xml":
+            svg = root
+            root = etree.Element("html")
+            etree.SubElement(root, "head")
+            etree.SubElement(root, "body", style="margin:0").append(svg)
         for node in list(root.iter()):
             local = (
                 _local_name(node.tag).lower()
@@ -1793,8 +1800,11 @@ class ContentSession:
             "width:auto!important;height:auto!important;object-fit:contain!important}"
             "html,body{max-width:100%;box-sizing:border-box;overflow-wrap:anywhere}</style>"
         )
+        if rendering["layout"] == "pre-paginated":
+            fit_media = ""
         return (
             f'<meta http-equiv="Content-Security-Policy" content="{html.escape(csp)}">'
+            + f'<meta name="transoria-rendition" content="{html.escape(json.dumps(rendering))}">'
             + fit_media
             + markup
         )

@@ -18,6 +18,7 @@ import { EpubEditorTools } from "./EpubEditorTools";
 import { EpubSavedSearches } from "./EpubSavedSearches";
 import type { SavedSearch, SearchOptions } from "./epubSearchLibrary";
 import { previewAtZoom, type ReadingLocation } from "./epubPreview";
+import { fixedSpreadMate, previewRendition } from "./epubRendition";
 
 type SideView = "files" | "toc" | "book";
 type Scope = "current" | "text" | "styles" | "all" | "selection";
@@ -199,6 +200,11 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [paneView, setPaneView] = useState<"source" | "preview">("source");
   const [bookIndex, setBookIndex] = useState(0);
   const [bookHtml, setBookHtml] = useState("");
+  const [bookSpread, setBookSpread] = useState(false);
+  const [spreadMate, setSpreadMate] = useState<{ index: number; html: string } | null>(null);
+  const bookRendition = useMemo(() => previewRendition(bookHtml), [bookHtml]);
+  const visibleBookStart = spreadMate ? Math.min(bookIndex, spreadMate.index) : bookIndex;
+  const visibleBookEnd = spreadMate ? Math.max(bookIndex, spreadMate.index) : bookIndex;
   const [bookMode, setBookMode] = useState<"continuous" | "paged">("continuous");
   const readingLocations = useRef<Record<string, ReadingLocation>>({});
   const [bookPage, setBookPage] = useState({ page: 0, pages: 1 });
@@ -252,8 +258,9 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const currentFile = session?.files.find((file) => file.path === selectedPath);
   const currentResource = session?.files.find((file) => file.path === resourcePath);
   const isHtml = currentFile?.media_type === "application/xhtml+xml" || currentFile?.media_type === "text/html";
-  const chapterPreviewHtml = useMemo(() => previewAtZoom(preview, previewZoom, previewWrap), [preview, previewZoom, previewWrap]);
-  const bookPreviewHtml = useMemo(() => previewAtZoom(bookHtml, previewZoom, previewWrap), [bookHtml, previewZoom, previewWrap]);
+  const isPreviewable = isHtml || currentFile?.media_type === "image/svg+xml";
+  const chapterPreviewHtml = useMemo(() => previewAtZoom(preview, previewZoom, previewWrap, previewRendition(preview).layout === "pre-paginated"), [preview, previewZoom, previewWrap]);
+  const bookPreviewHtml = useMemo(() => previewAtZoom(bookHtml, previewZoom, previewWrap, bookRendition.layout === "pre-paginated"), [bookHtml, bookRendition, previewZoom, previewWrap]);
 
   useEffect(() => {
     const match = matches[matchIndex];
@@ -360,7 +367,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     setOpenPaths((current) => [...current.filter((item) => summary?.files.some((file) => file.path === item && file.editable)), ...(current.includes(path) ? [] : [path])]);
     const file = summary?.files.find((item) => item.path === path);
     const target = file?.media_type === "text/css" ? (previewPath || summary?.spine.find((item) => item !== summary.nav_path) || "") : path;
-    if (target && ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html") && path !== summary?.nav_path || file?.media_type === "text/css")) {
+    if (target && ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html" || file?.media_type === "image/svg+xml") && path !== summary?.nav_path || file?.media_type === "text/css")) {
       setPreviewPath(target);
       try {
         setPreview((await epubContentBridge.preview(sid, target)).html);
@@ -397,7 +404,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   useEffect(() => {
-    if (!session || !selectedPath || !sourceDirty || !previewPath || (!isHtml && currentFile?.media_type !== "text/css")) return;
+    if (!session || !selectedPath || !sourceDirty || !previewPath || (!isPreviewable && currentFile?.media_type !== "text/css")) return;
     const sid = session.session_id;
     const path = selectedPath;
     let active = true;
@@ -407,7 +414,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         .catch((cause: unknown) => { if (active) { setPreview(""); setPreviewError(cause instanceof Error ? cause.message : String(cause)); } });
     }, 900);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [session?.session_id, selectedPath, previewPath, sourceDirty, content, isHtml, currentFile?.media_type]);
+  }, [session?.session_id, selectedPath, previewPath, sourceDirty, content, isPreviewable, currentFile?.media_type]);
 
   useEffect(() => {
     if (!session || sideView !== "book") return;
@@ -424,12 +431,27 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const request = sourceDirty
         ? epubContentBridge.previewDraft(session.session_id, path, selectedPath, content)
         : epubContentBridge.preview(session.session_id, path);
-      void request.then((result) => { if (active) setBookHtml(result.html); })
+      setSpreadMate(null);
+      void request.then(async (result) => {
+        if (!active) return;
+        setBookHtml(result.html);
+        const layout = previewRendition(result.html);
+        const mate = bookSpread ? fixedSpreadMate(layout, bookIndex, session.spine.length) : null;
+        if (mate === null) return;
+        try {
+          const partner = sourceDirty
+            ? await epubContentBridge.previewDraft(session.session_id, session.spine[mate], selectedPath, content)
+            : await epubContentBridge.preview(session.session_id, session.spine[mate]);
+          if (active && fixedSpreadMate(previewRendition(partner.html), mate, session.spine.length) === bookIndex) setSpreadMate({ index: mate, html: partner.html });
+        } catch {
+          if (active) { setFeedback(t.previewInvalid); setFeedbackWarning(true); }
+        }
+      })
         .catch((cause: unknown) => { if (active) { setBookHtml(""); setBookError(cause instanceof Error ? cause.message : String(cause)); } })
         .finally(() => { if (active) setBookLoading(false); });
     }, sourceDirty ? 500 : 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [session, sideView, bookIndex, sourceDirty, selectedPath, content]);
+  }, [session, sideView, bookIndex, bookSpread, sourceDirty, selectedPath, content]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -766,7 +788,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
 
   const turnPage = (direction: -1 | 1) => {
     if (bookMode === "paged" && ((direction < 0 && bookPage.page > 0) || (direction > 0 && bookPage.page < bookPage.pages - 1))) setPageStep((value) => value + direction);
-    else setBookIndex((index) => Math.max(0, Math.min((session?.spine.length ?? 1) - 1, index + direction)));
+    else setBookIndex((index) => Math.max(0, Math.min((session?.spine.length ?? 1) - 1, spreadMate ? (direction > 0 ? Math.max(index, spreadMate.index) + 1 : Math.min(index, spreadMate.index) - 1) : index + direction)));
   };
 
   const insertImage = async () => {
@@ -1353,15 +1375,16 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       {separator("sidebar", sidebarWidth)}
       <div className={styles.editorArea}>
         {sideView === "book" ? <div className={styles.bookReader}>
-          <div className={styles.readerToolbar}><strong>{t.bookPreview}</strong><span>{bookIndex + 1} / {session.spine.length}</span>
+          <div className={styles.readerToolbar}><strong>{t.bookPreview}</strong><span>{visibleBookStart + 1}{spreadMate ? `-${visibleBookEnd + 1}` : ""} / {session.spine.length}</span>
             <select aria-label={t.bookPreview} value={bookMode} onChange={(event) => setBookMode(event.target.value as "continuous" | "paged")}><option value="continuous">{t.continuous}</option><option value="paged">{t.paged}</option></select>
+            {bookRendition.layout === "pre-paginated" ? <label><input type="checkbox" checked={bookSpread} onChange={(event) => setBookSpread(event.target.checked)} />{t.spreads}</label> : null}
             {bookMode === "paged" ? <span>{t.page} {bookPage.page + 1} / {bookPage.pages}</span> : null}
             {wrapControl}{zoomControls(previewZoom, setPreviewZoom, t.previewZoom, 30)}<button type="button" title={t.fitPage} aria-label={t.fitPage} onClick={() => setPreviewZoom(100)}><Maximize size={16} /></button>
-            <div><button type="button" title={t.previousPage} aria-label={t.previousPage} disabled={bookIndex === 0 && (bookMode !== "paged" || bookPage.page === 0)} onClick={() => turnPage(-1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextPage} aria-label={t.nextPage} disabled={bookIndex >= session.spine.length - 1 && (bookMode !== "paged" || bookPage.page >= bookPage.pages - 1)} onClick={() => turnPage(1)}><ArrowRight size={18} /></button></div>
+            <div><button type="button" title={t.previousPage} aria-label={t.previousPage} disabled={visibleBookStart === 0 && (bookMode !== "paged" || bookPage.page === 0)} onClick={() => turnPage(-1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextPage} aria-label={t.nextPage} disabled={visibleBookEnd >= session.spine.length - 1 && (bookMode !== "paged" || bookPage.page >= bookPage.pages - 1)} onClick={() => turnPage(1)}><ArrowRight size={18} /></button></div>
           </div>
-          {bookError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : bookLoading ? <div className={styles.noPreview}>{t.loading}</div> : <div className={styles.bookPage}><div className={styles.bookViewport}>
+          {bookError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : bookLoading ? <div className={styles.noPreview}>{t.loading}</div> : <div className={styles.bookPage} data-spread={!!spreadMate}><div className={styles.bookViewport} style={spreadMate ? { order: bookRendition.direction === "rtl" ? -bookIndex : bookIndex } : undefined}>
             <EpubPreviewFrame key={session.spine[bookIndex]} html={bookPreviewHtml} title={t.bookPreview} zoom={previewZoom} mode={bookMode} step={pageStep} fragment={previewFragment.path === session.spine[bookIndex] ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[session.spine[bookIndex]]} onLocation={(location) => { rememberLocation(session.spine[bookIndex], location); setBookPage({ page: location.page, pages: location.pages }); }} onLink={previewLink} />
-          </div></div>}
+          </div>{spreadMate ? <div className={styles.bookViewport} style={{ order: bookRendition.direction === "rtl" ? -spreadMate.index : spreadMate.index }}><EpubPreviewFrame html={spreadMate.html} title={`${t.bookPreview}: ${spreadMate.index + 1}`} zoom={previewZoom} onLink={previewLink} /></div> : null}</div>}
         </div> : <>
         <div className={styles.fileHeading}><strong title={selectedPath}>{selectedPath}</strong><div className={styles.paneSwitch}><button type="button" aria-selected={paneView === "source"} onClick={() => setPaneView("source")}>{t.source}</button><button type="button" aria-selected={paneView === "preview"} onClick={() => setPaneView("preview")}>{t.preview}</button></div>{busy ? <span>{t.loading}</span> : null}</div>
         <div className={styles.documentTabs} role="tablist">{openPaths.filter((path) => session.files.some((file) => file.path === path)).map((path) => <div key={path} className={styles.documentTab} data-active={path === selectedPath}><button type="button" role="tab" aria-selected={path === selectedPath} title={path} disabled={busy} onClick={() => void selectResource(path)}>{path.split("/").at(-1)}{path === selectedPath && sourceDirty ? " *" : ""}</button><button type="button" title={t.closeTab} aria-label={`${t.closeTab}: ${path}`} disabled={busy || openPaths.length <= 1} onClick={() => { void run(async () => { await commitSource(); if (path === selectedPath) await loadResource(session.session_id, openPaths.find((item) => item !== path)!); setOpenPaths((current) => current.filter((item) => item !== path)); editorStates.current.delete(path); }); }}><X size={13} /></button></div>)}</div>
@@ -1386,7 +1409,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
               {wrapControl}{zoomControls(previewZoom, setPreviewZoom, t.previewZoom, 30)}
             </div></div>
             {computedStyles ? <div className={styles.styleInspector}><strong>{t.styles}</strong><button type="button" title={t.close} onClick={() => setComputedStyles(null)}><X size={14} /></button><dl>{Object.entries(computedStyles).map(([property, value]) => <div key={property}><dt>{property}</dt><dd>{value}</dd></div>)}</dl></div> : null}
-            {previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : ((isHtml && selectedPath !== session.nav_path) || currentFile?.media_type === "text/css") && previewPath ? <div className={styles.previewViewport}>
+            {previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : ((isPreviewable && selectedPath !== session.nav_path) || currentFile?.media_type === "text/css") && previewPath ? <div className={styles.previewViewport}>
               <EpubPreviewFrame key={previewPath} html={chapterPreviewHtml} title={t.preview} zoom={previewZoom} inspect={inspectPreview} sourceLine={syncPreview ? sourceLine : 0} fragment={previewFragment.path === previewPath ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[`source:${previewPath}`]} onLocation={(location) => rememberLocation(`source:${previewPath}`, location)} onInspect={inspectElement} onLink={previewLink} />
             </div> : <div className={styles.noPreview}>{t.noPreview}</div>}
           </section>

@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--direction", choices=("ltr", "rtl"), default="ltr")
     parser.add_argument("--advanced-css", action="store_true")
     parser.add_argument("--inline-text", action="store_true")
+    parser.add_argument("--fixed-layout", action="store_true")
     parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
@@ -56,6 +57,18 @@ def main() -> None:
                 "OEBPS/Styles/alternate.css": 'body{background:red!important}',
                 "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/><link rel="alternate stylesheet" title="Night" href="../Styles/alternate.css"/></head><body><h1>Conditional CSS test</h1><div><p>Left grid column: <ruby>漢<rt>kan</rt></ruby></p><p>Right grid column</p></div></body></html>',
             })
+        if args.fixed_layout:
+            with zipfile.ZipFile(book) as archive:
+                opf = archive.read("OEBPS/book.opf")
+            fixtures["_rewrite_book"](book, {
+                "OEBPS/book.opf": opf.replace(b"</metadata>", b'<meta property="rendition:layout">pre-paginated</meta><meta property="rendition:spread">both</meta></metadata>').replace(b'<itemref idref="one"', b'<itemref properties="page-spread-left" idref="one"').replace(b'<itemref idref="two"', b'<itemref properties="page-spread-right" idref="two"'),
+                "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta name="viewport" content="width=600,height=900"/><style>body{margin:0;width:600px;height:900px;background:#e7eef0}img{position:absolute;inset:0;width:600px;height:900px}h1{position:absolute;left:60px;top:60px;color:#166d65}</style></head><body><img src="../Images/pixel.png"/><h1>LEFT PAGE</h1></body></html>',
+                "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta name="viewport" content="width=600,height=900"/><style>body{margin:0;width:600px;height:900px;background:#e8dbf0}h1{position:absolute;left:60px;top:60px}p{position:absolute;left:60px;bottom:60px}</style></head><body><h1>RIGHT PAGE</h1><p>Bottom of fixed page</p></body></html>',
+            })
+            if args.direction == "rtl":
+                with zipfile.ZipFile(book) as archive:
+                    opf = archive.read("OEBPS/book.opf")
+                fixtures["_rewrite_book"](book, {"OEBPS/book.opf": opf.replace(b'<spine toc=', b'<spine page-progression-direction="rtl" toc=').replace(b'page-spread-left" idref="one"', b'page-spread-right" idref="one"').replace(b'page-spread-right" idref="two"', b'page-spread-left" idref="two"')})
         server = serve(port=0, cache_root=args.state_dir or folder / "cache", static_root=root / "frontend/dist")
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()

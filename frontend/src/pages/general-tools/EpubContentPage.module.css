@@ -562,6 +562,15 @@
   background: white;
 }
 
+.bookPage[data-spread="true"] {
+  gap: 8px;
+}
+
+.bookPage[data-spread="true"] .bookViewport {
+  width: 50%;
+  min-width: 0;
+}
+
 .readerError {
   flex: 1;
   overflow: auto;

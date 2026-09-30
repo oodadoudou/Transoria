@@ -1,6 +1,7 @@
 export type ReadingLocation = { page: number; scroll: number; scrollX?: number };
 
-export function previewAtZoom(markup: string, zoom: number, wrap: boolean): string {
+export function previewAtZoom(markup: string, zoom: number, wrap: boolean, fixed = false): string {
+  if (fixed) return markup;
   const scaled = markup
     .replace("max-width:100%!important;", `max-width:${zoom}%!important;`)
     .replace("max-height:calc(100vh - 24px)!important;", `max-height:calc(${zoom}vh - 24px)!important;`);
@@ -16,7 +17,8 @@ export function interactivePreview(markup: string, token: string): string {
     let page = 0, mode = 'continuous', inspect = false, restoring = false, lastNavigation = -1;
     let ready = false, sign = 1;
     const send = (data) => parent.postMessage({type:'epub-preview',token,...data}, '*');
-    const pages = () => Math.max(1, Math.ceil(document.documentElement.scrollWidth / innerWidth - 0.01));
+    const fixed = document.querySelector('meta[name="transoria-rendition"]')?.content.includes('pre-paginated');
+    const pages = () => fixed ? 1 : Math.max(1, Math.ceil(document.documentElement.scrollWidth / innerWidth - 0.01));
     const currentPage = () => Math.max(0, Math.min(pages()-1, Math.round(sign*scrollX/innerWidth)));
     const report = () => send({event:'location',page,pages:pages(),scroll:scrollY,scrollX});
     const go = () => { restoring = true; scrollTo(mode === 'paged' ? sign * page * innerWidth : scrollX, mode === 'paged' ? 0 : scrollY); restoring = false; report(); };
@@ -26,7 +28,7 @@ export function interactivePreview(markup: string, token: string): string {
       if(event.source !== parent || event.data?.token !== token) return;
       const data = event.data;
       if(data.event === 'configure') {
-        mode = data.mode === 'paged' ? 'paged' : 'continuous'; inspect = !!data.inspect;
+        mode = !fixed && data.mode === 'paged' ? 'paged' : 'continuous'; inspect = !!data.inspect;
         layout.textContent = '';
         const bodyStyle = getComputedStyle(document.body);
         const writingMode = bodyStyle.getPropertyValue('writing-mode');

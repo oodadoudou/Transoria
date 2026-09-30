@@ -1281,7 +1281,7 @@ export interface Messages {
     toolApplied: string; dictionaryMissing: string; reportTruncated: string; checkExit: string;
     importOther: string; converter: string;
     mergeFiles: string; mergeOrder: string; closeTab: string; splitStyle: string;
-    continuous: string; paged: string; page: string; previousPage: string; nextPage: string; fitPage: string; inspectStyle: string; syncPreview: string; styles: string;
+    continuous: string; paged: string; page: string; previousPage: string; nextPage: string; fitPage: string; inspectStyle: string; syncPreview: string; styles: string; spreads: string;
     tools: string; issues: string; compare: string; textReport: string; cleanCss: string; images: string; fonts: string; coverMetadata: string; embedFont: string; upgrade: string; epubcheck: string; runTool: string; previewTool: string; applyTool: string; confirmTool: string; toolEmpty: string; dictionary: string; ignoredWords: string; quality: string; maxDimension: string; fontFamily: string; checkpointName: string; newCheckpoint: string; restoreCheckpoint: string; sourceBook: string; checkJar: string; before: string; after: string;
     resizeFiles: string; resizePreview: string; zoomIn: string; zoomOut: string; previewZoom: string; sourceZoom: string; wrapPreview: string; stageSave: string; staged: string; stageFailed: string;
     bookPreview: string; previousChapter: string; nextChapter: string; previewInvalid: string;

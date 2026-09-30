@@ -1211,6 +1211,35 @@ def test_css_transform_rules_cover_stylesheets_inline_and_embedded(tmp_path: Pat
     assert not session.dirty
 
 
+def test_fixed_layout_preview_keeps_absolute_styles_and_source(tmp_path: Path):
+    import json
+    book = tmp_path / "fixed.epub"
+    _book(book)
+    with zipfile.ZipFile(book) as archive:
+        opf = archive.read("OEBPS/book.opf").replace(b"</metadata>", b'<meta property="rendition:layout">pre-paginated</meta></metadata>')
+    _rewrite_book(book, {"OEBPS/book.opf": opf, "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta name="viewport" content="width=1200,height=600"/><style>img{width:1200px;height:600px;position:absolute}</style></head><body><img src="../Images/pixel.png"/></body></html>'})
+    original = book.read_bytes()
+    session = ContentSession.open(str(book))
+    preview = session.preview(session.spine[0])
+    root = etree.HTML(preview)
+    rendering = json.loads(root.xpath('//meta[@name="transoria-rendition"]/@content')[0])
+    assert rendering['layout'] == 'pre-paginated' and rendering['width'] == 1200 and rendering['height'] == 600
+    assert 'width:1200px' in preview and 'max-width:100%!important' not in preview
+    assert book.read_bytes() == original and not session.dirty
+
+
+def test_fixed_svg_spine_preview_keeps_viewbox_and_local_image(tmp_path: Path):
+    book = tmp_path / "fixed-svg.epub"
+    _book(book)
+    with zipfile.ZipFile(book) as archive:
+        opf = archive.read("OEBPS/book.opf").replace(b"</metadata>", b'<meta property="rendition:layout">pre-paginated</meta></metadata>').replace(b"</manifest>", b'<item id="svg" href="Text/page.svg" media-type="image/svg+xml"/></manifest>').replace(b"</spine>", b'<itemref idref="svg"/></spine>')
+    _rewrite_book(book, {"OEBPS/book.opf": opf, "OEBPS/Text/page.svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900"><image href="../Images/pixel.png" width="600" height="900"/></svg>'})
+    session = ContentSession.open(str(book))
+    preview = session.preview(session.spine[-1])
+    assert 'viewBox="0 0 600 900"' in preview and 'data:image/png;base64,' in preview and 'pre-paginated' in preview
+    assert not session.dirty
+
+
 def test_html_transform_order_wrap_unwrap_tail_and_anchor_safety(tmp_path: Path):
     book = tmp_path / "transform-html.epub"
     _book(book)

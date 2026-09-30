@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { interactivePreview, type ReadingLocation } from "./epubPreview";
+import { fixedPageSize, previewRendition } from "./epubRendition";
 
 export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", location, fragment = "", navigation = 0, inspect = false, sourceLine = 0, step = 0, onLocation, onInspect, onLink }: {
   html: string; title: string; zoom: number; mode?: "continuous" | "paged"; location?: ReadingLocation;
@@ -9,6 +10,15 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
   onLink?: (target: string) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const surface = useRef<HTMLDivElement>(null);
+  const rendition = useMemo(() => previewRendition(html), [html]);
+  const [size, setSize] = useState({ width: 600, height: 800 });
+  useEffect(() => {
+    if (!surface.current) return;
+    const observer = new ResizeObserver(([entry]) => setSize({ width: Math.max(1, entry.contentRect.width), height: Math.max(1, entry.contentRect.height) }));
+    observer.observe(surface.current);
+    return () => observer.disconnect();
+  }, [rendition.layout]);
   const token = useRef(crypto.randomUUID().replace(/-/g, ""));
   const ready = useRef(false);
   const previousStep = useRef(step);
@@ -36,5 +46,8 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
     if (ready.current && previousStep.current !== step) send({ event: "step", direction: Math.sign(step - previousStep.current) });
     previousStep.current = step;
   }, [step]);
-  return <iframe ref={frame} srcDoc={interactivePreview(html, token.current)} title={title} sandbox="allow-scripts" style={{ width: `${10000 / zoom}%`, height: `${10000 / zoom}%`, transform: `scale(${zoom / 100})` }} />;
+  const fixed = rendition.layout === "pre-paginated";
+  const pageSize = fixedPageSize(rendition, size, zoom);
+  const iframe = <iframe ref={frame} srcDoc={interactivePreview(html, token.current)} title={title} sandbox="allow-scripts" style={fixed ? { position: "absolute", left: (pageSize.stageWidth - pageSize.width * pageSize.scale) / 2, top: (pageSize.stageHeight - pageSize.height * pageSize.scale) / 2, width: pageSize.width, height: pageSize.height, transform: `scale(${pageSize.scale})`, transformOrigin: "top left" } : { width: `${10000 / zoom}%`, height: `${10000 / zoom}%`, transform: `scale(${zoom / 100})` }} />;
+  return fixed ? <div ref={surface} style={{ width: "100%", height: "100%", overflow: "auto" }}><div style={{ position: "relative", width: pageSize.stageWidth, height: pageSize.stageHeight }}>{iframe}</div></div> : iframe;
 }
