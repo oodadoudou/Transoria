@@ -53,6 +53,150 @@ def _rewrite_book(path: Path, changes: dict[str, bytes | str]) -> None:
             book.writestr(name, data)
 
 
+def test_batch_copy_rebases_selected_links_and_has_one_undo(tmp_path: Path):
+    source = tmp_path / "copy.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    copies = session.copy_resources(["OEBPS/Text/one.xhtml", "OEBPS/Styles/book.css", "OEBPS/Images/pixel.png"])
+    assert len(session.undo_stack) == 1
+    chapter = session.read(copies["OEBPS/Text/one.xhtml"])["content"]
+    assert "../Styles/book_copy1.css" in chapter
+    assert "../Images/pixel_copy1.png" in chapter
+    assert session.spine[1] == copies["OEBPS/Text/one.xhtml"]
+    session.history("undo")
+    assert session._snapshot() == before
+    session.history("redo")
+    output = tmp_path / "copy-out.epub"
+    session.save(str(output), False)
+    assert copies["OEBPS/Text/one.xhtml"] in ContentSession.open(str(output)).spine
+
+
+def test_session_summaries_are_detached_from_mutable_state(tmp_path: Path):
+    source = tmp_path / "summary.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    summary = session.info("test")
+    original = session._snapshot()
+    summary["files"][0]["path"] = "wrong.xhtml"
+    summary["spine"].clear()
+    summary["spine_linear"].clear()
+    summary["toc"][0]["label"] = "Wrong"
+    assert session._snapshot() == original
+
+
+def test_batch_copy_preserves_required_manifest_properties(tmp_path: Path):
+    source = tmp_path / "properties.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        opf = archive.read("OEBPS/book.opf")
+    _rewrite_book(source, {"OEBPS/book.opf": opf.replace(b'id="one" href=', b'id="one" properties="svg mathml scripted" fallback="two" href=').replace(b'id="img" href=', b'id="img" properties="cover-image" href=')})
+    session = ContentSession.open(str(source))
+    session.copy_resources(["OEBPS/Text/one.xhtml", "OEBPS/Images/pixel.png"])
+    items = session._package().findall(f"{{{epub_content_module.OPF}}}manifest/{{{epub_content_module.OPF}}}item")
+    copied = next(item for item in items if item.get("href") == "Text/one_copy1.xhtml")
+    assert copied.get("properties") == "svg mathml scripted"
+    assert copied.get("fallback") == "two"
+    assert not next(item for item in items if item.get("href") == "Images/pixel_copy1.png").get("properties")
+
+
+def test_batch_delete_protects_package_dependencies_and_removes_refinements(tmp_path: Path):
+    source = tmp_path / "refinements.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        opf = archive.read("OEBPS/book.opf")
+    _rewrite_book(source, {"OEBPS/book.opf": opf.replace(b'id="one" href=', b'id="one" fallback="two" href=').replace(b'</metadata>', b'<meta refines="#one" property="test">value</meta></metadata>')})
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="fallback"):
+        session.delete_resources(["OEBPS/Text/two.xhtml"])
+    assert session._snapshot() == before
+    session.delete_resources(["OEBPS/Text/one.xhtml"])
+    assert not session._package().xpath('//*[@refines="#one"]')
+
+
+def test_batch_copy_encryption_is_atomic(tmp_path: Path):
+    source = tmp_path / "encrypted-copy.epub"
+    _book(source)
+    _rewrite_book(source, {"META-INF/encryption.xml": '<encryption><CipherReference URI="OEBPS/Images/pixel.png"/></encryption>'})
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="Encrypted"):
+        session.copy_resources(["OEBPS/Text/two.xhtml", "OEBPS/Images/pixel.png"])
+    assert session._snapshot() == before
+    assert not session.undo_stack
+
+
+def test_batch_mutations_reject_partial_failure_and_navigation(tmp_path: Path):
+    source = tmp_path / "atomic.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    for operation in (
+        lambda: session.copy_resources(["OEBPS/Text/two.xhtml", session.nav_path]),
+        lambda: session.rename_resources({"OEBPS/Text/two.xhtml": "OEBPS/Text/new.xhtml", "missing.xhtml": "missing-copy.xhtml"}),
+        lambda: session.delete_resources(["OEBPS/Text/two.xhtml", "OEBPS/Images/pixel.png"]),
+        lambda: session.delete_resources(session.spine.copy()),
+    ):
+        with pytest.raises(ValueError):
+            operation()
+        assert session._snapshot() == before
+        assert not session.undo_stack
+
+
+def test_batch_delete_updates_navigation_and_keeps_original(tmp_path: Path):
+    source = tmp_path / "delete.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    session.delete_resources(["OEBPS/Text/one.xhtml", "OEBPS/Images/pixel.png", "OEBPS/Styles/book.css"])
+    assert session.spine == ["OEBPS/Text/two.xhtml"]
+    assert len(session.undo_stack) == 1
+    session.history("undo")
+    assert "OEBPS/Text/one.xhtml" in session.spine
+    session.history("redo")
+    output = tmp_path / "deleted.epub"
+    session.save(str(output), False)
+    reopened = ContentSession.open(str(output))
+    assert reopened.spine == ["OEBPS/Text/two.xhtml"]
+    assert all("one.xhtml" not in entry["href"] for entry in reopened.toc)
+    assert source.read_bytes() == original
+
+
+def test_batch_export_is_non_destructive_and_keeps_paths(tmp_path: Path):
+    source = tmp_path / "export.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.write("OEBPS/Styles/book.css", "body { color: green; }")
+    paths = ["OEBPS/Images/pixel.png", "OEBPS/Styles/book.css"]
+    before = session._snapshot()
+    output = tmp_path / "resources.zip"
+    session.export_resources(paths, str(output))
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == paths
+        assert archive.read(paths[1]) == b"body { color: green; }"
+    original = output.read_bytes()
+    with pytest.raises(ValueError, match="exists"):
+        session.export_resources(paths, str(output))
+    assert output.read_bytes() == original
+    assert session._snapshot() == before
+
+
+def test_batch_resource_bridge_persists_and_undoes(tmp_path: Path):
+    source = tmp_path / "bridge.epub"
+    _book(source)
+    router = BridgeRouter()
+    register(router, cache_root=tmp_path / "cache")
+    sid = router.call("epub_content.open", {"input_path": str(source)})["session_id"]
+    result = router.call("epub_content.copy_resources", {"session_id": sid, "paths": ["OEBPS/Text/two.xhtml"]})
+    target = result["copies"]["OEBPS/Text/two.xhtml"]
+    renamed = router.call("epub_content.rename_resources", {"session_id": sid, "targets": {target: "OEBPS/Text/copied.xhtml"}})
+    assert "OEBPS/Text/copied.xhtml" in renamed["spine"]
+    router.call("epub_content.delete_resources", {"session_id": sid, "paths": ["OEBPS/Text/copied.xhtml"]})
+    restored = router.call("epub_content.undo", {"session_id": sid})
+    assert "OEBPS/Text/copied.xhtml" in restored["spine"]
+
+
 def test_trimmed_undo_history_never_marks_remaining_changes_clean(tmp_path: Path):
     source = tmp_path / "history.epub"
     _book(source)

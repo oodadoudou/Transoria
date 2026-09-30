@@ -5,12 +5,13 @@ import type { EditorState } from "@codemirror/state";
 import { undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
 import { css } from "@codemirror/lang-css";
 import { xml } from "@codemirror/lang-xml";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerDownRight, CornerUpLeft, CornerUpRight, Download, FileCode2, FilePlus2, FileText, FolderOpen, ImagePlus, ListTree, MoreHorizontal, Pencil, Plus, Replace, Save, Scissors, Search, Trash2, WrapText, X, ZoomIn, ZoomOut, Maximize, ScanLine, Link2, Wrench } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, ChevronRight, CornerDownRight, CornerUpLeft, CornerUpRight, Copy, Download, FileCode2, FilePlus2, FileText, FolderOpen, ImagePlus, ListTree, MoreHorizontal, Pencil, Plus, Replace, Save, Scissors, Search, Trash2, WrapText, X, ZoomIn, ZoomOut, Maximize, ScanLine, Link2, Wrench } from "lucide-react";
 
 import { dialogsBridge, epubContentBridge, type EpubContentFile, type EpubContentMatch, type EpubContentSession, type EpubTocEntry } from "@/bridge";
 import { useMessages } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { nextMatchIndex, previewDestination, relativeResourceHref, reorderedSpine, resourceAfterHistory, resourceAfterMutation, resourcePreviewPath, savedEditorHistory, searchScopePaths, xmlAttribute } from "./epubEditorActions";
+import { nextMatchIndex, previewDestination, relativeResourceHref, resourceAfterHistory, resourcePreviewPath, savedEditorHistory, searchScopePaths, xmlAttribute } from "./epubEditorActions";
+import { numberedResourceNames, selectFiles } from "./epubFileSelection";
 import { clearEditorDraft, clearStagedEditorDraft, readEditorDraft, stageEditorDraft, writeEditorDraft, type EpubEditorDraft } from "./epubEditorDraft";
 import styles from "./EpubContentPage.module.css";
 import { EpubPreviewFrame } from "./EpubPreviewFrame";
@@ -141,7 +142,12 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [resourceAction, setResourceAction] = useState<ResourceAction | null>(null);
   const [resourceTarget, setResourceTarget] = useState("");
   const [resourceInput, setResourceInput] = useState("");
-  const [resourceInSpine, setResourceInSpine] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const selectionAnchor = useRef("");
+  const [fileMenu, setFileMenu] = useState<{ x: number; y: number } | null>(null);
+  const [actionPaths, setActionPaths] = useState<string[]>([]);
+  const [renameStart, setRenameStart] = useState(1);
+  const fileMenuRef = useRef<HTMLDivElement>(null);
   const [resourceReferences, setResourceReferences] = useState<string[]>([]);
   const [chapterOpen, setChapterOpen] = useState(false);
   const [chapterPath, setChapterPath] = useState("");
@@ -157,11 +163,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [imageInput, setImageInput] = useState("");
   const [imageTarget, setImageTarget] = useState("");
   const [imageAlt, setImageAlt] = useState("");
-  const [spineMenuPath, setSpineMenuPath] = useState("");
-  const spineDrag = useRef<{ path: string; pointer: number; x: number; y: number; active: boolean; target: string; after: boolean } | null>(null);
-  const suppressFileClick = useRef(false);
   const [tocControlsIndex, setTocControlsIndex] = useState<number | null>(null);
-  const [spineDrop, setSpineDrop] = useState<{ path: string; after: boolean } | null>(null);
   const [previewPath, setPreviewPath] = useState("");
   const [loadedContent, setLoadedContent] = useState("");
   const [content, setContent] = useState("");
@@ -254,11 +256,22 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const operationInFlight = useRef(false);
 
   const nodes = useMemo(() => fileTree(session?.files ?? [], session?.spine ?? []), [session?.files, session?.spine]);
+  const visibleFiles = useMemo(() => {
+    const paths: string[] = [];
+    const visit = (items: FileNode[]) => items.forEach((node) => {
+      if (node.kind === "file") paths.push(node.file.path);
+      else if (!collapsedFolders.includes(node.path)) visit(node.children);
+    });
+    visit(nodes);
+    return paths;
+  }, [nodes, collapsedFolders]);
+  const fileSelection = selectedFiles.filter((path) => session?.files.some((file) => file.path === path));
   const sourceDirty = content !== loadedContent;
   const tocDirty = Boolean(session && JSON.stringify(tocDraft) !== JSON.stringify(session.toc));
   const dirty = Boolean(session?.dirty || sourceDirty || tocDirty);
   const currentFile = session?.files.find((file) => file.path === selectedPath);
   const currentResource = session?.files.find((file) => file.path === resourcePath);
+  const operationPaths = fileSelection.length ? fileSelection : currentResource ? [resourcePath] : [];
   const isHtml = currentFile?.media_type === "application/xhtml+xml" || currentFile?.media_type === "text/html";
   const isPreviewable = isHtml || currentFile?.media_type === "image/svg+xml";
   const chapterPreviewHtml = useMemo(() => previewAtZoom(preview, previewZoom, previewWrap, previewRendition(preview).layout === "pre-paginated"), [preview, previewZoom, previewWrap]);
@@ -497,7 +510,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setOutputPath(editedPath(path));
       setOverwriteSource(false);
       setCollapsedFolders([]);
-      setSpineMenuPath("");
+      setFileMenu(null); setSelectedFiles([]);
       setMatches([]);
       setMatchIndex(-1);
       setSelectionRange(null);
@@ -587,16 +600,58 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     });
   };
 
+  const chooseTreeResource = (path: string, modifiers: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => {
+    setSelectedFiles(selectFiles(visibleFiles, fileSelection, selectionAnchor.current, path, modifiers.metaKey || modifiers.ctrlKey, modifiers.shiftKey));
+    if (!modifiers.shiftKey) selectionAnchor.current = path;
+    setFileMenu(null);
+    if (!modifiers.metaKey && !modifiers.ctrlKey && !modifiers.shiftKey) void selectResource(path);
+    else setResourcePath(path);
+  };
+
+  const copyFiles = async () => {
+    if (!session || !operationPaths.length) return;
+    setFileMenu(null);
+    await run(async () => {
+      await commitDirectory();
+      const next = await epubContentBridge.copyResources(session.session_id, operationPaths);
+      setSession(next); setTocDraft(next.toc);
+      setSelectedFiles(Object.values(next.copies));
+      resetEditorHistory();
+      setFeedback(t.resourceSaved); setFeedbackWarning(false);
+    });
+  };
+
+  useEffect(() => {
+    if (!fileMenu) return;
+    const close = (event: PointerEvent) => { if (!fileMenuRef.current?.contains(event.target as Node)) setFileMenu(null); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setFileMenu(null); };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", escape);
+    const resize = () => setFileMenu(null);
+    window.addEventListener("resize", resize);
+    fileMenuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    return () => { window.removeEventListener("pointerdown", close); window.removeEventListener("keydown", escape); window.removeEventListener("resize", resize); };
+  }, [fileMenu]);
+
   const openResourceAction = async (action: ResourceAction) => {
     if (!session || (action !== "add" && !currentResource)) return;
     setResourceAction(action);
-    setResourceTarget(action === "rename" ? resourcePath : "");
+    setActionPaths(action === "add" ? [] : [...operationPaths]);
+    setFileMenu(null);
+    setRenameStart(1);
+    setResourceTarget(action === "rename" ? operationPaths.length > 1 ? "resource-" : operationPaths[0] : "");
     setResourceInput("");
-    setResourceInSpine(false);
     setResourceReferences([]);
     if (action === "delete") {
-      const result = await run(() => epubContentBridge.references(session.session_id, resourcePath));
-      if (result) setResourceReferences(result.inbound);
+      const result = await run(async () => {
+        const references = new Set<string>();
+        for (const path of operationPaths) {
+          const found = await epubContentBridge.references(session.session_id, path);
+          found.inbound.filter((reference) => !operationPaths.includes(reference) && ![session.nav_path, session.ncx_path, "OPF spine", "EPUB navigation"].includes(reference)).forEach((reference) => references.add(reference));
+        }
+        return [...references];
+      });
+      if (result) setResourceReferences(result);
     }
   };
 
@@ -611,7 +666,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   const chooseResourceOutput = async () => {
-    const name = resourcePath.split("/").at(-1) || "resource";
+    const name = actionPaths.length > 1 ? "epub-resources.zip" : actionPaths[0]?.split("/").at(-1) || "resource";
     const extension = name.split(".").at(-1) || "";
     const chosen = await run(() => dialogsBridge.chooseSavePath(name, extension ? [extension] : []));
     if (chosen?.path) setResourceTarget(chosen.path);
@@ -622,19 +677,24 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     await run(async () => {
       await commitDirectory();
       let next: EpubContentSession | null = null;
-      if (resourceAction === "add") next = await epubContentBridge.addResource(session.session_id, resourceInput, resourceTarget, resourceInSpine);
-      if (resourceAction === "replace") next = await epubContentBridge.replaceResource(session.session_id, resourcePath, resourceInput);
-      if (resourceAction === "rename") next = await epubContentBridge.renameResource(session.session_id, resourcePath, resourceTarget);
-      if (resourceAction === "delete") next = await epubContentBridge.deleteResource(session.session_id, resourcePath);
-      if (resourceAction === "export") await epubContentBridge.exportResource(session.session_id, resourcePath, resourceTarget, false);
+      if (resourceAction === "add") next = await epubContentBridge.addResource(session.session_id, resourceInput, resourceTarget, /\.(xhtml|html|htm)$/i.test(resourceTarget));
+      if (resourceAction === "replace") next = await epubContentBridge.replaceResource(session.session_id, actionPaths[0], resourceInput);
+      const renamed = resourceAction === "rename" ? actionPaths.length > 1 ? numberedResourceNames(actionPaths, resourceTarget, renameStart) : { [actionPaths[0]]: resourceTarget } : {};
+      if (resourceAction === "rename") next = await epubContentBridge.renameResources(session.session_id, renamed);
+      if (resourceAction === "delete") next = await epubContentBridge.deleteResources(session.session_id, actionPaths);
+      if (resourceAction === "export") {
+        if (actionPaths.length > 1) await epubContentBridge.exportResources(session.session_id, actionPaths, resourceTarget);
+        else await epubContentBridge.exportResource(session.session_id, actionPaths[0], resourceTarget, false);
+      }
       if (next) {
         setSession(next);
         setTocDraft(next.toc);
-        const preferred = resourceAction === "rename" || resourceAction === "add" ? resourceTarget : resourcePath;
-        const active = resourceAfterMutation(resourceAction, selectedPath, resourcePath, resourceTarget, session.spine, next.files);
+        const preferred = resourceAction === "rename" ? renamed[resourcePath] ?? resourcePath : resourceAction === "add" ? resourceTarget : resourcePath;
+        const active = renamed[selectedPath] ?? resourceAfterHistory(selectedPath, session.spine, next.files);
         if (active) await loadResource(next.session_id, active, next);
         else clearResource();
         setResourcePath(resourceAction === "delete" ? active : preferred);
+        setSelectedFiles(resourceAction === "delete" ? [] : resourceAction === "rename" ? Object.values(renamed) : [preferred]);
         setSelectionRange(null); setMatches([]); setMatchIndex(-1);
         resetEditorHistory();
       }
@@ -897,30 +957,6 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       resetEditorHistory();
     });
   };
-
-  const moveSpine = async (path: string, target: string, after: boolean) => {
-    if (!session) return;
-    const order = reorderedSpine(session.spine, path, target, after);
-    if (order === session.spine) return;
-    await run(async () => {
-      await commitSource();
-      setSession(await epubContentBridge.reorderSpine(session.session_id, order));
-      resetEditorHistory();
-    });
-  };
-
-  const updateSpine = async (entries: Array<{ path: string; linear: boolean }>) => {
-    if (!session) return;
-    await run(async () => {
-      await commitSource();
-      const next = await epubContentBridge.setSpine(session.session_id, entries);
-      resetEditorHistory();
-      setSession(next);
-      setSpineMenuPath("");
-    });
-  };
-
-  const spineEntries = () => session?.spine.map((path) => ({ path, linear: session.spine_linear[path] !== false })) ?? [];
 
   const history = async (direction: "undo" | "redo") => {
     if (!session) return;
@@ -1197,46 +1233,38 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       return <div key={node.path}><div className={styles.folderRow} style={{ paddingLeft: `${depth * 9 + 4}px` }}><button type="button" aria-expanded={!collapsed} title={node.path} onClick={() => setCollapsedFolders((current) => collapsed ? current.filter((path) => path !== node.path) : [...current, node.path])}>{collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}{node.name}</button></div>{!collapsed ? renderTree(node.children, depth + 1) : null}</div>;
     }
     const path = node.file.path;
-    const inSpine = session?.spine.includes(path) ?? false;
-    const dropClass = spineDrop?.path === path ? (spineDrop.after ? styles.dropAfter : styles.dropBefore) : "";
-    return <div key={path} data-spine-path={inSpine ? path : undefined} className={`${styles.fileRow} ${resourcePath === path ? styles.active : ""} ${dropClass}`}
-      style={{ paddingLeft: `${depth * 9 + 4}px` }}>
-      <button type="button" data-reorderable={inSpine && !busy} title={inSpine ? `${path}\n${t.dragReadingOrder}` : path}
-        onPointerDown={(event) => {
-          suppressFileClick.current = false;
-          if (!inSpine || busy || event.button !== 0 || event.pointerType !== "mouse") return;
-          spineDrag.current = { path, pointer: event.pointerId, x: event.clientX, y: event.clientY, active: false, target: "", after: false };
-          event.currentTarget.setPointerCapture(event.pointerId);
+    return <div key={path} className={`${styles.fileRow} ${fileSelection.includes(path) || (!fileSelection.length && resourcePath === path) ? styles.active : ""}`}
+      style={{ paddingLeft: `${depth * 12 + 4}px` }}>
+      <button type="button" title={path} data-resource-path={path} aria-pressed={fileSelection.includes(path)} disabled={busy}
+        onClick={(event) => { event.currentTarget.focus(); chooseTreeResource(path, event); }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (!fileSelection.includes(path)) { setSelectedFiles([path]); selectionAnchor.current = path; }
+          setResourcePath(path);
+          setFileMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 230)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 310)) });
         }}
-        onPointerMove={(event) => {
-          const drag = spineDrag.current;
-          if (!drag || drag.pointer !== event.pointerId) return;
-          if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
-          drag.active = true;
-          const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-spine-path]");
-          drag.target = row?.dataset.spinePath ?? "";
-          drag.after = Boolean(row && event.clientY > row.getBoundingClientRect().top + row.clientHeight / 2);
-          setSpineDrop(drag.target && drag.target !== path ? { path: drag.target, after: drag.after } : null);
-        }}
-        onPointerUp={(event) => {
-          const drag = spineDrag.current;
-          spineDrag.current = null;
-          setSpineDrop(null);
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-          suppressFileClick.current = Boolean(drag?.active);
-          if (drag?.active && drag.target) void moveSpine(drag.path, drag.target, drag.after);
-        }}
-        onPointerCancel={() => { spineDrag.current = null; setSpineDrop(null); }}
-        onClick={() => { if (suppressFileClick.current) suppressFileClick.current = false; else void selectResource(path); }}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && spineDrag.current) { spineDrag.current = null; setSpineDrop(null); suppressFileClick.current = true; return; }
-          if (!inSpine || !event.shiftKey || !(event.metaKey || event.ctrlKey)) return;
-          const shift = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-          const index = session?.spine.indexOf(path) ?? -1;
-          const target = session?.spine[index + shift];
-          if (shift && target) { event.preventDefault(); void moveSpine(path, target, shift > 0); }
+          if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+            event.preventDefault();
+            const index = visibleFiles.indexOf(path);
+            const next = visibleFiles[event.key === "Home" ? 0 : event.key === "End" ? visibleFiles.length - 1 : Math.max(0, Math.min(visibleFiles.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))];
+            if (next) {
+              if (!event.metaKey && !event.ctrlKey) chooseTreeResource(next, event);
+              [...event.currentTarget.closest("aside")!.querySelectorAll<HTMLButtonElement>('button[data-resource-path]')].find((button) => button.dataset.resourcePath === next)?.focus();
+            }
+          }
+          if (event.key === " " && (event.metaKey || event.ctrlKey)) { event.preventDefault(); chooseTreeResource(path, { ...event, metaKey: true, ctrlKey: false, shiftKey: false }); }
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") { event.preventDefault(); setSelectedFiles(visibleFiles); }
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d") { event.preventDefault(); void copyFiles(); }
+          if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); void openResourceAction("delete"); }
+          if (event.key === "F2") { event.preventDefault(); void openResourceAction("rename"); }
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect();
+            if (!fileSelection.includes(path)) setSelectedFiles([path]);
+            setResourcePath(path); setFileMenu({ x: Math.min(rect.left + 20, window.innerWidth - 230), y: Math.min(rect.bottom, window.innerHeight - 310) });
+          }
         }}>
-        {node.name}{session?.spine_linear[path] === false ? <small className={styles.auxiliaryLabel}>{t.auxiliaryReading}</small> : null}
+        {node.name}
       </button>
     </div>;
   });
@@ -1351,22 +1379,13 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
           <button type="button" title={t.importResource} aria-label={t.importResource} disabled={busy} onClick={() => void openResourceAction("add")}><Plus size={16} /></button>
           <button type="button" title={t.newChapter} aria-label={t.newChapter} disabled={busy} onClick={openChapter}><FilePlus2 size={16} /></button>
           <button type="button" title={currentFile?.media_type === "text/css" ? t.splitStyle : t.splitChapter} aria-label={currentFile?.media_type === "text/css" ? t.splitStyle : t.splitChapter} disabled={busy || (currentFile?.media_type !== "text/css" && (!session.spine.includes(selectedPath) || currentFile?.media_type !== "application/xhtml+xml"))} onClick={() => void openSplit()}><Scissors size={16} /></button>
-          <button type="button" title={t.mergeFiles} aria-label={t.mergeFiles} disabled={busy || !["text/css", "application/xhtml+xml"].includes(currentFile?.media_type ?? "")} onClick={() => { setMergePaths([selectedPath]); setMergeOpen(true); }}><CornerDownRight size={16} /></button>
+          <button type="button" title={t.mergeFiles} aria-label={t.mergeFiles} disabled={busy || !["text/css", "application/xhtml+xml"].includes(currentFile?.media_type ?? "")} onClick={() => { setMergePaths(operationPaths); setMergeOpen(true); }}><CornerDownRight size={16} /></button>
+          <button type="button" title={t.copyResource} aria-label={t.copyResource} disabled={!operationPaths.length || busy} onClick={() => void copyFiles()}><Copy size={16} /></button>
           <button type="button" title={t.renameResource} aria-label={t.renameResource} disabled={!currentResource || busy || resourcePath === session.nav_path || resourcePath === session.ncx_path} onClick={() => void openResourceAction("rename")}><Pencil size={16} /></button>
-          <button type="button" title={t.replaceResource} aria-label={t.replaceResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("replace")}><Replace size={16} /></button>
+          <button type="button" title={t.replaceResource} aria-label={t.replaceResource} disabled={operationPaths.length !== 1 || busy} onClick={() => void openResourceAction("replace")}><Replace size={16} /></button>
           <button type="button" title={t.exportResource} aria-label={t.exportResource} disabled={!currentResource || busy} onClick={() => void openResourceAction("export")}><Download size={16} /></button>
           <button type="button" title={t.deleteResource} aria-label={t.deleteResource} disabled={!currentResource || busy || resourcePath === session.nav_path || resourcePath === session.ncx_path} onClick={() => void openResourceAction("delete")}><Trash2 size={16} /></button>
-          {currentResource && (currentResource.media_type === "application/xhtml+xml" || currentResource.media_type === "text/html") && resourcePath !== session.nav_path ? <div className={styles.fileMoreWrap}>
-            <button type="button" title={t.fileOptions} aria-label={t.fileOptions} aria-expanded={spineMenuPath === resourcePath} disabled={busy} onClick={() => setSpineMenuPath((path) => path === resourcePath ? "" : resourcePath)}><MoreHorizontal size={16} /></button>
-            {spineMenuPath === resourcePath ? <div className={styles.fileMoreMenu}>
-              {session.spine.includes(resourcePath) ? <>
-                <button type="button" disabled={session.spine.indexOf(resourcePath) <= 0} onClick={() => void moveSpine(resourcePath, session.spine[session.spine.indexOf(resourcePath) - 1], false)}><ArrowUp size={15} />{t.up}</button>
-                <button type="button" disabled={session.spine.indexOf(resourcePath) >= session.spine.length - 1} onClick={() => void moveSpine(resourcePath, session.spine[session.spine.indexOf(resourcePath) + 1], true)}><ArrowDown size={15} />{t.down}</button>
-                <button type="button" disabled={session.spine_linear[resourcePath] !== false && session.spine.filter((path) => session.spine_linear[path] !== false).length <= 1} onClick={() => void updateSpine(spineEntries().map((entry) => entry.path === resourcePath ? { ...entry, linear: !entry.linear } : entry))}>{session.spine_linear[resourcePath] === false ? t.markMain : t.markAuxiliary}</button>
-                <button type="button" disabled={session.spine.length <= 1 || session.toc.some((entry) => entry.href.split("#")[0] === resourcePath)} onClick={() => void updateSpine(spineEntries().filter((entry) => entry.path !== resourcePath))}>{t.removeFromOrder}</button>
-              </> : <button type="button" onClick={() => void updateSpine([...spineEntries(), { path: resourcePath, linear: true }])}>{t.addToOrder}</button>}
-            </div> : null}
-          </div> : null}
+          {fileSelection.length > 1 ? <span className={styles.resourceInfo}>{fileSelection.length} {t.selectedFiles}</span> : null}
           {currentResource ? <span className={styles.resourceInfo} title={resourcePath}>{currentResource.media_type} · {currentResource.size} B{currentResource.editable ? "" : ` · ${t.resourceNotEditable}`}</span> : null}
         </div> : null}
         <div className={styles.sideBody}>
@@ -1440,6 +1459,21 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         </>}
       </div>
     </div>}
+    {fileMenu ? <div ref={fileMenuRef} className={styles.fileContextMenu} role="menu" aria-label={t.fileOptions} style={{ left: fileMenu.x, top: fileMenu.y }} onKeyDown={(event) => {
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+    }}>
+      <button type="button" role="menuitem" disabled={busy || operationPaths.length !== 1} onClick={() => { setFileMenu(null); void selectResource(operationPaths[0]); }}><FileCode2 size={16} />{t.open}</button>
+      <button type="button" role="menuitem" disabled={busy || operationPaths.some((path) => path === session.nav_path || path === session.ncx_path)} onClick={() => void copyFiles()}><Copy size={16} />{t.copyResource}</button>
+      <button type="button" role="menuitem" disabled={busy || operationPaths.some((path) => path === session.nav_path || path === session.ncx_path)} onClick={() => void openResourceAction("rename")}><Pencil size={16} />{operationPaths.length > 1 ? t.bulkRename : t.renameResource}</button>
+      <button type="button" role="menuitem" disabled={busy || operationPaths.length !== 1} onClick={() => void openResourceAction("replace")}><Replace size={16} />{t.replaceResource}</button>
+      <button type="button" role="menuitem" disabled={busy} onClick={() => void openResourceAction("export")}><Download size={16} />{t.exportResource}{operationPaths.length > 1 ? " (ZIP)" : ""}</button>
+      <button type="button" role="menuitem" disabled={busy || operationPaths.length < 2 || !operationPaths.every((path) => session.files.find((file) => file.path === path)?.media_type === session.files.find((file) => file.path === operationPaths[0])?.media_type) || !["text/css", "application/xhtml+xml"].includes(session.files.find((file) => file.path === operationPaths[0])?.media_type ?? "")} onClick={() => { setFileMenu(null); setMergePaths(operationPaths); setMergeOpen(true); }}><CornerDownRight size={16} />{t.mergeFiles}</button>
+      <button type="button" role="menuitem" disabled={busy || operationPaths.some((path) => path === session.nav_path || path === session.ncx_path)} onClick={() => void openResourceAction("delete")}><Trash2 size={16} />{t.deleteResource}</button>
+    </div> : null}
     {chapterOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.newChapter}><h3>{t.newChapter}</h3><label>{t.archivePath}<input value={chapterPath} onChange={(event) => setChapterPath(event.target.value)} /></label><label>{t.label}<input value={chapterTitle} onChange={(event) => setChapterTitle(event.target.value)} /></label><label>{t.chapterText}<textarea value={chapterText} onChange={(event) => setChapterText(event.target.value)} rows={6} /></label><div className={styles.saveActions}><button type="button" onClick={() => setChapterOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || !chapterPath.trim() || !chapterTitle.trim()} onClick={() => void createChapter()}>{t.newChapter}</button></div></div></div> : null}
     {splitOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.splitChapter}><h3>{t.splitChapter}</h3><label>{t.splitBefore}<select value={splitIndex} onChange={(event) => setSplitIndex(Number(event.target.value))}>{splitPoints.map((point) => <option key={point.index} value={point.index}>{point.index + 1}. {point.label}</option>)}</select></label><label>{t.archivePath}<input value={splitTarget} onChange={(event) => setSplitTarget(event.target.value)} /></label><div className={styles.saveActions}><button type="button" onClick={() => setSplitOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || !splitTarget.trim()} onClick={() => void splitChapter()}>{t.splitChapter}</button></div></div></div> : null}
     {imageOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.insertImage}><h3>{t.insertImage}</h3><div className={styles.tocSourceModes}><button type="button" aria-pressed={imageMode === "existing"} disabled={!session.files.some((file) => file.media_type.startsWith("image/"))} onClick={() => setImageMode("existing")}>{t.imageResource}</button><button type="button" aria-pressed={imageMode === "import"} onClick={() => setImageMode("import")}>{t.importResource}</button></div>{imageMode === "existing" ? <label>{t.imageResource}<select value={imagePath} onChange={(event) => setImagePath(event.target.value)}>{session.files.filter((file) => file.media_type.startsWith("image/")).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select></label> : <><label>{t.localFile}<div className={styles.resourcePick}><input value={imageInput} onChange={(event) => setImageInput(event.target.value)} /><button type="button" title={t.chooseFile} aria-label={t.chooseFile} onClick={() => void chooseImageFile()}><FolderOpen size={17} /></button></div></label><label>{t.archivePath}<input value={imageTarget} onChange={(event) => setImageTarget(event.target.value)} /></label></>}<label>{t.imageDescription}<input value={imageAlt} onChange={(event) => setImageAlt(event.target.value)} /></label><div className={styles.saveActions}><button type="button" onClick={() => setImageOpen(false)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || (imageMode === "existing" ? !imagePath : !imageInput || !imageTarget || !/\.(?:apng|avif|gif|jpe?g|png|svg|webp)$/i.test(imageTarget))} onClick={() => void insertImage()}>{t.insertImage}</button></div></div></div> : null}
@@ -1463,8 +1497,9 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     {resourceAction && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={{ add: t.importResource, rename: t.renameResource, replace: t.replaceResource, export: t.exportResource, delete: t.deleteResource }[resourceAction]}>
       <h3>{{ add: t.importResource, rename: t.renameResource, replace: t.replaceResource, export: t.exportResource, delete: t.deleteResource }[resourceAction]}</h3>
       {resourceAction === "add" || resourceAction === "replace" ? <label>{t.localFile}<div className={styles.resourcePick}><input value={resourceInput} onChange={(event) => setResourceInput(event.target.value)} /><button type="button" title={t.chooseFile} aria-label={t.chooseFile} onClick={() => void chooseResourceFile()}><FolderOpen size={17} /></button></div></label> : null}
-      {resourceAction === "add" || resourceAction === "rename" || resourceAction === "export" ? <label>{resourceAction === "export" ? t.outputPath : t.archivePath}<div className={styles.resourcePick}><input value={resourceTarget} onChange={(event) => setResourceTarget(event.target.value)} />{resourceAction === "export" ? <button type="button" title={t.chooseFile} aria-label={t.chooseFile} onClick={() => void chooseResourceOutput()}><FolderOpen size={17} /></button> : null}</div></label> : null}
-      {resourceAction === "add" ? <label className={styles.checkbox}><input type="checkbox" checked={resourceInSpine} onChange={(event) => setResourceInSpine(event.target.checked)} />{t.addToSpine}</label> : null}
+      {actionPaths.length > 1 ? <p>{actionPaths.length} {t.selectedFiles}</p> : null}
+      {resourceAction === "add" || resourceAction === "rename" || resourceAction === "export" ? <label>{resourceAction === "export" ? t.outputPath : resourceAction === "rename" && actionPaths.length > 1 ? t.renamePrefix : t.archivePath}<div className={styles.resourcePick}><input value={resourceTarget} onChange={(event) => setResourceTarget(event.target.value)} />{resourceAction === "export" ? <button type="button" title={t.chooseFile} aria-label={t.chooseFile} onClick={() => void chooseResourceOutput()}><FolderOpen size={17} /></button> : null}</div></label> : null}
+      {resourceAction === "rename" && actionPaths.length > 1 ? <><label>{t.startNumber}<input type="number" min={1} step={1} value={renameStart} onChange={(event) => setRenameStart(Math.max(1, Math.floor(Number(event.target.value)) || 1))} /></label><div className={styles.resourceReferences}>{Object.values(numberedResourceNames(actionPaths, resourceTarget, renameStart)).map((path) => <div key={path}>{path}</div>)}</div></> : null}
       {resourceAction === "delete" ? <><p>{t.confirmDeleteResource}</p>{resourceReferences.length ? <div className={styles.resourceReferences}><strong>{t.resourceReferences}</strong>{resourceReferences.map((reference) => <div key={reference}>{reference}</div>)}</div> : null}</> : null}
       <div className={styles.saveActions}><button type="button" onClick={() => setResourceAction(null)}>{t.cancel}</button><button type="button" className={styles.primary} disabled={busy || ((resourceAction === "add" || resourceAction === "replace") && !resourceInput.trim()) || ((resourceAction === "add" || resourceAction === "rename" || resourceAction === "export") && !resourceTarget.trim()) || (resourceAction === "delete" && resourceReferences.length > 0)} onClick={() => void applyResourceAction()}>{t.applyResource}</button></div>
     </div></div> : null}

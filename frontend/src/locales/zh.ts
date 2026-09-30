@@ -661,6 +661,7 @@ export const zh: Messages = {
     before: "修改前", after: "修改后",
     importResource: "导入资源", renameResource: "移动或改名", replaceResource: "替换资源", exportResource: "导出资源", deleteResource: "删除资源",
     localFile: "本地文件", archivePath: "书内路径", addToSpine: "加入阅读顺序", applyResource: "执行", resourceSaved: "资源操作完成",
+    copyResource: "复制为副本", bulkRename: "批量重命名", renamePrefix: "文件名前缀", startNumber: "起始编号", selectedFiles: "个文件已选中",
     resourceReferences: "引用此资源的位置", resourceNotEditable: "此资源不能在源码栏编辑", confirmDeleteResource: "删除所选资源？此操作可以撤销。",
     addToOrder: "加入阅读顺序", removeFromOrder: "移出阅读顺序", chooseChapter: "选择章节",
     fileOptions: "文件阅读选项", markMain: "按正文阅读", markAuxiliary: "标记为辅助内容", auxiliaryReading: "辅助", dragReadingOrder: "拖动正文文件可调整阅读顺序", tocEntryActions: "目录项操作",

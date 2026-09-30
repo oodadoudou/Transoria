@@ -524,10 +524,10 @@ class ContentSession:
         return {
             "session_id": session_id,
             "input_path": str(self.path),
-            "files": self.files,
-            "spine": self.spine,
-            "spine_linear": self.spine_linear,
-            "toc": self.toc,
+            "files": copy.deepcopy(self.files),
+            "spine": self.spine.copy(),
+            "spine_linear": self.spine_linear.copy(),
+            "toc": copy.deepcopy(self.toc),
             "nav_path": self.nav_path,
             "ncx_path": self.ncx_path,
             "dirty": self.dirty,
@@ -1184,6 +1184,163 @@ class ContentSession:
             self._record()
             self.spine = [str(path) for path in paths]
             self.spine_linear = linear
+
+    def copy_resources(self, paths: list[str]) -> dict[str, str]:
+        if not paths or len(paths) != len(set(paths)):
+            raise ValueError("Select unique resources to copy.")
+        with zipfile.ZipFile(self.path) as archive:
+            if "META-INF/encryption.xml" in archive.namelist():
+                encrypted = archive.read("META-INF/encryption.xml")
+                if any(path.encode("utf-8") in encrypted or quote(path).encode("ascii") in encrypted for path in paths):
+                    raise ValueError("Encrypted resources cannot be duplicated safely.")
+        copies: dict[str, str] = {}
+        for path in paths:
+            self._file(path)
+            if path in {self.nav_path, self.ncx_path}:
+                raise ValueError("The active navigation document cannot be duplicated.")
+            stem, extension = posixpath.splitext(path)
+            index = 1
+            while True:
+                target = f"{stem}_copy{index}{extension}"
+                try:
+                    self._check_new_path(target)
+                    if target not in copies.values():
+                        break
+                except ValueError:
+                    pass
+                index += 1
+                if index > 10000:
+                    raise ValueError("Cannot allocate a unique resource name.")
+            copies[path] = target
+        known = self._resource_paths()
+        original_items = {
+            resolve_epub_href(posixpath.dirname(self.opf_path), entry.get("href", "")): dict(entry.attrib)
+            for entry in self._package().findall(f"{{{OPF}}}manifest/{{{OPF}}}item")
+        }
+        with self.transaction():
+            for path, target in copies.items():
+                item = self._file(path)
+                data, _ = _rewrite_resource_links(
+                    self._bytes(path), str(item["media_type"]), path, target, copies, known,
+                )
+                self.add_resource(target, data, str(item["media_type"]), path in self.spine and item["media_type"] in {"application/xhtml+xml", "text/html"})
+                package = self._package()
+                entries = package.findall(f"{{{OPF}}}manifest/{{{OPF}}}item")
+                copied_item = next(entry for entry in entries if resolve_epub_href(posixpath.dirname(self.opf_path), entry.get("href", "")) == target)
+                original = original_items.get(path, {})
+                properties = " ".join(flag for flag in original.get("properties", "").split() if flag not in {"nav", "cover-image"})
+                if properties:
+                    copied_item.set("properties", properties)
+                for attribute in ("fallback", "media-overlay"):
+                    if original.get(attribute):
+                        copied_item.set(attribute, original[attribute])
+                self.changes[self.opf_path] = _serialize(package)
+                if path in self.spine and target in self.spine:
+                    self.spine.remove(target)
+                    self.spine.insert(self.spine.index(path) + 1, target)
+        return copies
+
+    def rename_resources(self, targets: dict[str, str]) -> None:
+        if not targets or len(set(targets.values())) != len(targets):
+            raise ValueError("Select unique destination names.")
+        for path, target in targets.items():
+            self._file(path)
+            if path != target:
+                self._check_new_path(target)
+        with self.transaction():
+            for path, target in targets.items():
+                if path != target:
+                    self.rename_resource(path, target)
+
+    def delete_resources(self, paths: list[str]) -> None:
+        if not paths or len(set(paths)) != len(paths):
+            raise ValueError("Select unique resources to delete.")
+        selected = set(paths)
+        for path in paths:
+            self._file(path)
+            if path in {self.nav_path, self.ncx_path}:
+                raise ValueError("The active navigation document cannot be deleted.")
+            inbound = set(self.resource_references(path)) - selected - {
+                self.nav_path, self.ncx_path, "OPF spine", "EPUB navigation",
+            }
+            if inbound:
+                raise ValueError(f"{path} is still referenced by: " + ", ".join(sorted(inbound)[:5]))
+        if self.spine and not any(path not in selected for path in self.spine):
+            raise ValueError("Keep at least one chapter in the book.")
+        package = self._package()
+        items = package.findall(f"{{{OPF}}}manifest/{{{OPF}}}item")
+        selected_ids = {item.get("id") for item in items if resolve_epub_href(posixpath.dirname(self.opf_path), item.get("href", "")) in selected}
+        if any(item.get("id") not in selected_ids and any(item.get(attribute) in selected_ids for attribute in ("fallback", "media-overlay")) for item in items):
+            raise ValueError("A selected resource is still referenced by package fallback or overlay metadata.")
+        with self.transaction():
+            package = self._package()
+            manifest = package.find(f"{{{OPF}}}manifest")
+            if manifest is None:
+                raise ValueError("EPUB manifest is missing.")
+            ids = set()
+            for item in list(manifest):
+                if resolve_epub_href(posixpath.dirname(self.opf_path), item.get("href", "")) in selected:
+                    ids.add(item.get("id"))
+                    manifest.remove(item)
+            for node in list(package.iter()):
+                if node is package or node.getparent() is None:
+                    continue
+                if node.get("idref") in ids or node.get("refines", "").removeprefix("#") in ids or (node.tag == f"{{{OPF}}}meta" and node.get("name") == "cover" and node.get("content") in ids):
+                    node.getparent().remove(node)
+                elif node.tag == f"{{{OPF}}}reference" and resolve_epub_href(posixpath.dirname(self.opf_path), node.get("href", "").split("#")[0]) in selected:
+                    node.getparent().remove(node)
+            entries = []
+            for entry in self.toc:
+                if str(entry["href"]).split("#", 1)[0] in selected:
+                    continue
+                entries.append({**entry, "depth": min(int(entry["depth"]), int(entries[-1]["depth"]) + 1 if entries else 0)})
+            entries = [entry for index, entry in enumerate(entries) if entry["href"] or (index + 1 < len(entries) and entries[index + 1]["depth"] > entry["depth"])]
+            self.changes[self.opf_path] = _serialize(package)
+            self.spine = [path for path in self.spine if path not in selected]
+            self.spine_linear = {path: flag for path, flag in self.spine_linear.items() if path not in selected}
+            self.files = [item for item in self.files if item["path"] not in selected]
+            self.removed.update(selected)
+            for path in paths:
+                self.changes.pop(path, None)
+            if entries != self.toc:
+                self.changes.update(self._toc_updates(entries))
+                self.toc = entries
+            for path in (self.nav_path, self.ncx_path):
+                if not path:
+                    continue
+                root = _xml(self._bytes(path))
+                changed = False
+                for node in root.iter():
+                    for attribute in ("href", "src"):
+                        raw = node.get(attribute)
+                        if raw and resolve_epub_href(posixpath.dirname(path), raw.split("#", 1)[0]) in selected:
+                            del node.attrib[attribute]
+                            changed = True
+                if changed:
+                    self.changes[path] = _serialize(root)
+
+    def export_resources(self, paths: list[str], output_path: str) -> str:
+        if not paths or len(set(paths)) != len(paths):
+            raise ValueError("Select unique resources to export.")
+        for path in paths:
+            self._file(path)
+        output = Path(output_path).expanduser().resolve()
+        if output.suffix.lower() != ".zip" or not output.parent.is_dir() or output == self.path:
+            raise ValueError("Choose a ZIP file in an existing folder.")
+        fd, name = tempfile.mkstemp(prefix=".epub-export-", dir=output.parent)
+        os.close(fd)
+        temp = Path(name)
+        try:
+            with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for path in paths:
+                    archive.writestr(path, self._bytes(path))
+            try:
+                os.link(temp, output)
+            except FileExistsError as exc:
+                raise ValueError("Output exists; choose another file.") from exc
+        finally:
+            temp.unlink(missing_ok=True)
+        return str(output)
 
     def set_toc(self, entries: list[dict[str, object]]) -> None:
         if not self.nav_path and not self.ncx_path:

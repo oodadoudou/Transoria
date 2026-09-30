@@ -117,6 +117,12 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     expect_string(payload, "output_path"),
                     bool(payload.get("overwrite", False)),
                 )}
+            if action == "export_resources":
+                return {"output_path": session.export_resources(_paths(payload), expect_string(payload, "output_path"))}
+            if action == "copy_resources":
+                copies = session.copy_resources(_paths(payload))
+                store.persist(session_id)
+                return {**session.info(session_id), "copies": copies}
             if action == "write":
                 session.write(
                     expect_string(payload, "path"),
@@ -250,6 +256,13 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {**summary, **session.info(session_id)}
             elif action == "delete_resource":
                 session.delete_resource(expect_string(payload, "path"))
+            elif action == "delete_resources":
+                session.delete_resources(_paths(payload))
+            elif action == "rename_resources":
+                targets = payload.get("targets")
+                if not isinstance(targets, dict) or not all(isinstance(path, str) and isinstance(target, str) for path, target in targets.items()):
+                    raise ValueError("targets must map resource paths to destination paths.")
+                session.rename_resources(targets)
             elif action in {"undo", "redo"}:
                 session.history(action)
             elif action == "preview":
@@ -273,7 +286,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {**result, **session.info(session_id)}
             else:
                 raise ValueError("Unknown EPUB content editor action.")
-            if action in {"write", "write_many", "split_style", "reorder_spine", "set_spine", "set_toc", "create_chapter", "split_chapter", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
+            if action in {"write", "write_many", "split_style", "reorder_spine", "set_spine", "set_toc", "create_chapter", "split_chapter", "add_resource", "replace_resource", "delete_resource", "delete_resources", "rename_resources", "undo", "redo"}:
                 store.persist(session_id)
             return session.info(session_id)
         except (
@@ -302,6 +315,10 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "split_points",
         "references",
         "export_resource",
+        "export_resources",
+        "copy_resources",
+        "delete_resources",
+        "rename_resources",
         "write",
         "write_many",
         "merge_resources",

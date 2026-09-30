@@ -1300,6 +1300,7 @@ export interface Messages {
     validate: string; validationOk: string; validationWarning: string; sessionExpired: string; reopen: string;
     importResource: string; renameResource: string; replaceResource: string; exportResource: string; deleteResource: string;
     localFile: string; archivePath: string; addToSpine: string; applyResource: string; resourceSaved: string;
+    copyResource: string; bulkRename: string; renamePrefix: string; startNumber: string; selectedFiles: string;
     resourceReferences: string; resourceNotEditable: string; confirmDeleteResource: string;
     addToOrder: string; removeFromOrder: string; chooseChapter: string;
     fileOptions: string; markMain: string; markAuxiliary: string; auxiliaryReading: string; dragReadingOrder: string; tocEntryActions: string;

@@ -1189,6 +1189,18 @@ export const epubContentBridge = {
   deleteResource(sessionId: string, path: string): Promise<EpubContentSession> {
     return call("epub_content.delete_resource", { session_id: sessionId, path });
   },
+  copyResources(sessionId: string, paths: string[]): Promise<EpubContentSession & { copies: Record<string, string> }> {
+    return call("epub_content.copy_resources", { session_id: sessionId, paths });
+  },
+  deleteResources(sessionId: string, paths: string[]): Promise<EpubContentSession> {
+    return call("epub_content.delete_resources", { session_id: sessionId, paths });
+  },
+  renameResources(sessionId: string, targets: Record<string, string>): Promise<EpubContentSession> {
+    return call("epub_content.rename_resources", { session_id: sessionId, targets });
+  },
+  exportResources(sessionId: string, paths: string[], outputPath: string): Promise<{ output_path: string }> {
+    return call("epub_content.export_resources", { session_id: sessionId, paths, output_path: outputPath });
+  },
   exportResource(sessionId: string, path: string, outputPath: string, overwrite: boolean): Promise<{ output_path: string }> {
     return call("epub_content.export_resource", { session_id: sessionId, path, output_path: outputPath, overwrite });
   },
