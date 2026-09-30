@@ -16,12 +16,14 @@ import uuid
 import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote, unquote, urlsplit
 
 from lxml import etree
 from lxml import html as lxml_html
+import html5lib
 import regex
 import tinycss2
 
@@ -71,6 +73,59 @@ def _xml(data: bytes) -> etree._Element:
     return etree.fromstring(data, parser=XML_PARSER)
 
 
+def _local_name(name: object) -> str:
+    if not isinstance(name, str):
+        return ""
+    return name.rsplit("}", 1)[-1].rsplit(":", 1)[-1]
+
+
+def _is_toc(node: etree._Element) -> bool:
+    return _local_name(node.tag) == "nav" and (
+        "toc" in (node.get("{http://www.idpf.org/2007/ops}type") or node.get("epub:type", "")).split()
+        or "doc-toc" in node.get("role", "").split()
+    )
+
+
+def _preview_root(data: bytes, *, html_document: bool = False) -> etree._Element:
+    if not html_document:
+        try:
+            return _xml(data)
+        except etree.XMLSyntaxError:
+            pass
+    text = _decode(data)[0]
+    # Remove declared XHTML prefixes only in the disposable HTML5 rendering copy.
+    for prefix in re.findall(r'xmlns:([\w.-]+)=[\"\']http://www.w3.org/1999/xhtml[\"\']', text):
+        text = re.sub(r'(<\s*/?\s*)' + re.escape(prefix) + ':', r'\1', text)
+        text = re.sub(r'\s+xmlns:' + re.escape(prefix) + r'=[\"\']http://www.w3.org/1999/xhtml[\"\']', '', text)
+    marker = "data-transoria-source-" + uuid.uuid4().hex
+    offsets = [0]
+    for line in text.split("\n"):
+        offsets.append(offsets[-1] + len(line) + 1)
+    insertions: list[tuple[int, str]] = []
+
+    class SourceLines(HTMLParser):
+        def handle_starttag(self, tag: str, attrs) -> None:
+            line, column = self.getpos()
+            opening = re.match(r"<[^\s/>]+", self.get_starttag_text())
+            if opening:
+                insertions.append((offsets[line - 1] + column + opening.end(), f' {marker}="{line}"'))
+
+        handle_startendtag = handle_starttag
+
+    SourceLines(convert_charrefs=False).feed(text)
+    pieces: list[str] = []
+    cursor = 0
+    for position, attribute in insertions:
+        pieces.extend((text[cursor:position], attribute))
+        cursor = position
+    pieces.append(text[cursor:])
+    root = html5lib.parse("".join(pieces), treebuilder="lxml", namespaceHTMLElements=True).getroot()
+    for node in root.iter():
+        if isinstance(node.tag, str):
+            node.set("data-transoria-line", node.attrib.pop(marker, "1"))
+    return root
+
+
 def _serialize(root: etree._Element) -> bytes:
     return etree.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -87,6 +142,10 @@ def _fingerprint(path: Path) -> tuple[int, int]:
 
 
 def _decode(data: bytes) -> tuple[str, str]:
+    for signature, encoding in ((b"\xff\xfe\x00\x00", "utf-32"), (b"\x00\x00\xfe\xff", "utf-32"),
+                                (b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16"), (b"\xef\xbb\xbf", "utf-8-sig")):
+        if data.startswith(signature):
+            return data.decode(encoding), encoding
     head = data[:200].decode("ascii", errors="ignore")
     match = re.search(r"(?:encoding\s*=\s*|@charset\s+)[\"']([^\"']+)", head, re.I)
     encoding = match.group(1) if match else "utf-8"
@@ -160,7 +219,7 @@ def _editor_text(data: bytes, media_type: str) -> str:
             indent(child, depth + 1 if structural else depth)
 
     indent(root, 0)
-    formatted = etree.tostring(root.getroottree(), encoding=encoding, xml_declaration=True)
+    formatted = etree.tostring(root.getroottree(), encoding="utf-8" if encoding == "utf-8-sig" else encoding, xml_declaration=True)
     return _decode(formatted)[0]
 
 
@@ -444,7 +503,7 @@ class ContentSession:
                 if item.get("idref", "") in id_to_path
             ]
             spine = [path for path, _ in spine_items]
-            toc = _read_toc(archive, nav_path, ncx_path)
+            toc = _read_toc(archive, nav_path, ncx_path, tolerant=True)
         return cls(
             source,
             _fingerprint(source),
@@ -1140,8 +1199,8 @@ class ContentSession:
             target = href.split("#", 1)[0]
             if (
                 not label
-                or not target
-                or target not in valid_files
+                or (href and target not in valid_files)
+                or (not href and not self.nav_path)
                 or not isinstance(depth, int)
                 or depth < 0
                 or depth > 8
@@ -1158,6 +1217,12 @@ class ContentSession:
                         f"Table-of-contents target is missing at row {index + 1}: {href}"
                     )
             normalized.append({"label": label, "href": href, "depth": depth})
+        for index, entry in enumerate(normalized):
+            if not entry["href"] and (
+                index + 1 == len(normalized)
+                or int(normalized[index + 1]["depth"]) <= int(entry["depth"])
+            ):
+                raise ValueError(f"Directory group needs a child at row {index + 1}.")
         if normalized != self.toc:
             pending = self._toc_updates(normalized)
             self._record()
@@ -1328,7 +1393,7 @@ class ContentSession:
         self._check_new_path(path)
         valid = {str(item["path"]) for item in self.files}
         for entry in self.toc:
-            if str(entry["href"]).split("#", 1)[0] not in valid:
+            if entry["href"] and str(entry["href"]).split("#", 1)[0] not in valid:
                 raise ValueError("TOC contains a missing resource; repair it before generating a page.")
         root = etree.Element(f"{{{XHTML}}}html", nsmap={None: XHTML})
         head = etree.SubElement(root, f"{{{XHTML}}}head")
@@ -1348,7 +1413,10 @@ class ContentSession:
                     raise ValueError("TOC nesting is invalid.")
                 levels.append(etree.SubElement(levels[-1][-1], f"{{{XHTML}}}ol"))
             li = etree.SubElement(levels[-1], f"{{{XHTML}}}li")
-            etree.SubElement(li, f"{{{XHTML}}}a", href=_relative_href(path, str(entry["href"]))).text = str(entry["label"])
+            link = etree.SubElement(li, f"{{{XHTML}}}{'a' if entry['href'] else 'span'}")
+            if entry["href"]:
+                link.set("href", _relative_href(path, str(entry["href"])))
+            link.text = str(entry["label"])
         self.add_resource(path, _serialize(root), "application/xhtml+xml", in_spine=True)
         self.spine.remove(path)
         self.spine.insert(0, path)
@@ -1571,19 +1639,16 @@ class ContentSession:
             formatted = _editor_text(markup_bytes, str(item["media_type"]))
             formatted = re.sub(r'(<\?xml[^>]*encoding\s*=\s*)[\'\"][^\'\"]+[\'\"]', r'\1"utf-8"', formatted, count=1)
             markup_bytes = formatted.encode("utf-8")
-        if item["media_type"] == "text/html":
-            root = lxml_html.fromstring(markup_bytes)
-        else:
-            try:
-                root = _xml(markup_bytes)
-            except etree.XMLSyntaxError:
-                root = lxml_html.fromstring(markup_bytes)
+        root = _preview_root(markup_bytes, html_document=item["media_type"] == "text/html")
         for node in list(root.iter()):
             local = (
-                etree.QName(node).localname.lower() if isinstance(node.tag, str) else ""
+                _local_name(node.tag).lower()
             )
             if local:
-                node.set("data-transoria-line", str(node.sourceline or 1))
+                # Browser HTML parsing does not recognize prefixed XHTML element names.
+                node.tag = _local_name(node.tag)
+            if local:
+                node.set("data-transoria-line", str(node.sourceline) if node.sourceline is not None else node.get("data-transoria-line", "1"))
                 node.attrib.pop("data-transoria-target", None)
             if local in {"script", "iframe", "object", "embed", "form", "base"}:
                 parent = node.getparent()
@@ -1593,11 +1658,16 @@ class ContentSession:
             if local == "style" and node.text:
                 node.text = _inline_css(node.text, path, self, drafts, read_bytes=preview_bytes)
             if node.get("style"):
-                node.set("style", _inline_css(node.get("style", ""), path, self, drafts, read_bytes=preview_bytes))
+                node.set("style", _inline_css(node.get("style", ""), path, self, drafts, read_bytes=preview_bytes, declarations=True))
             for key in list(node.attrib):
-                if etree.QName(key).localname.lower().startswith("on"):
+                if _local_name(key).lower().startswith("on"):
                     del node.attrib[key]
             svg_href = "{http://www.w3.org/1999/xlink}href"
+            if local == "image":
+                for key in (svg_href, "xlink:href"):
+                    value = node.attrib.pop(key, None)
+                    if value is not None and not node.get("href"):
+                        node.set("href", value)
             for attr in ("src", "href", "poster", svg_href):
                 value = node.get(attr)
                 if local == "a" and attr == "href" and value and value.startswith("#"):
@@ -1609,8 +1679,10 @@ class ContentSession:
                     continue
                 target = resolve_epub_href(posixpath.dirname(path), value)
                 known = next(
-                    (file for file in self.files if file["path"] == target), None
+                    (file for file in self.files if decode_epub_href(str(file["path"])) == decode_epub_href(target)), None
                 )
+                if known:
+                    target = str(known["path"])
                 if local == "a" and attr == "href" and known:
                     node.set("data-transoria-target", target + ("#" + value.partition("#")[2] if "#" in value else ""))
                 if (
@@ -1619,8 +1691,14 @@ class ContentSession:
                     and known
                     and known["media_type"] == "text/css"
                 ):
+                    rel = node.get("rel", "").lower().split()
+                    if "stylesheet" not in rel or "alternate" in rel or "disabled" in node.attrib:
+                        node.getparent().remove(node)
+                        break
                     css = _decode(preview_bytes(target))[0]
-                    style = etree.Element(f"{{{XHTML}}}style" if etree.QName(root).namespace == XHTML else "style")
+                    style = etree.Element("style")
+                    if node.get("media"):
+                        style.set("media", node.get("media"))
                     style.text = _inline_css(css, target, self, drafts, read_bytes=preview_bytes)
                     node.getparent().replace(node, style)
                     break
@@ -1641,7 +1719,7 @@ class ContentSession:
         markup = etree.tostring(root, encoding="unicode", method="html")
         if len(markup.encode("utf-8")) > MAX_PREVIEW_BYTES:
             raise ValueError("Preview exceeds the 48 MB limit.")
-        csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"
+        csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:"
         fit_media = (
             "<style>img,svg,video{max-width:100%!important;"
             "max-height:calc(100vh - 24px)!important;"
@@ -1769,7 +1847,7 @@ class ContentSession:
                         raise ValueError(f"EPUB archive corruption: {bad}")
                     added_missing_fragments = _missing_toc_fragments(
                         check_archive,
-                        _read_toc(check_archive, self.nav_path, self.ncx_path),
+                        _read_toc(check_archive, self.nav_path, self.ncx_path, tolerant=True),
                     ) - before_missing_fragments
                     if added_missing_fragments:
                         raise ValueError(
@@ -1833,22 +1911,19 @@ class ContentSession:
 def _read_toc(
     archive: zipfile.ZipFile, nav_path: str, ncx_path: str,
     overrides: dict[str, bytes] | None = None,
+    *, tolerant: bool = False,
 ) -> list[dict[str, object]]:
+    malformed_nav: bytes | None = None
     if nav_path:
-        root = _xml(overrides[nav_path] if overrides and nav_path in overrides else _package_bytes(archive, nav_path))
-        nav = next(
-            (
-                n
-                for n in root.iter()
-                if isinstance(n.tag, str)
-                and etree.QName(n).localname == "nav"
-                and (
-                    n.get("{http://www.idpf.org/2007/ops}type") == "toc"
-                    or n.get("role") == "doc-toc"
-                )
-            ),
-            None,
-        )
+        data = overrides[nav_path] if overrides and nav_path in overrides else _package_bytes(archive, nav_path)
+        try:
+            root = _xml(data)
+        except etree.XMLSyntaxError:
+            if not tolerant:
+                raise
+            malformed_nav = data
+            root = etree.Element("html")
+        nav = next((n for n in root.iter() if _is_toc(n)), None)
         if nav is not None:
             ol = next(
                 (
@@ -1861,19 +1936,26 @@ def _read_toc(
             if ol is not None:
                 return _toc_from_nav(ol, nav_path, archive)
     if ncx_path:
-        root = _xml(overrides[ncx_path] if overrides and ncx_path in overrides else _package_bytes(archive, ncx_path))
-        nav_map = root.find(f".//{{{NCX}}}navMap")
+        try:
+            root = _xml(overrides[ncx_path] if overrides and ncx_path in overrides else _package_bytes(archive, ncx_path))
+        except etree.XMLSyntaxError:
+            if not tolerant:
+                raise
+            root = etree.Element("ncx")
+        nav_map = next((n for n in root.iter() if _local_name(n.tag) == "navMap"), None)
         if nav_map is not None:
             result: list[dict[str, object]] = []
 
             def walk(parent: etree._Element, depth: int) -> None:
-                for point in parent.findall(f"{{{NCX}}}navPoint"):
+                for point in parent:
+                    if _local_name(point.tag) != "navPoint":
+                        continue
                     label = "".join(
                         point.xpath(
                             "./*[local-name()='navLabel']/*[local-name()='text']/text()"
                         )
                     )
-                    content = point.find(f"{{{NCX}}}content")
+                    content = next((n for n in point if _local_name(n.tag) == "content"), None)
                     href = content.get("src", "") if content is not None else ""
                     result.append(
                         {
@@ -1886,6 +1968,15 @@ def _read_toc(
 
             walk(nav_map, 0)
             return result
+    if malformed_nav is not None:
+        try:
+            root = lxml_html.fromstring(_decode(malformed_nav)[0])
+            nav = next((n for n in root.iter() if _is_toc(n)), None)
+            ol = next((n for n in nav if _local_name(n.tag) == "ol"), None) if nav is not None else None
+            if ol is not None:
+                return _toc_from_nav(ol, nav_path, archive)
+        except (ValueError, etree.ParserError):
+            pass
     return []
 
 
@@ -1896,22 +1987,22 @@ def _toc_from_nav(
 
     def walk(parent: etree._Element, depth: int) -> None:
         for li in parent:
-            if not isinstance(li.tag, str) or etree.QName(li).localname != "li":
+            if _local_name(li.tag) != "li":
                 continue
             link = next(
                 (
                     n
                     for n in li
                     if isinstance(n.tag, str)
-                    and etree.QName(n).localname in {"a", "span"}
+                    and _local_name(n.tag) in {"a", "span"}
                 ),
                 None,
             )
-            if link is not None and link.get("href"):
+            if link is not None:
                 result.append(
                     {
                         "label": " ".join("".join(link.itertext()).split()),
-                        "href": _absolute_href(nav_path, link.get("href", ""), archive),
+                        "href": _absolute_href(nav_path, link.get("href", ""), archive) if link.get("href") else "",
                         "depth": depth,
                     }
                 )
@@ -1919,7 +2010,7 @@ def _toc_from_nav(
                 (
                     n
                     for n in li
-                    if isinstance(n.tag, str) and etree.QName(n).localname == "ol"
+                    if _local_name(n.tag) == "ol"
                 ),
                 None,
             )
@@ -1950,11 +2041,7 @@ def _write_nav(data: bytes, path: str, entries: list[dict[str, object]]) -> byte
             n
             for n in root.iter()
             if isinstance(n.tag, str)
-            and etree.QName(n).localname == "nav"
-            and (
-                n.get("{http://www.idpf.org/2007/ops}type") == "toc"
-                or n.get("role") == "doc-toc"
-            )
+            and _is_toc(n)
         ),
         None,
     )
@@ -1967,6 +2054,13 @@ def _write_nav(data: bytes, path: str, entries: list[dict[str, object]]) -> byte
     if old is None:
         raise ValueError("EPUB navigation list is missing.")
     index = list(nav).index(old)
+    originals: dict[tuple[str, str], list[etree._Element]] = {}
+    for li in old.iter():
+        if _local_name(li.tag) != "li":
+            continue
+        link = next((n for n in li if _local_name(n.tag) in {"a", "span"}), None)
+        if link is not None:
+            originals.setdefault((link.get("href", ""), " ".join("".join(link.itertext()).split())), []).append(li)
     nav.remove(old)
     top = copy.deepcopy(old)
     for child in list(top):
@@ -1980,21 +2074,50 @@ def _write_nav(data: bytes, path: str, entries: list[dict[str, object]]) -> byte
         if depth + 1 > len(levels):
             nested = etree.SubElement(levels[-1][-1], f"{{{XHTML}}}ol")
             levels.append(nested)
-        li = etree.SubElement(levels[-1], f"{{{XHTML}}}li")
-        link = etree.SubElement(
-            li, f"{{{XHTML}}}a", href=_relative_href(path, str(entry["href"]))
-        )
-        link.text = str(entry["label"])
+        href = _relative_href(path, str(entry["href"])) if entry["href"] else ""
+        matches = originals.get((href, str(entry["label"])), [])
+        if not matches:
+            matches = next((items for (target, _), items in originals.items() if target == href and items), [])
+        original = matches.pop(0) if matches else None
+        li = copy.deepcopy(original) if original is not None else etree.Element(f"{{{XHTML}}}li")
+        for child in list(li):
+            if _local_name(child.tag) == "ol":
+                li.remove(child)
+        link = next((n for n in li if _local_name(n.tag) in {"a", "span"}), None)
+        if link is None:
+            link = etree.SubElement(li, f"{{{XHTML}}}{'a' if href else 'span'}")
+        link.tag = f"{{{XHTML}}}{'a' if href else 'span'}"
+        if href:
+            link.set("href", href)
+        else:
+            link.attrib.pop("href", None)
+        if " ".join("".join(link.itertext()).split()) != str(entry["label"]):
+            for child in list(link):
+                link.remove(child)
+            link.text = str(entry["label"])
+        levels[-1].append(li)
     return _serialize(root)
 
 
 def _write_ncx(data: bytes, path: str, entries: list[dict[str, object]]) -> bytes:
     root = _xml(data)
-    nav_map = root.find(f".//{{{NCX}}}navMap")
+    nav_map = next((n for n in root.iter() if _local_name(n.tag) == "navMap"), None)
     if nav_map is None:
         raise ValueError("NCX navigation map is missing.")
-    for point in nav_map.findall(f"{{{NCX}}}navPoint"):
-        nav_map.remove(point)
+    namespace = etree.QName(nav_map).namespace
+
+    def tag(name: str) -> str:
+        return f"{{{namespace}}}{name}" if namespace else name
+
+    originals: dict[tuple[str, str], list[etree._Element]] = {}
+    for point in nav_map.iter(tag("navPoint")):
+        content = next((n for n in point if _local_name(n.tag) == "content"), None)
+        label = "".join(point.xpath("./*[local-name()='navLabel']/*[local-name()='text']/text()"))
+        originals.setdefault((content.get("src", "") if content is not None else "", label), []).append(point)
+    used_ids = {n.get("id") for n in root.iter() if n.get("id")}
+    for point in list(nav_map):
+        if _local_name(point.tag) == "navPoint":
+            nav_map.remove(point)
     levels = [nav_map]
     for index, entry in enumerate(entries):
         depth = int(entry["depth"])
@@ -2002,17 +2125,25 @@ def _write_ncx(data: bytes, path: str, entries: list[dict[str, object]]) -> byte
             levels.pop()
         if depth + 1 > len(levels):
             levels.append(levels[-1][-1])
-        point = etree.SubElement(
-            levels[-1],
-            f"{{{NCX}}}navPoint",
-            id=f"transoria-nav-{index+1}",
-            playOrder=str(index + 1),
-        )
-        label = etree.SubElement(point, f"{{{NCX}}}navLabel")
-        etree.SubElement(label, f"{{{NCX}}}text").text = str(entry["label"])
-        etree.SubElement(
-            point, f"{{{NCX}}}content", src=_relative_href(path, str(entry["href"]))
-        )
+        href = str(entry["href"])
+        if not href:
+            href = next((str(child["href"]) for child in entries[index + 1:] if child["href"]), "")
+        relative = _relative_href(path, href)
+        matches = originals.get((relative, str(entry["label"])), [])
+        if not matches and entry["href"]:
+            matches = next((items for (target, _), items in originals.items() if target == relative and items), [])
+        original = matches.pop(0) if matches else None
+        point = etree.SubElement(levels[-1], tag("navPoint"), attrib=dict(original.attrib) if original is not None else {})
+        if not point.get("id"):
+            identifier = f"transoria-nav-{index+1}"
+            while identifier in used_ids:
+                identifier += "-new"
+            point.set("id", identifier)
+            used_ids.add(identifier)
+        point.set("playOrder", str(index + 1))
+        label = etree.SubElement(point, tag("navLabel"))
+        etree.SubElement(label, tag("text")).text = str(entry["label"])
+        etree.SubElement(point, tag("content"), src=relative)
     return _serialize(root)
 
 
@@ -2020,45 +2151,57 @@ def _inline_css(
     css: str, base: str, session: ContentSession,
     drafts: dict[str, bytes] | None = None, visited: frozenset[str] = frozenset(),
     read_bytes: Callable[[str], bytes] | None = None,
+    *, declarations: bool = False,
 ) -> str:
     drafts = drafts or {}
     read_bytes = read_bytes or session._bytes
-    if base in visited:
+    if base in visited or len(visited) >= 64:
         return ""
     visited = visited | {base}
+    url_bytes = 0
 
-    def import_css(match: re.Match[str]) -> str:
-        href = match.group(2) or match.group(4)
+    def resource(href: str) -> dict[str, object] | None:
+        target = resolve_epub_href(posixpath.dirname(base), href)
+        return next((file for file in session.files if decode_epub_href(str(file["path"])) == decode_epub_href(target)), None)
+
+    def import_css(rule) -> str:
+        tokens = [token for token in rule.prelude if token.type not in {"whitespace", "comment"}]
+        if not tokens:
+            return ""
+        first = tokens.pop(0)
+        href = first.value if first.type in {"string", "url"} else ""
+        if first.type == "function" and first.lower_name == "url":
+            args = [token for token in first.arguments if token.type not in {"whitespace", "comment"}]
+            href = args[0].value if len(args) == 1 and args[0].type == "string" else ""
         if not href or urlsplit(href).scheme or href.startswith("//"):
             return ""
-        path = resolve_epub_href(posixpath.dirname(base), href)
-        item = next((file for file in session.files if file["path"] == path), None)
+        item = resource(href)
         if not item or item["media_type"] != "text/css":
             return ""
-        if len(read_bytes(path)) > MAX_TEXT_BYTES:
+        path = str(item["path"])
+        if path in visited or len(read_bytes(path)) > MAX_TEXT_BYTES:
             return ""
         imported = _inline_css(_decode(read_bytes(path))[0], path, session, drafts, visited, read_bytes)
-        media = match.group(5).strip()
-        return f"@media {media} {{{imported}}}" if media and not media.startswith(("layer", "supports")) else imported
+        # Separate sheets retain import ordering, namespace scope and cascade layers.
+        encoded = base64.b64encode(imported.encode("utf-8")).decode("ascii")
+        if len(encoded) > MAX_PREVIEW_BYTES:
+            raise ValueError("Expanded preview CSS exceeds the 48 MB limit.")
+        conditions = " ".join(token.serialize() for token in tokens)
+        return f'@import url("data:text/css;base64,{encoded}") {conditions};'
 
-    css = re.sub(
-        r"@import\s+(?:url\(\s*(['\"]?)(.*?)\1\s*\)|(['\"])(.*?)\3)\s*([^;]*);",
-        import_css, css, flags=re.I,
-    )
-
-    def replace(match: re.Match[str]) -> str:
-        raw = match.group(2).strip()
+    def data_url(raw: str) -> str:
+        nonlocal url_bytes
         if (
             not raw
             or raw.startswith(("data:", "#"))
             or urlsplit(raw).scheme
             or raw.startswith("//")
         ):
-            return "url()" if urlsplit(raw).scheme != "data" and not raw.startswith("#") else match.group(0)
-        path = resolve_epub_href(posixpath.dirname(base), raw)
-        item = next((file for file in session.files if file["path"] == path), None)
+            return raw if raw.startswith(("data:", "#")) else ""
+        item = resource(raw)
         if not item:
-            return "url()"
+            return ""
+        path = str(item["path"])
         data = read_bytes(path)
         media = (
             str(item["media_type"])
@@ -2071,9 +2214,63 @@ def _inline_css(
         }:
             media = mimetypes.guess_type(path)[0] or media
             data = _preview_font_bytes(session, path, data)
-        return f"url(data:{media};base64,{base64.b64encode(data).decode('ascii')})"
+        fragment = "#" + raw.partition("#")[2] if "#" in raw else ""
+        url_bytes += 4 * ((len(data) + 2) // 3) + len(fragment) + len(media) + 16
+        if url_bytes > MAX_PREVIEW_BYTES:
+            raise ValueError("Expanded preview CSS exceeds the 48 MB limit.")
+        return f"data:{media};base64,{base64.b64encode(data).decode('ascii')}{fragment}"
 
-    return re.sub(r"url\(\s*(['\"]?)(.*?)\1\s*\)", replace, css, flags=re.I)
+    def urls(tokens) -> None:
+        for token in tokens:
+            if token.type == "url":
+                token.value = data_url(token.value)
+                token.representation = 'url("' + token.value.replace('"', '\\"') + '")'
+            elif token.type == "function":
+                if token.lower_name == "url":
+                    args = [arg for arg in token.arguments if arg.type not in {"whitespace", "comment"}]
+                    raw = args[0].value if len(args) == 1 and args[0].type == "string" else ""
+                    token.arguments = tinycss2.parse_component_value_list(json.dumps(data_url(raw)))
+                else:
+                    urls(token.arguments)
+            elif hasattr(token, "content") and token.content is not None:
+                urls(token.content)
+
+    aliases = {"-epub-writing-mode": "writing-mode", "-epub-text-orientation": "text-orientation",
+               "-epub-text-combine-upright": "text-combine-upright", "-epub-ruby-position": "ruby-position",
+               "-epub-text-combine": "text-combine-upright"}
+
+    def rules(nodes) -> str:
+        result: list[str] = []
+        size = 0
+        for node in nodes:
+            if node.type == "error":
+                continue
+            if node.type == "at-rule" and node.lower_at_keyword == "import":
+                imported = import_css(node)
+                size += len(imported)
+                if size > MAX_PREVIEW_BYTES:
+                    raise ValueError("Expanded preview CSS exceeds the 48 MB limit.")
+                result.append(imported)
+                continue
+            if node.type in {"qualified-rule", "at-rule"} and node.content is not None:
+                node.content = tinycss2.parse_component_value_list(rules(tinycss2.parse_blocks_contents(node.content)))
+            if node.type == "declaration":
+                urls(node.value)
+                result.append(node.serialize() + ";")
+                if node.lower_name in aliases:
+                    alias = copy.copy(node)
+                    alias.name = alias.lower_name = aliases[node.lower_name]
+                    if node.lower_name == "-epub-text-combine" and tinycss2.serialize(node.value).strip() == "horizontal":
+                        alias.value = tinycss2.parse_component_value_list("all")
+                    result.append(alias.serialize() + ";")
+            else:
+                result.append(node.serialize())
+            size += len(result[-1])
+            if size > MAX_PREVIEW_BYTES:
+                raise ValueError("Expanded preview CSS exceeds the 48 MB limit.")
+        return "".join(result)
+
+    return rules(tinycss2.parse_blocks_contents(css) if declarations else tinycss2.parse_stylesheet(css))
 
 
 def _preview_font_bytes(session: ContentSession, path: str, data: bytes) -> bytes:

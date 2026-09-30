@@ -27,7 +27,7 @@ APP_DIR = DIST_DIR / "Transoria"
 # Packages whose submodules PyInstaller's static analyzer misses
 # (lazy/runtime imports). Without --collect-submodules they fail at
 # first runtime use with ModuleNotFoundError.
-SUBMODULE_PACKAGES = ("json_repair", "chardet", "lxml", "httpx")
+SUBMODULE_PACKAGES = ("json_repair", "chardet", "lxml", "html5lib", "httpx")
 
 # Verified before PyInstaller so a missing pip dep fails fast.
 REQUIRED_RUNTIME_IMPORTS = (

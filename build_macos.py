@@ -144,6 +144,8 @@ def main() -> None:
         "chardet",
         "--collect-submodules",
         "lxml",
+        "--collect-submodules",
+        "html5lib",
     ]
     for module in EXCLUDED_MODULES:
         cmd.extend(["--exclude-module", module])

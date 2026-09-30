@@ -23,7 +23,7 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
       if (event.source !== frame.current?.contentWindow || event.data?.token !== token.current || event.data?.type !== "epub-preview") return;
       const data = event.data;
       if (data.event === "ready") { ready.current = true; send({ event: "configure", ...config.current }); }
-      if (data.event === "location" && Number.isFinite(data.page) && Number.isFinite(data.pages) && Number.isFinite(data.scroll)) callbacks.current.onLocation?.({ page: data.page, pages: data.pages, scroll: data.scroll });
+      if (data.event === "location" && Number.isFinite(data.page) && Number.isFinite(data.pages) && Number.isFinite(data.scroll)) callbacks.current.onLocation?.({ page: data.page, pages: data.pages, scroll: data.scroll, scrollX: Number.isFinite(data.scrollX) ? data.scrollX : 0 });
       if (data.event === "inspect" && Number.isFinite(data.line) && data.styles && typeof data.styles === "object") callbacks.current.onInspect?.(data.line, data.styles);
       if (data.event === "link" && typeof data.target === "string") callbacks.current.onLink?.(data.target);
     };

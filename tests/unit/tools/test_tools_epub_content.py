@@ -53,6 +53,277 @@ def _rewrite_book(path: Path, changes: dict[str, bytes | str]) -> None:
             book.writestr(name, data)
 
 
+def test_grouped_navigation_retains_hierarchy_attributes_and_landmarks(tmp_path: Path):
+    source = tmp_path / "groups.epub"
+    _book(source)
+    nav = '''<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+      <nav epub:type="toc list"><ol class="contents"><li id="part"><span>Part I</span><ol>
+      <li id="chapter" class="chapter"><a href="Text/one.xhtml" class="entry"><b>One</b></a></li>
+      <li><a href="Text/two.xhtml">Two</a></li></ol></li></ol></nav>
+      <nav epub:type="landmarks"><ol><li><a href="Text/one.xhtml">Start</a></li></ol></nav></body></html>'''
+    _rewrite_book(source, {"OEBPS/nav.xhtml": nav})
+    session = ContentSession.open(str(source))
+    assert [entry["depth"] for entry in session.toc] == [0, 1, 1]
+    assert session.toc[0]["href"] == ""
+    entries = [session.toc[0], session.toc[2], session.toc[1]]
+    session.set_toc(entries)
+    root = etree.fromstring(session._bytes(session.nav_path))
+    assert root.xpath("//*[local-name()='li' and @id='chapter' and @class='chapter']/*[@class='entry']/*[local-name()='b']/text()") == ["One"]
+    assert root.xpath("//*[local-name()='li' and @id='part']/*[local-name()='span']/text()") == ["Part I"]
+    assert "Start" in session._bytes(session.nav_path).decode()
+    output = tmp_path / "saved.epub"
+    session.save(str(output), False)
+    assert ContentSession.open(str(output)).toc == entries
+    assert not ContentSession.open(str(source)).dirty
+
+
+@pytest.mark.parametrize("valid_ncx", [True, False])
+def test_malformed_navigation_is_readable_without_rewriting_source(tmp_path: Path, valid_ncx: bool):
+    source = tmp_path / "malformed.epub"
+    _book(source)
+    changes = {"OEBPS/nav.xhtml": '<html><body><nav epub:type="toc"><ol><li><a href="Text/one.xhtml">Recovered</a></ol></nav>'}
+    if not valid_ncx:
+        changes["OEBPS/toc.ncx"] = "<ncx><navMap>"
+    _rewrite_book(source, changes)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    assert session.toc[0]["label"] == ("One" if valid_ncx else "Recovered")
+    assert session.preview(session.spine[0])
+    assert not session.changes and not session.dirty
+    assert source.read_bytes() == original
+    output = tmp_path / "preserved.epub"
+    session.save(str(output), False)
+    with zipfile.ZipFile(source) as before, zipfile.ZipFile(output) as after:
+        assert {name: before.read(name) for name in before.namelist()} == {name: after.read(name) for name in after.namelist()}
+
+
+def test_ncx_without_namespace_can_be_read(tmp_path: Path):
+    source = tmp_path / "namespace.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as book:
+        opf = book.read("OEBPS/book.opf").decode().replace(' properties="nav"', "")
+        ncx = book.read("OEBPS/toc.ncx").decode().replace(' xmlns="http://www.daisy.org/z3986/2005/ncx/"', "")
+    _rewrite_book(source, {"OEBPS/book.opf": opf, "OEBPS/toc.ncx": ncx})
+    assert len(ContentSession.open(str(source)).toc) == 2
+
+
+def test_html5_recovery_preserves_svg_casing_entities_and_table_content(tmp_path: Path):
+    source = tmp_path / "html5.epub"
+    _book(source)
+    content = '<html><body><table><p>Outside table&nbsp;中文</p><tr><td>Cell</table><svg viewBox="0 0 100 200"><image href="../Images/pixel.png"/></svg><ruby>字<rt>zi</ruby><p>Last paragraph'
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": content})
+    session = ContentSession.open(str(source))
+    preview = session.preview(session.spine[0])
+    assert 'viewBox="0 0 100 200"' in preview
+    assert 'Outside table\u00a0中文' in preview and '<tbody' in preview
+    assert preview.index('Outside table') < preview.index('<table')
+    assert '<ruby' in preview and 'Last paragraph' in preview
+    assert session._bytes(session.spine[0]) == content.encode()
+
+
+def test_html5_source_mapping_survives_table_reparenting_and_ignores_forged_lines(tmp_path: Path):
+    source = tmp_path / "lines.epub"
+    _book(source)
+    content = '<html><body>\n<table>\n<p id="moved" data-transoria-line="999">Outside table</p>\n<tr><td>Cell</table>\n<p id="last">Last paragraph'
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": content})
+    session = ContentSession.open(str(source))
+    root = epub_content_module.lxml_html.fromstring(session.preview(session.spine[0]))
+    assert root.xpath('//*[@id="moved"]/@data-transoria-line') == ["3"]
+    assert root.xpath('//*[@id="last"]/@data-transoria-line') == ["5"]
+    assert not root.xpath('//*[@*[starts-with(name(), "data-transoria-source-")]]')
+
+
+def test_preview_preserves_conditional_imports_and_link_media(tmp_path: Path):
+    source = tmp_path / "styles.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.add_resource("OEBPS/Styles/import.css", b"p{display:grid;color:blue}", "text/css")
+    session.write("OEBPS/Styles/book.css", '@import "import.css" layer(book) supports(display:grid) screen and (min-width:1px); @media print{p{display:none}}')
+    session.write(session.spine[0], '<html xmlns="http://www.w3.org/1999/xhtml"><head><link href="../Styles/book.css" rel="stylesheet" media="screen"/></head><body><p>Text</p></body></html>')
+    original = session.changes.copy()
+    preview = session.preview(session.spine[0])
+    assert ') layer(book) supports(display:grid) screen and (min-width:1px);' in preview
+    imported = base64.b64decode(preview.partition('data:text/css;base64,')[2].partition('"')[0]).decode()
+    assert 'p{display:grid;color:blue;}' in imported and '@media print' in preview
+    assert '<style media="screen">' in preview
+    assert session.changes == original
+
+
+@pytest.mark.parametrize(("query", "replacement", "regular_expression", "count"), [
+    (r"(?m)^Chapter (\d+)$", r"Section \1", True, 2),
+    (r"(?<=A )🌸", "Flower", True, 1),
+    ("e\u0301", "accent", False, 1),
+    (r"\bAlpha\b", "Beta", True, 2),
+    (r"(?s)Chapter 1.*Chapter 2", "Span", True, 1),
+    ("x.y", r"\1$", False, 1),
+    (r"(?P<word>Alpha)", r"[\g<word>]", True, 2),
+])
+def test_search_preview_single_batch_and_undo_agree_across_unicode_files(tmp_path: Path, query: str, replacement: str, regular_expression: bool, count: int):
+    source = tmp_path / "matrix.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    content = "Chapter 1\nA 🌸 α e\u0301.\nChapter 2\nAlpha ALPHA\nx.y x+y\\path\n"
+    paths = ["OEBPS/Text/a.txt", "OEBPS/Text/b.txt"]
+    for path in paths:
+        session.add_resource(path, content.encode(), "text/plain")
+    baseline = session._snapshot()
+    found = session.search(query, paths, regular_expression=regular_expression)
+    assert len(found) == 2 * count
+    first = found[0]
+    session.replace_match(first["path"], first["start"], first["end"], query, replacement, regular_expression=regular_expression, expected_fingerprint=first["fingerprint"])
+    assert session._bytes(paths[1]) == content.encode()
+    session.history("undo")
+    assert session._snapshot() == baseline
+    proposal = session.preview_replace(query, replacement, paths, regular_expression=regular_expression)
+    assert proposal["replacements"] == len(found)
+    assert session._snapshot() == baseline
+    result = session.replace(query, replacement, paths, expected_count=len(found), regular_expression=regular_expression, expected_fingerprints=proposal["fingerprints"])
+    assert result == {"replacements": 2 * count, "files_changed": 2}
+    updated = session._snapshot()
+    session.history("undo")
+    assert session._snapshot() == baseline
+    session.history("redo")
+    assert session._snapshot() == updated and source.read_bytes() == original
+
+
+@pytest.mark.parametrize("query", [r"^", r"(?=Hello)", r".*?", r"\b"])
+def test_zero_width_patterns_reject_all_operations_without_mutation(tmp_path: Path, query: str):
+    source = tmp_path / "empty-match.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    baseline = session._snapshot()
+    for operation in (
+        lambda: session.search(query, session.spine, regular_expression=True),
+        lambda: session.preview_replace(query, "new", session.spine, regular_expression=True),
+        lambda: session.replace(query, "new", session.spine, regular_expression=True),
+    ):
+        with pytest.raises(ValueError, match="Zero-width"):
+            operation()
+        assert session._snapshot() == baseline and not session.dirty
+
+
+def test_preview_css_token_urls_strings_nested_rules_and_vertical_aliases(tmp_path: Path):
+    source = tmp_path / "tokens.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.add_resource("OEBPS/Images/odd(name).png", b"odd-image", "image/png")
+    css = r'''/* url(missing.png) */ p::before{content:"url(missing.png)"}
+    @layer book{@supports(display:grid){p{display:grid;background:url("../Images/odd(name).png")}}}
+    body{-epub-writing-mode:vertical-rl;-epub-text-orientation:upright}
+    p{mask:url("../Images/pixel.png#symbol");--data:url("data:image/svg+xml,%3Csvg%3E(x)%3C/svg%3E")}
+    @import "book.css";
+    '''
+    session.write("OEBPS/Styles/book.css", css)
+    preview = session.preview(session.spine[0])
+    assert 'content:"url(missing.png)"' in preview
+    assert '/* url(missing.png) */' in preview
+    assert "b2RkLWltYWdl" in preview
+    assert "#symbol" in preview
+    assert "(x)%3C/svg%3E" in preview
+    assert "writing-mode:vertical-rl" in preview and "text-orientation:upright" in preview
+    assert "@layer book" in preview and "@supports(display:grid)" in preview
+    assert session._bytes("OEBPS/Styles/book.css") == css.encode()
+
+
+def test_repeated_css_image_expansion_is_bounded_and_read_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    source = tmp_path / "expansion.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    monkeypatch.setattr(epub_content_module, "MAX_PREVIEW_BYTES", 64)
+    with pytest.raises(ValueError, match="Expanded preview CSS"):
+        epub_content_module._inline_css('p{background:url(../Images/pixel.png);mask:url(../Images/pixel.png)}', "OEBPS/Styles/book.css", session)
+    assert not session.dirty
+
+
+@pytest.mark.parametrize("import_rule", ['url("import\\20 file.css")', '"import file.css"'])
+def test_css_import_escaped_space_and_anonymous_layer(tmp_path: Path, import_rule: str):
+    source = tmp_path / "import.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.add_resource("OEBPS/Styles/import file.css", b'p{color:green}', "text/css")
+    css = f'@import {import_rule} layer supports(selector(:has(*))) screen;'
+    preview = epub_content_module._inline_css(css, "OEBPS/Styles/book.css", session)
+    assert ') layer supports(selector(:has(*))) screen;' in preview
+    imported = base64.b64decode(preview.partition('data:text/css;base64,')[2].partition('"')[0]).decode()
+    assert 'p{color:green;}' in imported
+
+
+def test_imported_css_namespace_stays_isolated_with_original_conditions(tmp_path: Path):
+    source = tmp_path / "namespaced-style.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.add_resource("OEBPS/Styles/namespaced.css", b'@namespace x url(http://www.w3.org/1999/xhtml); x|p{color:green;background:url(../Images/pixel.png)}', "text/css")
+    session.add_resource("OEBPS/Styles/first.css", b'p{color:blue}', "text/css")
+    session.write("OEBPS/Styles/book.css", '@import "first.css"; @import "namespaced.css" layer(book) supports(display:grid) screen; p{color:red}')
+    preview = session.preview(session.spine[0])
+    imports = preview.split('data:text/css;base64,')
+    assert len(imports) == 3
+    assert 'p{color:blue;}' in base64.b64decode(imports[1].partition('"')[0]).decode()
+    encoded = imports[2].partition('"')[0]
+    css = base64.b64decode(encoded).decode()
+    assert '@namespace x url(http://www.w3.org/1999/xhtml)' in css
+    assert 'x|p{color:green;' in css and 'data:image/png;base64,' in css
+    assert ') layer(book) supports(display:grid) screen;' in preview
+    assert "style-src &#x27;unsafe-inline&#x27; data:" in preview
+
+
+@pytest.mark.parametrize("attributes", ['rel="alternate stylesheet" title="Night"', 'rel="stylesheet" disabled="disabled"', 'rel="preload" as="style"'])
+def test_inactive_or_non_stylesheet_links_are_not_activated(tmp_path: Path, attributes: str):
+    source = tmp_path / "inactive.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.write(session.spine[0], f'<html xmlns="http://www.w3.org/1999/xhtml"><head><link href="../Styles/book.css" {attributes}/></head><body><p>Text</p></body></html>')
+    preview = session.preview(session.spine[0])
+    assert 'color: red' not in preview
+    assert attributes in session.read(session.spine[0])["content"]
+
+
+def test_directory_rename_retains_group_labels_and_ncx_ids_with_undo(tmp_path: Path):
+    source = tmp_path / "directory.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    entries = [{"label": "Part", "href": "", "depth": 0}, {**session.toc[0], "label": "Edited", "depth": 1}, {**session.toc[1], "depth": 1}]
+    session.set_toc(entries)
+    assert etree.fromstring(session._bytes(session.ncx_path)).xpath("//*[local-name()='navPoint' and @id='one']/*[local-name()='navLabel']/*[local-name()='text']/text()") == ["Edited"]
+    before = session._snapshot()
+    session.rename_resource(session.spine[0], "OEBPS/Text/renamed.xhtml")
+    assert session.toc[0]["href"] == "" and session.toc[1]["label"] == "Edited"
+    assert session.toc[1]["href"] == "OEBPS/Text/renamed.xhtml"
+    session.history("undo")
+    assert session._snapshot() == before
+    page = session.generate_toc_page("Contents")
+    assert '<span>Part</span>' in session._bytes(page).decode()
+
+
+@pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16", "utf-32"])
+def test_bom_encoding_preview_and_edit_preserve_text(tmp_path: Path, encoding: str):
+    source = tmp_path / "bom.epub"
+    _book(source)
+    content = '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>中文 Korean</p></body></html>'
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": content.encode(encoding)})
+    session = ContentSession.open(str(source))
+    assert "中文" in session.preview(session.spine[0])
+    session.write(session.spine[0], content.replace("Korean", "changed"))
+    assert "中文 changed" in session._bytes(session.spine[0]).decode(encoding)
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+def test_prefixed_xhtml_and_svg_preview_keeps_source_unchanged(tmp_path: Path, malformed: bool):
+    source = tmp_path / "prefix.epub"
+    _book(source)
+    content = '<h:html xmlns:h="http://www.w3.org/1999/xhtml"><h:body><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 200"><image xlink:href="../Images/pixel.png" width="100" height="200"/></svg><h:p>Text</h:p></h:body></h:html>'
+    if malformed:
+        content = content.replace('</h:p>', '')
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": content})
+    session = ContentSession.open(str(source))
+    preview = session.preview(session.spine[0])
+    assert "data:image/png;base64," in preview
+    assert "<h:" not in preview and "<body" in preview
+    assert session._bytes(session.spine[0]) == content.encode()
+    assert not session.dirty
+
+
 def test_move_image_updates_every_inline_and_embedded_css_reference(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)
@@ -1787,9 +2058,10 @@ def test_preview_local_css_imports_inline_styles_and_obfuscated_font(tmp_path: P
     })
     session = ContentSession.open(str(source))
     preview = session.preview(session.spine[0])
-    assert "@font-face" in preview and "font-family: TestFont" in preview
-    assert "@media screen" in preview
-    assert f"data:font/otf;base64,{base64.b64encode(font).decode('ascii')}" in preview
+    imported = base64.b64decode(preview.partition('data:text/css;base64,')[2].partition('"')[0]).decode()
+    assert "@font-face" in imported and "font-family: TestFont" in preview
+    assert ') screen;' in preview
+    assert f"data:font/otf;base64,{base64.b64encode(font).decode('ascii')}" in imported
     assert "data:image/png;base64," in preview
-    assert "@import" not in preview
+    assert "@import" not in imported
     assert obfuscated == session._bytes("OEBPS/Fonts/book.otf")

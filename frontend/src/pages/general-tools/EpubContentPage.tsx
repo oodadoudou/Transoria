@@ -15,7 +15,7 @@ import { clearEditorDraft, clearStagedEditorDraft, readEditorDraft, stageEditorD
 import styles from "./EpubContentPage.module.css";
 import { EpubPreviewFrame } from "./EpubPreviewFrame";
 import { EpubEditorTools } from "./EpubEditorTools";
-import type { ReadingLocation } from "./epubPreview";
+import { previewAtZoom, type ReadingLocation } from "./epubPreview";
 
 type SideView = "files" | "toc" | "book";
 type Scope = "current" | "text" | "styles" | "all" | "selection";
@@ -86,17 +86,6 @@ function fileTree(files: EpubContentFile[], spine: string[]): FileNode[] {
 
 function editedPath(path: string): string {
   return path.replace(/\.epub$/i, "_edited.epub");
-}
-
-function previewAtZoom(markup: string, zoom: number, wrap: boolean): string {
-  const scaled = markup
-    .replace("max-width:100%!important;", `max-width:${zoom}%!important;`)
-    .replace("max-height:calc(100vh - 24px)!important;", `max-height:calc(${zoom}vh - 24px)!important;`);
-  if (!wrap) return scaled;
-  const reflow = "<style>html,body{min-width:0!important;overflow-x:hidden!important}" +
-    "body{white-space:normal!important}body :is(p,li,blockquote,div,td,th){white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important}" +
-    "pre,code{white-space:pre-wrap!important;overflow-wrap:anywhere!important}</style>";
-  return scaled.replace("</style>", `</style>${reflow}`);
 }
 
 function editorOffset(content: string, codePointOffset: number): number {
@@ -171,7 +160,27 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [loadedContent, setLoadedContent] = useState("");
   const [content, setContent] = useState("");
   const [preview, setPreview] = useState("");
-  const [tocDraft, setTocDraft] = useState<EpubTocEntry[]>([]);
+  const [tocDraft, replaceTocDraft] = useState<EpubTocEntry[]>([]);
+  const tocUndo = useRef<EpubTocEntry[][]>([]);
+  const tocRedo = useRef<EpubTocEntry[][]>([]);
+  const lastTocEdit = useRef({ key: "", time: 0 });
+  const [tocHistory, setTocHistory] = useState({ undo: 0, redo: 0 });
+  const setTocDraft = (entries: EpubTocEntry[]) => {
+    tocUndo.current = []; tocRedo.current = [];
+    lastTocEdit.current = { key: "", time: 0 };
+    setTocHistory({ undo: 0, redo: 0 });
+    replaceTocDraft(entries);
+  };
+  const editTocDraft = (update: (entries: EpubTocEntry[]) => EpubTocEntry[], key = "") => {
+    const next = update(tocDraft);
+    if (JSON.stringify(next) === JSON.stringify(tocDraft)) return;
+    const time = Date.now();
+    if (!key || lastTocEdit.current.key !== key || time - lastTocEdit.current.time > 1000) tocUndo.current = [...tocUndo.current.slice(-99), tocDraft];
+    lastTocEdit.current = { key, time };
+    tocRedo.current = [];
+    setTocHistory({ undo: tocUndo.current.length, redo: 0 });
+    replaceTocDraft(next);
+  };
   const [tocPickerIndex, setTocPickerIndex] = useState<number | null>(null);
   const [tocPickerPath, setTocPickerPath] = useState("");
   const [tocPickerAnchor, setTocPickerAnchor] = useState("");
@@ -343,10 +352,11 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     setContent(next.content);
     setOpenPaths((current) => [...current.filter((item) => summary?.files.some((file) => file.path === item && file.editable)), ...(current.includes(path) ? [] : [path])]);
     const file = summary?.files.find((item) => item.path === path);
-    if ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html") && path !== summary?.nav_path) {
-      setPreviewPath(path);
+    const target = file?.media_type === "text/css" ? (previewPath || summary?.spine.find((item) => item !== summary.nav_path) || "") : path;
+    if (target && ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html") && path !== summary?.nav_path || file?.media_type === "text/css")) {
+      setPreviewPath(target);
       try {
-        setPreview((await epubContentBridge.preview(sid, path)).html);
+        setPreview((await epubContentBridge.preview(sid, target)).html);
         setPreviewError("");
       } catch (cause) {
         setPreview("");
@@ -357,7 +367,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setPreview("");
       setPreviewError("");
     }
-  }, [session, selectedPath]);
+  }, [session, selectedPath, previewPath]);
 
   const commitSource = useCallback(async () => {
     if (!session || !selectedPath || content === loadedContent) return session;
@@ -367,6 +377,17 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     setLoadedContent(content);
     return next;
   }, [session, selectedPath, content, loadedContent, tocDirty]);
+
+  const commitDirectory = async () => {
+    await commitSource();
+    if (session && tocDirty) {
+      const next = await epubContentBridge.setToc(session.session_id, tocDraft);
+      setSession(next);
+      setTocDraft(next.toc);
+      return next;
+    }
+    return session;
+  };
 
   useEffect(() => {
     if (!session || !selectedPath || !sourceDirty || !previewPath || (!isHtml && currentFile?.media_type !== "text/css")) return;
@@ -384,7 +405,11 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   useEffect(() => {
     if (!session || sideView !== "book") return;
     const path = session.spine[bookIndex];
-    if (!path) { setBookHtml(""); return; }
+    if (!path) {
+      setBookHtml(""); setBookError(""); setBookLoading(false);
+      if (bookIndex > 0) setBookIndex(Math.max(0, session.spine.length - 1));
+      return;
+    }
     let active = true;
     setBookLoading(true);
     setBookError("");
@@ -397,7 +422,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         .finally(() => { if (active) setBookLoading(false); });
     }, sourceDirty ? 500 : 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [session?.session_id, session?.spine, sideView, bookIndex, sourceDirty, selectedPath, content]);
+  }, [session, sideView, bookIndex, sourceDirty, selectedPath, content]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -571,7 +596,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const applyResourceAction = async () => {
     if (!session || !resourceAction) return;
     await run(async () => {
-      await commitSource();
+      await commitDirectory();
       let next: EpubContentSession | null = null;
       if (resourceAction === "add") next = await epubContentBridge.addResource(session.session_id, resourceInput, resourceTarget, resourceInSpine);
       if (resourceAction === "replace") next = await epubContentBridge.replaceResource(session.session_id, resourcePath, resourceInput);
@@ -649,6 +674,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const splitChapter = async () => {
     if (!session || !selectedPath) return;
     await run(async () => {
+      await commitDirectory();
       const next = currentFile?.media_type === "text/css"
         ? await epubContentBridge.splitStyle(session.session_id, selectedPath, splitTarget.trim(), splitIndex)
         : await epubContentBridge.splitChapter(session.session_id, selectedPath, splitTarget.trim(), splitIndex);
@@ -867,13 +893,25 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
 
   const history = async (direction: "undo" | "redo") => {
     if (!session) return;
+    if (sideView === "toc") {
+      const from = direction === "undo" ? tocUndo.current : tocRedo.current;
+      const to = direction === "undo" ? tocRedo.current : tocUndo.current;
+      const previous = from.pop();
+      if (previous) {
+        lastTocEdit.current = { key: "", time: 0 };
+        to.push(tocDraft);
+        replaceTocDraft(previous);
+        setTocHistory({ undo: tocUndo.current.length, redo: tocRedo.current.length });
+        return;
+      }
+    }
     const editor = sourceEditor.current;
     if (sideView !== "book" && editor && (direction === "undo" ? undoDepth(editor.state) : redoDepth(editor.state)) > 0) {
       (direction === "undo" ? undo : redo)(editor);
       return;
     }
     await run(async () => {
-      await commitSource();
+      await commitDirectory();
       const next = await epubContentBridge.history(session.session_id, direction);
       setSession(next);
       setTocDraft(next.toc);
@@ -1051,12 +1089,12 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   const updateEntry = (index: number, patch: Partial<EpubTocEntry>) => {
-    setTocDraft((current) => current.map((entry, position) => position === index ? { ...entry, ...patch } : entry));
+    editTocDraft((current) => current.map((entry, position) => position === index ? { ...entry, ...patch } : entry), `${index}:${Object.keys(patch).join(",")}`);
   };
 
   const addTocEntry = (index: number | null, child = false) => {
     if (!session || tocDraft.length >= 5000) return;
-    setTocDraft((current) => {
+    editTocDraft((current) => {
       const insertion = index === null ? current.length : child ? index + 1 : subtreeEnd(current, index);
       const depth = index === null ? 0 : current[index].depth + Number(child);
       const href = index === null ? selectedPath || session.spine[0] || "" : current[index].href;
@@ -1070,7 +1108,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     if (sibling < 0) return;
     const movedIndex = shift < 0 ? sibling : subtreeEnd(tocDraft, sibling) - (subtreeEnd(tocDraft, index) - index);
     setTocControlsIndex(movedIndex);
-    setTocDraft((current) => {
+    editTocDraft((current) => {
       const end = subtreeEnd(current, index);
       if (shift < 0) return [...current.slice(0, sibling), ...current.slice(index, end), ...current.slice(sibling, index), ...current.slice(end)];
       const siblingEnd = subtreeEnd(current, sibling);
@@ -1079,12 +1117,12 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   const shiftDepth = (index: number, amount: number) => {
-    setTocDraft((current) => current.map((entry, position) => position >= index && position < subtreeEnd(current, index) ? { ...entry, depth: entry.depth + amount } : entry));
+    editTocDraft((current) => current.map((entry, position) => position >= index && position < subtreeEnd(current, index) ? { ...entry, depth: entry.depth + amount } : entry));
   };
 
   const outdentEntry = (index: number) => {
     setTocControlsIndex(null);
-    setTocDraft((current) => {
+    editTocDraft((current) => {
       const depth = current[index].depth;
       if (depth === 0) return current;
       let parent = index - 1;
@@ -1101,7 +1139,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
 
   const removeEntry = (index: number) => {
     setTocControlsIndex(null);
-    setTocDraft((current) => [...current.slice(0, index), ...current.slice(subtreeEnd(current, index))]);
+    editTocDraft((current) => [...current.slice(0, index), ...current.slice(subtreeEnd(current, index))]);
   };
 
   const renderTree = (items: FileNode[], depth = 0): ReactNode => items.map((node) => {
@@ -1203,8 +1241,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       <div className={styles.toolbarActions}>
         <button type="button" title={t.tools} aria-label={t.tools} disabled={busy} onClick={() => setToolsOpen(true)}><Wrench size={18} /></button>
         <button type="button" title={t.find} aria-label={t.find} onClick={() => setSearchOpen(!searchOpen)}><Search size={18} /></button>
-        <button type="button" title={t.undo} aria-label={t.undo} disabled={busy || (!session?.can_undo && !(sideView !== "book" && localHistory.undo))} onClick={() => void history("undo")}><CornerUpLeft size={18} /></button>
-        <button type="button" title={t.redo} aria-label={t.redo} disabled={busy || (!(sideView !== "book" && localHistory.redo) && (!session?.can_redo || sourceDirty))} onClick={() => void history("redo")}><CornerUpRight size={18} /></button>
+        <button type="button" title={t.undo} aria-label={t.undo} disabled={busy || (!session?.can_undo && !(sideView !== "book" && localHistory.undo) && !(sideView === "toc" && tocHistory.undo))} onClick={() => void history("undo")}><CornerUpLeft size={18} /></button>
+        <button type="button" title={t.redo} aria-label={t.redo} disabled={busy || (!(sideView === "toc" && tocHistory.redo) && !(sideView !== "book" && localHistory.redo) && (!session?.can_redo || sourceDirty))} onClick={() => void history("redo")}><CornerUpRight size={18} /></button>
         <button type="button" disabled={!session || busy} onClick={() => void stageSave()}><Save size={17} />{t.stageSave}</button>
         <button type="button" className={styles.primary} disabled={!session || busy} onClick={() => { setCloseAfterSave(false); setSaveOpen(true); }}><Download size={17} />{t.save}{dirty ? " *" : ""}</button>
         <button type="button" title={t.close} aria-label={t.close} onClick={requestClose}><X size={18} /></button>

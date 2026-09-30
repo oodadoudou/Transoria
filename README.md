@@ -34,6 +34,8 @@ Transoria 是一个本地小说翻译桌面应用。导入 EPUB / TXT，完成�
 - **EPUB 内容编辑**：多文件 XHTML/CSS 标签、章节与样式拆分合并、图片插入、资源管理、紧凑目录和拖动阅读顺序；按标题或分层正则生成目录。搜索支持选区和文件范围、正则与捕获组替换、跨文件前后跳转，以及带过期检查的批量替换预览。源码与预览可换行、缩放，全书可连续或分页阅读，支持内嵌样式、字体、书内链接和元素样式查看。
 - **书籍维护与保存**：本地草稿、命名检查点、撤销和修改对比，正式保存可另存或确认覆盖。支持拼写与排版报告、保守 CSS 清理、图片优化、字体子集化与嵌入、封面 metadata 和 EPUB 3 升级。拼写可使用本地词表或 Hunspell 词典；EPUBCheck 需要本机 Java 与检查器 JAR，其他书籍格式导入需要已安装的 `ebook-convert`，这些引擎不会自动下载。
 
+编辑器支持竖排左右翻页，保留本地 CSS 导入条件、命名空间和分组目录。异常 XHTML 可通过 HTML5 规则只读预览；打开和预览不会自动修复原文件，修改后的 XML 仍需通过保存校验。复杂固定版式与混合书写方向的分页不保证完全还原。
+
 ### 推荐流程
 
 1. 用「术语提取」生成术语表和参考文本。
@@ -98,6 +100,8 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 - **EPUB / TXT tools**: batch replacement, compression, merging, conversion, metadata editing including book descriptions, and EPUB repair.
 - **EPUB content editor**: multiple XHTML/CSS tabs, chapter and stylesheet split/merge, image insertion, resource management, compact TOC editing, drag-to-reorder reading order, and heading or layered-regex TOC generation. Search supports selection and file scopes, regex capture replacement, cross-file previous/next navigation, and stale-safe batch previews. Source and preview wrap and zoom; continuous or paged book previews retain local styles, fonts, internal links, and element-style inspection.
 - **Book maintenance and saving**: local drafts, named checkpoints, undo, and change comparison before save-as or confirmed overwrite. Tools include spelling/typography reports, conservative CSS cleanup, image optimization, font subsetting/embedding, cover metadata, and EPUB 3 upgrading. Spelling accepts a local word list or Hunspell dictionary. Optional EPUBCheck needs local Java and a checker JAR; other book-format imports need an installed `ebook-convert`. Neither engine is downloaded automatically.
+
+The editor supports leftward and rightward vertical paging while retaining local CSS import conditions, namespace scope, and grouped TOCs. Malformed XHTML uses a read-only HTML5 preview fallback; opening and previewing never repair the source automatically, and edited XML still requires save validation. Complex fixed-layout and mixed-writing-mode pagination are not guaranteed to reproduce the original layout.
 
 ### Recommended Workflow
 
