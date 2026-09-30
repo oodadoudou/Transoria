@@ -1158,33 +1158,6 @@ class ContentSession:
         self.removed.add(path)
         self.files = [entry for entry in self.files if entry["path"] != path]
 
-    def reorder_spine(self, paths: list[str]) -> None:
-        if len(paths) != len(self.spine) or set(paths) != set(self.spine):
-            raise ValueError(
-                "Reading order must contain every existing spine item exactly once."
-            )
-        if paths != self.spine:
-            self._record()
-            self.spine = paths.copy()
-
-    def set_spine(self, entries: list[dict[str, object]]) -> None:
-        available = {
-            str(item["path"]) for item in self.files
-            if item["media_type"] in {"application/xhtml+xml", "text/html"}
-        }
-        paths = [entry.get("path") for entry in entries]
-        if (
-            not paths or len(paths) != len(set(paths))
-            or not all(isinstance(path, str) and path in available for path in paths)
-            or not all(isinstance(entry.get("linear"), bool) for entry in entries)
-        ):
-            raise ValueError("Reading order needs unique XHTML/HTML resources and linear flags.")
-        linear = {str(entry["path"]): bool(entry["linear"]) for entry in entries}
-        if paths != self.spine or linear != self.spine_linear:
-            self._record()
-            self.spine = [str(path) for path in paths]
-            self.spine_linear = linear
-
     def copy_resources(self, paths: list[str]) -> dict[str, str]:
         if not paths or len(paths) != len(set(paths)):
             raise ValueError("Select unique resources to copy.")

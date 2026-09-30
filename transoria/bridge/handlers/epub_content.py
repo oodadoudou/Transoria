@@ -202,13 +202,6 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 )
                 store.persist(session_id)
                 return {"replaced_end": replaced_end, **session.info(session_id)}
-            elif action == "reorder_spine":
-                session.reorder_spine(_paths(payload))
-            elif action == "set_spine":
-                entries = payload.get("entries")
-                if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
-                    raise ValueError("entries must be a list of reading-order items.")
-                session.set_spine(entries)
             elif action == "set_toc":
                 session.set_toc(_entries(payload))
             elif action == "generate_toc":
@@ -286,7 +279,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {**result, **session.info(session_id)}
             else:
                 raise ValueError("Unknown EPUB content editor action.")
-            if action in {"write", "write_many", "split_style", "reorder_spine", "set_spine", "set_toc", "create_chapter", "split_chapter", "add_resource", "replace_resource", "delete_resource", "delete_resources", "rename_resources", "undo", "redo"}:
+            if action in {"write", "write_many", "split_style", "set_toc", "create_chapter", "split_chapter", "add_resource", "replace_resource", "delete_resource", "delete_resources", "rename_resources", "undo", "redo"}:
                 store.persist(session_id)
             return session.info(session_id)
         except (
@@ -328,8 +321,6 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         "preview_replace",
         "replace",
         "replace_match",
-        "reorder_spine",
-        "set_spine",
         "set_toc",
         "generate_toc",
         "preview_toc",

@@ -998,7 +998,7 @@ def test_optimization_rejects_changed_linear_flags(tmp_path: Path):
     _book(source)
     session = ContentSession.open(str(source))
     proposal = run_tool(session, "cleanup_css", {})
-    session.set_spine([{"path": path, "linear": False} for path in session.spine])
+    session.spine_linear = {path: False for path in session.spine}
     before = session._snapshot()
     with pytest.raises(ValueError, match="draft changed"):
         run_tool(session, "cleanup_css", {"apply": True, "fingerprint": proposal["fingerprint"]})
@@ -1009,7 +1009,7 @@ def test_diff_includes_spine_toc_and_binary_changes(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)
     session = ContentSession.open(str(source))
-    session.reorder_spine(list(reversed(session.spine)))
+    session.spine.reverse()
     session.set_toc([{**entry, "label": "Changed " + str(entry["label"])} for entry in session.toc])
     session.replace_resource("OEBPS/Images/pixel.png", b"different image")
     result = compare(session)
@@ -1386,14 +1386,14 @@ def test_editor_session_survives_backend_restart(tmp_path: Path):
         "epub_content.write",
         {"session_id": session_id, "path": path, "content": content.replace("Hello world", "Edited text")},
     )
-    router.call("epub_content.reorder_spine", {"session_id": session_id, "paths": list(reversed(opened["spine"]))})
+    copied = router.call("epub_content.copy_resources", {"session_id": session_id, "paths": [path]})
 
     restarted = BridgeRouter()
     register(restarted, cache_root=cache_root)
     restored = restarted.call("epub_content.info", {"session_id": session_id})
     assert restored["dirty"] is True
     assert restored["can_undo"] is True
-    assert restored["spine"] == list(reversed(opened["spine"]))
+    assert restored["spine"] == copied["spine"]
     assert "Edited text" in restarted.call("epub_content.read", {"session_id": session_id, "path": path})["content"]
     restarted.call("epub_content.undo", {"session_id": session_id})
     assert restarted.call("epub_content.info", {"session_id": session_id})["spine"] == opened["spine"]
@@ -1730,7 +1730,7 @@ def test_toc_spine_save_as_and_source_protection(tmp_path: Path):
     original = source.read_bytes()
     session = ContentSession.open(str(source))
     one, two = session.spine
-    session.reorder_spine([two, one])
+    session.spine = [two, one]
     session.set_toc(
         [
             {"label": "Second", "href": two, "depth": 0},
@@ -2464,19 +2464,21 @@ def test_spine_membership_and_linear_flag_preserve_resource_and_itemref(tmp_path
     session = ContentSession.open(str(source))
     one, two = session.spine
     assert not session.spine_linear[two]
-    session.reorder_spine([two, one])
+    session.spine = [two, one]
     session.save(str(output), overwrite=False)
     with zipfile.ZipFile(output) as archive:
         spine = etree.fromstring(archive.read("OEBPS/book.opf")).find(".//{http://www.idpf.org/2007/opf}spine")
         assert [item.get("idref") for item in spine] == ["two", "one"]
         assert spine[0].get("linear") == "no" and spine[0].get("id") == "vendor-ref"
-    session.set_spine([{"path": one, "linear": True}])
+    session.spine = [one]
+    session.spine_linear = {one: True}
     session.save(str(output), overwrite=True)
     reopened = ContentSession.open(str(output))
     assert reopened.spine == [one]
     assert two in {item["path"] for item in reopened.files}
     assert reopened.toc[-1]["href"] == two
-    reopened.set_spine([{"path": one, "linear": True}, {"path": two, "linear": False}])
+    reopened.spine = [one, two]
+    reopened.spine_linear = {one: True, two: False}
     reopened.save(str(output), overwrite=True)
     assert ContentSession.open(str(output)).spine_linear[two] is False
 

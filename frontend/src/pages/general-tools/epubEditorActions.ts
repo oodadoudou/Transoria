@@ -45,13 +45,6 @@ export function searchScopePaths(scope: string, selected: string, files: Array<{
   return ordered.filter((path) => scope === "styles" ? media.get(path) === "text/css" : scope === "text" ? ["application/xhtml+xml", "text/html", "text/plain"].includes(media.get(path) ?? "") : scope === "all" && media.has(path));
 }
 
-export function reorderedSpine(spine: string[], path: string, target: string, after: boolean): string[] {
-  if (path === target || !spine.includes(path) || !spine.includes(target)) return spine;
-  const order = spine.filter((item) => item !== path);
-  order.splice(order.indexOf(target) + Number(after), 0, path);
-  return order.every((item, index) => item === spine[index]) ? spine : order;
-}
-
 export function resourceAfterHistory(
   selected: string,
   previousSpine: string[],

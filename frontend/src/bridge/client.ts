@@ -1240,12 +1240,6 @@ export const epubContentBridge = {
   replaceMatch(sessionId: string, query: string, replacement: string, match: EpubContentMatch, caseSensitive: boolean, regularExpression = false): Promise<EpubContentSession & { replaced_end: number }> {
     return call("epub_content.replace_match", { session_id: sessionId, query, replacement, ...match, case_sensitive: caseSensitive, regular_expression: regularExpression });
   },
-  reorderSpine(sessionId: string, paths: string[]): Promise<EpubContentSession> {
-    return call("epub_content.reorder_spine", { session_id: sessionId, paths });
-  },
-  setSpine(sessionId: string, entries: Array<{ path: string; linear: boolean }>): Promise<EpubContentSession> {
-    return call("epub_content.set_spine", { session_id: sessionId, entries });
-  },
   setToc(sessionId: string, entries: EpubTocEntry[]): Promise<EpubContentSession> {
     return call("epub_content.set_toc", { session_id: sessionId, entries });
   },

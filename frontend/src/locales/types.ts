@@ -1299,11 +1299,11 @@ export interface Messages {
     discardClose: string; closeTitle: string;
     validate: string; validationOk: string; validationWarning: string; sessionExpired: string; reopen: string;
     importResource: string; renameResource: string; replaceResource: string; exportResource: string; deleteResource: string;
-    localFile: string; archivePath: string; addToSpine: string; applyResource: string; resourceSaved: string;
+    localFile: string; archivePath: string; applyResource: string; resourceSaved: string;
     copyResource: string; bulkRename: string; renamePrefix: string; startNumber: string; selectedFiles: string;
     resourceReferences: string; resourceNotEditable: string; confirmDeleteResource: string;
-    addToOrder: string; removeFromOrder: string; chooseChapter: string;
-    fileOptions: string; markMain: string; markAuxiliary: string; auxiliaryReading: string; dragReadingOrder: string; tocEntryActions: string;
+    chooseChapter: string;
+    fileOptions: string; tocEntryActions: string;
     newChapter: string; chapterText: string; splitChapter: string; splitBefore: string; insertImage: string; imageResource: string; imageDescription: string;
     chooseTocTarget: string; chapterStart: string; chooseAnchor: string;
     generateTocPage: string; tocPageTitle: string;
