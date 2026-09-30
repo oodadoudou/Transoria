@@ -1075,10 +1075,17 @@
 .modalBackdrop {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 10;
   display: grid;
   place-items: center;
   background: rgb(0 0 0 / .42);
+}
+
+.toolHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .saveDialog {
@@ -1258,3 +1265,11 @@
 .toolResult > div button:hover { text-decoration: underline; }
 .toolResult p { margin: 4px 0; font-size: 12px; overflow-wrap: anywhere; }
 .toolResults pre { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.savedSearchRow {
+  display: grid;
+  grid-template-columns: 20px minmax(100px, 1fr) auto repeat(3, 30px);
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}

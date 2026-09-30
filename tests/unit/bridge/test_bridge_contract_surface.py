@@ -217,6 +217,8 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "epub_content.style_split_points",
     "epub_content.split_style",
     "epub_content.tool",
+    "epub_content.load_searches",
+    "epub_content.save_searches",
     "epub_content.named_checkpoint",
     "epub_content.restore_checkpoint",
     "epub_content.add_resource",
@@ -286,7 +288,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 195
+    assert len(actual) == 197
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -581,6 +583,8 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
     "epub_content.style_split_points": {"session_id": "missing", "path": "missing"},
     "epub_content.split_style": {"session_id": "missing", "path": "missing", "target": "other.css", "index": 1},
     "epub_content.tool": {"session_id": "missing", "name": "issues"},
+    "epub_content.load_searches": {},
+    "epub_content.save_searches": {"entries": []},
     "epub_content.named_checkpoint": {"session_id": "missing", "name": "Draft"},
     "epub_content.restore_checkpoint": {"session_id": "missing", "name": "Draft"},
     "epub_content.add_resource": {"session_id": "missing", "path": "missing", "input_path": "/tmp/input.css"},

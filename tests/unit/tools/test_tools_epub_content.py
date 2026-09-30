@@ -53,6 +53,42 @@ def _rewrite_book(path: Path, changes: dict[str, bytes | str]) -> None:
             book.writestr(name, data)
 
 
+def test_saved_search_sequence_is_ordered_atomic_and_undoable(tmp_path: Path):
+    source = tmp_path / "sequence.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    before = session._bytes(path)
+    rules = [{"query": "Hello", "replacement": "Welcome", "paths": [path]},
+             {"query": "Welcome", "replacement": "Greetings", "paths": [path]}]
+    preview = run_tool(session, "replace_sequence", {"rules": rules})
+    assert preview["replacements"] == 2
+    assert session._bytes(path) == before and not session.dirty
+    run_tool(session, "replace_sequence", {"rules": rules, "apply": True, "fingerprint": preview["fingerprint"]})
+    assert b"Greetings" in session._bytes(path)
+    session.history("undo")
+    assert session._bytes(path) == before
+    session.history("redo")
+    assert b"Greetings" in session._bytes(path)
+
+
+def test_saved_search_sequence_rejects_stale_options_and_failed_later_rule(tmp_path: Path):
+    source = tmp_path / "sequence.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    path = session.spine[0]
+    before = session._bytes(path)
+    rules = [{"query": "Hello", "replacement": "Welcome", "paths": [path]}]
+    preview = run_tool(session, "replace_sequence", {"rules": rules})
+    rules[0]["replacement"] = "Different"
+    with pytest.raises(ValueError, match="draft changed"):
+        run_tool(session, "replace_sequence", {"rules": rules, "apply": True, "fingerprint": preview["fingerprint"]})
+    rules.append({"query": "(", "replacement": "", "paths": [path], "regular_expression": True})
+    with pytest.raises(ValueError):
+        run_tool(session, "replace_sequence", {"rules": rules})
+    assert session._bytes(path) == before and not session.dirty
+
+
 def test_grouped_navigation_retains_hierarchy_attributes_and_landmarks(tmp_path: Path):
     source = tmp_path / "groups.epub"
     _book(source)

@@ -649,6 +649,7 @@ export const zh: Messages = {
     failed: "失败",
   },
   epubContentTool: {
+    savedSearches: "已保存搜索", saveSearch: "保存当前搜索", loadSearch: "载入", selectSearch: "选择搜索",
     toolApplied: "已应用到草稿", dictionaryMissing: "未加载词典：本次报告仅检查排版问题。", reportTruncated: "报告已达到显示上限，其他条目未显示。", checkExit: "检查器退出码",
     importOther: "导入其他书籍格式", converter: "本机 ebook-convert 可执行文件",
     mergeFiles: "合并文件", mergeOrder: "合并顺序（保留第一个文件）", closeTab: "关闭文件标签", splitStyle: "拆分样式表",

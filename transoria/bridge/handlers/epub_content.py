@@ -12,6 +12,7 @@ from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.tools.epub_content import ContentSessionStore
 from transoria.tools.epub_editor_tools import import_book, run_tool
+from transoria.tools.epub_search_library import SearchLibrary
 
 
 def _paths(payload: Mapping[str, object]) -> list[str]:
@@ -62,9 +63,14 @@ def _patterns(payload: Mapping[str, object]) -> list[str] | None:
 def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
     store = ContentSessionStore(cache_root / "epub-editor-sessions" if cache_root else None)
     lock = RLock()
+    searches = SearchLibrary(cache_root / "epub-saved-searches.json" if cache_root else None)
 
     def run(payload: Mapping[str, object], action: str) -> dict[str, object]:
         try:
+            if action == "load_searches":
+                return {"entries": searches.load()}
+            if action == "save_searches":
+                return {"entries": searches.save(payload.get("entries"))}
             if action == "open":
                 return store.open(expect_string(payload, "input_path"))
             if action == "import_book":
@@ -277,6 +283,8 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
             raise BridgeError.invalid_argument(str(exc)) from exc
 
     for action in (
+        "load_searches",
+        "save_searches",
         "open",
         "import_book",
         "close",

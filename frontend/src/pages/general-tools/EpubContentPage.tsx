@@ -15,6 +15,8 @@ import { clearEditorDraft, clearStagedEditorDraft, readEditorDraft, stageEditorD
 import styles from "./EpubContentPage.module.css";
 import { EpubPreviewFrame } from "./EpubPreviewFrame";
 import { EpubEditorTools } from "./EpubEditorTools";
+import { EpubSavedSearches } from "./EpubSavedSearches";
+import type { SavedSearch, SearchOptions } from "./epubSearchLibrary";
 import { previewAtZoom, type ReadingLocation } from "./epubPreview";
 
 type SideView = "files" | "toc" | "book";
@@ -225,6 +227,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [replaceProposal, setReplaceProposal] = useState<ReplaceProposal | null>(null);
   const [matchIndex, setMatchIndex] = useState(-1);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [savedSearchOpen, setSavedSearchOpen] = useState(false);
   const [outputPath, setOutputPath] = useState("");
   const [overwriteSource, setOverwriteSource] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -965,6 +968,33 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     });
   };
 
+  const loadSearch = (value: SearchOptions) => {
+    setQuery(value.query); setReplacement(value.replacement); setScope(value.scope);
+    setCaseSensitive(value.caseSensitive); setRegularExpression(value.regularExpression);
+    setSelectionRange(null); setMatches([]); setMatchIndex(-1); setSearchOpen(true);
+  };
+
+  const runSavedSearches = async (rules: SavedSearch[], apply: boolean, fingerprint?: string) => {
+    if (!session) throw new Error(t.noBook);
+    const result = await run(async () => {
+      await commitSource(); await commitDirectory();
+      const prepared = rules.map((rule) => {
+        if (rule.scope === "selection") throw new Error(t.selectionExpired);
+        const paths = rule.scope === "current" ? [selectedPath] : editableFiles.filter((file) => rule.scope === "all" || (rule.scope === "styles" ? file.media_type === "text/css" : ["application/xhtml+xml", "text/html", "text/plain"].includes(file.media_type))).map((file) => file.path);
+        return { query: rule.query, replacement: rule.replacement, case_sensitive: rule.caseSensitive, regular_expression: rule.regularExpression, paths };
+      });
+      const response = await epubContentBridge.tool(session.session_id, "replace_sequence", { rules: prepared, apply, fingerprint });
+      if (apply) {
+        setSession(response.session); setTocDraft(response.session.toc);
+        if (selectedPath) await loadResource(session.session_id, selectedPath, response.session);
+        resetEditorHistory(); setMatches([]); setMatchIndex(-1); setFeedback(t.toolApplied);
+      }
+      return response.result;
+    });
+    if (!result) throw new Error(t.error);
+    return result;
+  };
+
   const navigateMatch = async (direction: -1 | 1) => {
     if (!session || !matches.length) return;
     const next = (matchIndex + direction + matches.length) % matches.length;
@@ -1232,6 +1262,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   </div>;
 
   return <div className={styles.workspace}>
+    {savedSearchOpen ? <EpubSavedSearches current={{ query, replacement, scope, caseSensitive, regularExpression }} load={loadSearch} execute={runSavedSearches} close={() => setSavedSearchOpen(false)} /> : null}
     <div className={styles.toolbar}>
       <div className={styles.bookPicker}>
         <button type="button" title={t.choose} aria-label={t.choose} onClick={() => void chooseBook()}><FolderOpen size={18} /></button>
@@ -1257,6 +1288,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         <label><span>{t.files}</span><select value={scope} onChange={(event) => { setScope(event.target.value as Scope); setSelectionRange(null); setMatches([]); setMatchIndex(-1); }}><option value="current">{t.current}</option><option value="selection">{t.selection}</option><option value="text">{t.textFiles}</option><option value="styles">{t.styleFiles}</option><option value="all">{t.all}</option></select></label>
         <label className={styles.checkbox}><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.caseSensitive}</label>
         <label className={styles.checkbox}><input type="checkbox" checked={regularExpression} onChange={(event) => { setRegularExpression(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.regularExpression}</label>
+        <button type="button" disabled={busy} onClick={() => setSavedSearchOpen(true)}><Save size={16} />{t.savedSearches}</button>
         <button type="button" disabled={!query || busy || !scopePaths().length} onClick={() => void search()}><Search size={16} />{t.find}</button>
         <div className={styles.matchNavigation} role="status"><span>{matches.length ? `${matchIndex + 1} / ${matches.length}${matches.length >= 5000 ? "+" : ""}` : t.noMatches}</span><button type="button" title={t.previousMatch} aria-label={t.previousMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(-1)}><ArrowUp size={16} /></button><button type="button" title={t.nextMatch} aria-label={t.nextMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(1)}><ArrowDown size={16} /></button><button type="button" disabled={matchIndex < 0 || busy} onClick={() => void replaceOne(matches[matchIndex])}>{t.replaceOne}</button></div>
         <button type="button" disabled={!matches.length || matches.length >= 5000 || busy} title={matches.length >= 5000 ? t.narrowSearch : undefined} onClick={() => void replaceAll()}>{t.replaceAll}</button>

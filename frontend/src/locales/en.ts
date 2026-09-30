@@ -666,6 +666,7 @@ export const en: Messages = {
     failed: "Failed",
   },
   epubContentTool: {
+    savedSearches: "Saved searches", saveSearch: "Save current search", loadSearch: "Load", selectSearch: "Select search",
     toolApplied: "Applied to draft", dictionaryMissing: "No dictionary loaded: this report checks typography only.", reportTruncated: "Report limit reached; additional items are not displayed.", checkExit: "Checker exit code",
     importOther: "Import another book format", converter: "Installed ebook-convert executable",
     mergeFiles: "Merge files", mergeOrder: "Merge order (first file is retained)", closeTab: "Close file tab", splitStyle: "Split stylesheet",

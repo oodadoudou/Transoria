@@ -1129,6 +1129,12 @@ export const epubMetadataBridge = {
 };
 
 export const epubContentBridge = {
+  loadSearches(): Promise<{ entries: unknown[] }> {
+    return call("epub_content.load_searches", {});
+  },
+  saveSearches(entries: unknown[]): Promise<{ entries: unknown[] }> {
+    return call("epub_content.save_searches", { entries });
+  },
   importBook(inputPath: string, executable: string): Promise<EpubContentSession> {
     return call("epub_content.import_book", { input_path: inputPath, executable });
   },

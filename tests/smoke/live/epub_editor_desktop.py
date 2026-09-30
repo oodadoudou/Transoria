@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--writing-mode", choices=("horizontal-tb", "vertical-rl", "vertical-lr"), default="horizontal-tb")
     parser.add_argument("--direction", choices=("ltr", "rtl"), default="ltr")
     parser.add_argument("--advanced-css", action="store_true")
+    parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     fixtures = runpy.run_path(str(root / "tests/unit/tools/test_tools_epub_content.py"))
@@ -52,7 +53,7 @@ def main() -> None:
                 "OEBPS/Styles/alternate.css": 'body{background:red!important}',
                 "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/><link rel="alternate stylesheet" title="Night" href="../Styles/alternate.css"/></head><body><h1>Conditional CSS test</h1><div><p>Left grid column: <ruby>漢<rt>kan</rt></ruby></p><p>Right grid column</p></div></body></html>',
             })
-        server = serve(port=0, cache_root=folder / "cache", static_root=root / "frontend/dist")
+        server = serve(port=0, cache_root=args.state_dir or folder / "cache", static_root=root / "frontend/dist")
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         url = f"http://127.0.0.1:{server.server_port}/"

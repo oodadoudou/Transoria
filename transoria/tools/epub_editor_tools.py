@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 from collections import Counter
 from itertools import islice
@@ -561,6 +562,30 @@ def import_book(input_path: str, executable: str, cache_root: Path) -> Path:
         raise
 
 
+def replace_sequence(session: ContentSession, rules: object, apply: bool) -> dict[str, object]:
+    if not isinstance(rules, list) or not 1 <= len(rules) <= 100:
+        raise ValueError("Select one to one hundred saved searches.")
+    shadow = copy.deepcopy(session)
+    total = 0
+    deadline = time.monotonic() + 10
+    for rule in rules:
+        if time.monotonic() > deadline:
+            raise ValueError("Search sequence timed out; select fewer rules.")
+        if not isinstance(rule, dict) or not isinstance(rule.get("query"), str) or not isinstance(rule.get("replacement"), str):
+            raise ValueError("Search rules require query and replacement strings.")
+        paths = rule.get("paths")
+        if not isinstance(paths, list) or not paths or not all(isinstance(path, str) for path in paths):
+            raise ValueError("Choose editable files for each search rule.")
+        result = shadow.replace(rule["query"], rule["replacement"], paths,
+                                rule.get("case_sensitive") is True,
+                                regular_expression=rule.get("regular_expression") is True)
+        total += int(result["replacements"])
+    pending = {path: data for path, data in shadow.changes.items() if data != session._bytes(path)}
+    if apply and pending:
+        session._apply_changes(pending)
+    return {"replacements": total, "files_changed": len(pending), "applied": apply}
+
+
 def run_tool(session: ContentSession, name: str, options: dict[str, object]) -> dict[str, object]:
     apply = options.get("apply") is True
     fingerprint = hashlib.sha256(json.dumps({
@@ -568,11 +593,14 @@ def run_tool(session: ContentSession, name: str, options: dict[str, object]) -> 
         "spine": session.spine, "linear": session.spine_linear, "toc": session.toc,
         "files": session.files, "nav": session.nav_path, "ncx": session.ncx_path,
         "removed": sorted(session.removed),
+        **({"rules": options.get("rules")} if name == "replace_sequence" else {}),
     }, sort_keys=True).encode()).hexdigest()
-    if name in {"cleanup_css", "images", "fonts"} and apply and options.get("fingerprint") != fingerprint:
+    if name in {"cleanup_css", "images", "fonts", "replace_sequence"} and apply and options.get("fingerprint") != fingerprint:
         raise ValueError("The draft changed; preview this operation again before applying it.")
     if name == "issues":
         return issues(session)
+    if name == "replace_sequence":
+        return {**replace_sequence(session, options.get("rules"), apply), "fingerprint": fingerprint}
     if name == "diff":
         return compare(session, str(options.get("checkpoint", "")))
     if name == "text_report":
