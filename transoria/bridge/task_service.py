@@ -2044,6 +2044,7 @@ class TaskService:
         ] = {}
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
+        self._retranslate_disk_lock = threading.Lock()
         self._retranslate_task_locks: dict[str, threading.Lock] = {}
         self._retranslate_task_indices: dict[str, _RetranslateTaskIndex] = {}
         self._retranslate_gate = threading.Condition()
@@ -2465,7 +2466,11 @@ class TaskService:
                 details={"request_id": request_id},
             )
         self._sync_completed_retranslate_result(job)
-        return self._retranslate_status_payload(job)
+        with self._retranslate_lock:
+            if job.status in _RETRANSLATE_TERMINAL_STATUSES:
+                # A terminal response must survive immediate eviction or restart.
+                self._save_retranslate_job(job)
+            return self._retranslate_status_payload(job)
 
     def read_retranslate_statuses(
         self, *, request_ids: Sequence[str]
@@ -2532,14 +2537,15 @@ class TaskService:
         return None
 
     def _save_retranslate_job(self, job: RetranslateJob) -> None:
-        path = self._retranslate_job_path(job.task_id, job.request_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(job.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(tmp, path)
+        with self._retranslate_disk_lock:
+            path = self._retranslate_job_path(job.task_id, job.request_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(job.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(tmp, path)
 
     def _load_retranslate_job(self, request_id: str) -> RetranslateJob | None:
         path = self._find_retranslate_job_path(request_id)

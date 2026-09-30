@@ -2134,6 +2134,38 @@ def test_retranslate_marks_failed_on_llm_error(tmp_path: Path):
     assert payload["translations"]["0:0"] == "你好"
 
 
+def test_terminal_response_is_durable_before_worker_finishes_persisting(router_and_service, monkeypatch):
+    router, service, _t = router_and_service
+    _seed_task_with_snapshot(service)
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    original_save = service._save_retranslate_job
+    reader = threading.current_thread()
+
+    def delayed_save(job):
+        if job.status == "completed" and threading.current_thread() is not reader:
+            entered.set()
+            assert release.wait(5)
+            try:
+                original_save(job)
+            finally:
+                finished.set()
+        else:
+            original_save(job)
+
+    monkeypatch.setattr(service, "_save_retranslate_job", delayed_save)
+    response = router.call("proofreading.retranslate_segment", {"task_id": "translation-pf-rt-1", "segment_id": "0:0"})
+    try:
+        assert entered.wait(5)
+        request_id = response["request_id"]
+        assert service.read_retranslate_status(request_id=request_id)["status"] == "completed"
+        persisted = json.loads(service._retranslate_job_path("translation-pf-rt-1", request_id).read_text())
+        assert persisted["status"] == "completed"
+        assert persisted["result_dst"] == "重翻译文0"
+    finally:
+        release.set()
+        assert finished.wait(5)
+
+
 def test_retranslate_status_survives_memory_gc_from_disk(router_and_service):
     router, service, _t = router_and_service
     _seed_task_with_snapshot(service)
