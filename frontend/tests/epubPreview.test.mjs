@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
-import { interactivePreview, previewAtZoom, PreviewCommands } from "../src/pages/general-tools/epubPreview.ts";
+import { interactivePreview, previewAtZoom, PreviewCommands, wheelNavigation } from "../src/pages/general-tools/epubPreview.ts";
 
-test("source columns, preview clicks and scroll origins stay synchronized", async () => {
+test("wheel paging accumulates trackpad deltas, throttles momentum and reverses", () => {
+  const state = { time: 0, turn: -Infinity, amount: 0 };
+  assert.equal(wheelNavigation(20, 100, state), 0);
+  assert.equal(wheelNavigation(20, 110, state), 0);
+  assert.equal(wheelNavigation(20, 120, state), 1);
+  assert.equal(wheelNavigation(100, 150, state), 0);
+  assert.equal(wheelNavigation(-80, 500, state), -1);
+  assert.equal(wheelNavigation(NaN, 900, state), 0);
+  assert.equal(wheelNavigation(0, 900, state), 0);
+  assert.equal(wheelNavigation(30, 1000, state), 0);
+  assert.equal(wheelNavigation(30, 1300, state), 0);
+});
+
+test("source columns, preview clicks, scroll origins and chapter boundaries stay synchronized", async () => {
   const script = interactivePreview("<html></html>", "sync123").match(/<script nonce="sync123">([\s\S]*)<\/script>$/)[1];
   const handlers = new Map(), frames = [], messages = [];
   const parent = { postMessage: (message) => messages.push(message) };
@@ -44,7 +57,15 @@ test("source columns, preview clicks and scroll origins stay synchronized", asyn
   handlers.get("click")({ target: { closest: (selector) => selector.startsWith("a[") ? null : nodes[2] } });
   assert.equal(messages.at(-1).event, "locate");
   assert.equal(messages.at(-1).column, 300);
-
+  let prevented = 0;
+  handlers.get("wheel")({ deltaY: 80, deltaX: 0, deltaMode: 0, preventDefault: () => prevented++ });
+  assert.equal(messages.at(-1).event, "boundary");
+  assert.equal(messages.at(-1).direction, 1);
+  assert.equal(messages.at(-1).revision, 7);
+  assert.equal(prevented, 1);
+  time = 2400; context.scrollY = 0;
+  handlers.get("wheel")({ deltaY: -80, deltaX: 0, deltaMode: 0, preventDefault() {} });
+  assert.equal(messages.at(-1).direction, -1);
 });
 
 test("preview controller parses and runs in an opaque sandbox with a nonce", () => {
@@ -68,9 +89,11 @@ test(`controller restores and navigates ${writingMode}/${direction} pages and co
   const handlers = new Map();
   const messages = [];
   let navigations = 0;
+  let time = 1000;
   const parent = { postMessage: (message) => messages.push(message) };
   const context = {
     parent, innerWidth: 400, innerHeight: 200, scrollX: 0, scrollY: 0,
+    Date: { now: () => time },
     getComputedStyle: () => ({ getPropertyValue: (key) => key === "writing-mode" ? writingMode : direction }),
     addEventListener: (event, callback) => handlers.set(event, callback),
     requestAnimationFrame: (callback) => callback(),
@@ -112,6 +135,21 @@ test(`controller restores and navigates ${writingMode}/${direction} pages and co
   assert.deepEqual({ ...messages.at(-2) }, { type: "epub-preview", token: "test123", event: "configured", revision: 19 });
   send({ event: "configure", mode: "continuous", page: -1 });
   assert.equal(writingMode.startsWith("vertical") ? context.scrollX : context.scrollY, writingMode.startsWith("vertical") ? sign * 1200 : 1400);
+  const wheel = { deltaY: 80, deltaX: 0, deltaMode: 0, preventDefault() {} };
+  handlers.get("wheel")(wheel);
+  assert.equal(messages.at(-1).event, "boundary");
+  assert.equal(messages.at(-1).direction, 1);
+  const afterBoundary = messages.length;
+  handlers.get("wheel")({ ...wheel, ctrlKey: true });
+  assert.equal(messages.length, afterBoundary);
+  time += 1000;
+  send({ event: "configure", mode: "paged", page: 1 });
+  handlers.get("wheel")(wheel);
+  assert.equal(messages.at(-1).page, 2);
+  assert.equal(context.scrollX, sign * 800);
+  send({ event: "configure", mode: "continuous", scroll: 125, scrollX: sign * 240 });
+  handlers.get("wheel")(wheel);
+  if (writingMode.startsWith("vertical")) assert.equal(context.scrollX, sign * 320);
 });
 }
 

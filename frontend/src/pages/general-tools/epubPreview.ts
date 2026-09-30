@@ -20,6 +20,17 @@ export function columnPageOffsets(rectangles: Array<[number, number]>, viewport:
 
 export type ReadingLocation = { page: number; scroll: number; scrollX?: number; anchorLine?: number; anchorColumn?: number };
 
+export function wheelNavigation(delta: number, time: number, state: { time: number; turn: number; amount: number }): number {
+  if (!Number.isFinite(delta) || !delta) return 0;
+  if (time - state.time > 180 || Math.sign(delta) !== Math.sign(state.amount)) state.amount = 0;
+  state.time = time;
+  state.amount += delta;
+  if (Math.abs(state.amount) < 60 || time - state.turn < 300) return 0;
+  const direction = Math.sign(state.amount);
+  state.amount = 0; state.turn = time;
+  return direction;
+}
+
 export class PreviewCommands {
   loaded = false;
   configured = false;
@@ -72,6 +83,8 @@ export function interactivePreview(markup: string, token: string): string {
     let page = 0, mode = 'continuous', inspect = false, restoring = false, lastNavigation = -1;
     let ready = false, sign = 1, vertical = false, offsets = [], configuration = 0, revision = 0;
     let programmaticUntil = 0, scrollFrame = 0;
+    const wheelState = {time:0,turn:-Infinity,amount:0};
+    const wheelTurn = ${wheelNavigation.toString()};
     const paginateColumns = ${columnPageOffsets.toString()};
     const send = (data) => parent.postMessage({type:'epub-preview',token,...data}, '*');
     const fixed = document.querySelector('meta[name="transoria-rendition"]')?.content.includes('pre-paginated');
@@ -195,6 +208,26 @@ export function interactivePreview(markup: string, token: string): string {
       if(!ready || restoring || scrollFrame) return;
       scrollFrame=requestAnimationFrame(()=>{scrollFrame=0;if(mode==='paged') page=currentPage();report(Date.now()>programmaticUntil?'user':'source');});
     }, {passive:true});
+    addEventListener('wheel', (event) => {
+      if(!ready || event.ctrlKey || event.metaKey) return;
+      const raw=Math.abs(event.deltaY)>=Math.abs(event.deltaX)?event.deltaY:event.deltaX;
+      const delta=raw*(event.deltaMode===1?16:event.deltaMode===2?innerHeight:1);
+      if(!delta) return;
+      programmaticUntil=0;
+      const extent=vertical?document.documentElement.scrollWidth-innerWidth:document.documentElement.scrollHeight-innerHeight;
+      const position=vertical?sign*scrollX:scrollY;
+      const atEdge=fixed || (delta>0?position>=extent-2:position<=2);
+      if(mode==='paged' || atEdge) {
+        event.preventDefault();
+        const direction=wheelTurn(delta,Date.now(),wheelState);
+        if(!direction) return;
+        const next=page+direction;
+        if(!fixed && mode==='paged' && next>=0 && next<pages()) {page=next;go('user');}
+        else send({event:'boundary',revision,direction});
+      } else if(vertical) {
+        event.preventDefault();scrollTo(scrollX+sign*delta,scrollY);
+      }
+    }, {passive:false});
     const reflow = () => {
       if(!ready) return;
       const previousPage=page, point=anchorPoint(); measure();
