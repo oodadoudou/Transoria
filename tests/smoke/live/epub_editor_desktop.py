@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--writing-mode", choices=("horizontal-tb", "vertical-rl", "vertical-lr"), default="horizontal-tb")
     parser.add_argument("--direction", choices=("ltr", "rtl"), default="ltr")
     parser.add_argument("--advanced-css", action="store_true")
+    parser.add_argument("--compatibility", action="store_true")
     parser.add_argument("--inline-text", action="store_true")
     parser.add_argument("--fixed-layout", action="store_true")
     parser.add_argument("--mixed-writing", action="store_true")
@@ -63,6 +64,15 @@ def main() -> None:
                 "OEBPS/Styles/imported.css": '@namespace x url(http://www.w3.org/1999/xhtml); x|div{display:grid;grid-template-columns:1fr 1fr;gap:20px} x|p{padding:20px;background:#d5ebe2;border:3px solid #216f54} x|ruby{ruby-position:over}',
                 "OEBPS/Styles/alternate.css": 'body{background:red!important}',
                 "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/><link rel="alternate stylesheet" title="Night" href="../Styles/alternate.css"/></head><body><h1>Conditional CSS test</h1><div><p>Left grid column: <ruby>漢<rt>kan</rt></ruby></p><p>Right grid column</p></div></body></html>',
+            })
+        if args.compatibility:
+            with zipfile.ZipFile(book) as archive:
+                opf = archive.read("OEBPS/book.opf")
+            fixtures["_rewrite_book"](book, {
+                "OEBPS/book.opf": opf.replace(b"</manifest>", b'<item id="font" href="Fonts/test.ttf" media-type="font/ttf"/></manifest>'),
+                "OEBPS/Fonts/test.ttf": fixtures["_synthetic_font"](),
+                "OEBPS/Styles/book.css": '@font-face{font-family:TestFont;src:url("../Fonts/test.ttf")}body{font:20px/1.5 serif;margin:24px}.embedded{font:64px TestFont}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.grid p{padding:20px;background:#d5ebe2}@supports(display:grid){.grid{border:3px solid #216f54}}',
+                "OEBPS/Text/two.xhtml": '<html><head><title>Compatibility test</title><link rel="stylesheet" href="../Styles/book.css"></head><body><h1>Malformed XHTML preview</h1><p class="embedded">ABC</p><div class="grid"><p>Recovered &nbsp; left column<br>Unclosed paragraph<p>Right column with <ruby>漢<rt>kan</rt></ruby></div><table><tr><td>HTML5 table recovery</table></div></body></html>',
             })
         if args.fixed_layout:
             with zipfile.ZipFile(book) as archive:

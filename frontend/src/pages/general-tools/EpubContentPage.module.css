@@ -571,15 +571,6 @@
   min-width: 0;
 }
 
-.readerError {
-  flex: 1;
-  overflow: auto;
-  padding: 16px;
-  color: #b34536;
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
 .fileRow,
 .folderRow {
   display: flex;
@@ -592,7 +583,7 @@
   background: var(--panel-soft);
 }
 
-.fileRow button[draggable="true"] {
+.fileRow button[data-reorderable="true"] {
   cursor: grab;
   user-select: none;
 }

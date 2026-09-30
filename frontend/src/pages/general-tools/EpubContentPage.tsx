@@ -10,7 +10,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown
 import { dialogsBridge, epubContentBridge, type EpubContentFile, type EpubContentMatch, type EpubContentSession, type EpubTocEntry } from "@/bridge";
 import { useMessages } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { nextMatchIndex, previewDestination, relativeResourceHref, resourceAfterHistory, savedEditorHistory, xmlAttribute } from "./epubEditorActions";
+import { nextMatchIndex, previewDestination, relativeResourceHref, reorderedSpine, resourceAfterHistory, savedEditorHistory, searchScopePaths, xmlAttribute } from "./epubEditorActions";
 import { clearEditorDraft, clearStagedEditorDraft, readEditorDraft, stageEditorDraft, writeEditorDraft, type EpubEditorDraft } from "./epubEditorDraft";
 import styles from "./EpubContentPage.module.css";
 import { EpubPreviewFrame } from "./EpubPreviewFrame";
@@ -158,7 +158,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [imageTarget, setImageTarget] = useState("");
   const [imageAlt, setImageAlt] = useState("");
   const [spineMenuPath, setSpineMenuPath] = useState("");
-  const draggedSpinePath = useRef("");
+  const spineDrag = useRef<{ path: string; pointer: number; x: number; y: number; active: boolean; target: string; after: boolean } | null>(null);
+  const suppressFileClick = useRef(false);
   const [tocControlsIndex, setTocControlsIndex] = useState<number | null>(null);
   const [spineDrop, setSpineDrop] = useState<{ path: string; after: boolean } | null>(null);
   const [previewPath, setPreviewPath] = useState("");
@@ -252,7 +253,6 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const initialOpenStarted = useRef(false);
   const operationInFlight = useRef(false);
 
-  const editableFiles = useMemo(() => session?.files.filter((file) => file.editable) ?? [], [session?.files]);
   const nodes = useMemo(() => fileTree(session?.files ?? [], session?.spine ?? []), [session?.files, session?.spine]);
   const sourceDirty = content !== loadedContent;
   const tocDirty = Boolean(session && JSON.stringify(tocDraft) !== JSON.stringify(session.toc));
@@ -918,12 +918,9 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   const moveSpine = async (path: string, target: string, after: boolean) => {
-    if (!session || path === target) return;
-    const order = session.spine.filter((item) => item !== path);
-    const targetIndex = order.indexOf(target);
-    if (targetIndex < 0) return;
-    order.splice(targetIndex + Number(after), 0, path);
-    if (order.every((item, index) => item === session.spine[index])) return;
+    if (!session) return;
+    const order = reorderedSpine(session.spine, path, target, after);
+    if (order === session.spine) return;
     await run(async () => {
       await commitSource();
       setSession(await epubContentBridge.reorderSpine(session.session_id, order));
@@ -976,14 +973,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     });
   };
 
-  const scopePaths = (): string[] => {
-    if (scope === "current" || scope === "selection") return selectedPath ? [selectedPath] : [];
-    const ordered = Array.from(new Set([...(session?.spine ?? []), ...editableFiles.map((file) => file.path)]));
-    const media = new Map(editableFiles.map((file) => [file.path, file.media_type]));
-    if (scope === "text") return ordered.filter((path) => ["application/xhtml+xml", "text/html", "text/plain"].includes(media.get(path) ?? ""));
-    if (scope === "styles") return ordered.filter((path) => media.get(path) === "text/css");
-    return ordered.filter((path) => media.has(path));
-  };
+  const scopePaths = () => searchScopePaths(scope, selectedPath, session?.files ?? [], session?.spine ?? []);
 
   const search = async () => {
     if (!session || !query) return;
@@ -1031,7 +1021,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       await commitSource(); await commitDirectory();
       const prepared = rules.map((rule) => {
         if (rule.scope === "selection") throw new Error(t.selectionExpired);
-        const paths = rule.scope === "current" ? [selectedPath] : editableFiles.filter((file) => rule.scope === "all" || (rule.scope === "styles" ? file.media_type === "text/css" : ["application/xhtml+xml", "text/html", "text/plain"].includes(file.media_type))).map((file) => file.path);
+        const paths = searchScopePaths(rule.scope, selectedPath, session.files, session.spine);
         return { query: rule.query, replacement: rule.replacement, case_sensitive: rule.caseSensitive, regular_expression: rule.regularExpression, ignore_markup: Boolean(rule.ignoreMarkup), paths };
       });
       const response = await epubContentBridge.tool(session.session_id, "replace_sequence", { rules: prepared, apply, fingerprint });
@@ -1231,13 +1221,43 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     const path = node.file.path;
     const inSpine = session?.spine.includes(path) ?? false;
     const dropClass = spineDrop?.path === path ? (spineDrop.after ? styles.dropAfter : styles.dropBefore) : "";
-    return <div key={path} className={`${styles.fileRow} ${resourcePath === path ? styles.active : ""} ${dropClass}`}
-      style={{ paddingLeft: `${depth * 9 + 4}px` }}
-      onDragOver={(event) => { if (!inSpine || !draggedSpinePath.current || draggedSpinePath.current === path) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; setSpineDrop({ path, after: event.clientY > event.currentTarget.getBoundingClientRect().top + event.currentTarget.clientHeight / 2 }); }}
-      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setSpineDrop(null); }}
-      onDrop={(event) => { event.preventDefault(); const source = draggedSpinePath.current; draggedSpinePath.current = ""; const bounds = event.currentTarget.getBoundingClientRect(); const after = event.clientY > bounds.top + bounds.height / 2; setSpineDrop(null); if (source && inSpine) void moveSpine(source, path, after); }}>
-      <button type="button" draggable={inSpine && !busy} onDragStart={(event) => { draggedSpinePath.current = path; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", path); }} onDragEnd={() => { draggedSpinePath.current = ""; setSpineDrop(null); }} onClick={() => void selectResource(path)} title={inSpine ? `${path}\n${t.dragReadingOrder}` : path}
-        onKeyDown={(event) => { if (!inSpine || !event.shiftKey || !(event.metaKey || event.ctrlKey)) return; const shift = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0; const index = session?.spine.indexOf(path) ?? -1; const target = session?.spine[index + shift]; if (shift && target) { event.preventDefault(); void moveSpine(path, target, shift > 0); } }}>
+    return <div key={path} data-spine-path={inSpine ? path : undefined} className={`${styles.fileRow} ${resourcePath === path ? styles.active : ""} ${dropClass}`}
+      style={{ paddingLeft: `${depth * 9 + 4}px` }}>
+      <button type="button" data-reorderable={inSpine && !busy} title={inSpine ? `${path}\n${t.dragReadingOrder}` : path}
+        onPointerDown={(event) => {
+          suppressFileClick.current = false;
+          if (!inSpine || busy || event.button !== 0 || event.pointerType !== "mouse") return;
+          spineDrag.current = { path, pointer: event.pointerId, x: event.clientX, y: event.clientY, active: false, target: "", after: false };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = spineDrag.current;
+          if (!drag || drag.pointer !== event.pointerId) return;
+          if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
+          drag.active = true;
+          const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-spine-path]");
+          drag.target = row?.dataset.spinePath ?? "";
+          drag.after = Boolean(row && event.clientY > row.getBoundingClientRect().top + row.clientHeight / 2);
+          setSpineDrop(drag.target && drag.target !== path ? { path: drag.target, after: drag.after } : null);
+        }}
+        onPointerUp={(event) => {
+          const drag = spineDrag.current;
+          spineDrag.current = null;
+          setSpineDrop(null);
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+          suppressFileClick.current = Boolean(drag?.active);
+          if (drag?.active && drag.target) void moveSpine(drag.path, drag.target, drag.after);
+        }}
+        onPointerCancel={() => { spineDrag.current = null; setSpineDrop(null); }}
+        onClick={() => { if (suppressFileClick.current) suppressFileClick.current = false; else void selectResource(path); }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && spineDrag.current) { spineDrag.current = null; setSpineDrop(null); suppressFileClick.current = true; return; }
+          if (!inSpine || !event.shiftKey || !(event.metaKey || event.ctrlKey)) return;
+          const shift = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+          const index = session?.spine.indexOf(path) ?? -1;
+          const target = session?.spine[index + shift];
+          if (shift && target) { event.preventDefault(); void moveSpine(path, target, shift > 0); }
+        }}>
         {node.name}{session?.spine_linear[path] === false ? <small className={styles.auxiliaryLabel}>{t.auxiliaryReading}</small> : null}
       </button>
     </div>;
@@ -1362,6 +1382,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
             <button type="button" title={t.fileOptions} aria-label={t.fileOptions} aria-expanded={spineMenuPath === resourcePath} disabled={busy} onClick={() => setSpineMenuPath((path) => path === resourcePath ? "" : resourcePath)}><MoreHorizontal size={16} /></button>
             {spineMenuPath === resourcePath ? <div className={styles.fileMoreMenu}>
               {session.spine.includes(resourcePath) ? <>
+                <button type="button" disabled={session.spine.indexOf(resourcePath) <= 0} onClick={() => void moveSpine(resourcePath, session.spine[session.spine.indexOf(resourcePath) - 1], false)}><ArrowUp size={15} />{t.up}</button>
+                <button type="button" disabled={session.spine.indexOf(resourcePath) >= session.spine.length - 1} onClick={() => void moveSpine(resourcePath, session.spine[session.spine.indexOf(resourcePath) + 1], true)}><ArrowDown size={15} />{t.down}</button>
                 <button type="button" disabled={session.spine_linear[resourcePath] !== false && session.spine.filter((path) => session.spine_linear[path] !== false).length <= 1} onClick={() => void updateSpine(spineEntries().map((entry) => entry.path === resourcePath ? { ...entry, linear: !entry.linear } : entry))}>{session.spine_linear[resourcePath] === false ? t.markMain : t.markAuxiliary}</button>
                 <button type="button" disabled={session.spine.length <= 1 || session.toc.some((entry) => entry.href.split("#")[0] === resourcePath)} onClick={() => void updateSpine(spineEntries().filter((entry) => entry.path !== resourcePath))}>{t.removeFromOrder}</button>
               </> : <button type="button" onClick={() => void updateSpine([...spineEntries(), { path: resourcePath, linear: true }])}>{t.addToOrder}</button>}

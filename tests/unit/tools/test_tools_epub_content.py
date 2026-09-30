@@ -53,6 +53,53 @@ def _rewrite_book(path: Path, changes: dict[str, bytes | str]) -> None:
             book.writestr(name, data)
 
 
+@pytest.mark.parametrize("scope", ["current", "text", "styles", "all", "selection"])
+@pytest.mark.parametrize("regular_expression", [False, True])
+@pytest.mark.parametrize("ignore_markup", [False, True])
+def test_scope_matrix_replacement_preview_undo_save_and_reopen(tmp_path: Path, scope, regular_expression, ignore_markup):
+    source = tmp_path / "scopes.epub"
+    _book(source)
+    one, two, css, txt = "OEBPS/Text/one.xhtml", "OEBPS/Text/two.xhtml", "OEBPS/Styles/book.css", "OEBPS/Text/notes.txt"
+    with zipfile.ZipFile(source) as archive:
+        opf = archive.read("OEBPS/book.opf")
+    _rewrite_book(source, {
+        "OEBPS/book.opf": opf.replace(b"</manifest>", b'<item id="notes" href="Text/notes.txt" media-type="text/plain"/></manifest>'),
+        one: '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Marker🌸 1</p><p>Marker🌸 2</p></body></html>',
+        two: '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Marker🌸 3</p></body></html>',
+        css: 'p::before {content:"Marker🌸 5"}',
+        txt: 'Marker🌸 4\n',
+    })
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    paths = {"current": [one], "selection": [one], "text": [one, two, txt], "styles": [css], "all": [one, two, txt, css]}[scope]
+    content = session.read(one)["content"]
+    offset = content.index("Marker🌸")
+    selection = {"path": one, "start": offset, "end": offset + len("Marker🌸 1")} if scope == "selection" else None
+    query = r"Marker🌸 (\d+)" if regular_expression else "Marker🌸"
+    replacement = r"Done🌿 \1" if regular_expression else "Done🌿"
+    options = dict(regular_expression=regular_expression, ignore_markup=ignore_markup, selection=selection)
+    count = ({"current": 2, "selection": 1, "text": 3, "styles": 0, "all": 3} if ignore_markup else {"current": 2, "selection": 1, "text": 4, "styles": 1, "all": 5})[scope]
+    before = {file["path"]: session._bytes(file["path"]) for file in session.files}
+    assert len(session.search(query, paths, **options)) == count
+    proposal = session.preview_replace(query, replacement, paths, **options)
+    assert proposal["replacements"] == count and not session.dirty
+    assert all(session._bytes(path) == data for path, data in before.items())
+    if not count:
+        return
+    session.replace(query, replacement, paths, expected_count=count, expected_fingerprints=proposal["fingerprints"], **options)
+    changed = {path: session._bytes(path) for path in before}
+    assert sum(data.decode("utf-8").count("Done🌿") for path, data in changed.items() if path in paths) == count
+    assert all(changed[path] == data for path, data in before.items() if path not in paths)
+    session.history("undo")
+    assert all(session._bytes(path) == data for path, data in before.items())
+    session.history("redo")
+    output = tmp_path / "edited.epub"
+    session.save(str(output), overwrite=False)
+    reopened = ContentSession.open(str(output))
+    assert all(reopened._bytes(path) == data for path, data in changed.items())
+    assert source.read_bytes() == original
+
+
 def test_saved_search_sequence_is_ordered_atomic_and_undoable(tmp_path: Path):
     source = tmp_path / "sequence.epub"
     _book(source)

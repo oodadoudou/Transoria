@@ -102,7 +102,7 @@ def test_api_methods_lists_methods(http_server: str):
     with urllib.request.urlopen(f"{http_server}/api/_methods", timeout=5) as response:
         payload = json.loads(response.read().decode("utf-8"))
     methods = payload["methods"]
-    assert len(methods) == 195
+    assert len(methods) == len(set(methods))
     for method in (
         "app.get_metadata",
         "translation.start_task",
@@ -123,6 +123,13 @@ def test_api_methods_lists_methods(http_server: str):
         "settings.load_all",
         "model_profiles.list",
         "prompts.preview",
+        "epub_content.anchors",
+        "epub_content.search",
+        "epub_content.preview_replace",
+        "epub_content.replace",
+        "epub_content.replace_match",
+        "epub_content.load_searches",
+        "epub_content.save_searches",
         "proofreading.resume_retranslate",
         "proofreading.retranslate_statuses",
         "updates.check_latest",

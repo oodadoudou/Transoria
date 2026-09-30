@@ -72,7 +72,7 @@ def main() -> None:
                 assert merged["exit_code"] == 0, merged["output"]
             session.history("undo")
             assert session._snapshot() == original
-            print("PASS EPUB 2 merge: EPUBCheck and undo", flush=True)
+            print(f"PASS EPUB 2 merge: {'EPUBCheck and ' if args.epubcheck else ''}undo", flush=True)
         before = session._snapshot()
         upgrade_epub(session)
         if args.epubcheck:
@@ -80,7 +80,7 @@ def main() -> None:
             assert checked["exit_code"] == 0, checked["output"]
         session.history("undo")
         assert session._snapshot() == before
-        print("PASS EPUB 2 upgrade: EPUBCheck and undo", flush=True)
+        print(f"PASS EPUB 2 upgrade: {'EPUBCheck and ' if args.epubcheck else ''}undo", flush=True)
 
 
 if __name__ == "__main__":

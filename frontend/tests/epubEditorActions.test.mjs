@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextMatchIndex, previewDestination, relativeResourceHref, resourceAfterHistory, savedEditorHistory, xmlAttribute } from "../src/pages/general-tools/epubEditorActions.ts";
+import { nextMatchIndex, previewDestination, relativeResourceHref, reorderedSpine, resourceAfterHistory, savedEditorHistory, searchScopePaths, xmlAttribute } from "../src/pages/general-tools/epubEditorActions.ts";
 import { EditorState } from "@codemirror/state";
 import { history, undo, undoDepth } from "@codemirror/commands";
 
@@ -33,9 +33,40 @@ test("search starts at the source cursor, crosses files, and wraps", () => {
   assert.equal(nextMatchIndex(matches, paths, "missing.xhtml", 0), 0);
 });
 
+test("live and saved searches use identical scopes and spine-first order", () => {
+  const files = [
+    { path: "book.opf", media_type: "application/oebps-package+xml", editable: true },
+    { path: "two.xhtml", media_type: "application/xhtml+xml", editable: true },
+    { path: "book.css", media_type: "text/css", editable: true },
+    { path: "notes.txt", media_type: "text/plain", editable: true },
+    { path: "one.xhtml", media_type: "application/xhtml+xml", editable: true },
+    { path: "cover.jpg", media_type: "image/jpeg", editable: false },
+  ];
+  const spine = ["one.xhtml", "two.xhtml", "one.xhtml", "missing.xhtml"];
+  assert.deepEqual(searchScopePaths("all", "one.xhtml", files, spine), ["one.xhtml", "two.xhtml", "book.opf", "book.css", "notes.txt"]);
+  assert.deepEqual(searchScopePaths("text", "one.xhtml", files, spine), ["one.xhtml", "two.xhtml", "notes.txt"]);
+  assert.deepEqual(searchScopePaths("styles", "one.xhtml", files, spine), ["book.css"]);
+  for (const scope of ["current", "selection"]) {
+    assert.deepEqual(searchScopePaths(scope, "one.xhtml", files, spine), ["one.xhtml"]);
+    assert.deepEqual(searchScopePaths(scope, "cover.jpg", files, spine), []);
+  }
+  assert.deepEqual(searchScopePaths("unknown", "one.xhtml", files, spine), []);
+});
+
 test("image insertion keeps relative paths and quotes XML attributes", () => {
   assert.equal(relativeResourceHref("OEBPS/Text/part/chapter.xhtml", "OEBPS/Images/a #'.png"), "../../Images/a%20%23%27.png");
   assert.equal(xmlAttribute('A & "B" < C'), 'A &amp; &quot;B&quot; &lt; C');
+});
+
+test("reading order moves before/after without losing chapters or accepting stale targets", () => {
+  const spine = ["one", "two", "three"];
+  assert.deepEqual(reorderedSpine(spine, "one", "three", true), ["two", "three", "one"]);
+  assert.deepEqual(reorderedSpine(spine, "three", "one", false), ["three", "one", "two"]);
+  assert.deepEqual(reorderedSpine(spine, "two", "three", true), ["one", "three", "two"]);
+  for (const [source, target, after] of [["one", "one", true], ["one", "two", false], ["missing", "one", true], ["one", "missing", true]]) {
+    assert.equal(reorderedSpine(spine, source, target, after), spine);
+  }
+  assert.deepEqual(spine, ["one", "two", "three"]);
 });
 
 test("preview links retain encoded and malformed anchors without crashing", () => {
