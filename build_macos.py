@@ -61,10 +61,26 @@ REQUIRED_RUNTIME_IMPORTS = (
     "json_repair",
     "chardet",
     "lxml",
+    "html5lib",
+    "httpx",
     "openpyxl",
     "PIL",
+    "regex",
+    "tinycss2",
+    "cssselect2",
+    "fontTools.subset",
+    "fontTools.ttLib.woff2",
+    "brotli",
+    "zopfli.zlib",
+    "spylls.hunspell",
     "webview",
 )
+
+SUBMODULE_PACKAGES = (
+    "json_repair", "chardet", "lxml", "html5lib", "httpx",
+    "tinycss2", "cssselect2", "fontTools", "spylls",
+)
+HIDDEN_IMPORTS = ("webview.platforms.cocoa", "brotli", "zopfli.zlib")
 
 SMOKE_TEST_TIMEOUT_SECONDS = 8
 
@@ -133,20 +149,11 @@ def main() -> None:
         "webview",
         "--collect-data",
         "openpyxl",
-        "--hidden-import",
-        "webview.platforms.cocoa",
-        # Lazy submodules invisible to the static analyzer — without
-        # collect-submodules the bundled app boots and dies the first
-        # time it touches one of these packages.
-        "--collect-submodules",
-        "json_repair",
-        "--collect-submodules",
-        "chardet",
-        "--collect-submodules",
-        "lxml",
-        "--collect-submodules",
-        "html5lib",
     ]
+    for package in SUBMODULE_PACKAGES:
+        cmd.extend(["--collect-submodules", package])
+    for module in HIDDEN_IMPORTS:
+        cmd.extend(["--hidden-import", module])
     for module in EXCLUDED_MODULES:
         cmd.extend(["--exclude-module", module])
     if ICON_PATH.is_file():

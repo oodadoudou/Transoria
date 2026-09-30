@@ -27,15 +27,32 @@ APP_DIR = DIST_DIR / "Transoria"
 # Packages whose submodules PyInstaller's static analyzer misses
 # (lazy/runtime imports). Without --collect-submodules they fail at
 # first runtime use with ModuleNotFoundError.
-SUBMODULE_PACKAGES = ("json_repair", "chardet", "lxml", "html5lib", "httpx")
+SUBMODULE_PACKAGES = (
+    "json_repair", "chardet", "lxml", "html5lib", "httpx",
+    "tinycss2", "cssselect2", "fontTools", "spylls",
+)
+HIDDEN_IMPORTS = (
+    "webview.platforms.winforms", "webview.platforms.edgechromium",
+    "brotli", "zopfli.zlib",
+)
 
 # Verified before PyInstaller so a missing pip dep fails fast.
 REQUIRED_RUNTIME_IMPORTS = (
     "json_repair",
     "chardet",
     "lxml",
+    "html5lib",
     "httpx",
     "openpyxl",
+    "PIL",
+    "regex",
+    "tinycss2",
+    "cssselect2",
+    "fontTools.subset",
+    "fontTools.ttLib.woff2",
+    "brotli",
+    "zopfli.zlib",
+    "spylls.hunspell",
     "webview",
 )
 
@@ -136,13 +153,11 @@ def main() -> None:
         "pythonnet",
         "--collect-all",
         "clr_loader",
-        "--hidden-import",
-        "webview.platforms.winforms",
-        "--hidden-import",
-        "webview.platforms.edgechromium",
     ]
     for package in SUBMODULE_PACKAGES:
         cmd.extend(["--collect-submodules", package])
+    for module in HIDDEN_IMPORTS:
+        cmd.extend(["--hidden-import", module])
     if ICON_PATH.is_file():
         cmd.extend(["--icon", str(ICON_PATH)])
         print(f"[build] using icon: {ICON_PATH}")

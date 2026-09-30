@@ -1,0 +1,2 @@
+# Keep dependency versions in pyproject.toml, including platform-specific GUI dependencies.
+-e .[gui,dev,build]

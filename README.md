@@ -58,7 +58,7 @@ git clone https://github.com/oodadoudou/Transoria.git
 cd Transoria
 uv sync --extra gui --extra dev
 cd frontend && npm install && npm run build && cd ..
-python app.py
+uv run --no-sync python app.py
 ```
 
 #### Windows PowerShell
@@ -70,6 +70,8 @@ python -m pip install -e ".[gui,dev]"
 cd frontend; npm install; npm run build; cd ..
 python app.py
 ```
+
+使用 pip / Conda 当前环境时，在仓库根目录运行 `python -m pip install -r requirements.txt`，即可安装运行、测试和打包依赖，再用同一个 `python` 启动。依赖版本统一声明在 `pyproject.toml`。构建桌面应用时，macOS 运行 `python build_macos.py`，Windows 运行 `python build_windows.py`。
 
 </details>
 
@@ -125,7 +127,7 @@ git clone https://github.com/oodadoudou/Transoria.git
 cd Transoria
 uv sync --extra gui --extra dev
 cd frontend && npm install && npm run build && cd ..
-python app.py
+uv run --no-sync python app.py
 ```
 
 #### Windows PowerShell
@@ -137,6 +139,8 @@ python -m pip install -e ".[gui,dev]"
 cd frontend; npm install; npm run build; cd ..
 python app.py
 ```
+
+For the current pip / Conda environment, run `python -m pip install -r requirements.txt` from the repository root to install runtime, test, and build dependencies, then launch with the same `python`. Dependency versions are defined in `pyproject.toml`. Build the desktop app with `python build_macos.py` on macOS or `python build_windows.py` on Windows.
 
 </details>
 
