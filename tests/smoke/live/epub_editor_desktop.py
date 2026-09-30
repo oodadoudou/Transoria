@@ -19,6 +19,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=800)
+    parser.add_argument("--port", type=int, default=0, help="Reuse a test origin for restart/persistence checks.")
     parser.add_argument("--writing-mode", choices=("horizontal-tb", "vertical-rl", "vertical-lr"), default="horizontal-tb")
     parser.add_argument("--direction", choices=("ltr", "rtl"), default="ltr")
     parser.add_argument("--advanced-css", action="store_true")
@@ -80,14 +81,15 @@ def main() -> None:
                 "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/></head><body><h1>Mixed writing modes</h1><div class="columns"><section class="rl"><h2>右到左</h2><p>竖排正文与<ruby>汉字<rt>hàn zì</rt></ruby>注音。</p><p>第二列<span class="number">2026</span>年。</p><aside>Horizontal inset</aside></section><section class="lr"><h2>左到右</h2><p>不同书写方向保留自己的文字排列。</p><p>LTR vertical block</p></section></div><p class="rtl" dir="rtl">עברית English 123 العربية</p><p>Horizontal text below the vertical panels.</p></body></html>',
                 "OEBPS/Styles/book.css": 'body{font:20px/1.7 serif;margin:20px;writing-mode:horizontal-tb}.columns{display:flex;gap:24px}.columns section{width:45%;height:230px;border:2px solid #216f54;padding:12px;box-sizing:border-box}.rl{-epub-writing-mode:tb-rl}.lr{-ms-writing-mode:tb-lr}.number{-epub-text-combine:horizontal}aside{writing-mode:horizontal-tb;font-size:14px;background:#d5ebe2}ruby{ruby-position:over}.rtl{direction:rtl;unicode-bidi:isolate}',
             })
-        server = serve(port=0, cache_root=args.state_dir or folder / "cache", static_root=root / "frontend/dist")
+        state_dir = args.state_dir or folder / "cache"
+        server = serve(port=args.port, cache_root=state_dir, static_root=root / "frontend/dist")
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         url = f"http://127.0.0.1:{server.server_port}/"
         print(f"URL: {url}\nBOOK: {book}", flush=True)
         try:
             webview.create_window("Transoria EPUB test", url, width=args.width, height=args.height, min_size=(960, 600))
-            webview.start()
+            webview.start(private_mode=False, storage_path=str(state_dir / "desktop-webview"))
         finally:
             server.shutdown()
             server.server_close()

@@ -35,7 +35,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from transoria.app_paths import APP_NAME, resource_root
+from transoria.app_paths import APP_NAME, default_cache_root, resource_root
 from transoria.bridge.handlers.dialogs import DialogProvider, NullDialogProvider
 from transoria.bridge.handlers.updates import GithubReleaseChecker
 from transoria.bridge.router import build_default_router
@@ -487,7 +487,12 @@ def _run_desktop(
 
     try:
         try:
-            webview.start(_on_shown, debug=dev)
+            webview.start(
+                _on_shown,
+                debug=dev,
+                private_mode=False,
+                storage_path=str(default_cache_root() / "desktop-webview"),
+            )
         except Exception as exc:  # noqa: BLE001
             _show_windows_startup_error(exc)
             raise
