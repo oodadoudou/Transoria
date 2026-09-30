@@ -15,7 +15,7 @@ export interface EpubEditorDraft {
   sideView: "files" | "toc" | "spine" | "book";
   bookIndex?: number;
   bookMode?: "continuous" | "paged";
-  readingLocations?: Record<string, { page: number; scroll: number; scrollX?: number }>;
+  readingLocations?: Record<string, { page: number; scroll: number; scrollX?: number; anchorLine?: number }>;
   paneView: "source" | "preview";
   searchOpen: boolean;
   query: string;

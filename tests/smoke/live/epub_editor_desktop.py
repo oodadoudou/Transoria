@@ -25,6 +25,7 @@ def main() -> None:
     parser.add_argument("--inline-text", action="store_true")
     parser.add_argument("--fixed-layout", action="store_true")
     parser.add_argument("--mixed-writing", action="store_true")
+    parser.add_argument("--navigation", action="store_true")
     parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
@@ -50,6 +51,8 @@ def main() -> None:
             "OEBPS/Text/two.xhtml": f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test chapter</title><link rel="stylesheet" href="../Styles/book.css"/></head><body><h1>Test chapter</h1>{paragraphs}</body></html>',
             "OEBPS/Styles/book.css": f'body {{font:16px/1.6 serif;color:#202020;margin:24px;writing-mode:{args.writing_mode};direction:{args.direction}}} p {{margin:1em 0}} p:nth-child(5n){{font-size:22px}} .unused {{color:blue}}',
         })
+        if args.navigation:
+            fixtures["_rewrite_book"](book, {"OEBPS/Text/one.xhtml": f'<html xmlns="http://www.w3.org/1999/xhtml"><head><title>First chapter</title><link rel="stylesheet" href="../Styles/book.css"/></head><body><a href="two.xhtml#p55">Chapter two</a><h1>First chapter</h1>{paragraphs}</body></html>'})
         if args.advanced_css:
             with zipfile.ZipFile(book) as archive:
                 opf = archive.read("OEBPS/book.opf")

@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { interactivePreview, type ReadingLocation } from "./epubPreview";
+import { interactivePreview, PreviewCommands, type ReadingLocation } from "./epubPreview";
 import { fixedPageSize, previewRendition } from "./epubRendition";
 
-export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", location, fragment = "", navigation = 0, inspect = false, sourceLine = 0, step = 0, onLocation, onInspect, onLink, onWarning }: {
+export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", location, fragment = "", navigation = 0, inspect = false, sourceLine = 0, step = 0, onLocation, onInspect, onLink, onWarning, onReady }: {
   html: string; title: string; zoom: number; mode?: "continuous" | "paged"; location?: ReadingLocation;
   fragment?: string; navigation?: number; inspect?: boolean; sourceLine?: number; step?: number;
   onLocation?: (location: ReadingLocation & { pages: number }) => void;
   onInspect?: (line: number, styles: Record<string, string>) => void;
   onLink?: (target: string) => void;
   onWarning?: (reason: string) => void;
+  onReady?: (ready: boolean) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -20,21 +21,37 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
     observer.observe(surface.current);
     return () => observer.disconnect();
   }, [rendition.layout]);
-  const token = useRef(crypto.randomUUID().replace(/-/g, ""));
-  const ready = useRef(false);
+  const token = useMemo(() => crypto.randomUUID().replace(/-/g, ""), [html]);
+  const commands = useRef(new PreviewCommands(token));
   const previousStep = useRef(step);
-  const callbacks = useRef({ onLocation, onInspect, onLink, onWarning });
-  callbacks.current = { onLocation, onInspect, onLink, onWarning };
+  if (commands.current.token !== token) {
+    commands.current = new PreviewCommands(token);
+    previousStep.current = step;
+  }
+  const latestLine = useRef(sourceLine);
+  latestLine.current = sourceLine;
+  const callbacks = useRef({ onLocation, onInspect, onLink, onWarning, onReady });
+  callbacks.current = { onLocation, onInspect, onLink, onWarning, onReady };
   const config = useRef({ mode, inspect, ...location, fragment, navigation });
   config.current = { mode, inspect, ...location, fragment, navigation };
-  const send = (data: Record<string, unknown>) => frame.current?.contentWindow?.postMessage({ token: token.current, ...data }, "*");
-  useEffect(() => { ready.current = false; }, [html]);
+  const send = (data: Record<string, unknown>) => frame.current?.contentWindow?.postMessage({ token: commands.current.token, ...data }, "*");
+  const configure = () => {
+    const revision = commands.current.configure();
+    callbacks.current.onReady?.(false);
+    if (revision !== null) send({ event: "configure", ...config.current, revision });
+  };
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source !== frame.current?.contentWindow || event.data?.token !== token.current || event.data?.type !== "epub-preview") return;
+      if (event.source !== frame.current?.contentWindow || event.data?.token !== commands.current.token || event.data?.type !== "epub-preview") return;
       const data = event.data;
-      if (data.event === "ready") { ready.current = true; send({ event: "configure", ...config.current }); }
-      if (data.event === "location" && Number.isFinite(data.page) && Number.isFinite(data.pages) && Number.isFinite(data.scroll)) {
+      if (data.event === "ready") { commands.current.loaded = true; configure(); }
+      if (data.event === "configured" && commands.current.acknowledge(data.revision)) {
+        if (latestLine.current > 0) send({ event: "line", line: latestLine.current });
+        const direction = commands.current.drain();
+        if (direction) send({ event: "step", direction });
+        callbacks.current.onReady?.(true);
+      }
+      if (data.event === "location" && commands.current.configured && data.revision === commands.current.revision && Number.isFinite(data.page) && Number.isFinite(data.pages) && Number.isFinite(data.scroll)) {
         const left = Number.isFinite(data.clipLeft) ? Math.max(0, Math.min(10000, data.clipLeft)) : 0;
         const right = Number.isFinite(data.clipRight) ? Math.max(0, Math.min(10000, data.clipRight)) : 0;
         if (frame.current) frame.current.style.clipPath = left || right ? `inset(0 ${right}px 0 ${left}px)` : "";
@@ -47,14 +64,15 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
   }, []);
-  useEffect(() => { if (ready.current) send({ event: "configure", ...config.current }); }, [mode, inspect, zoom, fragment, navigation]);
-  useEffect(() => { if (ready.current && sourceLine > 0) send({ event: "line", line: sourceLine }); }, [sourceLine]);
+  useEffect(configure, [token, mode, inspect, zoom, fragment, navigation]);
+  useEffect(() => { if (commands.current.configured && sourceLine > 0) send({ event: "line", line: sourceLine }); }, [sourceLine]);
   useEffect(() => {
-    if (ready.current && previousStep.current !== step) send({ event: "step", direction: Math.sign(step - previousStep.current) });
+    const direction = commands.current.step(step - previousStep.current);
+    if (direction) send({ event: "step", direction });
     previousStep.current = step;
   }, [step]);
   const fixed = rendition.layout === "pre-paginated";
   const pageSize = fixedPageSize(rendition, size, zoom);
-  const iframe = <iframe ref={frame} srcDoc={interactivePreview(html, token.current)} title={title} sandbox="allow-scripts" style={fixed ? { position: "absolute", left: (pageSize.stageWidth - pageSize.width * pageSize.scale) / 2, top: (pageSize.stageHeight - pageSize.height * pageSize.scale) / 2, width: pageSize.width, height: pageSize.height, transform: `scale(${pageSize.scale})`, transformOrigin: "top left" } : { width: `${10000 / zoom}%`, height: `${10000 / zoom}%`, transform: `scale(${zoom / 100})` }} />;
+  const iframe = <iframe ref={frame} srcDoc={interactivePreview(html, token)} title={title} sandbox="allow-scripts" style={fixed ? { position: "absolute", left: (pageSize.stageWidth - pageSize.width * pageSize.scale) / 2, top: (pageSize.stageHeight - pageSize.height * pageSize.scale) / 2, width: pageSize.width, height: pageSize.height, transform: `scale(${pageSize.scale})`, transformOrigin: "top left" } : { width: `${10000 / zoom}%`, height: `${10000 / zoom}%`, transform: `scale(${zoom / 100})` }} />;
   return fixed ? <div ref={surface} style={{ width: "100%", height: "100%", overflow: "auto" }}><div style={{ position: "relative", width: pageSize.stageWidth, height: pageSize.stageHeight }}>{iframe}</div></div> : iframe;
 }

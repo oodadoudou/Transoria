@@ -123,6 +123,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const sourceEditor = useRef<EditorView | null>(null);
   const editorStates = useRef(new Map<string, { state: EditorState; scroll: number }>());
   const [editorEpoch, setEditorEpoch] = useState(0);
+  const reloadCursor = useRef<{ path: string; position: number } | null>(null);
   const [sourceTarget, setSourceTarget] = useState<{ path: string; line: number } | null>(null);
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -208,6 +209,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [bookMode, setBookMode] = useState<"continuous" | "paged">("continuous");
   const readingLocations = useRef<Record<string, ReadingLocation>>({});
   const [bookPage, setBookPage] = useState({ page: 0, pages: 1 });
+  const [bookReady, setBookReady] = useState(false);
   const [pageStep, setPageStep] = useState(0);
   const [inspectPreview, setInspectPreview] = useState(false);
   const [syncPreview, setSyncPreview] = useState(false);
@@ -349,7 +351,9 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     }
   }, []);
 
-  const resetEditorHistory = () => {
+  const resetEditorHistory = (cursor?: { path: string; position: number }) => {
+    const editor = sourceEditor.current;
+    reloadCursor.current = cursor ?? (editor ? { path: selectedPath, position: Array.from(editor.state.doc.sliceString(0, editor.state.selection.main.head)).length } : null);
     editorStates.current.clear();
     sourceEditor.current = null;
     setLocalHistory({ undo: 0, redo: 0 });
@@ -426,6 +430,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     }
     let active = true;
     setBookLoading(true);
+    setBookReady(false);
+    setBookPage({ page: 0, pages: 1 });
     setBookError("");
     const timer = window.setTimeout(() => {
       const request = sourceDirty
@@ -753,6 +759,11 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     if (cached && cached.state.doc.toString() === content) {
       view.scrollDOM.scrollTop = cached.scroll;
     }
+    const cursor = reloadCursor.current;
+    if (cursor?.path === selectedPath) {
+      view.dispatch({ selection: { anchor: editorOffset(content, cursor.position) }, scrollIntoView: true });
+      reloadCursor.current = null;
+    }
   };
 
   const openBookPreview = () => {
@@ -787,8 +798,16 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   const turnPage = (direction: -1 | 1) => {
+    if (!bookReady || bookLoading || !session) return;
     if (bookMode === "paged" && ((direction < 0 && bookPage.page > 0) || (direction > 0 && bookPage.page < bookPage.pages - 1))) setPageStep((value) => value + direction);
-    else setBookIndex((index) => Math.max(0, Math.min((session?.spine.length ?? 1) - 1, spreadMate ? (direction > 0 ? Math.max(index, spreadMate.index) + 1 : Math.min(index, spreadMate.index) - 1) : index + direction)));
+    else {
+      const index = Math.max(0, Math.min(session.spine.length - 1, spreadMate ? (direction > 0 ? Math.max(bookIndex, spreadMate.index) + 1 : Math.min(bookIndex, spreadMate.index) - 1) : bookIndex + direction));
+      if (index === bookIndex) return;
+      readingLocations.current[session.spine[index]] = { page: direction < 0 ? -1 : 0, scroll: 0, scrollX: 0, anchorLine: 0 };
+      setPreviewFragment((previous) => ({ path: "", fragment: "", request: previous.request + 1 }));
+      setBookReady(false);
+      setBookIndex(index);
+    }
   };
 
   const previewWarning = (reason: string) => {
@@ -1085,7 +1104,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setMatches(found.matches);
       setMatchIndex(index);
       if (index >= 0 && found.matches[index].path !== selectedPath) await loadResource(session.session_id, found.matches[index].path);
-      resetEditorHistory();
+      resetEditorHistory({ path: match.path, position: next.replaced_end });
       setFeedback(`1 ${t.matches}`);
     });
   };
@@ -1384,10 +1403,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
             {bookRendition.layout === "pre-paginated" ? <label><input type="checkbox" checked={bookSpread} onChange={(event) => setBookSpread(event.target.checked)} />{t.spreads}</label> : null}
             {bookMode === "paged" ? <span>{t.page} {bookPage.page + 1} / {bookPage.pages}</span> : null}
             {wrapControl}{zoomControls(previewZoom, setPreviewZoom, t.previewZoom, 30)}<button type="button" title={t.fitPage} aria-label={t.fitPage} onClick={() => setPreviewZoom(100)}><Maximize size={16} /></button>
-            <div><button type="button" title={t.previousPage} aria-label={t.previousPage} disabled={visibleBookStart === 0 && (bookMode !== "paged" || bookPage.page === 0)} onClick={() => turnPage(-1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextPage} aria-label={t.nextPage} disabled={visibleBookEnd >= session.spine.length - 1 && (bookMode !== "paged" || bookPage.page >= bookPage.pages - 1)} onClick={() => turnPage(1)}><ArrowRight size={18} /></button></div>
+            <div><button type="button" title={t.previousPage} aria-label={t.previousPage} disabled={!bookReady || bookLoading || visibleBookStart === 0 && (bookMode !== "paged" || bookPage.page === 0)} onClick={() => turnPage(-1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextPage} aria-label={t.nextPage} disabled={!bookReady || bookLoading || visibleBookEnd >= session.spine.length - 1 && (bookMode !== "paged" || bookPage.page >= bookPage.pages - 1)} onClick={() => turnPage(1)}><ArrowRight size={18} /></button></div>
           </div>
           {bookError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : bookLoading ? <div className={styles.noPreview}>{t.loading}</div> : <div className={styles.bookPage} data-spread={!!spreadMate}><div className={styles.bookViewport} style={spreadMate ? { order: bookRendition.direction === "rtl" ? -bookIndex : bookIndex } : undefined}>
-            <EpubPreviewFrame key={session.spine[bookIndex]} html={bookPreviewHtml} title={t.bookPreview} zoom={previewZoom} mode={bookMode} step={pageStep} fragment={previewFragment.path === session.spine[bookIndex] ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[session.spine[bookIndex]]} onLocation={(location) => { rememberLocation(session.spine[bookIndex], location); setBookPage({ page: location.page, pages: location.pages }); }} onLink={previewLink} onWarning={previewWarning} />
+            <EpubPreviewFrame key={session.spine[bookIndex]} html={bookPreviewHtml} title={t.bookPreview} zoom={previewZoom} mode={bookMode} step={pageStep} fragment={previewFragment.path === session.spine[bookIndex] ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[session.spine[bookIndex]]} onLocation={(location) => { rememberLocation(session.spine[bookIndex], location); setBookPage({ page: location.page, pages: location.pages }); }} onLink={previewLink} onWarning={previewWarning} onReady={setBookReady} />
           </div>{spreadMate ? <div className={styles.bookViewport} style={{ order: bookRendition.direction === "rtl" ? -spreadMate.index : spreadMate.index }}><EpubPreviewFrame html={spreadMate.html} title={`${t.bookPreview}: ${spreadMate.index + 1}`} zoom={previewZoom} onLink={previewLink} /></div> : null}</div>}
         </div> : <>
         <div className={styles.fileHeading}><strong title={selectedPath}>{selectedPath}</strong><div className={styles.paneSwitch}><button type="button" aria-selected={paneView === "source"} onClick={() => setPaneView("source")}>{t.source}</button><button type="button" aria-selected={paneView === "preview"} onClick={() => setPaneView("preview")}>{t.preview}</button></div>{busy ? <span>{t.loading}</span> : null}</div>
@@ -1408,7 +1427,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
           {separator("source", sourceWidth)}
           <section className={styles.previewPane}>
             <div className={styles.paneHeader}><h3>{t.preview}</h3><div className={styles.previewHeaderControls}>
-              <button type="button" title={t.syncPreview} aria-label={t.syncPreview} aria-pressed={syncPreview} onClick={() => setSyncPreview((value) => !value)}><Link2 size={16} /></button>
+              <button type="button" title={t.syncPreview} aria-label={t.syncPreview} aria-pressed={syncPreview} onClick={() => { if (sourceEditor.current) setSourceLine(sourceEditor.current.state.doc.lineAt(sourceEditor.current.state.selection.main.head).number); setSyncPreview((value) => !value); }}><Link2 size={16} /></button>
               <button type="button" title={t.inspectStyle} aria-label={t.inspectStyle} aria-pressed={inspectPreview} onClick={() => { setInspectPreview((value) => !value); setComputedStyles(null); }}><ScanLine size={16} /></button>
               {wrapControl}{zoomControls(previewZoom, setPreviewZoom, t.previewZoom, 30)}
             </div></div>

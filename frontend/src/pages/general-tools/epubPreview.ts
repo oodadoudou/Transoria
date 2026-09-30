@@ -20,6 +20,41 @@ export function columnPageOffsets(rectangles: Array<[number, number]>, viewport:
 
 export type ReadingLocation = { page: number; scroll: number; scrollX?: number; anchorLine?: number };
 
+export class PreviewCommands {
+  loaded = false;
+  configured = false;
+  revision = 0;
+  private pendingSteps = 0;
+
+  readonly token: string;
+
+  constructor(token: string) { this.token = token; }
+
+  configure(): number | null {
+    if (!this.loaded) return null;
+    this.configured = false;
+    return ++this.revision;
+  }
+
+  acknowledge(revision: number): boolean {
+    if (revision !== this.revision || !this.loaded) return false;
+    this.configured = true;
+    return true;
+  }
+
+  step(delta: number): number {
+    if (this.configured) return delta;
+    this.pendingSteps += delta;
+    return 0;
+  }
+
+  drain(): number {
+    const steps = this.pendingSteps;
+    this.pendingSteps = 0;
+    return steps;
+  }
+}
+
 export function previewAtZoom(markup: string, zoom: number, wrap: boolean, fixed = false): string {
   if (fixed) return markup;
   const scaled = markup
@@ -35,7 +70,7 @@ export function interactivePreview(markup: string, token: string): string {
   const script = `(() => {
     const token = ${JSON.stringify(token)};
     let page = 0, mode = 'continuous', inspect = false, restoring = false, lastNavigation = -1;
-    let ready = false, sign = 1, vertical = false, offsets = [];
+    let ready = false, sign = 1, vertical = false, offsets = [], configuration = 0, revision = 0;
     const paginateColumns = ${columnPageOffsets.toString()};
     const send = (data) => parent.postMessage({type:'epub-preview',token,...data}, '*');
     const fixed = document.querySelector('meta[name="transoria-rendition"]')?.content.includes('pre-paginated');
@@ -60,7 +95,7 @@ export function interactivePreview(markup: string, token: string): string {
     const report = () => {
       const gap=mode==='paged' && vertical && offsets[page+1]!==undefined ? Math.max(0,innerWidth-(offsets[page+1]-offsets[page]+12)) : 0;
       const leading=mode==='paged' && vertical && page>0 ? 12 : 0;
-      send({event:'location',page,pages:pages(),scroll:scrollY,scrollX,anchorLine:anchorLine(),clipLeft:sign<0?gap:leading,clipRight:sign<0?leading:gap});
+      send({event:'location',revision,page,pages:pages(),scroll:scrollY,scrollX,anchorLine:anchorLine(),clipLeft:sign<0?gap:leading,clipRight:sign<0?leading:gap});
     };
     const go = () => {
       restoring = true;
@@ -111,6 +146,8 @@ export function interactivePreview(markup: string, token: string): string {
       const data = event.data;
       if(data.event === 'configure') {
         ready = false;
+        const requested = ++configuration;
+        revision = data.revision;
         mode = !fixed && data.mode === 'paged' ? 'paged' : 'continuous'; inspect = !!data.inspect;
         layout.textContent = '';
         const bodyStyle = getComputedStyle(document.body);
@@ -119,17 +156,19 @@ export function interactivePreview(markup: string, token: string): string {
         sign = writingMode.endsWith('-rl') || (!vertical && bodyStyle.getPropertyValue('direction') === 'rtl') ? -1 : 1;
         layout.textContent = mode === 'paged' ? 'html{height:100%!important;overflow:hidden!important;writing-mode:'+writingMode+'!important;direction:'+bodyStyle.getPropertyValue('direction')+'!important}body{box-sizing:border-box!important;height:calc(100vh - 24px)!important;max-height:calc(100vh - 24px)!important;width:calc(100vw - 24px)!important;max-width:none!important;margin:12px!important;overflow:visible!important;'+(vertical ? 'column-count:auto!important;column-width:auto!important;' : 'column-width:calc(100vw - 24px)!important;column-gap:24px!important;column-fill:auto!important;')+'}img,svg{break-inside:avoid}' : '';
         requestAnimationFrame(() => requestAnimationFrame(() => {
+          if(requested !== configuration) return;
           measure();
-          page = Math.max(0, Math.min(Number(data.page) || 0, pages()-1));
-          scrollTo(mode === 'paged' ? sign*(offsets[page] ?? page*innerWidth) : Number(data.scrollX)||0, mode === 'paged' ? 0 : Number(data.scroll)||0);
-          if(data.anchorLine && mode==='paged' && !data.fragment) document.querySelector('[data-transoria-line="'+Number(data.anchorLine)+'"]')?.scrollIntoView();
+          const end = Number(data.page) === -1;
+          page = end ? pages()-1 : Math.max(0, Math.min(Number(data.page) || 0, pages()-1));
+          scrollTo(mode === 'paged' ? sign*(offsets[page] ?? page*innerWidth) : end && vertical ? sign*Math.max(0,document.documentElement.scrollWidth-innerWidth) : Number(data.scrollX)||0, mode === 'paged' ? 0 : end && !vertical ? Math.max(0,document.documentElement.scrollHeight-innerHeight) : Number(data.scroll)||0);
+          if(!end && data.anchorLine && mode==='paged' && !data.fragment) document.querySelector('[data-transoria-line="'+Number(data.anchorLine)+'"]')?.scrollIntoView();
           if(data.fragment && data.navigation !== lastNavigation) { document.getElementById(data.fragment)?.scrollIntoView(); lastNavigation = data.navigation; }
           if(mode==='paged') { page = currentPage(); go(); }
-          ready = true; report();
+          ready = true; send({event:'configured',revision}); report();
         }));
-      } else if(data.event === 'step') {
+      } else if(data.event === 'step' && ready) {
         page = Math.max(0, Math.min(page + data.direction, pages()-1)); go();
-      } else if(data.event === 'line') {
+      } else if(data.event === 'line' && ready) {
         const nodes = [...document.querySelectorAll('[data-transoria-line]')];
         const target = nodes.reverse().find((node) => Number(node.dataset.transoriaLine) <= data.line);
         target?.scrollIntoView({block:'center'}); if(mode==='paged') { page = currentPage(); go(); } else report();
@@ -138,9 +177,9 @@ export function interactivePreview(markup: string, token: string): string {
     addEventListener('scroll', () => { if(ready && !restoring) { if(mode==='paged') page=currentPage(); report(); } }, {passive:true});
     const reflow = () => {
       if(!ready) return;
-      const line=anchorLine(); measure();
+      const previousPage=page, line=anchorLine(); measure();
       if(line) document.querySelector('[data-transoria-line="'+line+'"]')?.scrollIntoView();
-      page=Math.min(currentPage(),pages()-1); go();
+      page=Math.min(line?currentPage():previousPage,pages()-1); go();
     };
     addEventListener('resize', reflow);
     document.fonts.addEventListener?.('loadingdone',reflow);
