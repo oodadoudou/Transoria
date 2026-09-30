@@ -248,6 +248,9 @@ export function interactivePreview(markup: string, token: string): string {
       const properties = ['font-family','font-size','font-weight','color','background-color','line-height','text-align','margin','padding','display','width','height','writing-mode','text-orientation','direction','grid-template-columns','gap'];
       send({event:'inspect',line:Number(target.dataset.transoriaLine),tag:target.tagName,styles:Object.fromEntries(properties.map((key)=>[key,style.getPropertyValue(key)]))});
     });
+    addEventListener('keydown', (event) => {
+      if((event.ctrlKey||event.metaKey) && event.key.toLowerCase()==='f') {event.preventDefault();send({event:'find'});}
+    });
     Promise.all([document.fonts.ready, ...[...document.images].map((image)=>image.complete ? Promise.resolve() : new Promise((resolve)=>{image.addEventListener('load',resolve,{once:true});image.addEventListener('error',resolve,{once:true});}))]).then(() => send({event:'ready'}));
   })();`;
   return safe + `<script nonce="${nonce}">${script}</script>`;

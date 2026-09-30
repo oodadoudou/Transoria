@@ -122,6 +122,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const savedDraft = useRef(readEditorDraft());
   const currentDraft = useRef<EpubEditorDraft | null>(null);
   const sourceEditor = useRef<EditorView | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const previewSelectingSource = useRef(false);
   const previewSource = useRef({ path: "", content: "" });
   const chapterTurnTime = useRef(0);
@@ -829,7 +830,33 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     }
   };
 
+  const openSearch = () => {
+    setSearchOpen(true);
+    const editor = sourceEditor.current;
+    if (editor) {
+      const selected = editor.state.sliceDoc(editor.state.selection.main.from, editor.state.selection.main.to);
+      if (selected && selected.length <= 500 && !selected.includes("\n")) { setQuery(selected); setMatches([]); setMatchIndex(-1); }
+    }
+    searchInput.current?.focus(); searchInput.current?.select();
+  };
 
+  useEffect(() => {
+    if (searchOpen) { searchInput.current?.focus(); searchInput.current?.select(); }
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!session) return;
+    const keydown = (event: KeyboardEvent) => {
+      if (event.isComposing) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault(); event.stopPropagation(); openSearch();
+      } else if (event.key === "Escape" && searchOpen && !fileMenu && !document.querySelector(`.${styles.saveDialog}`)) {
+        event.preventDefault(); setSearchOpen(false); sourceEditor.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", keydown, true);
+    return () => window.removeEventListener("keydown", keydown, true);
+  }, [session?.session_id, searchOpen, fileMenu]);
 
   const openBookPreview = () => {
     const editor = sourceEditor.current;
@@ -1389,7 +1416,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       </div>
       <div className={styles.toolbarActions}>
         <button type="button" title={t.tools} aria-label={t.tools} disabled={busy} onClick={() => setToolsOpen(true)}><Wrench size={18} /></button>
-        <button type="button" title={t.find} aria-label={t.find} onClick={() => setSearchOpen(!searchOpen)}><Search size={18} /></button>
+        <button type="button" title={t.find} aria-label={t.find} onClick={() => searchOpen ? setSearchOpen(false) : openSearch()}><Search size={18} /></button>
         <button type="button" title={t.undo} aria-label={t.undo} disabled={busy || (!session?.can_undo && !(sideView !== "book" && localHistory.undo) && !(sideView === "toc" && tocHistory.undo))} onClick={() => void history("undo")}><CornerUpLeft size={18} /></button>
         <button type="button" title={t.redo} aria-label={t.redo} disabled={busy || (!(sideView === "toc" && tocHistory.redo) && !(sideView !== "book" && localHistory.redo) && (!session?.can_redo || sourceDirty))} onClick={() => void history("redo")}><CornerUpRight size={18} /></button>
         <button type="button" disabled={!session || busy} onClick={() => void stageSave()}><Save size={17} />{t.stageSave}</button>
@@ -1401,9 +1428,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     {feedback ? <div className={feedbackWarning ? styles.warning : styles.feedback} role="status">{feedback}</div> : null}
     {searchOpen && session ? <div className={styles.searchPanel}>
       <div className={styles.searchControls}>
-        <label>{t.query}<input value={query} onChange={(event) => { setQuery(event.target.value); setMatches([]); setMatchIndex(-1); }} onKeyDown={(event) => { if (event.key === "Enter") { if (matches.length) void navigateMatch(event.shiftKey ? -1 : 1); else void search(); } }} /></label>
+        <label>{t.query}<input ref={searchInput} value={query} onChange={(event) => { setQuery(event.target.value); setMatches([]); setMatchIndex(-1); }} onKeyDown={(event) => { if (event.key === "Enter") { if (matches.length) void navigateMatch(event.shiftKey ? -1 : 1); else void search(); } }} /></label>
         <label>{t.replacement}<input value={replacement} onChange={(event) => setReplacement(event.target.value)} /></label>
-        <label><span>{t.files}</span><select value={scope} onChange={(event) => { setScope(event.target.value as Scope); setSelectionRange(null); setMatches([]); setMatchIndex(-1); }}><option value="current">{t.current}</option><option value="selection">{t.selection}</option><option value="text">{t.textFiles}</option><option value="styles">{t.styleFiles}</option><option value="all">{t.all}</option></select></label>
+        <label><span>{t.files}</span><span className={styles.selectField}><select value={scope} onChange={(event) => { setScope(event.target.value as Scope); setSelectionRange(null); setMatches([]); setMatchIndex(-1); }}><option value="current">{t.current}</option><option value="selection">{t.selection}</option><option value="text">{t.textFiles}</option><option value="styles">{t.styleFiles}</option><option value="all">{t.all}</option></select><ChevronDown size={14} /></span></label>
+        <div className={styles.searchCommands}>
         <label className={styles.checkbox}><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.caseSensitive}</label>
         <label className={styles.checkbox}><input type="checkbox" checked={regularExpression} onChange={(event) => { setRegularExpression(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.regularExpression}</label>
         <label className={styles.checkbox}><input type="checkbox" checked={ignoreMarkup} onChange={(event) => { setIgnoreMarkup(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.ignoreMarkup}</label>
@@ -1411,6 +1439,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         <button type="button" disabled={!query || busy || !scopePaths().length} onClick={() => void search()}><Search size={16} />{t.find}</button>
         <div className={styles.matchNavigation} role="status"><span>{matches.length ? `${matchIndex + 1} / ${matches.length}${matches.length >= 5000 ? "+" : ""}` : t.noMatches}</span><button type="button" title={t.previousMatch} aria-label={t.previousMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(-1)}><ArrowUp size={16} /></button><button type="button" title={t.nextMatch} aria-label={t.nextMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(1)}><ArrowDown size={16} /></button><button type="button" disabled={matchIndex < 0 || busy} onClick={() => void replaceOne(matches[matchIndex])}>{t.replaceOne}</button></div>
         <button type="button" disabled={!matches.length || matches.length >= 5000 || busy} title={matches.length >= 5000 ? t.narrowSearch : undefined} onClick={() => void replaceAll()}>{t.replaceAll}</button>
+        </div>
       </div>
     </div> : null}
     {!session ? <div className={styles.empty}>{t.noBook}</div> : <div className={styles.main} data-resizing={resizing} style={{ "--sidebar-width": `${sidebarWidth}%` } as CSSProperties}>
@@ -1466,8 +1495,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
             <div><button type="button" title={t.previousPage} aria-label={t.previousPage} disabled={!bookReady || bookLoading || visibleBookStart === 0 && (bookMode !== "paged" || bookPage.page === 0)} onClick={() => turnPage(-1)}><ArrowLeft size={18} /></button><button type="button" title={t.nextPage} aria-label={t.nextPage} disabled={!bookReady || bookLoading || visibleBookEnd >= session.spine.length - 1 && (bookMode !== "paged" || bookPage.page >= bookPage.pages - 1)} onClick={() => turnPage(1)}><ArrowRight size={18} /></button></div>
           </div>
           {bookError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : bookLoading ? <div className={styles.noPreview}>{t.loading}</div> : <div className={styles.bookPage} data-spread={!!spreadMate}><div className={styles.bookViewport} style={spreadMate ? { order: bookRendition.direction === "rtl" ? -bookIndex : bookIndex } : undefined}>
-            <EpubPreviewFrame key={session.spine[bookIndex]} html={bookPreviewHtml} title={t.bookPreview} zoom={previewZoom} mode={bookMode} step={pageStep} fragment={previewFragment.path === session.spine[bookIndex] ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[session.spine[bookIndex]]} onLocation={(location) => { rememberLocation(session.spine[bookIndex], location); setBookPage({ page: location.page, pages: location.pages }); }} onBoundary={turnChapter} onLink={previewLink} onWarning={previewWarning} onReady={setBookReady} />
-          </div>{spreadMate ? <div className={styles.bookViewport} style={{ order: bookRendition.direction === "rtl" ? -spreadMate.index : spreadMate.index }}><EpubPreviewFrame html={spreadMate.html} title={`${t.bookPreview}: ${spreadMate.index + 1}`} zoom={previewZoom} onBoundary={turnChapter} onLink={previewLink} /></div> : null}</div>}
+            <EpubPreviewFrame key={session.spine[bookIndex]} html={bookPreviewHtml} title={t.bookPreview} zoom={previewZoom} mode={bookMode} step={pageStep} fragment={previewFragment.path === session.spine[bookIndex] ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[session.spine[bookIndex]]} onLocation={(location) => { rememberLocation(session.spine[bookIndex], location); setBookPage({ page: location.page, pages: location.pages }); }} onBoundary={turnChapter} onFind={openSearch} onLink={previewLink} onWarning={previewWarning} onReady={setBookReady} />
+          </div>{spreadMate ? <div className={styles.bookViewport} style={{ order: bookRendition.direction === "rtl" ? -spreadMate.index : spreadMate.index }}><EpubPreviewFrame html={spreadMate.html} title={`${t.bookPreview}: ${spreadMate.index + 1}`} zoom={previewZoom} onBoundary={turnChapter} onFind={openSearch} onLink={previewLink} /></div> : null}</div>}
         </div> : <>
         <div className={styles.fileHeading}><strong title={selectedPath}>{selectedPath}</strong><div className={styles.paneSwitch}><button type="button" aria-selected={paneView === "source"} onClick={() => setPaneView("source")}>{t.source}</button><button type="button" aria-selected={paneView === "preview"} onClick={() => setPaneView("preview")}>{t.preview}</button></div>{busy ? <span>{t.loading}</span> : null}</div>
         <div className={styles.documentTabs} role="tablist">{openPaths.filter((path) => session.files.some((file) => file.path === path)).map((path) => <div key={path} className={styles.documentTab} data-active={path === selectedPath}><button type="button" role="tab" aria-selected={path === selectedPath} title={path} disabled={busy} onClick={() => void selectResource(path)}>{path.split("/").at(-1)}{path === selectedPath && sourceDirty ? " *" : ""}</button><button type="button" title={t.closeTab} aria-label={`${t.closeTab}: ${path}`} disabled={busy || openPaths.length <= 1} onClick={() => { void run(async () => { await commitSource(); if (path === selectedPath) await loadResource(session.session_id, openPaths.find((item) => item !== path)!); setOpenPaths((current) => current.filter((item) => item !== path)); editorStates.current.delete(path); }); }}><X size={13} /></button></div>)}</div>
@@ -1500,7 +1529,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
             </div></div>
             {computedStyles ? <div className={styles.styleInspector}><strong>{t.styles}</strong><button type="button" title={t.close} onClick={() => setComputedStyles(null)}><X size={14} /></button><dl>{Object.entries(computedStyles).map(([property, value]) => <div key={property}><dt>{property}</dt><dd>{value}</dd></div>)}</dl></div> : null}
             {previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : ((isPreviewable && selectedPath !== session.nav_path) || currentFile?.media_type === "text/css") && previewPath ? <div className={styles.previewViewport}>
-              <EpubPreviewFrame key={previewPath} html={chapterPreviewHtml} title={t.preview} zoom={previewZoom} inspect={inspectPreview} sourceLine={syncPreview ? sourceLine : 0} sourceColumn={sourceColumn} sourceRequest={sourceRequest} fragment={previewFragment.path === previewPath ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[`source:${previewPath}`]} onLocation={(location) => { rememberLocation(`source:${previewPath}`, location); if (location.anchorLine && (location.origin === "user" || (location.origin === "layout" && !sourceLine))) locateSource(location.anchorLine, location.anchorColumn); }} onLocate={locateSource} onBoundary={turnChapter} onInspect={inspectElement} onLink={previewLink} />
+              <EpubPreviewFrame key={previewPath} html={chapterPreviewHtml} title={t.preview} zoom={previewZoom} inspect={inspectPreview} sourceLine={syncPreview ? sourceLine : 0} sourceColumn={sourceColumn} sourceRequest={sourceRequest} fragment={previewFragment.path === previewPath ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[`source:${previewPath}`]} onLocation={(location) => { rememberLocation(`source:${previewPath}`, location); if (location.anchorLine && (location.origin === "user" || (location.origin === "layout" && !sourceLine))) locateSource(location.anchorLine, location.anchorColumn); }} onLocate={locateSource} onBoundary={turnChapter} onFind={openSearch} onInspect={inspectElement} onLink={previewLink} />
             </div> : <div className={styles.noPreview}>{t.noPreview}</div>}
           </section>
         </div>

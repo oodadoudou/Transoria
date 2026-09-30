@@ -66,6 +66,8 @@ test("source columns, preview clicks, scroll origins and chapter boundaries stay
   time = 2400; context.scrollY = 0;
   handlers.get("wheel")({ deltaY: -80, deltaX: 0, deltaMode: 0, preventDefault() {} });
   assert.equal(messages.at(-1).direction, -1);
+  handlers.get("keydown")({ ctrlKey: true, key: "f", preventDefault() {} });
+  assert.equal(messages.at(-1).event, "find");
 });
 
 test("preview controller parses and runs in an opaque sandbox with a nonce", () => {

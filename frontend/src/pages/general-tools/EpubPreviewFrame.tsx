@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { interactivePreview, PreviewCommands, type ReadingLocation } from "./epubPreview";
 import { fixedPageSize, previewRendition } from "./epubRendition";
 
-export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", location, fragment = "", navigation = 0, inspect = false, sourceLine = 0, sourceColumn = 0, sourceRequest = 0, step = 0, onLocation, onLocate, onBoundary, onInspect, onLink, onWarning, onReady }: {
+export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", location, fragment = "", navigation = 0, inspect = false, sourceLine = 0, sourceColumn = 0, sourceRequest = 0, step = 0, onLocation, onLocate, onBoundary, onFind, onInspect, onLink, onWarning, onReady }: {
   html: string; title: string; zoom: number; mode?: "continuous" | "paged"; location?: ReadingLocation;
   fragment?: string; navigation?: number; inspect?: boolean; sourceLine?: number; sourceColumn?: number; sourceRequest?: number; step?: number;
   onLocation?: (location: ReadingLocation & { pages: number; origin: string }) => void;
   onLocate?: (line: number, column: number) => void;
   onBoundary?: (direction: -1 | 1) => void;
+  onFind?: () => void;
   onInspect?: (line: number, styles: Record<string, string>) => void;
   onLink?: (target: string) => void;
   onWarning?: (reason: string) => void;
@@ -32,8 +33,8 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
   }
   const latestPoint = useRef({ line: sourceLine, column: sourceColumn });
   latestPoint.current = { line: sourceLine, column: sourceColumn };
-  const callbacks = useRef({ onLocation, onLocate, onBoundary, onInspect, onLink, onWarning, onReady });
-  callbacks.current = { onLocation, onLocate, onBoundary, onInspect, onLink, onWarning, onReady };
+  const callbacks = useRef({ onLocation, onLocate, onBoundary, onFind, onInspect, onLink, onWarning, onReady });
+  callbacks.current = { onLocation, onLocate, onBoundary, onFind, onInspect, onLink, onWarning, onReady };
   const config = useRef({ mode, inspect, ...location, fragment, navigation });
   config.current = { mode, inspect, ...location, fragment, navigation };
   const send = (data: Record<string, unknown>) => frame.current?.contentWindow?.postMessage({ token: commands.current.token, ...data }, "*");
@@ -61,6 +62,7 @@ export function EpubPreviewFrame({ html, title, zoom, mode = "continuous", locat
       }
       if (data.event === "locate" && commands.current.configured && data.revision === commands.current.revision && Number.isInteger(data.line) && data.line > 0 && Number.isInteger(data.column) && data.column >= 0) callbacks.current.onLocate?.(data.line, data.column);
       if (data.event === "boundary" && commands.current.configured && data.revision === commands.current.revision && (data.direction === -1 || data.direction === 1)) callbacks.current.onBoundary?.(data.direction);
+      if (data.event === "find") callbacks.current.onFind?.();
       if (data.event === "warning" && typeof data.reason === "string") callbacks.current.onWarning?.(data.reason);
       if (data.event === "inspect" && Number.isFinite(data.line) && data.styles && typeof data.styles === "object") callbacks.current.onInspect?.(data.line, data.styles);
       if (data.event === "link" && typeof data.target === "string") callbacks.current.onLink?.(data.target);

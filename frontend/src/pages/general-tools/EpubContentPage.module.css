@@ -985,10 +985,50 @@
 }
 
 .searchControls {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 160px;
   align-items: end;
   gap: 8px;
+}
+
+.searchCommands {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchCommands > button:first-of-type {
+  margin-left: auto;
+}
+
+.searchControls input:not([type="checkbox"]),
+.searchControls select,
+.searchControls button {
+  box-sizing: border-box;
+  height: 34px;
+  min-height: 34px;
+  border-radius: 5px;
+}
+
+.searchControls select {
+  appearance: none;
+  width: 100%;
+  padding-right: 28px;
+}
+
+.selectField {
+  position: relative;
+  display: block;
+  height: 34px;
+}
+
+.selectField > svg {
+  position: absolute;
+  right: 9px;
+  top: 10px;
+  pointer-events: none;
 }
 
 .searchControls label,
@@ -998,11 +1038,6 @@
   min-width: 120px;
   font-size: 12px;
   color: var(--muted);
-}
-
-.searchControls label:first-child,
-.searchControls label:nth-child(2) {
-  flex: 1 1 175px;
 }
 
 .checkbox {
