@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import io
 import runpy
+import shutil
 import tempfile
 import threading
 import zipfile
@@ -28,6 +29,7 @@ def main() -> None:
     parser.add_argument("--fixed-layout", action="store_true")
     parser.add_argument("--mixed-writing", action="store_true")
     parser.add_argument("--navigation", action="store_true")
+    parser.add_argument("--preview-resources", action="store_true", help="Prepare standalone SVG and non-previewable XML books for session-switch checks.")
     parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
@@ -92,6 +94,26 @@ def main() -> None:
                 "OEBPS/Styles/book.css": 'body{font:20px/1.7 serif;margin:20px;writing-mode:horizontal-tb}.columns{display:flex;gap:24px}.columns section{width:45%;height:230px;border:2px solid #216f54;padding:12px;box-sizing:border-box}.rl{-epub-writing-mode:tb-rl}.lr{-ms-writing-mode:tb-lr}.number{-epub-text-combine:horizontal}aside{writing-mode:horizontal-tb;font-size:14px;background:#d5ebe2}ruby{ruby-position:over}.rtl{direction:rtl;unicode-bidi:isolate}',
             })
         state_dir = args.state_dir or folder / "cache"
+        if args.preview_resources:
+            with zipfile.ZipFile(book) as archive:
+                opf = archive.read("OEBPS/book.opf")
+                nav = archive.read("OEBPS/nav.xhtml")
+                ncx = archive.read("OEBPS/toc.ncx")
+            svg_book = folder / "svg-test.epub"
+            xml_book = folder / "xml-test.epub"
+            shutil.copyfile(book, svg_book)
+            shutil.copyfile(book, xml_book)
+            fixtures["_rewrite_book"](svg_book, {
+                "OEBPS/book.opf": opf.replace(b'href="Text/one.xhtml" media-type="application/xhtml+xml"', b'href="Text/cover.svg" media-type="image/svg+xml"'),
+                "OEBPS/nav.xhtml": nav.replace(b"Text/one.xhtml", b"Text/cover.svg"),
+                "OEBPS/toc.ncx": ncx.replace(b"Text/one.xhtml", b"Text/cover.svg"),
+                "OEBPS/Text/cover.svg": '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 600 900"><image xlink:href="../Images/pixel.png" width="600" height="900"/><text x="50" y="100" font-size="40">SVG SESSION TEST</text></svg>',
+            })
+            fixtures["_rewrite_book"](xml_book, {
+                "OEBPS/book.opf": opf.replace(b'href="Text/one.xhtml" media-type="application/xhtml+xml"', b'href="Text/one.xhtml" media-type="application/xml"'),
+                "OEBPS/Text/one.xhtml": '<document><title>XML session: no chapter preview</title></document>',
+            })
+            print(f"SVG BOOK: {svg_book}\nXML BOOK: {xml_book}", flush=True)
         server = serve(port=args.port, cache_root=state_dir, static_root=root / "frontend/dist")
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()

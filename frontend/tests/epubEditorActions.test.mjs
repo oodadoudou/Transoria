@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nextMatchIndex, previewDestination, relativeResourceHref, reorderedSpine, resourceAfterHistory, savedEditorHistory, searchScopePaths, xmlAttribute } from "../src/pages/general-tools/epubEditorActions.ts";
+import { nextMatchIndex, previewDestination, relativeResourceHref, reorderedSpine, resourceAfterHistory, resourceAfterMutation, resourcePreviewPath, savedEditorHistory, searchScopePaths, xmlAttribute } from "../src/pages/general-tools/epubEditorActions.ts";
 import { EditorState } from "@codemirror/state";
 import { history, undo, undoDepth } from "@codemirror/commands";
 
@@ -87,4 +87,31 @@ test("undo after creating a chapter selects an existing neighbor", () => {
   assert.equal(resourceAfterHistory("Text/two.xhtml", previous, files), "Text/two.xhtml");
   assert.equal(resourceAfterHistory("missing", previous, files), "Text/one.xhtml");
   assert.equal(resourceAfterHistory("Text/new.xhtml", previous, [{ path: "Images/cover.png", editable: false }]), "");
+});
+
+test("preview selection uses media types and rejects stale chapters and navigation pages", () => {
+  const files = [
+    { path: "cover.resource", media_type: "image/svg+xml" },
+    { path: "chapter.xhtml", media_type: "application/xhtml+xml" },
+    { path: "nav.xhtml", media_type: "application/xhtml+xml" },
+    { path: "book.css", media_type: "text/css" },
+    { path: "notes.xml", media_type: "application/xml" },
+  ];
+  const spine = ["nav.xhtml", "notes.xml", "cover.resource", "chapter.xhtml"];
+  const pick = (path, preferred) => resourcePreviewPath(path, files, spine, "nav.xhtml", preferred);
+  assert.equal(pick("cover.resource"), "cover.resource");
+  assert.equal(pick("chapter.xhtml"), "chapter.xhtml");
+  for (const preferred of ["previous-book.xhtml", "nav.xhtml", "notes.xml", ""]) assert.equal(pick("book.css", preferred), "cover.resource");
+  assert.equal(pick("book.css", "chapter.xhtml"), "chapter.xhtml");
+  for (const path of ["nav.xhtml", "notes.xml", "missing"]) assert.equal(pick(path, "chapter.xhtml"), "");
+  assert.equal(resourcePreviewPath("book.css", files, [], "nav.xhtml"), "");
+});
+
+test("binary resource mutations reload the active source and editable mutations choose a valid file", () => {
+  const files = [{ path: "one.xhtml", editable: true }, { path: "two.xhtml", editable: true }, { path: "new.png", editable: false }];
+  for (const action of ["rename", "replace", "delete", "add"]) assert.equal(resourceAfterMutation(action, "one.xhtml", "old.png", "new.png", [], files), "one.xhtml");
+  assert.equal(resourceAfterMutation("rename", "old.xhtml", "old.xhtml", "two.xhtml", [], files), "two.xhtml");
+  assert.equal(resourceAfterMutation("delete", "deleted.xhtml", "deleted.xhtml", "", ["one.xhtml", "deleted.xhtml", "two.xhtml"], files), "one.xhtml");
+  assert.equal(resourceAfterMutation("add", "one.xhtml", "", "two.xhtml", [], files), "two.xhtml");
+  assert.equal(resourceAfterMutation("delete", "deleted.xhtml", "deleted.xhtml", "", [], []), "");
 });

@@ -10,7 +10,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronDown
 import { dialogsBridge, epubContentBridge, type EpubContentFile, type EpubContentMatch, type EpubContentSession, type EpubTocEntry } from "@/bridge";
 import { useMessages } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { nextMatchIndex, previewDestination, relativeResourceHref, reorderedSpine, resourceAfterHistory, savedEditorHistory, searchScopePaths, xmlAttribute } from "./epubEditorActions";
+import { nextMatchIndex, previewDestination, relativeResourceHref, reorderedSpine, resourceAfterHistory, resourceAfterMutation, resourcePreviewPath, savedEditorHistory, searchScopePaths, xmlAttribute } from "./epubEditorActions";
 import { clearEditorDraft, clearStagedEditorDraft, readEditorDraft, stageEditorDraft, writeEditorDraft, type EpubEditorDraft } from "./epubEditorDraft";
 import styles from "./EpubContentPage.module.css";
 import { EpubPreviewFrame } from "./EpubPreviewFrame";
@@ -351,13 +351,14 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     }
   }, []);
 
-  const resetEditorHistory = (cursor?: { path: string; position: number }) => {
+  const resetEditorHistory = (cursor?: { path: string; position: number }, keepSearch = false) => {
     const editor = sourceEditor.current;
     reloadCursor.current = cursor ?? (editor ? { path: selectedPath, position: Array.from(editor.state.doc.sliceString(0, editor.state.selection.main.head)).length } : null);
     editorStates.current.clear();
     sourceEditor.current = null;
     setLocalHistory({ undo: 0, redo: 0 });
     setEditorEpoch((value) => value + 1);
+    if (!keepSearch) { setSelectionRange(null); setMatches([]); setMatchIndex(-1); }
   };
 
   const loadResource = useCallback(async (sid: string, path: string, summary = session) => {
@@ -369,9 +370,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     setLoadedContent(next.content);
     setContent(next.content);
     setOpenPaths((current) => [...current.filter((item) => summary?.files.some((file) => file.path === item && file.editable)), ...(current.includes(path) ? [] : [path])]);
-    const file = summary?.files.find((item) => item.path === path);
-    const target = file?.media_type === "text/css" ? (previewPath || summary?.spine.find((item) => item !== summary.nav_path) || "") : path;
-    if (target && ((file?.media_type === "application/xhtml+xml" || file?.media_type === "text/html" || file?.media_type === "image/svg+xml") && path !== summary?.nav_path || file?.media_type === "text/css")) {
+    const target = resourcePreviewPath(path, summary?.files ?? [], summary?.spine ?? [], summary?.nav_path ?? "", previewPath);
+    if (target) {
       setPreviewPath(target);
       try {
         setPreview((await epubContentBridge.preview(sid, target)).html);
@@ -380,12 +380,17 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         setPreview("");
         setPreviewError(cause instanceof Error ? cause.message : String(cause));
       }
-    } else if (file?.media_type !== "text/css") {
+    } else {
       setPreviewPath("");
       setPreview("");
       setPreviewError("");
     }
   }, [session, selectedPath, previewPath]);
+
+  const clearResource = () => {
+    setSelectedPath(""); setResourcePath(""); setContent(""); setLoadedContent("");
+    setPreviewPath(""); setPreview(""); setPreviewError(""); setOpenPaths([]);
+  };
 
   const commitSource = useCallback(async () => {
     if (!session || !selectedPath || content === loadedContent) return session;
@@ -397,14 +402,19 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   }, [session, selectedPath, content, loadedContent, tocDirty]);
 
   const commitDirectory = async () => {
-    await commitSource();
+    const current = await commitSource();
     if (session && tocDirty) {
       const next = await epubContentBridge.setToc(session.session_id, tocDraft);
       setSession(next);
       setTocDraft(next.toc);
+      if (selectedPath === session.nav_path || selectedPath === session.ncx_path) {
+        await loadResource(next.session_id, selectedPath, next);
+        resetEditorHistory();
+        setSelectionRange(null); setMatches([]); setMatchIndex(-1);
+      }
       return next;
     }
-    return session;
+    return current;
   };
 
   useEffect(() => {
@@ -478,6 +488,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       clearStagedEditorDraft();
       savedDraft.current = null;
       setSession(next);
+      clearResource();
       editorStates.current.clear();
       setOpenPaths([]);
       setResourcePath("");
@@ -488,6 +499,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setCollapsedFolders([]);
       setSpineMenuPath("");
       setMatches([]);
+      setMatchIndex(-1);
+      setSelectionRange(null);
       setFeedback("");
       setBookIndex(0);
       readingLocations.current = {};
@@ -498,24 +511,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(updatedRecent)); } catch { /* Optional history. */ }
       const first = next.spine.find((item) => next.files.some((file) => file.path === item && file.editable)) ?? next.files.find((file) => file.editable)?.path;
       if (first) {
-        const file = await epubContentBridge.read(next.session_id, first);
-        setSelectedPath(first);
-        setResourcePath(first);
-        setLoadedContent(file.content);
-        setContent(file.content);
+        await loadResource(next.session_id, first, next);
         setOpenPaths([first]);
-        if (first.toLowerCase().endsWith(".xhtml") || first.toLowerCase().endsWith(".html")) {
-          setPreviewPath(first);
-          try {
-            setPreview((await epubContentBridge.preview(next.session_id, first)).html);
-            setPreviewError("");
-          } catch (cause) {
-            setPreview("");
-            setPreviewError(cause instanceof Error ? cause.message : String(cause));
-          }
-        }
       }
-      resetEditorHistory();
+      resetEditorHistory({ path: first ?? "", position: 0 });
     });
   };
 
@@ -525,6 +524,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const path = next.files.some((file) => file.path === draft.selectedPath && file.editable)
         ? draft.selectedPath
         : next.spine.find((item) => next.files.some((file) => file.path === item && file.editable)) ?? "";
+      clearResource();
       setInputPath(next.input_path);
       setResourcePath(path);
       setOpenPaths((draft.openPaths ?? [path]).filter((item) => next.files.some((file) => file.path === item && file.editable)));
@@ -539,7 +539,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setQuery(draft.query ?? "");
       setReplacement(draft.replacement ?? "");
       setScope(["current", "text", "styles", "all", "selection"].includes(draft.scope) ? draft.scope : "current");
-      setSelectionRange(draft.selectionRange ?? null);
+      setSelectionRange(path === draft.selectedPath ? draft.selectionRange ?? null : null);
       setCaseSensitive(Boolean(draft.caseSensitive));
       setRegularExpression(Boolean(draft.regularExpression));
       setIgnoreMarkup(Boolean(draft.ignoreMarkup));
@@ -549,20 +549,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       if (typeof draft.previewZoom === "number" && draft.previewZoom >= 25 && draft.previewZoom <= 200) setPreviewZoom(draft.previewZoom);
       if (typeof draft.previewWrap === "boolean") setPreviewWrap(draft.previewWrap);
       if (path) {
-        const file = await epubContentBridge.read(next.session_id, path);
-        setSelectedPath(path);
-        setLoadedContent(file.content);
-        setContent(draft.sourceDraft ?? file.content);
-        if (path.toLowerCase().endsWith(".xhtml") || path.toLowerCase().endsWith(".html")) {
-          setPreviewPath(path);
-          try {
-            setPreview((await epubContentBridge.preview(next.session_id, path)).html);
-            setPreviewError("");
-          } catch (cause) {
-            setPreview("");
-            setPreviewError(cause instanceof Error ? cause.message : String(cause));
-          }
-        }
+        await loadResource(next.session_id, path, next);
+        if (path === draft.selectedPath && typeof draft.sourceDraft === "string") setContent(draft.sourceDraft);
       }
       setSession(next);
     });
@@ -643,18 +631,11 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         setSession(next);
         setTocDraft(next.toc);
         const preferred = resourceAction === "rename" || resourceAction === "add" ? resourceTarget : resourcePath;
-        setResourcePath(resourceAction === "delete" ? "" : preferred);
-        if (resourceAction === "delete" && selectedPath === resourcePath) {
-          const fallback = next.files.find((file) => file.editable)?.path;
-          if (fallback) await loadResource(session.session_id, fallback, next);
-          else { setSelectedPath(""); setContent(""); setLoadedContent(""); setPreview(""); }
-        } else if (resourceAction === "rename" && selectedPath === resourcePath) {
-          await loadResource(session.session_id, resourceTarget, next);
-        } else if (resourceAction === "replace" && selectedPath === resourcePath && currentResource?.editable) {
-          await loadResource(session.session_id, resourcePath, next);
-        } else if (resourceAction === "add" && next.files.find((file) => file.path === resourceTarget)?.editable) {
-          await loadResource(session.session_id, resourceTarget, next);
-        }
+        const active = resourceAfterMutation(resourceAction, selectedPath, resourcePath, resourceTarget, session.spine, next.files);
+        if (active) await loadResource(next.session_id, active, next);
+        else clearResource();
+        setResourcePath(resourceAction === "delete" ? active : preferred);
+        setSelectionRange(null); setMatches([]); setMatchIndex(-1);
         resetEditorHistory();
       }
       setResourceAction(null);
@@ -970,6 +951,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       else { setSelectedPath(""); setResourcePath(""); setContent(""); setLoadedContent(""); setPreview(""); setPreviewPath(""); }
       resetEditorHistory();
       setMatches([]);
+      setMatchIndex(-1);
+      setSelectionRange(null);
     });
   };
 
@@ -978,6 +961,9 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const search = async () => {
     if (!session || !query) return;
     await run(async () => {
+      const directoryChangedSource = tocDirty && (selectedPath === session.nav_path || selectedPath === session.ncx_path);
+      await commitDirectory();
+      if (scope === "selection" && directoryChangedSource) throw new Error(t.selectionExpired);
       let selection = selectionRange;
       if (scope === "selection") {
         const editor = sourceEditor.current;
@@ -992,7 +978,6 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         }
         if (!selection || selection.path !== selectedPath) throw new Error(t.selectionExpired);
       }
-      await commitSource();
       const paths = scopePaths();
       const cursor = sourceEditor.current?.state.selection.main.head ?? 0;
       const position = scope === "selection" ? selection?.start ?? 0 : Array.from(content.slice(0, cursor)).length;
@@ -1028,7 +1013,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       if (apply) {
         setSession(response.session); setTocDraft(response.session.toc);
         if (selectedPath) await loadResource(session.session_id, selectedPath, response.session);
-        resetEditorHistory(); setMatches([]); setMatchIndex(-1); setFeedback(t.toolApplied);
+        resetEditorHistory(); setSelectionRange(null); setMatches([]); setMatchIndex(-1); setFeedback(t.toolApplied);
       }
       return response.result;
     });
@@ -1051,7 +1036,9 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const replaceAll = async () => {
     if (!session || !query || !matches.length || matches.length >= 5000) return;
     await run(async () => {
-      await commitSource();
+      const directoryChangedSource = tocDirty && (selectedPath === session.nav_path || selectedPath === session.ncx_path);
+      await commitDirectory();
+      if (scope === "selection" && directoryChangedSource) throw new Error(t.selectionExpired);
       const selection = scope === "selection" ? selectionRange ?? undefined : undefined;
       if (scope === "selection" && !selection) throw new Error(t.selectionExpired);
       const paths = scopePaths();
@@ -1066,20 +1053,21 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     await run(async () => {
       const result = await epubContentBridge.replace(session.session_id, replaceProposal.query, replaceProposal.replacement, replaceProposal.paths, replaceProposal.caseSensitive, replaceProposal.replacements, replaceProposal.regularExpression, replaceProposal.selection, replaceProposal.fingerprints, replaceProposal.ignoreMarkup);
       setSession(result);
-      if (selectedPath) await loadResource(session.session_id, selectedPath);
+      if (selectedPath) await loadResource(session.session_id, selectedPath, result);
       resetEditorHistory();
       setFeedback(`${result.replacements} ${t.matches}`);
       if (!tocDirty) setTocDraft(result.toc);
       setReplaceProposal(null);
       setMatches([]);
       setMatchIndex(-1);
+      setSelectionRange(null);
     });
   };
 
   const replaceOne = async (match: EpubContentMatch) => {
     if (!session) return;
     await run(async () => {
-      await commitSource();
+      await commitDirectory();
       const next = await epubContentBridge.replaceMatch(session.session_id, query, replacement, match, caseSensitive, regularExpression);
       setSession(next);
       if (!tocDirty) setTocDraft(next.toc);
@@ -1094,7 +1082,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setMatches(found.matches);
       setMatchIndex(index);
       if (index >= 0 && found.matches[index].path !== selectedPath) await loadResource(session.session_id, found.matches[index].path);
-      resetEditorHistory({ path: match.path, position: next.replaced_end });
+      resetEditorHistory({ path: match.path, position: next.replaced_end }, true);
       setFeedback(`1 ${t.matches}`);
     });
   };
@@ -1102,12 +1090,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const saveBook = async () => {
     if (!session) return;
     await run(async () => {
-      await commitSource();
-      if (tocDirty) {
-        const next = await epubContentBridge.setToc(session.session_id, tocDraft);
-        setSession(next);
-        setTocDraft(next.toc);
-      }
+      await commitDirectory();
       const destination = overwriteSource ? session.input_path : outputPath.trim();
       if (!destination) throw new Error(t.outputPath);
       const sameSource = destination === session.input_path;
@@ -1127,12 +1110,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const stageSave = async (closeAfter = false) => {
     if (!session) return;
     await run(async () => {
-      await commitSource();
-      if (tocDirty) {
-        const next = await epubContentBridge.setToc(session.session_id, tocDraft);
-        setSession(next);
-        setTocDraft(next.toc);
-      }
+      await commitDirectory();
       await epubContentBridge.checkpoint(session.session_id);
       if (!currentDraft.current) throw new Error(t.stageFailed);
       const draft = { ...currentDraft.current, sourceDraft: null, tocDraft, dirty: true };
@@ -1479,8 +1457,8 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     {tocPickerIndex !== null && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.chooseTocTarget}><h3>{t.chooseTocTarget}</h3><label>{t.chooseChapter}<select value={tocPickerPath} disabled={busy} onChange={(event) => void changeTocPickerPath(event.target.value)}>{session.files.filter((file) => (file.media_type === "application/xhtml+xml" || file.media_type === "text/html") && file.path !== session.nav_path).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select></label><label>{t.chooseAnchor}<select value={tocPickerAnchor} onChange={(event) => setTocPickerAnchor(event.target.value)}><option value="">{t.chapterStart}</option>{tocAnchors.map((anchor) => <option key={anchor.id} value={anchor.id}>{anchor.label} (#{anchor.id})</option>)}</select></label><div className={styles.saveActions}><button type="button" onClick={() => setTocPickerIndex(null)}>{t.cancel}</button><button type="button" className={styles.primary} onClick={() => { updateEntry(tocPickerIndex, { href: tocPickerPath + (tocPickerAnchor ? `#${encodeURIComponent(tocPickerAnchor)}` : "") }); setTocPickerIndex(null); }}>{t.confirmTarget}</button></div></div></div> : null}
     {mergeOpen && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={t.mergeFiles}><h3>{t.mergeFiles}</h3><label>{t.mergeOrder}</label><div className={styles.mergeList}>{mergePaths.map((path, index) => <div key={path}><span>{index + 1}. {path}</span><button type="button" title={t.up} disabled={!index} onClick={() => setMergePaths((current) => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}><ArrowUp size={14} /></button><button type="button" title={t.removeEntry} onClick={() => setMergePaths((current) => current.filter((item) => item !== path))}><X size={14} /></button></div>)}</div><select aria-label={t.files} value="" onChange={(event) => { if (event.target.value) setMergePaths((current) => [...current, event.target.value]); }}><option value="">{t.addEntry}</option>{session.files.filter((file) => file.media_type === currentFile?.media_type && file.path !== session.nav_path && !mergePaths.includes(file.path)).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select><div className={styles.saveActions}><button type="button" onClick={() => setMergeOpen(false)}>{t.cancel}</button><button type="button" disabled={busy || mergePaths.length < 2} onClick={() => void mergeFiles()}>{t.mergeFiles}</button></div></div></div> : null}
     {toolsOpen && session ? <EpubEditorTools session={session} close={() => setToolsOpen(false)}
-      commit={async () => { await commitSource(); if (tocDirty) { setSession(await epubContentBridge.setToc(session.session_id, tocDraft)); resetEditorHistory(); } }}
-      update={async (next, resetHistory) => { setSession(next); setTocDraft(next.toc); const path = resourceAfterHistory(selectedPath, session.spine, next.files); if (path) await loadResource(next.session_id, path, next); if (resetHistory) resetEditorHistory(); }}
+      commit={async () => { await commitDirectory(); }}
+      update={async (next, resetHistory) => { setSession(next); setTocDraft(next.toc); const path = resourceAfterHistory(selectedPath, session.spine, next.files); if (path) await loadResource(next.session_id, path, next); if (resetHistory) { resetEditorHistory(); setSelectionRange(null); setMatches([]); setMatchIndex(-1); } }}
       select={(path, line) => { setSideView("files"); setPaneView("source"); setMatches([]); setMatchIndex(-1); setSourceTarget({ path, line }); void selectResource(path); }} /> : null}
     {resourceAction && session ? <div className={styles.modalBackdrop}><div className={styles.saveDialog} role="dialog" aria-modal="true" aria-label={{ add: t.importResource, rename: t.renameResource, replace: t.replaceResource, export: t.exportResource, delete: t.deleteResource }[resourceAction]}>
       <h3>{{ add: t.importResource, rename: t.renameResource, replace: t.replaceResource, export: t.exportResource, delete: t.deleteResource }[resourceAction]}</h3>

@@ -67,3 +67,24 @@ export function resourceAfterHistory(
   }
   return files.find((file) => file.editable)?.path ?? "";
 }
+
+export function resourcePreviewPath(
+  path: string,
+  files: Array<{ path: string; media_type: string }>,
+  spine: string[],
+  navPath: string,
+  preferred = "",
+): string {
+  const media = new Map(files.map((file) => [file.path, file.media_type]));
+  const previewable = (target: string) => target !== navPath && ["application/xhtml+xml", "text/html", "image/svg+xml"].includes(media.get(target) ?? "");
+  if (media.get(path) === "text/css") return previewable(preferred) ? preferred : spine.find(previewable) ?? "";
+  return previewable(path) ? path : "";
+}
+
+export function resourceAfterMutation(
+  action: string, selected: string, resource: string, target: string,
+  spine: string[], files: Array<{ path: string; editable: boolean }>,
+): string {
+  if (action === "add" && files.some((file) => file.path === target && file.editable)) return target;
+  return resourceAfterHistory(action === "rename" && selected === resource ? target : selected, spine, files);
+}
