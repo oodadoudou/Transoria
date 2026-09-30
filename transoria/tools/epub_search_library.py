@@ -26,6 +26,10 @@ def validate_searches(value: object) -> list[dict[str, object]]:
             raise ValueError("Saved search options must be boolean.")
         seen.add(item["id"])
         result.append({key: item[key] for key in ("id", "name", "query", "replacement", "scope", "caseSensitive", "regularExpression")})
+        if "ignoreMarkup" in item:
+            if not isinstance(item["ignoreMarkup"], bool):
+                raise ValueError("Ignore markup must be boolean.")
+            result[-1]["ignoreMarkup"] = item["ignoreMarkup"]
     return result
 
 

@@ -1190,6 +1190,45 @@ def test_navigation_source_is_indented_without_changing_archive(tmp_path: Path):
     assert source.read_bytes() == original
 
 
+def test_ignore_markup_search_replace_preserves_tags_and_source_positions(tmp_path: Path):
+    book = tmp_path / "text-search.epub"
+    _book(book)
+    path = "OEBPS/Text/one.xhtml"
+    _rewrite_book(book, {path: '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Hello world</title></head><body><p title="Hello world">Hello <em>world</em> &amp; 🌸</p><p>Hello <span>world</span></p></body></html>'})
+    session = ContentSession.open(str(book))
+    original = session.read(path)["content"]
+    hits = session.search("Hello world", [path], ignore_markup=True)
+    assert len(hits) == 2
+    assert original[hits[0]["start"]:hits[0]["end"]] == 'Hello <em>world'
+    proposal = session.preview_replace("Hello (world)", r'Welcome \1 <3', [path], regular_expression=True, ignore_markup=True)
+    assert proposal["replacements"] == 2 and not session.dirty
+    result = session.replace("Hello (world)", r'Welcome \1 <3', [path], expected_count=2, regular_expression=True, expected_fingerprints=proposal["fingerprints"], ignore_markup=True)
+    assert result["replacements"] == 2
+    updated = session.read(path)["content"]
+    assert '<em/>' in updated and '<span/>' in updated
+    assert 'Welcome world &lt;3' in updated
+    assert '<title>Hello world</title>' in updated
+    session.history("undo")
+    assert session.read(path)["content"] == original
+    session.replace_match(path, hits[0]["start"], hits[0]["end"], "Hello world", "Hi", expected_fingerprint=hits[0]["fingerprint"], ignore_markup=True)
+    assert len(session.search("Hello world", [path], ignore_markup=True)) == 1
+
+
+def test_ignore_markup_selection_css_and_stale_preview(tmp_path: Path):
+    book = tmp_path / "text-scope.epub"
+    _book(book)
+    session = ContentSession.open(str(book))
+    path = "OEBPS/Text/two.xhtml"
+    hit = session.search("Hello", [path], ignore_markup=True)[0]
+    selection = {"path": path, "start": hit["start"], "end": hit["end"]}
+    assert len(session.search("Hello", [path], selection=selection, ignore_markup=True)) == 1
+    assert not session.search("red", ["OEBPS/Styles/book.css"], ignore_markup=True)
+    preview = session.preview_replace("Hello", "Goodbye", [path], ignore_markup=True)
+    session.write(path, session.read(path)["content"].replace("Hello", "Howdy"))
+    with pytest.raises(ValueError, match="changed"):
+        session.replace("Hello", "Goodbye", [path], expected_fingerprints=preview["fingerprints"], ignore_markup=True)
+
+
 def test_xpath_toc_hierarchy_targets_preview_and_undo(tmp_path: Path):
     book = tmp_path / "xpath.epub"
     _book(book)

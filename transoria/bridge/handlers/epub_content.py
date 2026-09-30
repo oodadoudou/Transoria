@@ -146,6 +146,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                         bool(payload.get("case_sensitive", False)),
                         bool(payload.get("regular_expression", False)),
                         _selection(payload),
+                        bool(payload.get("ignore_markup", False)),
                     )
                 }
             elif action == "preview_replace":
@@ -156,6 +157,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     bool(payload.get("case_sensitive", False)),
                     bool(payload.get("regular_expression", False)),
                     _selection(payload),
+                    bool(payload.get("ignore_markup", False)),
                 )
             elif action == "replace":
                 expected_count = payload.get("expected_count")
@@ -172,6 +174,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     bool(payload.get("regular_expression", False)),
                     _selection(payload),
                     _fingerprints(payload),
+                    bool(payload.get("ignore_markup", False)),
                 )
                 store.persist(session_id)
                 return {**result, **session.info(session_id)}
@@ -189,6 +192,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     bool(payload.get("case_sensitive", False)),
                     bool(payload.get("regular_expression", False)),
                     expect_string(payload, "fingerprint") if "fingerprint" in payload else None,
+                    bool(payload.get("ignore_markup", False)),
                 )
                 store.persist(session_id)
                 return {"replaced_end": replaced_end, **session.info(session_id)}

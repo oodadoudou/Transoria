@@ -29,6 +29,7 @@ type ReplaceProposal = Awaited<ReturnType<typeof epubContentBridge.previewReplac
   paths: string[];
   caseSensitive: boolean;
   regularExpression: boolean;
+  ignoreMarkup: boolean;
 };
 type FileNode = { kind: "folder"; name: string; path: string; children: FileNode[] } | { kind: "file"; name: string; file: EpubContentFile };
 const RECENT_KEY = "transoria.epubEditor.recent";
@@ -222,6 +223,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const [replacement, setReplacement] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regularExpression, setRegularExpression] = useState(false);
+  const [ignoreMarkup, setIgnoreMarkup] = useState(false);
   const [scope, setScope] = useState<Scope>("current");
   const [selectionRange, setSelectionRange] = useState<{ path: string; start: number; end: number } | null>(null);
   const [matches, setMatches] = useState<EpubContentMatch[]>([]);
@@ -296,6 +298,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       selectionRange,
       caseSensitive,
       regularExpression,
+      ignoreMarkup,
       sidebarWidth,
       sourceWidth,
       sourceZoom,
@@ -305,7 +308,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     currentDraft.current = draft;
     const timer = window.setTimeout(() => { writeEditorDraft(draft); }, 250);
     return () => window.clearTimeout(timer);
-  }, [session?.session_id, session?.input_path, session?.dirty, selectedPath, openPaths, content, loadedContent, tocDraft, sideView, paneView, bookIndex, bookMode, searchOpen, query, replacement, scope, selectionRange, caseSensitive, regularExpression, sidebarWidth, sourceWidth, sourceZoom, previewZoom, previewWrap]);
+  }, [session?.session_id, session?.input_path, session?.dirty, selectedPath, openPaths, content, loadedContent, tocDraft, sideView, paneView, bookIndex, bookMode, searchOpen, query, replacement, scope, selectionRange, caseSensitive, regularExpression, ignoreMarkup, sidebarWidth, sourceWidth, sourceZoom, previewZoom, previewWrap]);
 
   useEffect(() => {
     const flush = () => {
@@ -511,6 +514,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setSelectionRange(draft.selectionRange ?? null);
       setCaseSensitive(Boolean(draft.caseSensitive));
       setRegularExpression(Boolean(draft.regularExpression));
+      setIgnoreMarkup(Boolean(draft.ignoreMarkup));
       if (typeof draft.sidebarWidth === "number" && draft.sidebarWidth >= 10 && draft.sidebarWidth <= 70) setSidebarWidth(draft.sidebarWidth);
       if (typeof draft.sourceWidth === "number" && draft.sourceWidth >= 10 && draft.sourceWidth <= 90) setSourceWidth(draft.sourceWidth);
       if (typeof draft.sourceZoom === "number" && draft.sourceZoom >= 60 && draft.sourceZoom <= 200) setSourceZoom(draft.sourceZoom);
@@ -957,7 +961,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const paths = scopePaths();
       const cursor = sourceEditor.current?.state.selection.main.head ?? 0;
       const position = scope === "selection" ? selection?.start ?? 0 : Array.from(content.slice(0, cursor)).length;
-      const found = await epubContentBridge.search(session.session_id, query, paths, caseSensitive, regularExpression, scope === "selection" ? selection ?? undefined : undefined);
+      const found = await epubContentBridge.search(session.session_id, query, paths, caseSensitive, regularExpression, scope === "selection" ? selection ?? undefined : undefined, ignoreMarkup);
       setMatches(found.matches);
       const index = found.matches.length ? nextMatchIndex(found.matches, paths, selectedPath, position) : -1;
       setMatchIndex(index);
@@ -972,6 +976,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const loadSearch = (value: SearchOptions) => {
     setQuery(value.query); setReplacement(value.replacement); setScope(value.scope);
     setCaseSensitive(value.caseSensitive); setRegularExpression(value.regularExpression);
+    setIgnoreMarkup(Boolean(value.ignoreMarkup));
     setSelectionRange(null); setMatches([]); setMatchIndex(-1); setSearchOpen(true);
   };
 
@@ -982,7 +987,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const prepared = rules.map((rule) => {
         if (rule.scope === "selection") throw new Error(t.selectionExpired);
         const paths = rule.scope === "current" ? [selectedPath] : editableFiles.filter((file) => rule.scope === "all" || (rule.scope === "styles" ? file.media_type === "text/css" : ["application/xhtml+xml", "text/html", "text/plain"].includes(file.media_type))).map((file) => file.path);
-        return { query: rule.query, replacement: rule.replacement, case_sensitive: rule.caseSensitive, regular_expression: rule.regularExpression, paths };
+        return { query: rule.query, replacement: rule.replacement, case_sensitive: rule.caseSensitive, regular_expression: rule.regularExpression, ignore_markup: Boolean(rule.ignoreMarkup), paths };
       });
       const response = await epubContentBridge.tool(session.session_id, "replace_sequence", { rules: prepared, apply, fingerprint });
       if (apply) {
@@ -1015,16 +1020,16 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       const selection = scope === "selection" ? selectionRange ?? undefined : undefined;
       if (scope === "selection" && !selection) throw new Error(t.selectionExpired);
       const paths = scopePaths();
-      const proposal = await epubContentBridge.previewReplace(session.session_id, query, replacement, paths, caseSensitive, regularExpression, selection);
+      const proposal = await epubContentBridge.previewReplace(session.session_id, query, replacement, paths, caseSensitive, regularExpression, selection, ignoreMarkup);
       if (!proposal.replacements) { setFeedback(t.noMatches); return; }
-      setReplaceProposal({ ...proposal, selection, query, replacement, paths, caseSensitive, regularExpression });
+      setReplaceProposal({ ...proposal, selection, query, replacement, paths, caseSensitive, regularExpression, ignoreMarkup });
     });
   };
 
   const applyReplaceAll = async () => {
     if (!session || !replaceProposal) return;
     await run(async () => {
-      const result = await epubContentBridge.replace(session.session_id, replaceProposal.query, replaceProposal.replacement, replaceProposal.paths, replaceProposal.caseSensitive, replaceProposal.replacements, replaceProposal.regularExpression, replaceProposal.selection, replaceProposal.fingerprints);
+      const result = await epubContentBridge.replace(session.session_id, replaceProposal.query, replaceProposal.replacement, replaceProposal.paths, replaceProposal.caseSensitive, replaceProposal.replacements, replaceProposal.regularExpression, replaceProposal.selection, replaceProposal.fingerprints, replaceProposal.ignoreMarkup);
       setSession(result);
       if (selectedPath) await loadResource(session.session_id, selectedPath);
       resetEditorHistory();
@@ -1049,7 +1054,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         ? { ...selectionRange, end: selectionRange.end + next.replaced_end - match.end }
         : undefined;
       if (selection) setSelectionRange(selection);
-      const found = await epubContentBridge.search(session.session_id, query, paths, caseSensitive, regularExpression, selection);
+      const found = await epubContentBridge.search(session.session_id, query, paths, caseSensitive, regularExpression, selection, ignoreMarkup);
       const index = found.matches.length ? nextMatchIndex(found.matches, paths, match.path, next.replaced_end) : -1;
       setMatches(found.matches);
       setMatchIndex(index);
@@ -1263,7 +1268,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   </div>;
 
   return <div className={styles.workspace}>
-    {savedSearchOpen ? <EpubSavedSearches current={{ query, replacement, scope, caseSensitive, regularExpression }} load={loadSearch} execute={runSavedSearches} close={() => setSavedSearchOpen(false)} /> : null}
+    {savedSearchOpen ? <EpubSavedSearches current={{ query, replacement, scope, caseSensitive, regularExpression, ignoreMarkup }} load={loadSearch} execute={runSavedSearches} close={() => setSavedSearchOpen(false)} /> : null}
     <div className={styles.toolbar}>
       <div className={styles.bookPicker}>
         <button type="button" title={t.choose} aria-label={t.choose} onClick={() => void chooseBook()}><FolderOpen size={18} /></button>
@@ -1289,6 +1294,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         <label><span>{t.files}</span><select value={scope} onChange={(event) => { setScope(event.target.value as Scope); setSelectionRange(null); setMatches([]); setMatchIndex(-1); }}><option value="current">{t.current}</option><option value="selection">{t.selection}</option><option value="text">{t.textFiles}</option><option value="styles">{t.styleFiles}</option><option value="all">{t.all}</option></select></label>
         <label className={styles.checkbox}><input type="checkbox" checked={caseSensitive} onChange={(event) => { setCaseSensitive(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.caseSensitive}</label>
         <label className={styles.checkbox}><input type="checkbox" checked={regularExpression} onChange={(event) => { setRegularExpression(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.regularExpression}</label>
+        <label className={styles.checkbox}><input type="checkbox" checked={ignoreMarkup} onChange={(event) => { setIgnoreMarkup(event.target.checked); setMatches([]); setMatchIndex(-1); }} />{t.ignoreMarkup}</label>
         <button type="button" disabled={busy} onClick={() => setSavedSearchOpen(true)}><Save size={16} />{t.savedSearches}</button>
         <button type="button" disabled={!query || busy || !scopePaths().length} onClick={() => void search()}><Search size={16} />{t.find}</button>
         <div className={styles.matchNavigation} role="status"><span>{matches.length ? `${matchIndex + 1} / ${matches.length}${matches.length >= 5000 ? "+" : ""}` : t.noMatches}</span><button type="button" title={t.previousMatch} aria-label={t.previousMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(-1)}><ArrowUp size={16} /></button><button type="button" title={t.nextMatch} aria-label={t.nextMatch} disabled={!matches.length || busy} onClick={() => void navigateMatch(1)}><ArrowDown size={16} /></button><button type="button" disabled={matchIndex < 0 || busy} onClick={() => void replaceOne(matches[matchIndex])}>{t.replaceOne}</button></div>

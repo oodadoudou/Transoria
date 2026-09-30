@@ -24,6 +24,7 @@ export interface EpubEditorDraft {
   selectionRange?: { path: string; start: number; end: number } | null;
   caseSensitive: boolean;
   regularExpression?: boolean;
+  ignoreMarkup?: boolean;
   sidebarWidth?: number;
   sourceWidth?: number;
   previewZoom?: number;

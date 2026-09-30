@@ -89,6 +89,7 @@ export interface EpubContentSession {
 }
 
 export interface EpubContentMatch {
+  ignore_markup?: boolean;
   path: string;
   start: number;
   end: number;

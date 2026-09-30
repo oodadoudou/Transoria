@@ -1450,6 +1450,7 @@ class ContentSession:
         self, query: str, paths: list[str], case_sensitive: bool = False,
         regular_expression: bool = False,
         selection: dict[str, object] | None = None,
+        ignore_markup: bool = False,
     ) -> list[dict[str, object]]:
         if not query:
             return []
@@ -1468,22 +1469,35 @@ class ContentSession:
             fingerprint = hashlib.sha256(data).hexdigest()
             content = _editor_text(data, str(item["media_type"]))
             start, end = _selection_bounds(path, content, selection)
+            visible = None
+            if ignore_markup:
+                if item["media_type"] not in {"application/xhtml+xml", "text/html"}:
+                    continue
+                from transoria.tools.epub_text_search import VisibleText
+                visible = VisibleText(content)
+                searchable = visible.text
+            else:
+                searchable = content
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ValueError("Search timed out; narrow the scope or pattern.")
             try:
-                for match in pattern.finditer(content, pos=start, endpos=end, timeout=remaining):
+                for match in pattern.finditer(searchable, pos=0 if visible else start, endpos=len(searchable) if visible else end, timeout=remaining):
                     if match.start() == match.end():
                         raise ValueError("Zero-width search matches are not supported.")
+                    left, right = visible.source_range(match.start(), match.end()) if visible else (match.start(), match.end())
+                    if left < start or right > end:
+                        continue
                     results.append(
                         {
                             "path": path,
-                            "start": match.start(),
-                            "end": match.end(),
+                            "start": left,
+                            "end": right,
+                            "ignore_markup": ignore_markup,
                             "fingerprint": fingerprint,
-                            "excerpt": content[
+                            "excerpt": searchable[
                                 max(0, match.start() - 45) : min(
-                                    len(content), match.end() + 65
+                                    len(searchable), match.end() + 65
                                 )
                             ].replace("\n", " "),
                         }
@@ -1504,10 +1518,11 @@ class ContentSession:
         regular_expression: bool = False,
         selection: dict[str, object] | None = None,
         expected_fingerprints: dict[str, str] | None = None,
+        ignore_markup: bool = False,
     ) -> dict[str, object]:
         pending, total, _, _ = self._replacement_plan(
             query, replacement, paths, case_sensitive, regular_expression,
-            selection, expected_fingerprints,
+            selection, expected_fingerprints, ignore_markup,
         )
         if expected_count is not None and total != expected_count:
             raise ValueError("Search results changed; search again before replacing.")
@@ -1519,10 +1534,11 @@ class ContentSession:
         self, query: str, replacement: str, paths: list[str],
         case_sensitive: bool = False, regular_expression: bool = False,
         selection: dict[str, object] | None = None,
+        ignore_markup: bool = False,
     ) -> dict[str, object]:
         pending, total, samples, fingerprints = self._replacement_plan(
             query, replacement, paths, case_sensitive, regular_expression,
-            selection, None,
+            selection, None, ignore_markup,
         )
         return {
             "replacements": total, "files_changed": len(pending),
@@ -1534,6 +1550,7 @@ class ContentSession:
         case_sensitive: bool, regular_expression: bool,
         selection: dict[str, object] | None,
         expected_fingerprints: dict[str, str] | None,
+        ignore_markup: bool = False,
     ) -> tuple[dict[str, bytes], int, list[dict[str, object]], dict[str, str]]:
         if not query:
             raise ValueError("Search text is required.")
@@ -1559,23 +1576,37 @@ class ContentSession:
             content = _editor_text(data, str(item["media_type"]))
             start, end = _selection_bounds(path, content, selection)
             encoding = _decode(data)[1]
+            visible = None
+            if ignore_markup:
+                if item["media_type"] not in {"application/xhtml+xml", "text/html"}:
+                    continue
+                from transoria.tools.epub_text_search import VisibleText
+                visible = VisibleText(content)
+            searchable = visible.text if visible else content
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ValueError("Replacement timed out; narrow the scope or pattern.")
             pieces: list[str] = []
             cursor = start
             count = 0
+            edits: list[tuple[int, int, str]] = []
             try:
-                for match in pattern.finditer(content, pos=start, endpos=end, timeout=remaining):
+                for match in pattern.finditer(searchable, pos=0 if visible else start, endpos=len(searchable) if visible else end, timeout=remaining):
                     if match.start() == match.end():
                         raise ValueError("Zero-width search matches are not supported.")
                     after = match.expand(replacement) if regular_expression else replacement
-                    pieces.extend((content[cursor:match.start()], after))
-                    cursor = match.end()
+                    left, right = visible.source_range(match.start(), match.end()) if visible else (match.start(), match.end())
+                    if left < start or right > end:
+                        continue
+                    if visible:
+                        edits.extend(visible.replacement_edits(match.start(), match.end(), after))
+                    if not visible:
+                        pieces.extend((content[cursor:match.start()], after))
+                        cursor = match.end()
                     count += 1
                     if len(samples) < 30:
                         samples.append({
-                            "path": path, "start": match.start(),
+                            "path": path, "start": left,
                             "before": match.group(), "after": after,
                         })
             except TimeoutError as exc:
@@ -1583,9 +1614,15 @@ class ContentSession:
             except (regex.error, IndexError, KeyError) as exc:
                 raise ValueError(f"Invalid replacement expression: {exc}") from exc
             if count:
-                pieces.append(content[cursor:end])
-                updated = "".join(pieces)
-                encoded = _encode(content[:start] + updated + content[end:], encoding)
+                if visible:
+                    updated = content
+                    for left, right, after in reversed(edits):
+                        updated = updated[:left] + after + updated[right:]
+                    encoded = _encode(updated, encoding)
+                else:
+                    pieces.append(content[cursor:end])
+                    updated = "".join(pieces)
+                    encoded = _encode(content[:start] + updated + content[end:], encoding)
                 if len(encoded) > MAX_TEXT_BYTES:
                     raise ValueError(f"Replacement exceeds the editor limit: {path}")
                 pending[path] = encoded
@@ -1602,6 +1639,7 @@ class ContentSession:
         case_sensitive: bool = False,
         regular_expression: bool = False,
         expected_fingerprint: str | None = None,
+        ignore_markup: bool = False,
     ) -> int:
         item = self._file(path, editable=True)
         data = self._bytes(path)
@@ -1612,6 +1650,11 @@ class ContentSession:
         if not 0 <= start < end <= len(content):
             raise ValueError("Search result is no longer current; search again.")
         pattern = _search_pattern(query, case_sensitive, regular_expression)
+        if ignore_markup:
+            result = self.replace(query, replacement, [path], case_sensitive, 1, regular_expression, {"path": path, "start": start, "end": end}, {path: hashlib.sha256(data).hexdigest()}, True)
+            if result["replacements"] != 1:
+                raise ValueError("Search result is no longer current; search again.")
+            return end + len(_editor_text(self._bytes(path), str(item["media_type"]))) - len(content)
         try:
             match = pattern.match(content, pos=start, timeout=SEARCH_TIMEOUT_SECONDS)
             if match is None or match.end() != end or match.start() == match.end():

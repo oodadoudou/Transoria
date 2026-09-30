@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--writing-mode", choices=("horizontal-tb", "vertical-rl", "vertical-lr"), default="horizontal-tb")
     parser.add_argument("--direction", choices=("ltr", "rtl"), default="ltr")
     parser.add_argument("--advanced-css", action="store_true")
+    parser.add_argument("--inline-text", action="store_true")
     parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
@@ -37,6 +38,8 @@ def main() -> None:
         buffer = io.BytesIO()
         image.save(buffer, "PNG")
         paragraphs = "".join(f'<p id="p{index}">Paragraph {index}: Hello world. This is a synthetic chapter for pagination, search and source mapping.</p>' for index in range(120))
+        if args.inline_text:
+            paragraphs = paragraphs.replace("Hello world", "Hello <em>world</em>")
         fixtures["_rewrite_book"](book, {
             "OEBPS/Images/pixel.png": buffer.getvalue(),
             "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Cover</title></head><body><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 600 900" width="100%" height="100%"><image xlink:href="../Images/pixel.png" width="600" height="900"/></svg><a href="two.xhtml#p55">Chapter two</a></body></html>',

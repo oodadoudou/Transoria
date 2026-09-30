@@ -1216,14 +1216,14 @@ export const epubContentBridge = {
   validate(sessionId: string): Promise<{ structure_check: { status: string; warnings?: string[]; missing_entries?: string[] } }> {
     return call("epub_content.validate", { session_id: sessionId });
   },
-  search(sessionId: string, query: string, paths: string[], caseSensitive: boolean, regularExpression = false, selection?: { path: string; start: number; end: number }): Promise<{ matches: EpubContentMatch[] }> {
-    return call("epub_content.search", { session_id: sessionId, query, paths, case_sensitive: caseSensitive, regular_expression: regularExpression, selection });
+  search(sessionId: string, query: string, paths: string[], caseSensitive: boolean, regularExpression = false, selection?: { path: string; start: number; end: number }, ignoreMarkup = false): Promise<{ matches: EpubContentMatch[] }> {
+    return call("epub_content.search", { session_id: sessionId, query, paths, case_sensitive: caseSensitive, regular_expression: regularExpression, selection, ignore_markup: ignoreMarkup });
   },
-  previewReplace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, regularExpression = false, selection?: { path: string; start: number; end: number }): Promise<{ replacements: number; files_changed: number; fingerprints: Record<string, string>; samples: Array<{ path: string; start: number; before: string; after: string }> }> {
-    return call("epub_content.preview_replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, regular_expression: regularExpression, selection });
+  previewReplace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, regularExpression = false, selection?: { path: string; start: number; end: number }, ignoreMarkup = false): Promise<{ replacements: number; files_changed: number; fingerprints: Record<string, string>; samples: Array<{ path: string; start: number; before: string; after: string }> }> {
+    return call("epub_content.preview_replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, regular_expression: regularExpression, selection, ignore_markup: ignoreMarkup });
   },
-  replace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, expectedCount: number, regularExpression = false, selection?: { path: string; start: number; end: number }, expectedFingerprints?: Record<string, string>): Promise<EpubContentSession & { replacements: number; files_changed: number }> {
-    return call("epub_content.replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, expected_count: expectedCount, regular_expression: regularExpression, selection, expected_fingerprints: expectedFingerprints });
+  replace(sessionId: string, query: string, replacement: string, paths: string[], caseSensitive: boolean, expectedCount: number, regularExpression = false, selection?: { path: string; start: number; end: number }, expectedFingerprints?: Record<string, string>, ignoreMarkup = false): Promise<EpubContentSession & { replacements: number; files_changed: number }> {
+    return call("epub_content.replace", { session_id: sessionId, query, replacement, paths, case_sensitive: caseSensitive, expected_count: expectedCount, regular_expression: regularExpression, selection, expected_fingerprints: expectedFingerprints, ignore_markup: ignoreMarkup });
   },
   replaceMatch(sessionId: string, query: string, replacement: string, match: EpubContentMatch, caseSensitive: boolean, regularExpression = false): Promise<EpubContentSession & { replaced_end: number }> {
     return call("epub_content.replace_match", { session_id: sessionId, query, replacement, ...match, case_sensitive: caseSensitive, regular_expression: regularExpression });

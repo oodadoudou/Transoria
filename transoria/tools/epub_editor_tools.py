@@ -578,7 +578,8 @@ def replace_sequence(session: ContentSession, rules: object, apply: bool) -> dic
             raise ValueError("Choose editable files for each search rule.")
         result = shadow.replace(rule["query"], rule["replacement"], paths,
                                 rule.get("case_sensitive") is True,
-                                regular_expression=rule.get("regular_expression") is True)
+                                regular_expression=rule.get("regular_expression") is True,
+                                ignore_markup=rule.get("ignore_markup") is True)
         total += int(result["replacements"])
     pending = {path: data for path, data in shadow.changes.items() if data != session._bytes(path)}
     if apply and pending:

@@ -1,5 +1,5 @@
 export type SearchScope = "current" | "text" | "styles" | "all" | "selection";
-export type SearchOptions = { query: string; replacement: string; caseSensitive: boolean; regularExpression: boolean; scope: SearchScope };
+export type SearchOptions = { query: string; replacement: string; caseSensitive: boolean; regularExpression: boolean; ignoreMarkup?: boolean; scope: SearchScope };
 export type SavedSearch = SearchOptions & { id: string; name: string };
 
 export function parseSavedSearches(value: string): SavedSearch[] {
@@ -13,6 +13,7 @@ export function parseSavedSearches(value: string): SavedSearch[] {
       if (typeof item.id !== "string" || !item.id || ids.has(item.id) || typeof item.name !== "string" || !item.name.trim()
         || typeof item.query !== "string" || !item.query || item.query.length > 2000 || typeof item.replacement !== "string"
         || typeof item.caseSensitive !== "boolean" || typeof item.regularExpression !== "boolean"
+        || (item.ignoreMarkup !== undefined && typeof item.ignoreMarkup !== "boolean")
         || !["current", "text", "styles", "all", "selection"].includes(item.scope ?? "")) return false;
       ids.add(item.id);
       return true;
