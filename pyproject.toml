@@ -11,6 +11,9 @@ dependencies = [
   "pillow>=10.0",
   "regex>=2024.0",
   "tinycss2>=1.4",
+  "cssselect2>=0.8",
+  "fonttools[woff]>=4.60",
+  "spylls>=0.1.7",
   # 6.x/7.x ship .bin ML models that Windows AV quarantines.
   "chardet>=5.2,<6",
 ]

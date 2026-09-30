@@ -666,6 +666,11 @@ export const en: Messages = {
     failed: "Failed",
   },
   epubContentTool: {
+    toolApplied: "Applied to draft", dictionaryMissing: "No dictionary loaded: this report checks typography only.", reportTruncated: "Report limit reached; additional items are not displayed.", checkExit: "Checker exit code",
+    importOther: "Import another book format", converter: "Installed ebook-convert executable",
+    mergeFiles: "Merge files", mergeOrder: "Merge order (first file is retained)", closeTab: "Close file tab", splitStyle: "Split stylesheet",
+    continuous: "Scroll", paged: "Pages", page: "Page", previousPage: "Previous page", nextPage: "Next page", fitPage: "Fit page", inspectStyle: "Inspect element styles", syncPreview: "Follow source cursor", styles: "Computed styles",
+    tools: "Book tools", issues: "Document issues", compare: "Compare changes", textReport: "Spelling / typography", cleanCss: "Unused CSS", images: "Optimize images", fonts: "Subset fonts", coverMetadata: "Set cover metadata", embedFont: "Embed font rule", upgrade: "Upgrade to EPUB 3", epubcheck: "EPUBCheck", runTool: "Run", previewTool: "Preview", applyTool: "Apply changes", confirmTool: "Apply this operation to the draft? You can undo it. The source EPUB is unchanged.", toolEmpty: "No items found", dictionary: "Hunspell .dic/.aff or UTF-8 word list (optional)", ignoredWords: "Ignored words (one per line)", quality: "Image quality", maxDimension: "Maximum image side (0 = unchanged)", fontFamily: "Font family", checkpointName: "Checkpoint name", newCheckpoint: "Create checkpoint", restoreCheckpoint: "Restore checkpoint", sourceBook: "Original EPUB", checkJar: "Installed EPUBCheck JAR", before: "Before", after: "After",
     importResource: "Import resource", renameResource: "Move or rename", replaceResource: "Replace resource", exportResource: "Export resource", deleteResource: "Delete resource",
     localFile: "Local file", archivePath: "Path in EPUB", addToSpine: "Add to reading order", applyResource: "Apply", resourceSaved: "Resource operation completed",
     resourceReferences: "References to this resource", resourceNotEditable: "This resource cannot be edited in the source pane", confirmDeleteResource: "Delete the selected resource? This can be undone.",

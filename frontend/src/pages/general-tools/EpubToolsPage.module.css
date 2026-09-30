@@ -127,6 +127,13 @@
   flex-direction: column;
 }
 
+:global(html.transoria-epub-editor-open),
+:global(html.transoria-epub-editor-open body) {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .contentBody {
   min-height: 0;
   max-height: none;

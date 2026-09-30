@@ -30,7 +30,9 @@ Transoria 是一个本地小说翻译桌面应用。导入 EPUB / TXT，完成�
 - **模型、Prompt 与预设**：支持主流供应商及 OpenAI 兼容接口；基础预设可一键切换模型、Prompt 和语言。翻译预设可选高级模式，设置总并发上限，并为各供应商线路分别指定 Prompt 与 RPM 上限；额度不足时等待，有额度的线路可接管尚未发出的分块，首轮失败后可按需使用兜底模型补救。翻译、术语提取和审查运行中切换模型、Prompt 或预设，会等待当前请求收尾，再处理剩余工作；重试和多 Key 轮询均计入 RPM，切换和继续任务保留最近一分钟的额度记录。编辑预设后需主动应用，删除正在使用的模型或 Prompt 会停止受影响的任务并保留进度。
 - **术语提取与审查**：生成术语 XLSX 和参考文本，执行多轮审查、表格编辑并导入翻译术语表。
 - **请求记录与恢复**：查看耗时、token、回复和失败原因；保留截断或过滤回复中完整且可验证的分段，仅重试缺失内容，并可在任务停止、失败或应用重启后继续处理。
-- **EPUB / TXT 工具**：批量替换、压缩、合并、格式转换、支持编辑小说简介的元数据编辑和 EPUB 修复。内容编辑器可修改 XHTML/CSS、新建章节、在安全的正文元素边界拆分章节、导入并插入图片，管理书内资源与紧凑的目录列表，在文件列表中拖动正文调整阅读顺序，并按标题、分层正则或阅读顺序文件预览生成目录。源码可换行并缩放，章节与全书预览可缩放、切换自动换行，并显示内嵌样式与字体。搜索支持选区、文件范围及正则表达式，能在前后匹配间跨文件跳转；单处替换继续定位下一处，批量替换可先预览并在源文件变化后拒绝应用。修改可暂存到本地会话，正式保存时可另存或确认覆盖原书。
+- **EPUB / TXT 工具**：批量替换、压缩、合并、格式转换、支持小说简介的元数据编辑和 EPUB 修复。
+- **EPUB 内容编辑**：多文件 XHTML/CSS 标签、章节与样式拆分合并、图片插入、资源管理、紧凑目录和拖动阅读顺序；按标题或分层正则生成目录。搜索支持选区和文件范围、正则与捕获组替换、跨文件前后跳转，以及带过期检查的批量替换预览。源码与预览可换行、缩放，全书可连续或分页阅读，支持内嵌样式、字体、书内链接和元素样式查看。
+- **书籍维护与保存**：本地草稿、命名检查点、撤销和修改对比，正式保存可另存或确认覆盖。支持拼写与排版报告、保守 CSS 清理、图片优化、字体子集化与嵌入、封面 metadata 和 EPUB 3 升级。拼写可使用本地词表或 Hunspell 词典；EPUBCheck 需要本机 Java 与检查器 JAR，其他书籍格式导入需要已安装的 `ebook-convert`，这些引擎不会自动下载。
 
 ### 推荐流程
 
@@ -93,7 +95,9 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 - **Models, prompts, and presets**: use major providers or OpenAI-compatible endpoints. Basic presets bundle model, prompt, and language settings; optional advanced translation presets set a shared concurrency ceiling, per-provider routes with their own prompts and RPM limits, and an optional fallback model for failed chunks. Routes with available capacity can take over unsent chunks while rate-limited routes wait. Translation, Glossary Extraction, and Glossary Review drain current requests before applying model, prompt, or preset switches to unfinished work. Retries and key rotation count toward RPM; switching and continuing tasks retain the last minute's request history. Preset edits take effect when explicitly applied. Deleting an in-use model or prompt stops affected tasks while preserving progress.
 - **Glossary extraction and review**: generate glossary XLSX and reference text, run multi-round review, edit the final table, and import it into Translation.
 - **Request logs and recovery**: inspect latency, token usage, responses, and failures; preserve complete validated rows from truncated or filtered responses, retry only missing content, and continue unfinished work after stopping, failure, or application restart.
-- **EPUB / TXT tools**: batch replacement, compression, merging, conversion, metadata editing including book descriptions, and EPUB repair. The content editor supports XHTML/CSS and compact navigation editing, drag-to-reorder text files in the file list, page-width chapter previews with embedded styles and fonts, match navigation and scoped replacement, and restorable drafts before save-as or confirmed overwrite.
+- **EPUB / TXT tools**: batch replacement, compression, merging, conversion, metadata editing including book descriptions, and EPUB repair.
+- **EPUB content editor**: multiple XHTML/CSS tabs, chapter and stylesheet split/merge, image insertion, resource management, compact TOC editing, drag-to-reorder reading order, and heading or layered-regex TOC generation. Search supports selection and file scopes, regex capture replacement, cross-file previous/next navigation, and stale-safe batch previews. Source and preview wrap and zoom; continuous or paged book previews retain local styles, fonts, internal links, and element-style inspection.
+- **Book maintenance and saving**: local drafts, named checkpoints, undo, and change comparison before save-as or confirmed overwrite. Tools include spelling/typography reports, conservative CSS cleanup, image optimization, font subsetting/embedding, cover metadata, and EPUB 3 upgrading. Spelling accepts a local word list or Hunspell dictionary. Optional EPUBCheck needs local Java and a checker JAR; other book-format imports need an installed `ebook-convert`. Neither engine is downloaded automatically.
 
 ### Recommended Workflow
 

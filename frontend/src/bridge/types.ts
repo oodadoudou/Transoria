@@ -85,6 +85,7 @@ export interface EpubContentSession {
   dirty: boolean;
   can_undo: boolean;
   can_redo: boolean;
+  checkpoints: string[];
 }
 
 export interface EpubContentMatch {

@@ -202,6 +202,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "epub_metadata.apply",
     # EPUB content editor
     "epub_content.open",
+    "epub_content.import_book",
     "epub_content.close",
     "epub_content.info",
     "epub_content.checkpoint",
@@ -211,6 +212,13 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "epub_content.references",
     "epub_content.export_resource",
     "epub_content.write",
+    "epub_content.write_many",
+    "epub_content.merge_resources",
+    "epub_content.style_split_points",
+    "epub_content.split_style",
+    "epub_content.tool",
+    "epub_content.named_checkpoint",
+    "epub_content.restore_checkpoint",
     "epub_content.add_resource",
     "epub_content.create_chapter",
     "epub_content.split_chapter",
@@ -278,7 +286,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 187
+    assert len(actual) == 195
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -558,6 +566,7 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
         "cover_path": "",
     },
     "epub_content.open": {"input_path": "/nonexistent.epub"},
+    "epub_content.import_book": {"input_path": "/nonexistent.azw3", "executable": ""},
     "epub_content.close": {"session_id": "missing"},
     "epub_content.info": {"session_id": "missing"},
     "epub_content.checkpoint": {"session_id": "missing"},
@@ -567,6 +576,13 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
     "epub_content.references": {"session_id": "missing", "path": "missing"},
     "epub_content.export_resource": {"session_id": "missing", "path": "missing", "output_path": "/tmp/out.css"},
     "epub_content.write": {"session_id": "missing", "path": "missing", "content": ""},
+    "epub_content.write_many": {"session_id": "missing", "buffers": {}},
+    "epub_content.merge_resources": {"session_id": "missing", "paths": []},
+    "epub_content.style_split_points": {"session_id": "missing", "path": "missing"},
+    "epub_content.split_style": {"session_id": "missing", "path": "missing", "target": "other.css", "index": 1},
+    "epub_content.tool": {"session_id": "missing", "name": "issues"},
+    "epub_content.named_checkpoint": {"session_id": "missing", "name": "Draft"},
+    "epub_content.restore_checkpoint": {"session_id": "missing", "name": "Draft"},
     "epub_content.add_resource": {"session_id": "missing", "path": "missing", "input_path": "/tmp/input.css"},
     "epub_content.create_chapter": {"session_id": "missing", "path": "Text/new.xhtml", "title": "New", "body_text": ""},
     "epub_content.split_chapter": {"session_id": "missing", "path": "missing", "target": "Text/new.xhtml", "index": 1},

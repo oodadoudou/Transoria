@@ -11,6 +11,7 @@ from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.tools.epub_content import ContentSessionStore
+from transoria.tools.epub_editor_tools import import_book, run_tool
 
 
 def _paths(payload: Mapping[str, object]) -> list[str]:
@@ -66,6 +67,11 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
         try:
             if action == "open":
                 return store.open(expect_string(payload, "input_path"))
+            if action == "import_book":
+                if cache_root is None:
+                    raise ValueError("Book import requires a persistent application cache.")
+                path = import_book(expect_string(payload, "input_path"), expect_string(payload, "executable", allow_empty=True), cache_root / "imported-books")
+                return store.open(str(path))
             session_id = expect_string(payload, "session_id")
             if action == "close":
                 store.close(session_id)
@@ -74,6 +80,21 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
             if action == "info":
                 return session.info(session_id)
             if action == "checkpoint":
+                store.persist(session_id)
+                return session.info(session_id)
+            if action == "tool":
+                options = payload.get("options", {})
+                if not isinstance(options, dict):
+                    raise ValueError("Tool options must be an object.")
+                result = run_tool(session, expect_string(payload, "name"), options)
+                store.persist(session_id)
+                return {"result": result, "session": session.info(session_id)}
+            if action == "named_checkpoint":
+                session.named_checkpoint(expect_string(payload, "name"))
+                store.persist(session_id)
+                return session.info(session_id)
+            if action == "restore_checkpoint":
+                session.restore_checkpoint(expect_string(payload, "name"))
                 store.persist(session_id)
                 return session.info(session_id)
             if action == "read":
@@ -95,6 +116,22 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     expect_string(payload, "path"),
                     expect_string(payload, "content", allow_empty=True),
                 )
+            elif action == "write_many":
+                buffers = payload.get("buffers")
+                if not isinstance(buffers, dict) or not all(isinstance(path, str) and isinstance(content, str) for path, content in buffers.items()):
+                    raise ValueError("buffers must map resource paths to source text.")
+                session.write_many(buffers)
+            elif action == "merge_resources":
+                path = session.merge_resources(_paths(payload))
+                store.persist(session_id)
+                return {"merged_path": path, **session.info(session_id)}
+            elif action == "style_split_points":
+                return {"points": session.style_split_points(expect_string(payload, "path"))}
+            elif action == "split_style":
+                index = payload.get("index")
+                if not isinstance(index, int) or isinstance(index, bool):
+                    raise ValueError("Split point must be an integer.")
+                session.split_style(expect_string(payload, "path"), expect_string(payload, "target"), index)
             elif action == "search":
                 return {
                     "matches": session.search(
@@ -226,7 +263,7 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                 return {**result, **session.info(session_id)}
             else:
                 raise ValueError("Unknown EPUB content editor action.")
-            if action in {"write", "reorder_spine", "set_spine", "set_toc", "create_chapter", "split_chapter", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
+            if action in {"write", "write_many", "split_style", "reorder_spine", "set_spine", "set_toc", "create_chapter", "split_chapter", "add_resource", "replace_resource", "delete_resource", "undo", "redo"}:
                 store.persist(session_id)
             return session.info(session_id)
         except (
@@ -241,15 +278,23 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
 
     for action in (
         "open",
+        "import_book",
         "close",
         "info",
         "checkpoint",
+        "tool",
+        "named_checkpoint",
+        "restore_checkpoint",
         "read",
         "anchors",
         "split_points",
         "references",
         "export_resource",
         "write",
+        "write_many",
+        "merge_resources",
+        "style_split_points",
+        "split_style",
         "search",
         "preview_replace",
         "replace",

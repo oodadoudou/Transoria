@@ -1,3 +1,18 @@
+import type { EditorState } from "@codemirror/state";
+import { historyField } from "@codemirror/commands";
+
+export function savedEditorHistory(state: EditorState | undefined, content: string) {
+  return state?.doc.toString() === content ? { json: state.toJSON({ history: historyField }), fields: { history: historyField } } : undefined;
+}
+
+export function previewDestination(target: string): { path: string; fragment: string } {
+  const separator = target.indexOf("#");
+  const path = separator < 0 ? target : target.slice(0, separator);
+  const fragment = separator < 0 ? "" : target.slice(separator + 1);
+  try { return { path, fragment: decodeURIComponent(fragment) }; }
+  catch { return { path, fragment }; }
+}
+
 export function relativeResourceHref(from: string, target: string): string {
   const source = from.split("/").slice(0, -1);
   const destination = target.split("/");

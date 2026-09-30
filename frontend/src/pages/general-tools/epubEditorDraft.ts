@@ -8,11 +8,14 @@ export interface EpubEditorDraft {
   sessionId: string;
   inputPath: string;
   selectedPath: string;
+  openPaths?: string[];
   sourceDraft: string | null;
   dirty: boolean;
   tocDraft: EpubTocEntry[];
   sideView: "files" | "toc" | "spine" | "book";
   bookIndex?: number;
+  bookMode?: "continuous" | "paged";
+  readingLocations?: Record<string, { page: number; scroll: number }>;
   paneView: "source" | "preview";
   searchOpen: boolean;
   query: string;

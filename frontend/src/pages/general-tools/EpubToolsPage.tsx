@@ -81,6 +81,11 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
     if (initialTool) setActiveTool(initialTool);
     else if (editorWasOpen()) setActiveTool("epubContent");
   }, [initialTool]);
+  useEffect(() => {
+    if (activeTool !== "epubContent") return;
+    document.documentElement.classList.add("transoria-epub-editor-open");
+    return () => document.documentElement.classList.remove("transoria-epub-editor-open");
+  }, [activeTool]);
   useEscapeKey(() => setActiveTool(null), activeTool !== null && activeTool !== "epubContent");
 
   const openContent = (path: string) => {

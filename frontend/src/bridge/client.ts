@@ -1129,6 +1129,9 @@ export const epubMetadataBridge = {
 };
 
 export const epubContentBridge = {
+  importBook(inputPath: string, executable: string): Promise<EpubContentSession> {
+    return call("epub_content.import_book", { input_path: inputPath, executable });
+  },
   open(inputPath: string): Promise<EpubContentSession> {
     return call("epub_content.open", { input_path: inputPath });
   },
@@ -1137,6 +1140,15 @@ export const epubContentBridge = {
   },
   checkpoint(sessionId: string): Promise<EpubContentSession> {
     return call("epub_content.checkpoint", { session_id: sessionId });
+  },
+  tool(sessionId: string, name: string, options: Record<string, unknown> = {}): Promise<{ session: EpubContentSession; result: Record<string, unknown> }> {
+    return call("epub_content.tool", { session_id: sessionId, name, options });
+  },
+  namedCheckpoint(sessionId: string, name: string): Promise<EpubContentSession> {
+    return call("epub_content.named_checkpoint", { session_id: sessionId, name });
+  },
+  restoreCheckpoint(sessionId: string, name: string): Promise<EpubContentSession> {
+    return call("epub_content.restore_checkpoint", { session_id: sessionId, name });
   },
   close(sessionId: string): Promise<{ closed: boolean }> {
     return call("epub_content.close", { session_id: sessionId });
@@ -1176,6 +1188,18 @@ export const epubContentBridge = {
   },
   write(sessionId: string, path: string, content: string): Promise<EpubContentSession> {
     return call("epub_content.write", { session_id: sessionId, path, content });
+  },
+  writeMany(sessionId: string, buffers: Record<string, string>): Promise<EpubContentSession> {
+    return call("epub_content.write_many", { session_id: sessionId, buffers });
+  },
+  mergeResources(sessionId: string, paths: string[]): Promise<EpubContentSession & { merged_path: string }> {
+    return call("epub_content.merge_resources", { session_id: sessionId, paths });
+  },
+  styleSplitPoints(sessionId: string, path: string): Promise<{ points: Array<{ index: number; label: string }> }> {
+    return call("epub_content.style_split_points", { session_id: sessionId, path });
+  },
+  splitStyle(sessionId: string, path: string, target: string, index: number): Promise<EpubContentSession> {
+    return call("epub_content.split_style", { session_id: sessionId, path, target, index });
   },
   preview(sessionId: string, path: string): Promise<{ html: string }> {
     return call("epub_content.preview", { session_id: sessionId, path });

@@ -15,6 +15,8 @@ from transoria.bridge import BridgeError, BridgeRouter
 from transoria.bridge.handlers.epub_content import register
 from transoria.tools import epub_content as epub_content_module
 from transoria.tools.epub_content import ContentSession, ContentSessionStore
+from transoria.tools.epub_editor_tools import cleanup_css, compare, image_report, issues, run_tool, set_cover, text_report, upgrade_epub
+from transoria.tools import epub_editor_tools
 
 
 def _book(path: Path) -> None:
@@ -49,6 +51,605 @@ def _rewrite_book(path: Path, changes: dict[str, bytes | str]) -> None:
             book.writestr(info, changes.pop(info.filename, data))
         for name, data in changes.items():
             book.writestr(name, data)
+
+
+def test_move_image_updates_every_inline_and_embedded_css_reference(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><style>p {background:url(../Images/pixel.png)}</style></head><body><img src="../Images/pixel.png"/><p style="background:url(../Images/pixel.png)">A</p><div style="background:url(../Images/pixel.png)">B</div></body></html>'})
+    session = ContentSession.open(str(source))
+    session.rename_resource("OEBPS/Images/pixel.png", "OEBPS/Assets/new.png")
+    content = session.read(session.spine[0])["content"]
+    assert "../Images/pixel.png" not in content
+    assert content.count("../Assets/new.png") == 4
+
+
+def test_preview_old_encoding_and_internal_anchor_mapping(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": b'<?xml version="1.0" encoding="iso-8859-1"?><html xmlns="http://www.w3.org/1999/xhtml"><body><p id="a">caf\xe9</p><a href="#a">Go</a></body></html>'})
+    session = ContentSession.open(str(source))
+    preview = session.preview(session.spine[0])
+    assert "caf\u00e9" in preview and "caf\u00c3" not in preview
+    assert 'data-transoria-target="OEBPS/Text/one.xhtml#a"' in preview
+    assert not session.dirty
+
+
+def test_css_split_keeps_legacy_charset(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Styles/book.css": b'@charset "iso-8859-1";\np {font-family:"caf\xe9";}\ndiv {font-family:"caf\xe9";}'})
+    session = ContentSession.open(str(source))
+    points = session.style_split_points("OEBPS/Styles/book.css")
+    session.split_style("OEBPS/Styles/book.css", "OEBPS/Styles/prefix.css", points[-1]["index"])
+    assert "caf\u00e9" in session.read("OEBPS/Styles/book.css")["content"]
+    assert "caf\u00e9" in session.read("OEBPS/Styles/prefix.css")["content"]
+
+
+def test_issue_report_inspects_css_import_and_font_urls(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Styles/book.css": '@import "missing.css";\n@font-face {src:url("../Fonts/missing.ttf")}\np {background:url(../Images/pixel.png)}'})
+    rows = issues(ContentSession.open(str(source)))["rows"]
+    missing = [row["message"] for row in rows if row["kind"] == "missing_resource"]
+    assert missing == ["missing.css", "../Fonts/missing.ttf"]
+
+
+def _synthetic_font(restricted: int = 0, extra: tuple[int, ...] = ()) -> bytes:
+    import io
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+    builder = FontBuilder(1000, isTTF=True)
+    codes = sorted(set(range(32, 256)) | set(extra))
+    order = [".notdef", *[f"glyph{index}" for index in codes]]
+    builder.setupGlyphOrder(order)
+    builder.setupCharacterMap({index: f"glyph{index}" for index in codes})
+    glyphs = {}
+    for name in order:
+        pen = TTGlyphPen(None)
+        pen.moveTo((50, 0)); pen.lineTo((450, 0)); pen.lineTo((250, 700)); pen.closePath()
+        glyphs[name] = pen.glyph()
+    builder.setupGlyf(glyphs)
+    builder.setupHorizontalMetrics({name: (500, 0) for name in order})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": "TestFont", "styleName": "Regular", "uniqueFontIdentifier": "TestFont", "fullName": "TestFont", "psName": "TestFont"})
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200, fsType=restricted)
+    builder.setupPost()
+    builder.setupMaxp()
+    buffer = io.BytesIO()
+    builder.save(buffer)
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize("restriction", [0, 2, 256])
+def test_font_subset_embedding_and_license_gates(tmp_path: Path, restriction: int):
+    import io
+    from fontTools.ttLib import TTFont
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    data = _synthetic_font(restriction)
+    path = "OEBPS/Fonts/test.ttf"
+    session.add_resource(path, data, "font/ttf")
+    report = run_tool(session, "fonts", {})
+    assert session._bytes(path) == data
+    if restriction:
+        assert report["rows"][0]["skipped"]
+        return
+    assert report["count"] == 1
+    run_tool(session, "fonts", {"apply": True, "fingerprint": report["fingerprint"]})
+    with TTFont(io.BytesIO(session._bytes(path))) as font:
+        assert all(ord(char) in font.getBestCmap() for char in "Hello world.")
+    session.history("undo")
+    assert session._bytes(path) == data
+    epub_editor_tools.embed_font(session, path, "Test Font", "OEBPS/Styles/book.css")
+    assert "@font-face" in session.read("OEBPS/Styles/book.css")["content"]
+    assert "data:font/ttf;base64," in session.preview(session.spine[0])
+
+
+def test_font_subset_retains_entities_and_css_escaped_glyphs(tmp_path: Path):
+    import io
+    from fontTools.ttLib import TTFont
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {
+        "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><style>p:before {content:"\\2606"}</style></head><body><p style="--marker: \'\\2665\'">&#x4E2D;</p></body></html>',
+        "OEBPS/Styles/book.css": 'p:after {content:"\\2605"}',
+    })
+    session = ContentSession.open(str(source))
+    path = "OEBPS/Fonts/test.ttf"
+    required = (0x4E2D, 0x2605, 0x2606, 0x2665)
+    original = _synthetic_font(extra=required)
+    session.add_resource(path, original, "font/ttf")
+    report = run_tool(session, "fonts", {})
+    assert report["count"] == 1
+    run_tool(session, "fonts", {"apply": True, "fingerprint": report["fingerprint"]})
+    with TTFont(io.BytesIO(session._bytes(path))) as font:
+        assert all(code in font.getBestCmap() for code in required)
+    session.history("undo")
+    assert session._bytes(path) == original
+
+
+def test_font_subset_refuses_incomplete_document_inspection(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Text/two.xhtml": '<html><body><p>Broken</body></html>'})
+    session = ContentSession.open(str(source))
+    session.add_resource("OEBPS/Fonts/test.ttf", _synthetic_font(), "font/ttf")
+    before = session._snapshot()
+    with pytest.raises(etree.XMLSyntaxError):
+        run_tool(session, "fonts", {})
+    assert session._snapshot() == before
+
+
+def test_external_check_stages_valid_archive_without_writing_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import subprocess
+    source = tmp_path / "book.epub"
+    jar = tmp_path / "check.jar"
+    _book(source)
+    jar.write_bytes(b"test")
+    before = source.read_bytes()
+    session = ContentSession.open(str(source))
+    session.write(session.spine[0], session.read(session.spine[0])["content"].replace("Hello", "Hi"))
+    monkeypatch.setattr(epub_editor_tools.shutil, "which", lambda _: "/test/java")
+    def check(command, **kwargs):
+        assert kwargs["timeout"] == 120
+        with zipfile.ZipFile(command[-1]) as archive:
+            assert archive.infolist()[0].filename == "mimetype"
+            assert archive.infolist()[0].compress_type == zipfile.ZIP_STORED
+            assert b"Hi world" in archive.read(session.spine[0])
+        return subprocess.CompletedProcess(command, 1, "test diagnostic", "")
+    monkeypatch.setattr(epub_editor_tools.subprocess, "run", check)
+    assert epub_editor_tools.external_check(session, str(jar))["exit_code"] == 1
+    assert source.read_bytes() == before
+
+
+def test_format_import_uses_cache_and_cleans_failed_conversion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import subprocess
+    source = tmp_path / "input.txt"
+    converter = tmp_path / "converter"
+    source.write_text("Test source", encoding="utf-8")
+    converter.touch()
+    cache = tmp_path / "cache"
+    def convert(command, **kwargs):
+        assert command[1] == str(source)
+        assert command[3:] == ["--epub-version", "3"]
+        _book(Path(command[2]))
+        return subprocess.CompletedProcess(command, 0, "", "")
+    monkeypatch.setattr(epub_editor_tools.subprocess, "run", convert)
+    output = epub_editor_tools.import_book(str(source), str(converter), cache)
+    assert output.parent.parent == cache
+    assert ContentSession.open(str(output)).spine
+    monkeypatch.setattr(epub_editor_tools.subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, "", "invalid"))
+    with pytest.raises(ValueError, match="invalid"):
+        epub_editor_tools.import_book(str(source), str(converter), cache)
+    assert len(list(cache.iterdir())) == 1
+    assert source.read_text() == "Test source"
+
+
+@pytest.mark.parametrize("quality", [None, True, 1.5, "85"])
+def test_tool_invalid_numeric_options_do_not_mutate(tmp_path: Path, quality):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    with pytest.raises(ValueError, match="integers"):
+        run_tool(session, "images", {"quality": quality})
+    assert not session.dirty
+
+
+def test_diff_does_not_normalize_unchanged_package_namespaces(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    assert compare(session) == {"rows": [], "count": 0}
+    session.write(session.spine[0], session.read(session.spine[0])["content"].replace("Hello", "Hi"))
+    assert [row["path"] for row in compare(session)["rows"]] == [session.spine[0]]
+
+
+def test_malformed_text_reports_are_read_only(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    malformed = b'<html><head><title>Hidden</title></head><body><div><p>Hello Hello!!!</body></html>'
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": malformed})
+    session = ContentSession.open(str(source))
+    assert any(row["kind"] == "xml" for row in issues(session)["rows"])
+    report = text_report(session)
+    assert any(row["kind"] == "repeated_word" for row in report["rows"])
+    assert "hidden" not in {row["word"] for row in report["words"]}
+    assert session._bytes(session.spine[0]) == malformed
+    assert not session.dirty
+
+
+def test_hunspell_report_handles_inflections_case_suggestions_and_ignored_words(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    _rewrite_book(source, {"OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>cats Cat cta Transoria</p></body></html>', "OEBPS/Text/two.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>cat</p></body></html>'})
+    dictionary = tmp_path / "test.dic"
+    dictionary.write_text("1\ncat/S\n", encoding="utf-8")
+    dictionary.with_suffix(".aff").write_text("SET UTF-8\nTRY abcdefghijklmnopqrstuvwxyz\nSFX S Y 1\nSFX S 0 s .\n", encoding="utf-8")
+    session = ContentSession.open(str(source))
+    report = text_report(session, str(dictionary), ["Transoria"])
+    spelling = [row for row in report["rows"] if row["kind"] == "spelling"]
+    assert report["dictionary_loaded"]
+    assert [row["message"] for row in spelling] == ["cta"]
+    assert "cat" in spelling[0]["suggestions"]
+    assert not session.dirty
+    dictionary.with_suffix(".aff").unlink()
+    with pytest.raises(ValueError, match="matching .aff"):
+        text_report(session, str(dictionary))
+
+
+def test_font_embedding_rejects_restricted_license_without_changes(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.add_resource("OEBPS/Fonts/restricted.ttf", _synthetic_font(2), "font/ttf")
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="prohibits embedding"):
+        epub_editor_tools.embed_font(session, "OEBPS/Fonts/restricted.ttf", "Test", "OEBPS/Styles/book.css")
+    assert session._snapshot() == before
+
+
+def test_multiple_packages_preserve_unselected_rendition(tmp_path: Path):
+    source, output = tmp_path / "book.epub", tmp_path / "saved.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as book:
+        container, package = book.read("META-INF/container.xml"), book.read("OEBPS/book.opf")
+    _rewrite_book(source, {
+        "META-INF/container.xml": container.replace(b"</rootfiles>", b'<rootfile full-path="Other/book.opf" media-type="application/oebps-package+xml"/></rootfiles>'),
+        "Other/book.opf": package,
+        "Other/vendor.dat": b"untouched secondary rendition",
+    })
+    session = ContentSession.open(str(source))
+    session.write(session.spine[0], session.read(session.spine[0])["content"].replace("Hello", "Hi"))
+    session.save(str(output), overwrite=False)
+    with zipfile.ZipFile(output) as book:
+        assert book.read("Other/book.opf") == package
+        assert book.read("Other/vendor.dat") == b"untouched secondary rendition"
+    assert ContentSession.open(str(output)).opf_path == "OEBPS/book.opf"
+
+
+def test_merge_chapters_migrates_toc_links_and_is_one_undo_step(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    one, two = session.spine
+    session.write(one, session.read(one)["content"].replace("<script>alert(1)</script>", ""))
+    session.write(two, session.read(two)["content"].replace("<p>", '<p id="second">').replace("</body>", '<a href="one.xhtml#start">Back</a></body>'))
+    session.toc[1]["href"] = two + "#second"
+    before = session._snapshot()
+    undo_count = len(session.undo_stack)
+    assert session.merge_resources([one, two]) == one
+    assert len(session.undo_stack) == undo_count + 1
+    assert session.spine == [one]
+    assert session.toc[1]["href"] == one + "#second"
+    assert "Hello again" in session.read(one)["content"]
+    retained = session._package().find("{http://www.idpf.org/2007/opf}manifest/{http://www.idpf.org/2007/opf}item[@id='one']")
+    assert retained.get("href") == "Text/one.xhtml"
+    assert not etree.fromstring(session._bytes(one)).findall(".//{http://www.w3.org/1999/xhtml}section")
+    session.history("undo")
+    assert session._snapshot() == before
+    session.history("redo")
+    output = tmp_path / "merged.epub"
+    session.save(str(output), False)
+    reopened = ContentSession.open(str(output))
+    assert reopened.spine == [one]
+    assert reopened.toc[1]["href"] == one + "#second"
+    assert source.read_bytes() == original
+    with zipfile.ZipFile(output) as archive:
+        assert two not in archive.namelist()
+        assert archive.read("OEBPS/Images/pixel.png") == b"image-bytes"
+
+
+def test_merge_rejects_duplicate_ids_atomically(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.write(session.spine[0], session.read(session.spine[0])["content"].replace("<script>alert(1)</script>", ""))
+    session.write(session.spine[1], session.read(session.spine[1])["content"].replace("<p>", '<p id="start">'))
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="duplicate IDs"):
+        session.merge_resources(session.spine.copy())
+    assert session._snapshot() == before
+
+
+def test_css_split_preserves_import_order_and_relative_urls(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    style = "OEBPS/Styles/book.css"
+    session.write(style, 'body { background:url(../Images/pixel.png) } p { color:blue }')
+    target = "OEBPS/Styles/parts/first.css"
+    count = len(session.undo_stack)
+    session.split_style(style, target, 2)
+    assert len(session.undo_stack) == count + 1
+    assert '@import "parts/first.css"' in session.read(style)["content"]
+    assert "../../Images/pixel.png" in session.read(target)["content"]
+    assert "color:blue" in session.preview(session.spine[0])
+    session.save(str(tmp_path / "split.epub"), False)
+
+
+def test_css_merge_rewrites_inbound_links_and_resource_urls(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    first = "OEBPS/Styles/book.css"
+    second = "OEBPS/Other/second.css"
+    session.add_resource(second, b'p { background:url(../Images/pixel.png) }', "text/css")
+    session.write(session.spine[1], session.read(session.spine[1])["content"].replace("<head/>", '<head><link rel="stylesheet" href="../Other/second.css"/></head>'))
+    session.merge_resources([first, second])
+    assert "../Images/pixel.png" in session.read(first)["content"]
+    assert "../Styles/book.css" in session.read(session.spine[1])["content"]
+    session.save(str(tmp_path / "merged.epub"), False)
+
+
+def test_multi_buffer_write_rolls_back_on_last_failure(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    with pytest.raises(ValueError):
+        session.write_many({session.spine[0]: "changed", "missing": "failed"})
+    assert session._snapshot() == before
+    assert not session.undo_stack
+    session.write_many({path: session.read(path)["content"].replace("Hello", "Hi") for path in session.spine})
+    assert len(session.undo_stack) == 1
+    session.history("undo")
+    assert session._snapshot() == before
+
+
+def test_tools_issue_report_locates_xml_ids_and_missing_links(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    first, second = session.spine
+    session.write(first, session.read(first)["content"].replace("</body>", '<p id="start">Duplicate</p><a href="two.xhtml#lost">Broken</a></body>'))
+    session.write(second, "<html><body></html>")
+    report = issues(session)
+    assert {row["kind"] for row in report["rows"]} >= {"xml", "duplicate_id"}
+    assert all(row["line"] > 0 for row in report["rows"])
+    assert source.exists()
+
+
+def test_css_cleanup_retains_dynamic_and_nested_rules_and_supports_undo(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    style = "OEBPS/Styles/book.css"
+    session.write(style, 'body{color:red}.absent{color:blue}p:hover{color:black}@media screen{.absent{color:white}}')
+    before = session._snapshot()
+    report = cleanup_css(session)
+    assert report["count"] == 1
+    assert session._snapshot() == before
+    cleanup_css(session, True)
+    assert ".absent{color:blue}" not in session.read(style)["content"]
+    assert "p:hover" in session.read(style)["content"]
+    assert "@media" in session.read(style)["content"]
+    session.history("undo")
+    assert session._snapshot() == before
+
+
+def test_optimization_rejects_stale_preview(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    proposal = run_tool(session, "cleanup_css", {})
+    session.write(session.spine[0], session.read(session.spine[0])["content"].replace("Hello", "Goodbye"))
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="draft changed"):
+        run_tool(session, "cleanup_css", {"apply": True, "fingerprint": proposal["fingerprint"]})
+    assert session._snapshot() == before
+
+
+def test_optimization_rejects_changed_linear_flags(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    proposal = run_tool(session, "cleanup_css", {})
+    session.set_spine([{"path": path, "linear": False} for path in session.spine])
+    before = session._snapshot()
+    with pytest.raises(ValueError, match="draft changed"):
+        run_tool(session, "cleanup_css", {"apply": True, "fingerprint": proposal["fingerprint"]})
+    assert session._snapshot() == before
+
+
+def test_diff_includes_spine_toc_and_binary_changes(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    session.reorder_spine(list(reversed(session.spine)))
+    session.set_toc([{**entry, "label": "Changed " + str(entry["label"])} for entry in session.toc])
+    session.replace_resource("OEBPS/Images/pixel.png", b"different image")
+    result = compare(session)
+    assert {row["path"] for row in result["rows"]} >= {session.opf_path, session.nav_path, session.ncx_path, "OEBPS/Images/pixel.png"}
+    assert "Changed" in next(row["diff"] for row in result["rows"] if row["path"] == session.nav_path)
+    assert session.dirty
+
+
+def test_named_checkpoints_survive_restart_and_restore_with_undo(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    store = ContentSessionStore(tmp_path / "sessions")
+    summary = store.open(str(source))
+    sid = str(summary["session_id"])
+    session = store.get(sid)
+    session.named_checkpoint("Before")
+    session.write(session.spine[0], session.read(session.spine[0])["content"].replace("Hello", "Hi"))
+    store.persist(sid)
+    restored = ContentSessionStore(tmp_path / "sessions").get(sid)
+    assert list(restored.checkpoints) == ["Before"]
+    assert compare(restored, "Before")["count"] == 1
+    restored.restore_checkpoint("Before")
+    assert "Hello" in restored.read(restored.spine[0])["content"]
+    restored.history("undo")
+    assert "Hi" in restored.read(restored.spine[0])["content"]
+    assert source.read_bytes() == session.path.read_bytes()
+
+
+def test_toc_sidebar_and_navigation_source_stay_synchronized(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    session.set_toc([{**entry, "label": "Chapter " + str(entry["label"])} for entry in session.toc])
+    assert "Chapter One" in session.read(session.nav_path)["content"]
+    assert "Chapter One" in session.read(session.ncx_path)["content"]
+    session.history("undo")
+    assert session._snapshot() == before
+    session.write(session.nav_path, session.read(session.nav_path)["content"].replace("One", "First"))
+    assert session.toc[0]["label"] == "First"
+    assert "First" in session.read(session.ncx_path)["content"]
+    session.history("undo")
+    assert session._snapshot() == before
+    session.replace("One", "First", [session.ncx_path], case_sensitive=True)
+    assert session.toc[0]["label"] == "First"
+    assert "First" in session.read(session.nav_path)["content"]
+    session.history("undo")
+    assert session._snapshot() == before
+
+
+def test_navigation_batch_replacement_saves_and_undoes_as_one_operation(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    proposal = session.preview_replace("One", "First", [session.nav_path, session.ncx_path], case_sensitive=True)
+    session.replace("One", "First", [session.nav_path, session.ncx_path], case_sensitive=True, expected_fingerprints=proposal["fingerprints"])
+    assert len(session.undo_stack) == 1
+    assert session.toc[0]["label"] == "First"
+    session.history("undo")
+    assert session._snapshot() == before
+    session.history("redo")
+    output = tmp_path / "saved.epub"
+    session.save(str(output), False)
+    assert ContentSession.open(str(output)).toc[0]["label"] == "First"
+
+
+def test_malformed_navigation_draft_keeps_last_valid_toc_without_silent_repair(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    session.write(session.nav_path, "<html><nav>")
+    assert session.toc == before[2]
+    assert "<html><nav>" in session.read(session.nav_path)["content"]
+    with pytest.raises(ValueError, match="Invalid XML"):
+        session.save(str(tmp_path / "bad.epub"), False)
+    session.history("undo")
+    assert session._snapshot() == before
+
+
+@pytest.mark.parametrize("checkpoints", [None, [], {"": {}}, {"x" * 81: {}}])
+def test_invalid_checkpoint_cache_has_a_recoverable_error(tmp_path: Path, checkpoints):
+    import json
+    source = tmp_path / "book.epub"
+    _book(source)
+    store = ContentSessionStore(tmp_path / "sessions")
+    summary = store.open(str(source))
+    sid = str(summary["session_id"])
+    path = store._state_path(sid)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["checkpoints"] = checkpoints
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="checkpoints could not be restored"):
+        ContentSessionStore(tmp_path / "sessions").get(sid)
+
+
+def test_text_report_uses_visible_text_and_custom_dictionary(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    dictionary = tmp_path / "dictionary.txt"
+    dictionary.write_text("hello\nworld\nagain\noutside", encoding="utf-8")
+    before = session._snapshot()
+    report = text_report(session, str(dictionary))
+    assert report["dictionary_loaded"]
+    assert not [row for row in report["rows"] if row["kind"] == "spelling"]
+    assert "alert" not in {row["word"] for row in report["words"]}
+    session.write(session.spine[1], session.read(session.spine[1])["content"].replace("Hello again.", "Helo again again!!!"))
+    report = text_report(session, str(dictionary))
+    assert {row["kind"] for row in report["rows"]} >= {"spelling", "repeated_word", "punctuation"}
+    assert any(row.get("suggestions") == ["hello"] for row in report["rows"])
+    assert session._snapshot() != before
+
+
+def test_image_preview_and_apply_keep_original_and_resize_safely(tmp_path: Path):
+    from PIL import Image
+    import io
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    data = io.BytesIO()
+    Image.new("RGB", (1000, 800), (240, 200, 20)).save(data, "PNG", compress_level=0)
+    session.replace_resource("OEBPS/Images/pixel.png", data.getvalue())
+    before = session._snapshot()
+    report = image_report(session, max_dimension=100)
+    assert report["count"] == 1
+    assert session._snapshot() == before
+    image_report(session, True, max_dimension=100)
+    with Image.open(io.BytesIO(session._bytes("OEBPS/Images/pixel.png"))) as image:
+        assert image.size == (100, 80)
+    session.history("undo")
+    assert session._snapshot() == before
+
+
+def test_cover_metadata_is_undoable_and_preserves_text(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    set_cover(session, "OEBPS/Images/pixel.png")
+    assert session._package().find("{*}metadata/{*}meta[@name='cover']").get("content") == "img"
+    assert session._bytes(session.spine[0]) == ContentSession.open(str(source))._bytes(session.spine[0])
+    session.history("undo")
+    assert session._snapshot() == before
+
+
+def test_epub2_upgrade_adds_navigation_and_round_trips(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        package = archive.read("OEBPS/book.opf").decode().replace('version="3.0"', 'version="2.0"').replace(' properties="nav"', '')
+    _rewrite_book(source, {"OEBPS/book.opf": package})
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    upgrade_epub(session)
+    assert session._package().get("version") == "3.0"
+    assert session.nav_path == "OEBPS/navigation3.xhtml"
+    session.history("undo")
+    assert session._snapshot() == before
+    session.history("redo")
+    output = tmp_path / "upgraded.epub"
+    session.save(str(output), False)
+    assert ContentSession.open(str(output)).toc == before[2]
+    assert source.read_bytes() == original
+
+
+def test_epub2_upgrade_migrates_metadata_and_embedded_resource_properties(tmp_path: Path):
+    source = tmp_path / "book.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        package = archive.read("OEBPS/book.opf").decode().replace('version="3.0"', 'version="2.0"').replace(' properties="nav"', '')
+        package = package.replace('<dc:identifier id="id">', '<dc:identifier xmlns:opf="http://www.idpf.org/2007/opf" opf:scheme="UUID" id="id">')
+        package = package.replace('</metadata>', '<dc:creator xmlns:opf="http://www.idpf.org/2007/opf" opf:role="aut" opf:file-as="Author, Test">Test Author</dc:creator><meta name="cover" content="img"/></metadata>')
+        one = archive.read("OEBPS/Text/one.xhtml").decode().replace('</body>', '<svg xmlns="http://www.w3.org/2000/svg"/><math xmlns="http://www.w3.org/1998/Math/MathML"/></body>')
+    _rewrite_book(source, {"OEBPS/book.opf": package, "OEBPS/Text/one.xhtml": one})
+    session = ContentSession.open(str(source))
+    before = session._snapshot()
+    upgrade_epub(session)
+    package = session._package()
+    metadata = package.find("{http://www.idpf.org/2007/opf}metadata")
+    assert all(not key.startswith("{http://www.idpf.org/2007/opf}") for node in metadata for key in node.attrib)
+    assert metadata.find("{http://www.idpf.org/2007/opf}meta[@property='identifier-type']").text == "UUID"
+    assert metadata.find("{http://www.idpf.org/2007/opf}meta[@property='role']").text == "aut"
+    assert metadata.find("{http://www.idpf.org/2007/opf}meta[@property='file-as']").text == "Author, Test"
+    manifest = package.find("{http://www.idpf.org/2007/opf}manifest")
+    assert set(manifest.find("{http://www.idpf.org/2007/opf}item[@id='one']").get("properties").split()) >= {"svg", "mathml", "scripted"}
+    assert "cover-image" in manifest.find("{http://www.idpf.org/2007/opf}item[@id='img']").get("properties")
+    session.history("undo")
+    assert session._snapshot() == before
 
 
 def test_edit_search_replace_history_and_safe_preview(tmp_path: Path):
@@ -192,7 +793,7 @@ def test_split_chapter_is_atomic_undoable_and_preserves_resources(tmp_path: Path
     assert source.read_bytes() == original
 
 
-def test_split_chapter_rejects_moved_anchor_references_without_changes(tmp_path: Path):
+def test_split_chapter_migrates_moved_anchor_references(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)
     one = "OEBPS/Text/one.xhtml"
@@ -201,13 +802,12 @@ def test_split_chapter_rejects_moved_anchor_references_without_changes(tmp_path:
     _rewrite_book(source, {one: content.replace("<img src=", '<p id="later">Later</p><img src=')})
     session = ContentSession.open(str(source))
     session.toc.append({"label": "Later", "href": one + "#later", "depth": 0})
-    with pytest.raises(ValueError, match="directory entry"):
-        session.split_chapter(one, "OEBPS/Text/split.xhtml", 1)
-    assert "OEBPS/Text/split.xhtml" not in session.spine
-    assert not session.changes
+    session.split_chapter(one, "OEBPS/Text/split.xhtml", 1)
+    assert session.toc[-1]["href"] == "OEBPS/Text/split.xhtml#later"
+    session.save(str(tmp_path / "split.epub"), False)
 
 
-def test_split_chapter_rejects_local_link_back_to_first_half(tmp_path: Path):
+def test_split_chapter_migrates_local_link_back_to_first_half(tmp_path: Path):
     source = tmp_path / "book.epub"
     _book(source)
     one = "OEBPS/Text/one.xhtml"
@@ -215,9 +815,9 @@ def test_split_chapter_rejects_local_link_back_to_first_half(tmp_path: Path):
         content = book.read(one).decode("utf-8")
     _rewrite_book(source, {one: content.replace("<img src=", '<a href="#start">Back</a><img src=')})
     session = ContentSession.open(str(source))
-    with pytest.raises(ValueError, match="anchor left"):
-        session.split_chapter(one, "OEBPS/Text/split.xhtml", 1)
-    assert not session.dirty
+    session.split_chapter(one, "OEBPS/Text/split.xhtml", 1)
+    assert 'href="one.xhtml#start"' in session.read("OEBPS/Text/split.xhtml")["content"]
+    session.save(str(tmp_path / "split.epub"), False)
 
 
 def test_editor_session_survives_backend_restart(tmp_path: Path):

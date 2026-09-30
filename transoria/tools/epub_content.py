@@ -14,6 +14,7 @@ import time
 import unicodedata
 import uuid
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -184,37 +185,46 @@ def _document_ids(data: bytes) -> set[str]:
 def _rewrite_resource_links(
     data: bytes, media: str, source_path: str, destination_path: str,
     renamed: dict[str, str], known_paths: set[str],
+    fragments: dict[tuple[str, str], str] | None = None,
+    fragment_paths: dict[tuple[str, str], str] | None = None,
 ) -> tuple[bytes, set[str]]:
     referenced: set[str] = set()
     changed = False
 
-    def rewrite_url(raw: str) -> str:
+    def rewrite_url(raw: str, section_target: bool = True) -> str:
         nonlocal changed
-        if not raw or raw.startswith(("#", "data:", "//")) or urlsplit(raw).scheme:
+        if not raw or raw.startswith(("data:", "//")) or urlsplit(raw).scheme:
             return raw
         parts = urlsplit(raw)
         target = posixpath.normpath(posixpath.join(
             posixpath.dirname(source_path), unquote(parts.path),
-        ))
+        )) if parts.path else source_path
         if target not in known_paths:
             if source_path != destination_path:
                 raise ValueError(f"Cannot move a resource with an unresolved link: {raw}")
             return raw
         referenced.add(target)
-        new_target = renamed.get(target, target)
-        if source_path == destination_path and new_target == target:
+        new_target = (fragment_paths or {}).get((target, unquote(parts.fragment)), renamed.get(target, target)) if section_target else renamed.get(target, target)
+        fragment = (fragments or {}).get((target, unquote(parts.fragment)), parts.fragment) if section_target else parts.fragment
+        if source_path == destination_path and new_target == target and fragment == parts.fragment:
             return raw
         relative = posixpath.relpath(new_target, posixpath.dirname(destination_path) or ".")
         updated = quote(relative, safe="/-._~")
         if parts.query:
             updated += f"?{parts.query}"
-        if parts.fragment:
-            updated += f"#{parts.fragment}"
+        if fragment:
+            updated += f"#{fragment}"
         changed |= updated != raw
         return updated
 
     def rewrite_css(css: str, *, declarations: bool = False) -> str:
-        was_changed = changed
+        css_changed = False
+
+        def css_url(raw: str) -> str:
+            nonlocal css_changed
+            updated = rewrite_url(raw)
+            css_changed |= updated != raw
+            return updated
         rules = (
             tinycss2.parse_declaration_list(css, skip_comments=False, skip_whitespace=False)
             if declarations else tinycss2.parse_stylesheet(css, skip_comments=False, skip_whitespace=False)
@@ -226,7 +236,7 @@ def _rewrite_resource_links(
                 if token_type == "error":
                     raise ValueError("Cannot safely rewrite malformed CSS references.")
                 if token_type == "url":
-                    updated = rewrite_url(token.value)
+                    updated = css_url(token.value)
                     if updated != token.value:
                         token.value = updated
                         token.representation = f"url({json.dumps(updated, ensure_ascii=False)})"
@@ -234,7 +244,7 @@ def _rewrite_resource_links(
                     values = [part for part in token.arguments if part.type != "whitespace"]
                     if len(values) == 1 and values[0].type == "string":
                         value = values[0]
-                        updated = rewrite_url(value.value)
+                        updated = css_url(value.value)
                         if updated != value.value:
                             value.value = updated
                             value.representation = json.dumps(updated, ensure_ascii=False)
@@ -251,7 +261,7 @@ def _rewrite_resource_links(
             if rule.type == "at-rule" and rule.lower_at_keyword == "import":
                 first = next((token for token in rule.prelude if token.type not in {"whitespace", "comment"}), None)
                 if first is not None and first.type == "string":
-                    updated = rewrite_url(first.value)
+                    updated = css_url(first.value)
                     if updated != first.value:
                         first.value = updated
                         first.representation = json.dumps(updated, ensure_ascii=False)
@@ -261,7 +271,7 @@ def _rewrite_resource_links(
                 walk(rule.value)
             if getattr(rule, "content", None) is not None:
                 walk(rule.content)
-        return tinycss2.serialize(rules) if changed != was_changed else css
+        return tinycss2.serialize(rules) if css_changed else css
 
     if media == "text/css":
         content, encoding = _decode(data)
@@ -299,7 +309,7 @@ def _rewrite_resource_links(
         for key, value in list(node.attrib.items()):
             name = etree.QName(key).localname.lower()
             if name in {"href", "src", "poster", "data"}:
-                updated = rewrite_url(value)
+                updated = rewrite_url(value, section_target=node.tag != f"{{{OPF}}}item")
                 if updated != value:
                     node.set(key, updated)
             elif name == "srcset":
@@ -371,6 +381,7 @@ class ContentSession:
     dirty: bool = False
     undo_stack: list[SessionSnapshot] = field(default_factory=list)
     redo_stack: list[SessionSnapshot] = field(default_factory=list)
+    checkpoints: dict[str, SessionSnapshot] = field(default_factory=dict)
 
     @classmethod
     def open(cls, path: str) -> ContentSession:
@@ -459,6 +470,7 @@ class ContentSession:
             "dirty": self.dirty,
             "can_undo": bool(self.undo_stack),
             "can_redo": bool(self.redo_stack),
+            "checkpoints": list(self.checkpoints),
         }
 
     def _snapshot(self) -> SessionSnapshot:
@@ -473,6 +485,46 @@ class ContentSession:
         self.undo_stack = self.undo_stack[-30:]
         self.redo_stack.clear()
         self.dirty = True
+
+    @contextmanager
+    def transaction(self):
+        before = self._snapshot()
+        undo, redo, dirty = self.undo_stack.copy(), self.redo_stack.copy(), self.dirty
+        try:
+            yield
+        except Exception:
+            (
+                self.changes, self.spine, self.toc, self.files, self.removed,
+                self.nav_path, self.ncx_path, self.spine_linear,
+            ) = before
+            self.undo_stack, self.redo_stack, self.dirty = undo, redo, dirty
+            raise
+        if self._snapshot() != before:
+            self.undo_stack = (undo + [before])[-30:]
+            self.redo_stack = []
+            self.dirty = True
+
+    def write_many(self, buffers: dict[str, str]) -> None:
+        with self.transaction():
+            for path, content in buffers.items():
+                self.write(path, content)
+
+    def named_checkpoint(self, name: str) -> None:
+        name = name.strip()
+        if not name or len(name) > 80 or name in self.checkpoints:
+            raise ValueError("Use a unique checkpoint name under 80 characters.")
+        if len(self.checkpoints) >= 10:
+            raise ValueError("Keep at most ten checkpoints per editing session.")
+        self.checkpoints[name] = self._snapshot()
+
+    def restore_checkpoint(self, name: str) -> None:
+        if name not in self.checkpoints:
+            raise ValueError("Checkpoint does not exist.")
+        self._record()
+        (
+            self.changes, self.spine, self.toc, self.files, self.removed,
+            self.nav_path, self.ncx_path, self.spine_linear,
+        ) = copy.deepcopy(self.checkpoints[name])
 
     def history(self, direction: str) -> None:
         source = self.undo_stack if direction == "undo" else self.redo_stack
@@ -551,8 +603,48 @@ class ContentSession:
         updated = _encode(content, encoding)
         if updated == self._bytes(path):
             return
+        self._apply_changes({path: updated})
+
+    def _toc_updates(self, entries: list[dict[str, object]]) -> dict[str, bytes]:
+        pending = {}
+        for path, writer in ((self.nav_path, _write_nav), (self.ncx_path, _write_ncx)):
+            if path:
+                data = writer(self._bytes(path), path, entries)
+                if len(data) > MAX_TEXT_BYTES:
+                    raise ValueError("Navigation exceeds the 4 MB editor limit.")
+                pending[path] = data
+        return pending
+
+    def _apply_changes(self, pending: dict[str, bytes]) -> None:
+        pending = pending.copy()
+        toc = None
+        edited = self.nav_path if self.nav_path in pending else self.ncx_path if self.ncx_path in pending else ""
+        if edited:
+            try:
+                with zipfile.ZipFile(self.path) as archive:
+                    toc = _read_toc(archive, edited if edited == self.nav_path else "", edited if edited == self.ncx_path else "", pending)
+            except etree.XMLSyntaxError:
+                # Incomplete navigation source remains editable as a draft.
+                pass
+            if toc is not None:
+                companion = self.ncx_path if edited == self.nav_path else self.nav_path
+                if companion and companion not in pending:
+                    writer = _write_ncx if companion == self.ncx_path else _write_nav
+                    try:
+                        data = writer(self._bytes(companion), companion, toc)
+                    except etree.XMLSyntaxError:
+                        pass
+                    else:
+                        if len(data) > MAX_TEXT_BYTES:
+                            raise ValueError("Navigation exceeds the 4 MB editor limit.")
+                        pending[companion] = data
         self._record()
-        self.changes[path] = updated
+        self.changes.update(pending)
+        if toc is not None:
+            self.toc = toc
+        for item in self.files:
+            if item["path"] in pending:
+                item["size"] = len(pending[str(item["path"])])
 
     def _resource_paths(self) -> set[str]:
         with zipfile.ZipFile(self.path) as archive:
@@ -682,54 +774,35 @@ class ContentSession:
             (node.get("id"), node.get("{http://www.w3.org/XML/1998/namespace}id"), node.get("name"))
             if value
         }
-        for node in second_body.iter():
-            for attr, value in node.attrib.items():
-                if etree.QName(attr).localname.lower() in {"href", "src", "data", "poster"}:
-                    parts = urlsplit(value)
-                    if not parts.path and unquote(parts.fragment) in retained_ids:
-                        raise ValueError("The moved content links to an anchor left in the first chapter.")
-        if moved_ids:
-            for entry in self.toc:
-                href = str(entry["href"])
-                if href.split("#", 1)[0] == path and unquote(href.partition("#")[2]) in moved_ids:
-                    raise ValueError("A directory entry points into the new chapter; move that entry first.")
-            for source in [self.opf_path, *(str(item["path"]) for item in self.files)]:
-                media = str(self._file(source)["media_type"]) if source != self.opf_path else "application/xml"
-                if media not in XML_TYPES | {"application/xhtml+xml"}:
-                    if media == "text/css" and any(
-                        f"#{identifier}".encode("utf-8") in self._bytes(source)
-                        for identifier in moved_ids
-                    ):
-                        raise ValueError(f"A stylesheet may refer to moved content: {source}.")
-                    continue
-                data = self._bytes(source)
-                if len(data) > MAX_TEXT_BYTES:
-                    raise ValueError(f"Cannot check chapter references in oversized resource: {source}")
-                try:
-                    document = _xml(data)
-                except etree.XMLSyntaxError as exc:
-                    raise ValueError(f"Cannot check chapter references in malformed resource: {source}") from exc
-                for node in document.iter():
-                    for attr, value in node.attrib.items():
-                        if etree.QName(attr).localname.lower() not in {"href", "src", "data", "poster"}:
-                            continue
-                        parts = urlsplit(value)
-                        if not parts.fragment or unquote(parts.fragment) not in moved_ids:
-                            continue
-                        resolved = posixpath.normpath(posixpath.join(
-                            posixpath.dirname(source), unquote(parts.path),
-                        )) if parts.path else source
-                        if resolved == path:
-                            raise ValueError(f"A link to the moved chapter content exists in {source}.")
-        before = _serialize(first)
-        after = _serialize(second)
+        moved_ids -= retained_ids
+        destinations = {(path, identifier): target for identifier in moved_ids}
+        known = self._resource_paths()
+        before, _ = _rewrite_resource_links(_serialize(first), "application/xhtml+xml", path, path, {}, known, fragment_paths=destinations)
+        after, _ = _rewrite_resource_links(_serialize(second), "application/xhtml+xml", path, target, {}, known, fragment_paths=destinations)
+        pending = {}
+        for source, media in [(self.opf_path, "application/xml"), *((str(item["path"]), str(item["media_type"])) for item in self.files if item["path"] != path)]:
+            data = self._bytes(source)
+            if len(data) > MAX_TEXT_BYTES and media in EDITABLE_TYPES:
+                raise ValueError(f"Cannot inspect oversized references: {source}")
+            updated, _ = _rewrite_resource_links(data, media, source, source, {}, known, fragment_paths=destinations)
+            if updated != data:
+                pending[source] = updated
+        toc = []
+        for entry in self.toc:
+            href = str(entry["href"])
+            if href.split("#", 1)[0] == path and unquote(href.partition("#")[2]) in moved_ids:
+                entry = {**entry, "href": target + "#" + href.partition("#")[2]}
+            toc.append(entry)
         if len(before) > MAX_TEXT_BYTES or len(after) > MAX_TEXT_BYTES:
             raise ValueError("Split chapters exceed the 4 MB editor limit.")
-        self.add_resource(target, after, "application/xhtml+xml", in_spine=True)
-        self.changes[path] = before
-        self._file(path)["size"] = len(before)
-        self.spine.remove(target)
-        self.spine.insert(self.spine.index(path) + 1, target)
+        with self.transaction():
+            self.changes.update(pending)
+            self.add_resource(target, after, "application/xhtml+xml", in_spine=True)
+            self.changes[path] = before
+            self._file(path)["size"] = len(before)
+            self.spine.remove(target)
+            self.spine.insert(self.spine.index(path) + 1, target)
+            self.toc = toc
 
     def replace_resource(self, path: str, data: bytes) -> None:
         self._file(path)
@@ -737,9 +810,164 @@ class ContentSession:
             raise ValueError("Resource exceeds the 48 MB editor limit.")
         if data == self._bytes(path):
             return
+        self._apply_changes({path: data})
+
+    def split_style(self, path: str, target: str, index: int) -> None:
+        if self._file(path)["media_type"] != "text/css":
+            raise ValueError("Choose a CSS stylesheet.")
+        self._check_new_path(target)
+        text, encoding = _decode(self._bytes(path))
+        rules = tinycss2.parse_stylesheet(text, skip_comments=False, skip_whitespace=False)
+        if any(rule.type == "error" for rule in rules):
+            raise ValueError("Cannot split malformed CSS.")
+        if not isinstance(index, int) or not 0 < index < len(rules):
+            raise ValueError("Choose a CSS rule boundary.")
+        prefix, suffix = tinycss2.serialize(rules[:index]), tinycss2.serialize(rules[index:])
+        # Importing the prefix preserves cascade order even when the source has @imports.
+        prefix_bytes, _ = _rewrite_resource_links(
+            _encode(prefix, encoding), "text/css", path, target, {}, self._resource_paths(),
+        )
+        href = quote(posixpath.relpath(target, posixpath.dirname(path) or "."), safe="/-._~")
+        charset = f'@charset "{encoding}";\n' if encoding.lower().replace("-", "") not in {"utf8", "utf8sig"} else ""
+        suffix = charset + f'@import "{href}";\n' + suffix
+        with self.transaction():
+            self.add_resource(target, prefix_bytes, "text/css")
+            self.write(path, suffix)
+
+    def style_split_points(self, path: str) -> list[dict[str, object]]:
+        if self._file(path)["media_type"] != "text/css":
+            raise ValueError("Choose a CSS stylesheet.")
+        rules = tinycss2.parse_stylesheet(_decode(self._bytes(path))[0])
+        if any(rule.type == "error" for rule in rules):
+            raise ValueError("Cannot split malformed CSS.")
+        return [
+            {"index": index, "label": tinycss2.serialize([rule]).strip()[:90]}
+            for index, rule in enumerate(rules)
+            if index > 0 and rule.type in {"qualified-rule", "at-rule"}
+        ]
+
+    def merge_resources(self, paths: list[str]) -> str:
+        if len(paths) < 2 or len(set(paths)) != len(paths):
+            raise ValueError("Choose at least two distinct files in the desired merge order.")
+        media = str(self._file(paths[0])["media_type"])
+        if media not in {"application/xhtml+xml", "text/css"} or any(
+            self._file(path)["media_type"] != media for path in paths
+        ):
+            raise ValueError("Merge only XHTML chapters or only CSS stylesheets.")
+        if any(path in {self.nav_path, self.ncx_path} for path in paths):
+            raise ValueError("Navigation files cannot be merged as chapters.")
+        target = paths[0]
+        if media == "application/xhtml+xml" and any(path in self.spine for path in paths) and target not in self.spine:
+            raise ValueError("The first merged chapter must be in the reading order.")
+        mapping = {path: target for path in paths}
+        fragments: dict[tuple[str, str], str] = {}
+        known = self._resource_paths()
+        roots = []
+        if media == "application/xhtml+xml":
+            used_ids: set[str] = set()
+            for number, path in enumerate(paths):
+                root = _xml(self._bytes(path))
+                body = root.find(f".//{{{XHTML}}}body")
+                if body is None or root.find(f"{{{XHTML}}}head") is None or root.findall(f".//{{{XHTML}}}script"):
+                    raise ValueError("Merge requires XHTML heads and bodies without scripts.")
+                ids = _document_ids(self._bytes(path))
+                if used_ids & ids:
+                    raise ValueError("Chapters contain duplicate IDs; rename them before merging.")
+                used_ids |= ids
+                anchor = f"merged-section-{number + 1}"
+                while anchor in used_ids:
+                    anchor += "-"
+                used_ids.add(anchor)
+                fragments[(path, "")] = anchor
+                roots.append((path, root, body, anchor))
+            merged = copy.deepcopy(roots[0][1])
+            head = merged.find(f"{{{XHTML}}}head")
+            body = merged.find(f"{{{XHTML}}}body")
+            assert head is not None and body is not None
+            body.clear()
+            for path, root, source_body, anchor in roots:
+                section = etree.SubElement(body, f"{{{XHTML}}}div", id=anchor)
+                for key, value in source_body.attrib.items():
+                    if key != "id":
+                        section.set(key, value)
+                if source_body.get("id"):
+                    wrapper = etree.SubElement(section, f"{{{XHTML}}}div", id=source_body.get("id"))
+                else:
+                    wrapper = section
+                wrapper.text = source_body.text
+                for child in source_body:
+                    wrapper.append(copy.deepcopy(child))
+                rewritten, _ = _rewrite_resource_links(
+                    _serialize(section), media, path, target, mapping, known, fragments,
+                )
+                body.replace(section, _xml(rewritten))
+                if path != target:
+                    source_head = root.find(f"{{{XHTML}}}head")
+                    for child in source_head if source_head is not None else []:
+                        if etree.QName(child).localname not in {"link", "style"}:
+                            continue
+                        rewritten, _ = _rewrite_resource_links(
+                            _serialize(child), media, path, target, mapping, known, fragments,
+                        )
+                        if not any(_serialize(existing) == rewritten for existing in head):
+                            head.append(_xml(rewritten))
+            merged_bytes = _serialize(merged)
+        else:
+            contents = []
+            for path in paths:
+                data, _ = _rewrite_resource_links(self._bytes(path), media, path, target, {}, known)
+                rules = tinycss2.parse_stylesheet(_decode(data)[0], skip_comments=False)
+                if any(rule.type == "error" or (rule.type == "at-rule" and rule.lower_at_keyword == "import") for rule in rules):
+                    raise ValueError("Inline CSS imports and fix syntax errors before merging stylesheets.")
+                contents.append(tinycss2.serialize([rule for rule in rules if not (
+                    rule.type == "at-rule" and rule.lower_at_keyword == "charset"
+                )]))
+            merged_bytes = ("\n".join(contents)).encode("utf-8")
+        if len(merged_bytes) > MAX_TEXT_BYTES:
+            raise ValueError("Merged file exceeds the 4 MB editor limit.")
+        pending: dict[str, bytes] = {target: merged_bytes}
+        for item in self.files:
+            path = str(item["path"])
+            if path in paths:
+                continue
+            updated, _ = _rewrite_resource_links(
+                self._bytes(path), str(item["media_type"]), path, path, mapping, known, fragments,
+            )
+            if updated != self._bytes(path):
+                pending[path] = updated
+        package = self._package()
+        removed_ids = set()
+        manifest = package.find(f"{{{OPF}}}manifest")
+        assert manifest is not None
+        for item in list(manifest):
+            if resolve_epub_href(posixpath.dirname(self.opf_path), item.get("href", "")) in paths[1:]:
+                removed_ids.add(item.get("id"))
+                manifest.remove(item)
+        for item in package.findall(f"{{{OPF}}}spine/{{{OPF}}}itemref"):
+            if item.get("idref") in removed_ids:
+                item.getparent().remove(item)
+        pending[self.opf_path], _ = _rewrite_resource_links(
+            _serialize(package), "application/xml", self.opf_path, self.opf_path,
+            mapping, known, fragments,
+        )
+        toc = []
+        for entry in self.toc:
+            path, _, fragment = str(entry["href"]).partition("#")
+            if path in mapping:
+                fragment = fragments.get((path, unquote(fragment)), fragment)
+                entry = {**entry, "href": target + (f"#{fragment}" if fragment else "")}
+            toc.append(entry)
         self._record()
-        self.changes[path] = data
-        self._file(path)["size"] = len(data)
+        self.changes.update(pending)
+        for path in paths[1:]:
+            self.changes.pop(path, None)
+            self.removed.add(path)
+            self.spine_linear.pop(path, None)
+        self.files = [item for item in self.files if item["path"] not in paths[1:]]
+        self._file(target)["size"] = len(merged_bytes)
+        self.spine = [path for path in self.spine if path not in paths[1:]]
+        self.toc = toc
+        return target
 
     def export_resource(self, path: str, output_path: str, overwrite: bool) -> str:
         self._file(path)
@@ -931,8 +1159,10 @@ class ContentSession:
                     )
             normalized.append({"label": label, "href": href, "depth": depth})
         if normalized != self.toc:
+            pending = self._toc_updates(normalized)
             self._record()
             self.toc = normalized
+            self.changes.update(pending)
 
     def generate_toc(
         self, patterns: list[str] | None = None, preview_only: bool = False,
@@ -1079,6 +1309,7 @@ class ContentSession:
             depth = min(depth, int(generated[-1]["depth"]) + 1) if generated else 0
             generated.append({"label": label, "href": href, "depth": depth})
         if not preview_only and (pending or generated != self.toc):
+            pending.update(self._toc_updates(generated))
             self._record()
             self.changes.update(pending)
             self.toc = generated
@@ -1189,8 +1420,7 @@ class ContentSession:
         if expected_count is not None and total != expected_count:
             raise ValueError("Search results changed; search again before replacing.")
         if pending:
-            self._record()
-            self.changes.update(pending)
+            self._apply_changes(pending)
         return {"replacements": total, "files_changed": len(pending)}
 
     def preview_replace(
@@ -1302,8 +1532,7 @@ class ContentSession:
         updated = _encode(content[:start] + substituted + content[end:], encoding)
         if len(updated) > MAX_TEXT_BYTES:
             raise ValueError(f"Replacement exceeds the editor limit: {path}")
-        self._record()
-        self.changes[path] = updated
+        self._apply_changes({path: updated})
         return start + len(substituted)
 
     def preview(
@@ -1338,6 +1567,10 @@ class ContentSession:
         if int(item["size"]) > MAX_PREVIEW_BYTES and path not in drafts:
             raise ValueError("Preview resources exceed the 48 MB limit.")
         markup_bytes = preview_bytes(path)
+        if len(markup_bytes) <= MAX_TEXT_BYTES:
+            formatted = _editor_text(markup_bytes, str(item["media_type"]))
+            formatted = re.sub(r'(<\?xml[^>]*encoding\s*=\s*)[\'\"][^\'\"]+[\'\"]', r'\1"utf-8"', formatted, count=1)
+            markup_bytes = formatted.encode("utf-8")
         if item["media_type"] == "text/html":
             root = lxml_html.fromstring(markup_bytes)
         else:
@@ -1349,6 +1582,9 @@ class ContentSession:
             local = (
                 etree.QName(node).localname.lower() if isinstance(node.tag, str) else ""
             )
+            if local:
+                node.set("data-transoria-line", str(node.sourceline or 1))
+                node.attrib.pop("data-transoria-target", None)
             if local in {"script", "iframe", "object", "embed", "form", "base"}:
                 parent = node.getparent()
                 if parent is not None:
@@ -1364,6 +1600,8 @@ class ContentSession:
             svg_href = "{http://www.w3.org/1999/xlink}href"
             for attr in ("src", "href", "poster", svg_href):
                 value = node.get(attr)
+                if local == "a" and attr == "href" and value and value.startswith("#"):
+                    node.set("data-transoria-target", path + value)
                 if not value or value.startswith(("#", "data:")):
                     continue
                 if urlsplit(value).scheme or value.startswith("//"):
@@ -1373,6 +1611,8 @@ class ContentSession:
                 known = next(
                     (file for file in self.files if file["path"] == target), None
                 )
+                if local == "a" and attr == "href" and known:
+                    node.set("data-transoria-target", target + ("#" + value.partition("#")[2] if "#" in value else ""))
                 if (
                     local == "link"
                     and attr == "href"
@@ -1425,6 +1665,7 @@ class ContentSession:
         if not output.parent.is_dir():
             raise ValueError("Output folder does not exist.")
         pending = self.changes.copy()
+        baseline = ContentSession.open(str(self.path))
         with zipfile.ZipFile(self.path) as source:
             opf = _xml(pending.get(self.opf_path, source.read(self.opf_path)))
             manifest = {
@@ -1470,16 +1711,16 @@ class ContentSession:
                 for itemref in wanted_refs:
                     spine_node.append(itemref)
                 pending[self.opf_path] = _serialize(opf)
-            if self.toc != _read_toc(source, self.nav_path, self.ncx_path):
+            if self.toc != baseline.toc or self.nav_path != baseline.nav_path:
                 if self.nav_path:
                     pending[self.nav_path] = _write_nav(
-                        pending.get(self.nav_path, source.read(self.nav_path)),
+                        pending[self.nav_path] if self.nav_path in pending else source.read(self.nav_path),
                         self.nav_path,
                         self.toc,
                     )
                 if self.ncx_path:
                     pending[self.ncx_path] = _write_ncx(
-                        pending.get(self.ncx_path, source.read(self.ncx_path)),
+                        pending[self.ncx_path] if self.ncx_path in pending else source.read(self.ncx_path),
                         self.ncx_path,
                         self.toc,
                     )
@@ -1499,7 +1740,7 @@ class ContentSession:
                         raise ValueError(f"Invalid XML in {path}: {exc}") from exc
             before_check = inspect_epub_structure(self.path)
             before_missing_fragments = _missing_toc_fragments(
-                source, _read_toc(source, self.nav_path, self.ncx_path)
+                source, baseline.toc
             )
             fd, temp_name = tempfile.mkstemp(
                 prefix=".epub-content-", suffix=".epub", dir=output.parent
@@ -1572,6 +1813,7 @@ class ContentSession:
         self.removed.clear()
         self.undo_stack.clear()
         self.redo_stack.clear()
+        self.checkpoints.clear()
         self.dirty = False
         return {"output_path": str(output), "structure_check": after_check}
 
@@ -1589,10 +1831,11 @@ class ContentSession:
 
 
 def _read_toc(
-    archive: zipfile.ZipFile, nav_path: str, ncx_path: str
+    archive: zipfile.ZipFile, nav_path: str, ncx_path: str,
+    overrides: dict[str, bytes] | None = None,
 ) -> list[dict[str, object]]:
     if nav_path:
-        root = _xml(_package_bytes(archive, nav_path))
+        root = _xml(overrides[nav_path] if overrides and nav_path in overrides else _package_bytes(archive, nav_path))
         nav = next(
             (
                 n
@@ -1618,7 +1861,7 @@ def _read_toc(
             if ol is not None:
                 return _toc_from_nav(ol, nav_path, archive)
     if ncx_path:
-        root = _xml(_package_bytes(archive, ncx_path))
+        root = _xml(overrides[ncx_path] if overrides and ncx_path in overrides else _package_bytes(archive, ncx_path))
         nav_map = root.find(f".//{{{NCX}}}navMap")
         if nav_map is not None:
             result: list[dict[str, object]] = []
@@ -1923,6 +2166,7 @@ class ContentSessionStore:
             "undo": [self._pack(snapshot) for snapshot in session.undo_stack],
             "redo": [self._pack(snapshot) for snapshot in session.redo_stack],
             "dirty": session.dirty,
+            "checkpoints": {name: self._pack(snapshot) for name, snapshot in session.checkpoints.items()},
         }
         fd, temp_name = tempfile.mkstemp(prefix=".session-", suffix=".json", dir=target.parent)
         try:
@@ -1969,6 +2213,16 @@ class ContentSessionStore:
                     for item in payload["redo"]
                 ]
                 session.dirty = bool(payload["dirty"])
+                checkpoints = payload.get("checkpoints", {})
+                if not isinstance(checkpoints, dict) or len(checkpoints) > 10 or any(
+                    not isinstance(name, str) or not name.strip() or len(name) > 80
+                    for name in checkpoints
+                ):
+                    raise ValueError("Editor checkpoints could not be restored; reopen the EPUB.")
+                session.checkpoints = {
+                    name: self._unpack(item, base_files, nav_path, ncx_path, base_linear)
+                    for name, item in checkpoints.items()
+                }
             except (KeyError, TypeError, json.JSONDecodeError, base64.binascii.Error) as exc:
                 raise ValueError("Editor session could not be restored; reopen the EPUB.") from exc
             self.sessions[session_id] = session
