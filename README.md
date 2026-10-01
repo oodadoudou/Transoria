@@ -12,7 +12,7 @@
 
 ## 中文
 
-Transoria 是一个本地小说翻译桌面应用。导入 EPUB / TXT，完成术语整理、翻译、校对和输出重建；模型请求使用你自己的 API Key。
+Transoria 是一个集小说翻译与 EPUB 编辑于一体的本地桌面应用。导入 EPUB / TXT，完成术语整理、翻译、校对和输出重建；也可独立编辑 EPUB 正文、样式、目录和资源。模型请求使用你自己的 API Key。
 
 ### 下载
 
@@ -77,13 +77,13 @@ python app.py
 
 ### 使用声明
 
-Transoria 只提供本地翻译辅助能力，不拥有或分发任何原作及译文版权。请仅处理你有权使用的内容，并遵守所在地法律及发布平台规则。
+Transoria 提供本地翻译辅助与电子书编辑能力，不拥有或分发任何原作及译文版权。请仅处理你有权使用的内容，并遵守所在地法律及发布平台规则。
 
 ---
 
 ## English
 
-Transoria is a local desktop app for novel translation. Import EPUB / TXT files, manage terminology, translate, proofread, and rebuild the final output using your own model API keys.
+Transoria is a local desktop app for novel translation and EPUB editing. Import EPUB / TXT files, manage terminology, translate, proofread, and rebuild the final output using your own model API keys. You can also independently edit EPUB content, styles, tables of contents, and resources.
 
 ### Download
 
@@ -146,4 +146,4 @@ For the current pip / Conda environment, run `python -m pip install -r requireme
 
 ### Usage Notice
 
-Transoria is a local translation-assistance tool and does not own or distribute rights to original or translated works. Only process content you are authorized to use, and follow applicable laws and platform rules.
+Transoria provides local translation assistance and ebook editing and does not own or distribute rights to original or translated works. Only process content you are authorized to use, and follow applicable laws and platform rules.
