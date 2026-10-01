@@ -127,6 +127,16 @@
   flex-direction: column;
 }
 
+.contentDialog .dialogHeader {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+}
+
+.contentDialog .dialogHeader h2 {
+  font-size: 15px;
+  line-height: 24px;
+}
+
 :global(html.transoria-epub-editor-open),
 :global(html.transoria-epub-editor-open body) {
   min-width: 0;

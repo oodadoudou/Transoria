@@ -214,8 +214,16 @@
 .toolbar {
   justify-content: space-between;
   flex-wrap: wrap;
-  padding: 10px 16px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--hairline);
+  flex-shrink: 0;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.toolbarActions,
+.bookPicker {
+  gap: 5px;
 }
 
 .toolbar button,
@@ -281,6 +289,14 @@
 
 .bookPicker input {
   flex: 1;
+}
+
+.toolbar button,
+.bookPicker input {
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 28px;
+  padding: 3px 7px;
 }
 
 .error,
@@ -376,7 +392,8 @@
   border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--muted);
-  padding: 12px 6px 9px;
+  height: 34px;
+  padding: 4px 6px;
   font-size: 13px;
 }
 
@@ -790,13 +807,14 @@
 }
 
 .fileHeading {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 42px;
+  min-height: 34px;
   border-bottom: 1px solid var(--hairline);
-  padding: 7px 12px;
+  padding: 4px 10px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -850,11 +868,12 @@
 }
 
 .paneHeader {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 38px;
+  min-height: 34px;
   border-bottom: 1px solid var(--hairline);
   padding: 3px 10px;
 }
@@ -977,39 +996,57 @@
 }
 
 .searchPanel {
-  border-bottom: 1px solid var(--hairline);
-  padding: 9px 14px;
+  border-top: 1px solid var(--hairline);
+  padding: 5px 10px;
   flex-shrink: 0;
-  max-height: min(240px, 35dvh);
+  max-height: min(160px, 30dvh);
   overflow: auto;
 }
 
 .searchControls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 160px;
-  align-items: end;
-  gap: 8px;
+  grid-template-columns: minmax(140px, 320px) 140px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 12px;
 }
 
 .searchCommands {
-  grid-column: 1 / -1;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
-.searchCommands > button:first-of-type {
-  margin-left: auto;
+.replaceCommands {
+  grid-column: 2 / -1;
+  display: flex;
+  gap: 6px;
 }
 
 .searchControls input:not([type="checkbox"]),
 .searchControls select,
 .searchControls button {
   box-sizing: border-box;
-  height: 34px;
-  min-height: 34px;
-  border-radius: 5px;
+  height: 28px;
+  min-height: 28px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.searchCommands > button,
+.searchControls > button,
+.matchNavigation button {
+  flex: 0 0 28px;
+  width: 28px;
+  padding: 0;
+}
+
+.searchCommands button[aria-pressed="true"] {
+  background: var(--panel-soft);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 
 .searchControls select {
@@ -1021,17 +1058,16 @@
 .selectField {
   position: relative;
   display: block;
-  height: 34px;
+  height: 28px;
 }
 
 .selectField > svg {
   position: absolute;
   right: 9px;
-  top: 10px;
+  top: 8px;
   pointer-events: none;
 }
 
-.searchControls label,
 .saveDialog label:not(.checkbox) {
   display: grid;
   gap: 4px;
@@ -1046,12 +1082,6 @@
   gap: 5px;
   white-space: nowrap;
   font-size: 12px;
-}
-
-.searchControls .checkbox {
-  display: flex;
-  min-width: 0;
-  min-height: 34px;
 }
 
 .checkbox input {
@@ -1071,7 +1101,7 @@
 }
 
 .matchNavigation span {
-  min-width: 44px;
+  min-width: 60px;
   text-align: center;
 }
 
@@ -1079,10 +1109,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
+  min-height: 28px;
   border: 1px solid var(--hairline-strong);
   border-radius: 5px;
-  padding: 4px 8px;
+  padding: 0;
   background: var(--panel);
   color: var(--ink);
   cursor: pointer;
@@ -1185,6 +1215,28 @@
 }
 
 @media (max-width: 850px) {
+  .searchControls {
+    grid-template-columns: minmax(120px, 1fr) 130px 28px;
+  }
+
+  .searchCommands {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
+  .searchControls > input:last-of-type {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .replaceCommands {
+    grid-row: 4;
+    grid-column: 1 / -1;
+  }
+
   .main {
     grid-template-columns: minmax(0, var(--sidebar-width, 37%)) 8px minmax(0, 1fr);
   }
@@ -1241,7 +1293,7 @@
   }
 
   .searchPanel {
-    max-height: min(220px, 30dvh);
+    max-height: min(160px, 30dvh);
     overflow: auto;
   }
 

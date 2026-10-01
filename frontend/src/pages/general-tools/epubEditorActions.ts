@@ -27,10 +27,18 @@ export function xmlAttribute(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
-export function nextMatchIndex(matches: Array<{ path: string; start: number }>, paths: string[], path: string, position: number): number {
+export function nextMatchIndex(matches: Array<{ path: string; start: number }>, paths: string[], path: string, position: number, direction: -1 | 1 = 1): number {
+  if (!matches.length) return -1;
   const order = new Map(paths.map((item, index) => [item, index]));
   const current = order.get(path);
-  if (current === undefined) return 0;
+  if (current === undefined) return direction === 1 ? 0 : matches.length - 1;
+  if (direction === -1) {
+    for (let offset = matches.length - 1; offset >= 0; offset -= 1) {
+      const match = matches[offset], index = order.get(match.path);
+      if (index !== undefined && (index < current || (index === current && match.start < position))) return offset;
+    }
+    return matches.length - 1;
+  }
   const next = matches.findIndex((match) => {
     const index = order.get(match.path);
     return index !== undefined && (index > current || (index === current && match.start >= position));

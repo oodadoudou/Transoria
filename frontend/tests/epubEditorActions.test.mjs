@@ -31,6 +31,12 @@ test("search starts at the source cursor, crosses files, and wraps", () => {
   assert.equal(nextMatchIndex(matches, paths, paths[1], 4), 3);
   assert.equal(nextMatchIndex(matches, paths, paths[2], 9), 0);
   assert.equal(nextMatchIndex(matches, paths, "missing.xhtml", 0), 0);
+  assert.equal(nextMatchIndex(matches, paths, paths[0], 14, -1), 0);
+  assert.equal(nextMatchIndex(matches, paths, paths[0], 4, -1), 3);
+  assert.equal(nextMatchIndex(matches, paths, paths[1], 4, -1), 2);
+  assert.equal(nextMatchIndex(matches, paths, paths[1], 3, -1), 1);
+  assert.equal(nextMatchIndex(matches, paths, "missing.xhtml", 0, -1), 3);
+  assert.equal(nextMatchIndex([], paths, paths[0], 0), -1);
 });
 
 test("live and saved searches use identical scopes and spine-first order", () => {
