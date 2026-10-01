@@ -668,7 +668,7 @@ export const en: Messages = {
   epubContentTool: {
     paginationLimit: "This chapter exceeds the precise-pagination limit; some page boundaries may be approximate.",
     transformLabels: { scope: "File scope", all: "All applicable files", css: "Transform styles", html: "Transform HTML", property: "Property", selector: "CSS selector", condition: "Condition", match: "Match value", action: "Action", target: "Target property / tag / attribute", value: "New value / amount", addRule: "Add rule", any: "Any value", equals: "Equals", contains: "Contains", regex: "Regular expression", set: "Set property", remove: "Remove", rename: "Rename", multiply: "Multiply number", add: "Add to number", wrap: "Wrap", unwrap: "Unwrap", set_attr: "Set attribute", remove_attr: "Remove attribute", add_class: "Add class", remove_class: "Remove class" },
-    savedSearches: "Saved searches", saveSearch: "Save current search", loadSearch: "Load", selectSearch: "Select search", ignoreMarkup: "Ignore tags",
+    savedSearches: "Search/replace presets", saveSearch: "Save as preset", loadSearch: "Load preset", selectSearch: "Select preset", ignoreMarkup: "Ignore tags",
     tocXPathHelp: "Select chapter-body elements at each level. The h, x and xhtml prefixes refer to XHTML. Examples: //h:h1, //h:p[@class='chapter'], or //*[local-name()='h1'] for unnamespaced HTML. Titles follow chapter and element positions; missing IDs are added on apply.",
     toolApplied: "Applied to draft", dictionaryMissing: "No dictionary loaded: this report checks typography only.", reportTruncated: "Report limit reached; additional items are not displayed.", checkExit: "Checker exit code",
     importOther: "Import another book format", converter: "Installed ebook-convert executable",

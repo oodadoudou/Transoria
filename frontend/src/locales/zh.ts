@@ -651,7 +651,7 @@ export const zh: Messages = {
   epubContentTool: {
     paginationLimit: "本章超出精确分页处理上限，部分页边界可能不精确。",
     transformLabels: { scope: "文件范围", all: "全部适用文件", css: "转换样式", html: "转换 HTML", property: "属性", selector: "CSS 选择器", condition: "条件", match: "匹配值", action: "操作", target: "目标属性 / 标签 / 特性", value: "新值 / 调整数值", addRule: "添加规则", any: "任意值", equals: "等于", contains: "包含", regex: "正则表达式", set: "设置属性", remove: "删除", rename: "改名", multiply: "数值乘以", add: "数值加上", wrap: "包装标签", unwrap: "解包标签", set_attr: "设置特性", remove_attr: "删除特性", add_class: "添加类名", remove_class: "删除类名" },
-    savedSearches: "已保存搜索", saveSearch: "保存当前搜索", loadSearch: "载入", selectSearch: "选择搜索", ignoreMarkup: "忽略标签",
+    savedSearches: "搜索／替换预设", saveSearch: "保存为预设", loadSearch: "载入预设", selectSearch: "选择预设", ignoreMarkup: "忽略标签",
     tocXPathHelp: "每个层级填写选择正文元素的 XPath。h、x、xhtml 前缀均代表 XHTML，例如 //h:h1、//h:p[@class='chapter']。无命名空间的 HTML 可用 //*[local-name()='h1']。按章节及元素位置生成，应用时自动补齐缺失的 ID。",
     toolApplied: "已应用到草稿", dictionaryMissing: "未加载词典：本次报告仅检查排版问题。", reportTruncated: "报告已达到显示上限，其他条目未显示。", checkExit: "检查器退出码",
     importOther: "导入其他书籍格式", converter: "本机 ebook-convert 可执行文件",
