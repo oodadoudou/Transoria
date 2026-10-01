@@ -1759,6 +1759,80 @@ def test_toc_file_mode_is_forwarded_through_bridge(tmp_path: Path):
     assert applied["toc"] == preview["entries"]
 
 
+@pytest.mark.parametrize("version", ["2.0", "3.0"])
+@pytest.mark.parametrize("navigation_edit", ["form", "source"])
+@pytest.mark.parametrize("overwrite", [False, True])
+def test_combined_edits_export_exact_content_navigation_and_resources(
+    tmp_path: Path, version: str, navigation_edit: str, overwrite: bool,
+):
+    source = tmp_path / "combined.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        opf = archive.read("OEBPS/book.opf")
+    if version == "2.0":
+        opf = opf.replace(b'version="3.0"', b'version="2.0"').replace(b' properties="nav"', b"")
+    _rewrite_book(source, {
+        "OEBPS/book.opf": opf,
+        "OEBPS/Text/one.xhtml": '<html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" href="../Styles/book.css"/></head><body><p id="start">Hello <em>world</em>.</p></body></html>',
+    })
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    one, two = session.spine
+    if navigation_edit == "form":
+        session.set_toc([
+            {"label": "Edited second", "href": two, "depth": 0},
+            {"label": "Edited first & child", "href": one + "#start", "depth": 1},
+        ])
+    else:
+        path = session.nav_path or session.ncx_path
+        root = etree.fromstring(session.read(path)["content"].encode())
+        labels = root.xpath("//*[local-name()='nav'][1]//*[local-name()='a']" if session.nav_path else "//*[local-name()='navLabel']/*[local-name()='text']")
+        labels[0].text = "Edited first & source"
+        session.write(path, etree.tostring(root, encoding="unicode"))
+    proposal = session.preview_replace("Hello world", "Updated & <checked>", [one, two], ignore_markup=True)
+    assert proposal["replacements"] == 1
+    session.replace("Hello world", "Updated & <checked>", [one, two], ignore_markup=True,
+                    expected_count=1, expected_fingerprints=proposal["fingerprints"])
+    session.replace("Hello", "Second edit", [two], expected_count=1)
+    session.replace("red", "green", ["OEBPS/Styles/book.css"], expected_count=1)
+    image = "OEBPS/Images/inserted.png"
+    session.add_resource(image, b"inserted-image-bytes", "image/png")
+    content = session.read(one)["content"].replace('</body>', '<img src="../Images/inserted.png" alt="Inserted image"/></body>')
+    session.write(one, content)
+    renamed = "OEBPS/Text/renamed.xhtml"
+    session.rename_resource(one, renamed)
+    extra = "OEBPS/Text/extra.xhtml"
+    session.add_resource(extra, b'<html xmlns="http://www.w3.org/1999/xhtml"><body><p id="new">Inserted chapter</p></body></html>', "application/xhtml+xml", True)
+    session.set_toc([*session.toc, {"label": "Inserted chapter", "href": extra + "#new", "depth": 0}])
+    removed = "OEBPS/Images/discarded.png"
+    session.add_resource(removed, b"discard", "image/png")
+    session.delete_resource(removed)
+    expected_toc = [entry.copy() for entry in session.toc]
+    expected_spine = session.spine.copy()
+    expected_bytes = {file["path"]: session._bytes(file["path"]) for file in session.files
+                      if file["path"] not in {session.opf_path, session.nav_path, session.ncx_path}}
+    output = source if overwrite else tmp_path / "combined-edited.epub"
+    session.save(str(output), overwrite=overwrite)
+    reopened = ContentSession.open(str(output))
+    assert reopened.toc == expected_toc
+    assert reopened.spine == expected_spine
+    assert all(reopened._bytes(path) == data for path, data in expected_bytes.items())
+    with zipfile.ZipFile(output) as archive:
+        assert archive.testzip() is None
+        assert one not in archive.namelist() and removed not in archive.namelist()
+        assert b"Updated &amp; &lt;checked&gt;" in archive.read(renamed)
+        assert "Updated & <checked>" in "".join(etree.fromstring(archive.read(renamed)).itertext())
+        assert archive.read(image) == b"inserted-image-bytes"
+        assert b"green" in archive.read("OEBPS/Styles/book.css")
+        for nav_path, ncx_path in ((reopened.nav_path, ""), ("", reopened.ncx_path)):
+            if nav_path or ncx_path:
+                assert epub_content_module._read_toc(archive, nav_path, ncx_path) == expected_toc
+    if overwrite:
+        assert source.read_bytes() != original
+    else:
+        assert source.read_bytes() == original
+
+
 def test_toc_spine_save_as_and_source_protection(tmp_path: Path):
     source = tmp_path / "book.epub"
     target = tmp_path / "edited.epub"
