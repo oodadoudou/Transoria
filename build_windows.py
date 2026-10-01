@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -23,6 +24,7 @@ WORK_DIR = ROOT / "build" / "pyinstaller" / "windows"
 SPEC_DIR = ROOT / "build" / "pyinstaller" / "specs"
 ICON_PATH = ROOT / "assets" / "icon.ico"
 APP_DIR = DIST_DIR / "Transoria"
+ZIP_PATH = ROOT / "dist" / "Transoria.zip"
 
 # Packages whose submodules PyInstaller's static analyzer misses
 # (lazy/runtime imports). Without --collect-submodules they fail at
@@ -77,7 +79,7 @@ def main() -> None:
     parser.add_argument(
         "--make-zip",
         action="store_true",
-        help="Also produce dist/Transoria-windows.zip from the onedir output.",
+        help="Compatibility flag; every successful build now writes dist/Transoria.zip.",
     )
     parser.add_argument(
         "--no-webview2-bootstrapper",
@@ -176,18 +178,12 @@ def main() -> None:
     if not args.no_smoke_test:
         _smoke_test_built_exe()
     print(f"[build] Windows portable app: {APP_DIR}")
-    if args.make_zip:
-        zip_path = _create_release_zip()
-        print(f"[build] Windows release zip: {zip_path}")
-        print(
-            "[build] distribute the ZIP — users extract the whole folder, "
-            "double-click Launch_Transoria.bat (or Transoria.exe directly)."
-        )
-    else:
-        print(
-            "[build] zip step skipped — package "
-            f"{APP_DIR} yourself with the release filename of your choice."
-        )
+    zip_path = _create_release_zip()
+    print(f"[build] Windows release zip: {zip_path}")
+    print(
+        "[build] distribute the ZIP — users extract the whole folder, "
+        "double-click Launch_Transoria.bat (or Transoria.exe directly)."
+    )
 
 
 def _npm() -> str:
@@ -198,10 +194,11 @@ def _npm() -> str:
 
 
 def _ensure_frontend_deps() -> None:
-    if (FRONTEND_DIR / "node_modules").is_dir():
-        return
-    print("[build] frontend/node_modules missing — running npm install")
-    _run([_npm(), "install"], cwd=FRONTEND_DIR)
+    # An existing node_modules can be stale after pulling new dependencies.
+    # Install the locked tree on every build, including the compiler/tooling
+    # even when the build machine has NODE_ENV=production configured.
+    print("[build] syncing frontend dependencies from package-lock.json")
+    _run([_npm(), "ci", "--include=dev"], cwd=FRONTEND_DIR)
 
 
 def _require_frontend_dist() -> None:
@@ -522,16 +519,20 @@ Files in this folder are preserved across upgrades.
 def _create_release_zip() -> Path:
     if not APP_DIR.is_dir():
         raise SystemExit(f"app folder not found: {APP_DIR}")
-    base = DIST_DIR / "Transoria-windows"
-    archive = Path(
-        shutil.make_archive(
-            str(base),
-            "zip",
-            root_dir=str(DIST_DIR),
-            base_dir="Transoria",
+    ZIP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Keep the previous release intact if archiving fails. Stage on the same
+    # filesystem so replace publishes the complete ZIP in a single operation.
+    with tempfile.TemporaryDirectory(prefix=".transoria-zip-", dir=ZIP_PATH.parent) as staging:
+        archive = Path(
+            shutil.make_archive(
+                str(Path(staging) / "Transoria"),
+                "zip",
+                root_dir=str(DIST_DIR),
+                base_dir="Transoria",
+            )
         )
-    )
-    return archive
+        archive.replace(ZIP_PATH)
+    return ZIP_PATH
 
 
 def _run(cmd: list[str], *, cwd: Path) -> None:
