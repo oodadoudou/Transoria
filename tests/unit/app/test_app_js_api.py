@@ -53,9 +53,12 @@ def test_native_api_exposes_only_os_helpers():
     assert sorted(visible) == [
         "choose_directory",
         "choose_file",
+        "close_epub_editor",
         "open_directory",
+        "open_epub_editor",
         "reveal_file",
         "save_file",
+        "toggle_editor_fullscreen",
     ]
 
 

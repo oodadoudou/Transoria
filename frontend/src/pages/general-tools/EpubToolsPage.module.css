@@ -153,6 +153,28 @@
   padding: 0;
 }
 
+.standalone {
+  width: 100%;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.windowAction {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
 @media (max-width: 760px) {
   .toolGrid {
     grid-template-columns: minmax(0, 1fr);

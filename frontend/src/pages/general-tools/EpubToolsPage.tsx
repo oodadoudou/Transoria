@@ -14,6 +14,7 @@ import { EpubMetadataPage } from "./EpubMetadataPage";
 import { EpubRepairPage } from "./EpubRepairPage";
 import { TxtToEpubPage } from "./TxtToEpubPage";
 import { editorWasOpen, markEditorOpen } from "./epubEditorDraft";
+import { nativeEditor } from "@/bridge/native";
 import styles from "./EpubToolsPage.module.css";
 
 type EpubToolPage = Exclude<GeneralToolsPage, "epubTools">;
@@ -27,7 +28,9 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   const messages = useMessages();
   const text = messages.generalTools.epubTools;
   const navigate = useTaskStore((state) => state.navigate);
-  const [activeTool, setActiveTool] = useState<EpubToolPage | null>(() => initialTool ?? (editorWasOpen() ? "epubContent" : null));
+  const desktop = new URLSearchParams(window.location.search).has("desktop");
+  const [activeTool, setActiveTool] = useState<EpubToolPage | null>(() => desktop && initialTool === "epubContent" ? null : initialTool ?? (!desktop && editorWasOpen() ? "epubContent" : null));
+  const [openError, setOpenError] = useState("");
   const [contentPath, setContentPath] = useState("");
   const tools = useMemo(
     () =>
@@ -78,9 +81,11 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   const activeSpec = tools.find((tool) => tool.id === activeTool) ?? null;
 
   useEffect(() => {
-    if (initialTool) setActiveTool(initialTool);
-    else if (editorWasOpen()) setActiveTool("epubContent");
-  }, [initialTool]);
+    if (initialTool === "epubContent" && desktop) {
+      void nativeEditor.open().catch((cause) => setOpenError(String(cause)));
+    } else if (initialTool) setActiveTool(initialTool);
+    else if (!desktop && editorWasOpen()) setActiveTool("epubContent");
+  }, [initialTool, desktop]);
   useEffect(() => {
     if (activeTool !== "epubContent") return;
     document.documentElement.classList.add("transoria-epub-editor-open");
@@ -89,9 +94,14 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   useEscapeKey(() => setActiveTool(null), activeTool !== null && activeTool !== "epubContent");
 
   const openContent = (path: string) => {
-    markEditorOpen(true);
-    setContentPath(path);
-    setActiveTool("epubContent");
+    setOpenError("");
+    void nativeEditor.open(path).then((opened) => {
+      if (!opened) {
+        markEditorOpen(true);
+        setContentPath(path);
+        setActiveTool("epubContent");
+      }
+    }).catch((cause) => setOpenError(String(cause)));
   };
 
   const closeContent = () => {
@@ -103,6 +113,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   return (
     <>
       <Panel title={text.title} subtitle={text.sub}>
+        {openError ? <div role="alert">{openError}</div> : null}
         <div className={styles.toolGrid}>
           {tools.map((tool) => (
             <button

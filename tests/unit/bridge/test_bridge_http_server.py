@@ -188,3 +188,11 @@ def test_static_root_serves_index(http_server: str):
     with urllib.request.urlopen(f"{http_server}/", timeout=5) as response:
         assert response.status == 200
         assert "Transoria" in response.read().decode("utf-8")
+
+
+def test_editor_query_does_not_change_static_file_resolution(http_server: str):
+    with urllib.request.urlopen(f"{http_server}/?desktop=1&epub-editor=1&path=..%2Fbook.epub", timeout=5) as response:
+        assert response.status == 200
+        assert "Transoria" in response.read().decode("utf-8")
+    with urllib.request.urlopen(f"{http_server}/assets/app.js?version=1.6.0", timeout=5) as response:
+        assert response.read().decode("utf-8") == "console.log('x')"

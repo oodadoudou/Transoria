@@ -32,6 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock
 from typing import Callable
+from urllib.parse import urlsplit
 
 from transoria.bridge.errors import BridgeError
 from transoria.bridge.router import BridgeRouter, build_default_router
@@ -154,7 +155,7 @@ def _make_handler(
                     },
                 )
                 return
-            target = self._resolve_static(self.path)
+            target = self._resolve_static(urlsplit(self.path).path)
             if target is None:
                 self._send_json(
                     404,

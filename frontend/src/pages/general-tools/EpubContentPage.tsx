@@ -1269,6 +1269,12 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     else setCloseOpen(true);
   };
 
+  useEffect(() => {
+    const close = (event: Event) => { event.preventDefault(); requestClose(); };
+    window.addEventListener("transoria-editor-close", close);
+    return () => window.removeEventListener("transoria-editor-close", close);
+  });
+
   const updateEntry = (index: number, patch: Partial<EpubTocEntry>) => {
     editTocDraft((current) => current.map((entry, position) => position === index ? { ...entry, ...patch } : entry), `${index}:${Object.keys(patch).join(",")}`);
   };

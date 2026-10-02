@@ -2,21 +2,26 @@
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import io
 import runpy
 import shutil
+import signal
 import tempfile
 import threading
 import zipfile
 from pathlib import Path
 
 import webview
+from app import _DeferredDialogProvider, _EditorWindow, _build_native_api
 from PIL import Image, ImageDraw
 
 from transoria.bridge.http_server import serve
 
 
 def main() -> None:
+    if hasattr(signal, "SIGUSR1"):
+        faulthandler.register(signal.SIGUSR1)
     parser = argparse.ArgumentParser()
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=800)
@@ -31,6 +36,7 @@ def main() -> None:
     parser.add_argument("--navigation", action="store_true")
     parser.add_argument("--preview-resources", action="store_true", help="Prepare standalone SVG and non-previewable XML books for session-switch checks.")
     parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
+    parser.add_argument("--separate-window", action="store_true", help="Use production native window and close handling.")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[3]
     fixtures = runpy.run_path(str(root / "tests/unit/tools/test_tools_epub_content.py"))
@@ -120,8 +126,16 @@ def main() -> None:
         url = f"http://127.0.0.1:{server.server_port}/"
         print(f"URL: {url}\nBOOK: {book}", flush=True)
         try:
-            webview.create_window("Transoria EPUB test", url, width=args.width, height=args.height, min_size=(960, 600))
-            webview.start(private_mode=False, storage_path=str(state_dir / "desktop-webview"))
+            if args.separate_window:
+                editor = _EditorWindow(webview, url)
+                provider = _DeferredDialogProvider()
+                parent = webview.create_window("Transoria test", f"{url}?desktop=1", js_api=_build_native_api(provider, editor), width=args.width, height=args.height, min_size=(960, 600))
+                provider.activate(parent)
+                callback = lambda: editor.open(str(book))
+            else:
+                webview.create_window("Transoria EPUB test", url, width=args.width, height=args.height, min_size=(960, 600))
+                callback = None
+            webview.start(callback, private_mode=False, storage_path=str(state_dir / "desktop-webview"))
         finally:
             server.shutdown()
             server.server_close()

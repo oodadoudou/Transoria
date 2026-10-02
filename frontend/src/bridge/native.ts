@@ -3,6 +3,9 @@ import { getTransport } from "./transport";
 import type { DialogPathResult, GlossaryFileResult } from "./types";
 
 interface NativeApi {
+  open_epub_editor?: (payload: { path: string }) => Promise<{ opened: boolean }>;
+  close_epub_editor?: () => Promise<{ closed: boolean }>;
+  toggle_editor_fullscreen?: () => Promise<{ ok: boolean }>;
   choose_directory?: (payload?: {
     initial_path?: string;
   }) => Promise<DialogPathResult> | DialogPathResult;
@@ -22,8 +25,39 @@ interface NativeApi {
   }) => Promise<Record<string, unknown>> | Record<string, unknown>;
 }
 
+export const nativeEditor = {
+  async open(path = ""): Promise<boolean> {
+    if (!new URLSearchParams(window.location.search).has("desktop")) return false;
+    if (!window.pywebview?.api) {
+      await new Promise<void>((resolve, reject) => {
+        const ready = () => { cleanup(); resolve(); };
+        const timer = window.setTimeout(() => { cleanup(); reject(missing("open_epub_editor")); }, 5000);
+        const cleanup = () => { window.clearTimeout(timer); window.removeEventListener("pywebviewready", ready); };
+        window.addEventListener("pywebviewready", ready);
+        if (window.pywebview?.api) ready();
+      });
+    }
+    const handler = nativeApi().open_epub_editor;
+    if (!handler) throw missing("open_epub_editor");
+    await handler({ path });
+    return true;
+  },
+  async close(): Promise<void> {
+    const handler = nativeApi().close_epub_editor;
+    if (!handler) throw missing("close_epub_editor");
+    await handler();
+    window.transoriaEditorCloseAcknowledged = true;
+  },
+  async toggleFullscreen(): Promise<void> {
+    const handler = nativeApi().toggle_editor_fullscreen;
+    if (!handler) throw missing("toggle_editor_fullscreen");
+    await handler();
+  },
+};
+
 declare global {
   interface Window {
+    transoriaEditorCloseAcknowledged?: boolean;
     pywebview?: {
       api?: NativeApi;
     };

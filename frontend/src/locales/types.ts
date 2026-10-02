@@ -1276,6 +1276,7 @@ export interface Messages {
     failed: string;
   };
   epubContentTool: {
+    toggleFullscreen: string;
     savedSearches: string; saveSearch: string; loadSearch: string; selectSearch: string; ignoreMarkup: string;
     transformLabels: Record<string, string>;
     toolApplied: string; dictionaryMissing: string; reportTruncated: string; checkExit: string; paginationLimit: string;

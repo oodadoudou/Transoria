@@ -666,6 +666,7 @@ export const en: Messages = {
     failed: "Failed",
   },
   epubContentTool: {
+    toggleFullscreen: "Toggle fullscreen",
     paginationLimit: "This chapter exceeds the precise-pagination limit; some page boundaries may be approximate.",
     transformLabels: { scope: "File scope", all: "All applicable files", css: "Transform styles", html: "Transform HTML", property: "Property", selector: "CSS selector", condition: "Condition", match: "Match value", action: "Action", target: "Target property / tag / attribute", value: "New value / amount", addRule: "Add rule", any: "Any value", equals: "Equals", contains: "Contains", regex: "Regular expression", set: "Set property", remove: "Remove", rename: "Rename", multiply: "Multiply number", add: "Add to number", wrap: "Wrap", unwrap: "Unwrap", set_attr: "Set attribute", remove_attr: "Remove attribute", add_class: "Add class", remove_class: "Remove class" },
     savedSearches: "Search/replace presets", saveSearch: "Save as preset", loadSearch: "Load preset", selectSearch: "Select preset", ignoreMarkup: "Ignore tags",

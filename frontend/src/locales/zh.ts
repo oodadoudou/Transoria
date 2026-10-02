@@ -649,6 +649,7 @@ export const zh: Messages = {
     failed: "失败",
   },
   epubContentTool: {
+    toggleFullscreen: "切换全屏",
     paginationLimit: "本章超出精确分页处理上限，部分页边界可能不精确。",
     transformLabels: { scope: "文件范围", all: "全部适用文件", css: "转换样式", html: "转换 HTML", property: "属性", selector: "CSS 选择器", condition: "条件", match: "匹配值", action: "操作", target: "目标属性 / 标签 / 特性", value: "新值 / 调整数值", addRule: "添加规则", any: "任意值", equals: "等于", contains: "包含", regex: "正则表达式", set: "设置属性", remove: "删除", rename: "改名", multiply: "数值乘以", add: "数值加上", wrap: "包装标签", unwrap: "解包标签", set_attr: "设置特性", remove_attr: "删除特性", add_class: "添加类名", remove_class: "删除类名" },
     savedSearches: "搜索／替换预设", saveSearch: "保存为预设", loadSearch: "载入预设", selectSearch: "选择预设", ignoreMarkup: "忽略标签",

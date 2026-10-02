@@ -33,6 +33,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode
 from pathlib import Path
 
 from transoria.app_paths import APP_NAME, default_cache_root, resource_root
@@ -348,10 +349,31 @@ class _PywebviewDialogProvider:
             subprocess.Popen(["xdg-open", str(Path(path).parent)])
 
 
-def _build_native_api(dialog_provider: DialogProvider) -> object:
+def _build_native_api(dialog_provider: DialogProvider, editor=None, *, editor_window=False) -> object:
     """Expose only native OS operations that fetch cannot perform."""
 
     class _NativeApi:
+        def open_epub_editor(self, payload: dict | None = None) -> dict:
+            if editor is None:
+                raise RuntimeError("Desktop editor windows are unavailable.")
+            path = (payload or {}).get("path", "")
+            if not isinstance(path, str):
+                raise ValueError("Editor path must be a string.")
+            editor.open(path)
+            return {"opened": True}
+
+        def close_epub_editor(self) -> dict:
+            if editor is None or not editor_window:
+                raise RuntimeError("Not an editor window.")
+            editor.close_after_acknowledgement()
+            return {"closed": True}
+
+        def toggle_editor_fullscreen(self) -> dict:
+            if editor is None or not editor_window:
+                raise RuntimeError("Not an editor window.")
+            editor.toggle_fullscreen()
+            return {"ok": True}
+
         def choose_directory(self, payload: dict | None = None) -> dict:
             body = payload or {}
             path = dialog_provider.choose_directory(
@@ -413,6 +435,101 @@ def _build_native_api(dialog_provider: DialogProvider) -> object:
     return _NativeApi()
 
 
+class _EditorWindow:
+    def __init__(self, webview, url: str) -> None:
+        self.webview = webview
+        self.url = url
+        self.window = None
+        self.allow_close = False
+        self.minimized = False
+        self.lock = threading.RLock()
+
+    def open(self, path: str = "") -> None:
+        with self.lock:
+            if self.window is not None:
+                if self.minimized:
+                    self.window.restore()
+                self.window.show()
+                return
+            provider = _DeferredDialogProvider()
+            self.allow_close = False
+            self.minimized = False
+            window = self.webview.create_window(
+                f"{APP_NAME} — EPUB",
+                f"{self.url}?{urlencode({'desktop': '1', 'epub-editor': '1', 'path': path})}",
+                js_api=_build_native_api(provider, self, editor_window=True),
+                width=1440, height=900, min_size=(960, 600),
+            )
+            self.window = window
+            provider.activate(window)
+
+            def closing():
+                if self.allow_close or not window.events.loaded.is_set():
+                    return
+                def request_close():
+                    try:
+                        handled = window.evaluate_js("!window.dispatchEvent(new Event('transoria-editor-close', {cancelable: true}))")
+                        if not handled:
+                            with self.lock:
+                                if self.window is window:
+                                    self.close()
+                    except Exception:
+                        # Never discard a live draft if its close handler is unreachable.
+                        pass
+                # Native closing events run on the GUI thread; JS evaluation must not.
+                threading.Thread(target=request_close, daemon=True).start()
+                return False
+
+            def closed():
+                with self.lock:
+                    if self.window is window:
+                        self.window = None
+
+            window.events.closing += closing
+            window.events.closed += closed
+            window.events.minimized += lambda: setattr(self, "minimized", True)
+            window.events.restored += lambda: setattr(self, "minimized", False)
+
+    def close(self) -> None:
+        with self.lock:
+            if self.window is not None:
+                self.allow_close = True
+                self.window.destroy()
+
+    def close_after_acknowledgement(self) -> None:
+        window = self.window
+        if window is None:
+            return
+
+        def acknowledged(value):
+            if value is True:
+                with self.lock:
+                    if self.window is window:
+                        self.close()
+
+        def finish():
+            try:
+                # Destroying inside a JS API call strands pywebview's return thread.
+                window.evaluate_js("""new Promise(resolve => {
+                    const deadline = Date.now() + 5000;
+                    const check = () => {
+                        if (window.transoriaEditorCloseAcknowledged) resolve(true);
+                        else if (Date.now() >= deadline) resolve(false);
+                        else setTimeout(check, 10);
+                    };
+                    check();
+                })""", callback=acknowledged)
+            except Exception:
+                pass
+
+        threading.Thread(target=finish, daemon=True).start()
+
+    def toggle_fullscreen(self) -> None:
+        with self.lock:
+            if self.window is not None:
+                self.window.toggle_fullscreen()
+
+
 def _update_checker() -> GithubReleaseChecker:
     repository = os.environ.get("TRANSORIA_UPDATE_REPOSITORY") or DEFAULT_UPDATE_REPOSITORY
     return GithubReleaseChecker(repository=repository)
@@ -437,7 +554,6 @@ def _run_desktop(
         bridge_port,
         static_root=DIST_DIR if not dev else None,
     )
-    js_api = _build_native_api(dialog_provider)
 
     if dev:
         vite_proc = _start_vite(vite_port, bridge_port=actual_bridge_port)
@@ -445,9 +561,11 @@ def _run_desktop(
     else:
         url = f"http://127.0.0.1:{actual_bridge_port}"
 
+    editor = _EditorWindow(webview, url)
+    js_api = _build_native_api(dialog_provider, editor)
     window = webview.create_window(
         APP_NAME,
-        url,
+        f"{url}?desktop=1",
         js_api=js_api,
         width=1280,
         height=800,

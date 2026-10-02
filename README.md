@@ -44,7 +44,7 @@ Transoria 是一个集小说翻译与 EPUB 编辑于一体的本地桌面应用�
 4. 在「校对」中处理风险条目并按需重译。
 5. 重新生成最终 EPUB / TXT 输出。
 
-只需整理电子书时，可直接进入「通用工具 → EPUB 工具」。
+只需整理电子书时，可直接进入「通用工具 → EPUB 工具」。桌面端的 EPUB 编辑器在独立窗口中打开，可调整大小、移到其他显示器或全屏；重复打开会聚焦已有窗口，关闭时保留未保存修改的确认流程。
 
 <details>
 <summary><strong>从源码运行</strong></summary>
@@ -115,7 +115,7 @@ The editor pages vertical text at complete column boundaries, retaining ruby, mi
 4. Resolve flagged rows in **Proofreading** and retranslate where needed.
 5. Regenerate the final EPUB / TXT output.
 
-For ebook-only maintenance, open **General Tools → EPUB Tools** directly.
+For ebook-only maintenance, open **General Tools → EPUB Tools** directly. The desktop EPUB editor opens in a separate resizable window that can move between displays or enter fullscreen. Reopening focuses the existing window, and closing checks for unsaved edits.
 
 <details>
 <summary><strong>Run from source</strong></summary>
