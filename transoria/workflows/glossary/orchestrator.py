@@ -64,6 +64,7 @@ from transoria.workflows.glossary.runner import (
     GlossarySubtaskRunner,
     decode_glossary_subtask_response,
     encode_glossary_payload,
+    _with_glossary_soft_timeout,
 )
 from transoria.workflows.glossary.statistics import (
     GlossaryFailedFile,
@@ -288,7 +289,9 @@ class GlossaryOrchestrator:
             # cancelling mid-call. Bound by the model's per-request
             # timeout (with headroom) so a wedged HTTP call still
             # eventually unsticks Stop.
-            stop_drain_seconds=max(5.0, float(config.model.timeout_seconds) + 5.0),
+            stop_drain_seconds=max(
+                5.0, _with_glossary_soft_timeout(config.model).timeout_seconds + 5.0
+            ),
             # Request-level timeout/retry already bounds LLM calls; a second
             # aggregate cap can fail valid retry/rescue chains mid-flight.
             subtask_timeout_seconds=0.0,

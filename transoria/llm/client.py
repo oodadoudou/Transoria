@@ -347,6 +347,19 @@ class HttpxChatTransport:
                         first_token_logged = True
                         last_progress_at = now
                         last_progress_chars = current_chars
+                    elif (
+                        now - last_progress_at >= self._REQUEST_LOG_PROGRESS_SECONDS
+                        or current_chars - last_progress_chars
+                        >= self._REQUEST_LOG_PROGRESS_CHARS
+                    ):
+                        request_log.progress(
+                            phase="streaming",
+                            status_code=status_code,
+                            response_text="".join(chunks),
+                            response_chars=current_chars,
+                        )
+                        last_progress_at = now
+                        last_progress_chars = current_chars
                 if (
                     detect_stream_repetition
                     and current_chars - last_repetition_check_chars >= 128
@@ -372,20 +385,6 @@ class HttpxChatTransport:
                                 usage=usage,
                             )
                         raise LlmDegenerateOutputError(accumulated, usage)
-                    elif (
-                        now - last_progress_at
-                        >= self._REQUEST_LOG_PROGRESS_SECONDS
-                        or current_chars - last_progress_chars
-                        >= self._REQUEST_LOG_PROGRESS_CHARS
-                    ):
-                        request_log.progress(
-                            phase="streaming",
-                            status_code=status_code,
-                            response_text="".join(chunks),
-                            response_chars=current_chars,
-                        )
-                        last_progress_at = now
-                        last_progress_chars = current_chars
                 if event_type in ("message_start", "message_delta"):
                     message_block = event.get("message") or {}
                     message_usage = (

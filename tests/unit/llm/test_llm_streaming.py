@@ -339,6 +339,68 @@ def _reject_stream_once_then_succeed(transport: StreamingFakeTransport):
 # HttpxChatTransport SSE accumulation (uses MockTransport so no real network).
 
 
+@pytest.mark.parametrize("detect_repetition", [False, True])
+def test_streaming_progress_updates_independently_of_repetition_detection(
+    detect_repetition: bool,
+) -> None:
+    import httpx
+    from transoria.llm.client import HttpxChatTransport
+
+    pieces = ['{"', 'src":"name",', '"dst":"translated",', '"type":"person"}']
+    body = "".join(
+        "data: " + json.dumps({"choices": [{"delta": {"content": piece}}]}) + "\n"
+        for piece in pieces
+    ) + "data: [DONE]\n"
+    transport = HttpxChatTransport()
+    transport._REQUEST_LOG_PROGRESS_CHARS = 1
+    events = []
+
+    class Log:
+        def progress(self, **payload):
+            events.append(payload)
+
+    async def run():
+        transport._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body))
+        )
+        try:
+            await transport.execute_observed(
+                "https://example.test/chat", {}, {"stream": True}, 1,
+                Log(), detect_repetition,
+            )
+        finally:
+            await transport.aclose()
+
+    asyncio.run(run())
+    assert [event["phase"] for event in events] == [
+        "headers_received", "first_token", "streaming", "streaming", "streaming",
+    ]
+    assert events[-1]["response_text"] == "".join(pieces)
+
+
+def test_repetition_detection_does_not_require_request_logging() -> None:
+    import httpx
+    from transoria.llm.client import HttpxChatTransport
+
+    body = "data: " + json.dumps({
+        "choices": [{"delta": {"content": "distinct words " * 10}}],
+    }) + "\ndata: [DONE]\n"
+
+    async def run():
+        transport = HttpxChatTransport()
+        transport._client = httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body))
+        )
+        try:
+            return await transport.execute_observed(
+                "https://example.test/chat", {}, {"stream": True}, 1, None, True
+            )
+        finally:
+            await transport.aclose()
+
+    assert asyncio.run(run()).status_code == 200
+
+
 def test_httpx_streaming_transport_accumulates_sse_chunks() -> None:
     import httpx
 

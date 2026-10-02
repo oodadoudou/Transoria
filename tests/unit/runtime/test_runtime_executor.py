@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -37,6 +38,63 @@ def _seed(cache: TaskCache, task_id: str, count: int) -> None:
         _record(task_id),
         [Subtask(id=f"s{index}", task_id=task_id) for index in range(count)],
     )
+
+
+@pytest.mark.parametrize("action", ["stop", "pause"])
+def test_control_signal_from_http_thread_wakes_idle_event_loop(
+    tmp_path: Path, action: str
+) -> None:
+    cache = TaskCache(root=tmp_path)
+    _seed(cache, "t1", count=2)
+    ready = threading.Event()
+    loop = asyncio.new_event_loop()
+    loop.set_debug(True)
+    release = asyncio.Event()
+    results = []
+    errors = []
+
+    class Runner:
+        async def run(self, subtask: Subtask) -> SubtaskResult:
+            loop.call_soon(ready.set)
+            await release.wait()
+            return SubtaskResult(response_content="done")
+
+    executor = TaskExecutor(
+        cache=cache, runner=Runner(), concurrency_limit=1,
+        rpm_limit=0, stop_drain_seconds=0.05,
+    )
+
+    def run() -> None:
+        try:
+            results.append(loop.run_until_complete(executor.run("t1")))
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            loop.close()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    try:
+        assert ready.wait(2)
+        if action == "stop":
+            executor.request_stop()
+        else:
+            executor.request_pause()
+            loop.call_soon_threadsafe(release.set)
+        thread.join(2)
+        assert not thread.is_alive()
+        assert not errors
+        expected = TaskStatus.STOPPED if action == "stop" else TaskStatus.PAUSED
+        assert results[0].record.status is expected
+        assert results[0].subtasks[1].status is SubtaskStatus.PENDING
+    finally:
+        if thread.is_alive():
+            def cancel() -> None:
+                for task in asyncio.all_tasks(loop):
+                    task.cancel()
+
+            loop.call_soon_threadsafe(cancel)
+            thread.join(2)
 
 
 @dataclass

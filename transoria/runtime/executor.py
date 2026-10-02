@@ -10,6 +10,7 @@ persist progress → respond to stop.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -112,13 +113,38 @@ class TaskExecutor:
     _next_launch_at: float = field(default=0.0, init=False, repr=False)
     _launch_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _run_returned: bool = field(default=False, init=False, repr=False)
+    _loop: asyncio.AbstractEventLoop | None = field(default=None, init=False, repr=False)
+    _control_lock: threading.RLock = field(
+        default_factory=threading.RLock, init=False, repr=False
+    )
+
+    def _signal_on_loop(self, signal: Callable[[], None]) -> None:
+        with self._control_lock:
+            loop = self._loop
+            try:
+                current = asyncio.get_running_loop()
+            except RuntimeError:
+                current = None
+            if loop is None or loop.is_closed() or loop is current:
+                signal()
+            else:
+                # asyncio.Event.set() alone cannot wake a loop in another thread.
+                try:
+                    loop.call_soon_threadsafe(signal)
+                except RuntimeError:
+                    if not loop.is_closed():
+                        raise
+                    signal()
 
     def request_stop(self) -> None:
         """Signal cooperative shutdown. Safe to call from any thread/coroutine."""
 
-        self._stop_event.set()
-        # If we are paused, wake the gate so workers can exit cleanly.
-        self._pause_gate.set()
+        def signal() -> None:
+            self._stop_event.set()
+            # If we are paused, wake the gate so workers can exit cleanly.
+            self._pause_gate.set()
+
+        self._signal_on_loop(signal)
 
     def request_pause(self) -> None:
         """Signal cooperative pause.
@@ -131,15 +157,21 @@ class TaskExecutor:
         ``run()`` to return.
         """
 
-        self._pause_request.set()
-        self._pause_gate.clear()
+        def signal() -> None:
+            self._pause_request.set()
+            self._pause_gate.clear()
+
+        self._signal_on_loop(signal)
 
     def release_pause(self) -> None:
         """Re-open the pause gate. Used by tests; production resumes via
         a fresh ``run()`` call after the executor exits."""
 
-        self._pause_request.clear()
-        self._pause_gate.set()
+        def signal() -> None:
+            self._pause_request.clear()
+            self._pause_gate.set()
+
+        self._signal_on_loop(signal)
 
     @property
     def is_stopping(self) -> bool:
@@ -158,9 +190,11 @@ class TaskExecutor:
         left as-is.
         """
 
-        if self._run_returned:
-            self._stop_event = asyncio.Event()
-            self._run_returned = False
+        with self._control_lock:
+            self._loop = asyncio.get_running_loop()
+            if self._run_returned:
+                self._stop_event = asyncio.Event()
+                self._run_returned = False
         snapshot = self.cache.load(task_id)
         pending = [s for s in snapshot.subtasks if s.status is SubtaskStatus.PENDING]
         if not pending:

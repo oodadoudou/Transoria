@@ -27,6 +27,7 @@ from transoria.bridge.errors import BridgeError
 from transoria.bridge.task_registry import RunningTask, TaskRegistry
 from transoria.bridge.task_service import TaskService
 from transoria.bridge.task_service import _effective_glossary_chunk_token_limit
+from transoria.bridge.task_service import _format_request_events
 from transoria.bridge.task_service import _low_confidence_summary
 from transoria.bridge.task_service import _read_segment_dst
 from transoria.domain import Language, SubtaskStatus, TaskKind, TaskStatus
@@ -339,6 +340,47 @@ def _seed_translation_settings(
         "app",
         {"active_translation_model_id": profile_id},
     )
+
+
+def test_running_request_duration_advances_without_new_tokens(monkeypatch) -> None:
+    now = datetime(2026, 10, 3, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr("transoria.bridge.task_service.datetime", FrozenDateTime)
+    events = [
+        {"request_id": "r1", "subtask_id": "chunk", "status": "running",
+         "timestamp": (now - timedelta(minutes=8)).isoformat()},
+        {"request_id": "r1", "subtask_id": "chunk", "status": "running",
+         "timestamp": (now - timedelta(minutes=7)).isoformat(),
+         "duration_seconds": 1.39, "partial_response_text": '{"'},
+    ]
+    rows, total = _format_request_events(events, limit=None, live_subtask_ids={"chunk"})
+    assert total == 1
+    assert rows[0]["duration_seconds"] == 480
+    assert rows[0]["partial_response_text"] == '{"'
+    assert events[1]["duration_seconds"] == 1.39
+
+
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled"])
+def test_finished_request_duration_does_not_keep_advancing(status: str) -> None:
+    rows, _ = _format_request_events([
+        {"request_id": "r1", "status": status, "duration_seconds": 1.39,
+         "timestamp": "2026-01-01T00:00:00+00:00"},
+    ], limit=None)
+    assert rows[0]["duration_seconds"] == 1.39
+
+
+@pytest.mark.parametrize("timestamp", ["", "invalid", "2099-01-01T00:00:00"])
+def test_running_request_duration_handles_invalid_or_future_clock(timestamp: str) -> None:
+    rows, _ = _format_request_events([
+        {"request_id": "r1", "subtask_id": "chunk", "status": "running",
+         "duration_seconds": 1.39, "timestamp": timestamp},
+    ], limit=None, live_subtask_ids={"chunk"})
+    assert rows[0]["duration_seconds"] == 1.39
 
 
 def test_read_request_events_filters_and_offsets(tmp_path: Path) -> None:

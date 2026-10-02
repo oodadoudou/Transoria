@@ -1135,10 +1135,14 @@ def _format_request_events(
 ) -> tuple[list[dict[str, object]], int]:
     latest_by_request: dict[str, dict[str, object]] = {}
     order: dict[str, int] = {}
+    started_by_request: dict[str, datetime] = {}
     for index, event in enumerate(events):
         request_id = str(event.get("request_id", ""))
         if not request_id:
             continue
+        started = _parse_iso_timestamp(str(event.get("timestamp", "")))
+        if started is not None:
+            started_by_request.setdefault(request_id, started)
         previous = latest_by_request.get(request_id, {})
         merged = {**previous, **dict(event)}
         latest_by_request[request_id] = merged
@@ -1157,6 +1161,19 @@ def _format_request_events(
         )
         for row in rows
     ]
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        started = started_by_request.get(str(row.get("request_id", "")))
+        if row.get("status") == "running" and started is not None:
+            # Elapsed time must keep advancing even when no new token arrives.
+            row["duration_seconds"] = round(
+                max(
+                    0.0,
+                    _coerce_float(row.get("duration_seconds"), 0.0),
+                    (now - started).total_seconds(),
+                ),
+                3,
+            )
     if status:
         rows = [row for row in rows if str(row.get("status", "")) == status]
     total = len(rows)

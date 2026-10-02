@@ -260,8 +260,11 @@ def test_orchestrator_leaves_failed_glossary_chunk_for_manual_continue(
     assert len(transport.requests) == 1
 
 
+@pytest.mark.parametrize("model_timeout, drain_timeout", [(30.0, 35.0), (600.0, 95.0)])
 def test_orchestrator_finalizes_outputs_when_stop_hits_after_all_glossary_chunks(
     tmp_path: Path,
+    model_timeout: float,
+    drain_timeout: float,
 ) -> None:
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"
@@ -297,13 +300,16 @@ def test_orchestrator_finalizes_outputs_when_stop_hits_after_all_glossary_chunks
         id_factory=lambda: "glossary-stop-after-complete",
     )
 
-    result = asyncio.run(orchestrator.run(_config(input_dir, output_dir)))
+    config = _config(input_dir, output_dir)
+    config = replace(config, model=replace(config.model, timeout_seconds=model_timeout))
+    result = asyncio.run(orchestrator.run(config))
 
     assert result.final_status is TaskStatus.COMPLETED
     assert len(result.glossary_outputs_per_file) == 1
     assert result.glossary_outputs_per_file[0].xlsx_path.exists()
     assert orchestrator.cache.load(result.task_id).record.status is TaskStatus.COMPLETED
     assert getattr(holder["executor"], "subtask_timeout_seconds") == 0.0
+    assert getattr(holder["executor"], "stop_drain_seconds") == drain_timeout
 
 
 def test_orchestrator_emits_only_combined_artifacts_when_enabled(tmp_path: Path) -> None:
