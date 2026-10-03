@@ -700,10 +700,20 @@ def _prepare_segments(
                 target_language=config.target_language,
             ):
                 continue
+            inline_slot_count = 0
+            if parsed.document_kind == "epub":
+                part_count = len(parsed.document.segments[segment_index].parts)
+                if (
+                    part_count > 1
+                    and source_text.count("\n") + 1 == part_count
+                    and preprocessed.prompt_text.count("\n") == source_text.count("\n")
+                ):
+                    inline_slot_count = part_count
             prepared = PreparedSegment(
                 segment_id=f"{parsed.file_index}:{segment_index}",
                 original_text=source_text,
                 preprocessed=preprocessed,
+                inline_slot_count=inline_slot_count,
             )
             bucket.append(prepared)
             flat.append(prepared)
@@ -717,6 +727,7 @@ def _segment_metadata(prepared: PreparedSegment) -> Mapping[str, object]:
         "protection_spans": list(prepared.preprocessed.protection.spans),
         "leading_whitespace": prepared.preprocessed.leading_whitespace,
         "trailing_whitespace": prepared.preprocessed.trailing_whitespace,
+        "inline_slot_count": prepared.inline_slot_count,
     }
 
 

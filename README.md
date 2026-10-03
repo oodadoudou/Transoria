@@ -25,7 +25,7 @@ Transoria 是一个集小说翻译与 EPUB 编辑于一体的本地桌面应用�
 
 ### 核心能力
 
-- **翻译工作流**：EPUB / TXT 分块翻译、同结构输出、术语注入、文本保护、替换规则和中断续跑；EPUB 分页标记后的正文也会参与翻译。
+- **翻译工作流**：EPUB / TXT 分块翻译、同结构输出、术语注入、文本保护、替换规则和中断续跑；EPUB 分页标记后的正文也会参与翻译。保留首字装饰及可映射的行内样式；缺失格式边界时安全回填正文，并在输出旁生成 `.format-warnings.json` 定位报告，新任务会检查格式边界并纳入有限重试和校对风险。
 - **质量检查与校对**：按源语言识别低置信度、原文残留、术语异常、疑似重复和模型异常；支持单条、批量及筛选结果重译，并对韩语源任务的单条重译及疑似外语音译还原进行候选质量校验；拉丁语系批量重译会拦截明显的段落错配。相同译文不会重复写入，质量比较请求的 Token 用量可在请求记录中查看。
 - **模型、Prompt 与预设**：支持主流供应商及 OpenAI 兼容接口；基础预设可一键切换模型、Prompt 和语言。翻译预设可选高级模式，设置总并发上限，并为各供应商线路分别指定 Prompt 与 RPM 上限；额度不足时等待，有额度的线路可接管尚未发出的分块，首轮失败后可按需使用兜底模型补救。翻译、术语提取和审查运行中切换模型、Prompt 或预设，会等待当前请求收尾，再处理剩余工作；重试和多 Key 轮询均计入 RPM，切换和继续任务保留最近一分钟的额度记录。编辑预设后需主动应用，删除正在使用的模型或 Prompt 会停止受影响的任务并保留进度。
 - **术语提取与审查**：生成术语 XLSX 和参考文本，执行多轮审查、表格编辑并导入翻译术语表。
@@ -96,7 +96,7 @@ Latest builds: **[GitHub Releases](https://github.com/oodadoudou/Transoria/relea
 
 ### Core Capabilities
 
-- **Translation workflow**: chunked EPUB / TXT translation, structure-preserving output, glossary injection, protected text, replacement rules, and resumable tasks; prose after EPUB page markers is included.
+- **Translation workflow**: chunked EPUB / TXT translation, structure-preserving output, glossary injection, protected text, replacement rules, and resumable tasks; prose after EPUB page markers is included. Initial-letter decoration and mappable inline styles are retained. Missing formatting boundaries use safe text writeback with a `.format-warnings.json` location report beside the output; new tasks check these boundaries through bounded retries and proofreading risks.
 - **Quality review**: detect low-confidence output, source residue, terminology issues, possible repetition, and model anomalies with source-language-aware checks; retranslate one row, a selection, or filtered results, with candidate validation for Korean-source single-row replacements and suspected foreign-language phonetic restorations. Unaccepted candidates remain available for manual comparison in Proofreading. Latin-source batch retranslation blocks obvious cross-segment drift. Identical translations are not written again, and quality-comparison token usage appears in the request log.
 - **Models, prompts, and presets**: use major providers or OpenAI-compatible endpoints. Basic presets bundle model, prompt, and language settings; optional advanced translation presets set a shared concurrency ceiling, per-provider routes with their own prompts and RPM limits, and an optional fallback model for failed chunks. Routes with available capacity can take over unsent chunks while rate-limited routes wait. Translation, Glossary Extraction, and Glossary Review drain current requests before applying model, prompt, or preset switches to unfinished work. Retries and key rotation count toward RPM; switching and continuing tasks retain the last minute's request history. Preset edits take effect when explicitly applied. Deleting an in-use model or prompt stops affected tasks while preserving progress.
 - **Glossary extraction and review**: generate glossary XLSX and reference text, run multi-round review, edit the final table, and import it into Translation.

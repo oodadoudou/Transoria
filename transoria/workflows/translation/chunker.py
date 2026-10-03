@@ -59,6 +59,7 @@ class PreparedSegment:
     segment_id: str
     original_text: str
     preprocessed: PreprocessedSegment
+    inline_slot_count: int = 0
 
 
 def build_chunks(

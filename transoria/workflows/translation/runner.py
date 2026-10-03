@@ -154,6 +154,14 @@ _SYSTEM_LANGUAGE_CONTRACT_HINT = (
     "code fragment, URL, file path, or other non-translatable literal that "
     "must be preserved verbatim."
 )
+_SYSTEM_INLINE_FORMAT_CONTRACT_HINT = (
+    "\n\n[Inline formatting boundaries — runtime protocol]\n"
+    "Escaped \\n inside a source JSON string can separate inline formatting "
+    "scopes, not sentences or JSONLINE rows. Preserve their count and order "
+    "inside the translated value. Read split words as one word before "
+    "translating naturally, then retain boundaries around the corresponding "
+    "translated text. Do not collapse the whole value into its first scope."
+)
 
 
 def split_segment_payload_batches(
@@ -608,6 +616,7 @@ def _augment_system_prompt(
     parts = [
         system_prompt,
         _SYSTEM_LANGUAGE_CONTRACT_HINT.format(target_language=target_language),
+        _SYSTEM_INLINE_FORMAT_CONTRACT_HINT,
     ]
     if not getattr(preset, "is_system", False) and not _JSONL_KEYWORD_PATTERN.search(
         system_prompt
@@ -638,6 +647,7 @@ class _SegmentPayload:
     protection_spans: tuple[str, ...]
     leading_whitespace: str
     trailing_whitespace: str
+    inline_slot_count: int = 0
 
 
 _PendingLowConfidence = tuple[_SegmentPayload, str, tuple[str, ...]]
@@ -674,6 +684,7 @@ def encode_subtask_payload(
                 "protection_spans": list(meta.get("protection_spans", ())),
                 "leading_whitespace": str(meta.get("leading_whitespace", "")),
                 "trailing_whitespace": str(meta.get("trailing_whitespace", "")),
+                "inline_slot_count": int(meta.get("inline_slot_count", 0)),
             }
             for segment, meta in zip(chunk.segments, segment_metadata)
         ],
@@ -726,6 +737,7 @@ def _decode_subtask_payload(
                 protection_spans=tuple(str(span) for span in spans),
                 leading_whitespace=str(entry.get("leading_whitespace", "")),
                 trailing_whitespace=str(entry.get("trailing_whitespace", "")),
+                inline_slot_count=int(entry.get("inline_slot_count", 0)),
             )
         )
 
@@ -1086,7 +1098,7 @@ class TranslationSubtaskRunner:
                     else:
                         final_text = candidate_text
                     verdict = self._evaluate_confidence(
-                        meta.original_text, final_text
+                        meta.original_text, final_text, inline_slot_count=meta.inline_slot_count
                     )
                     extra_reasons: list[str] = []
                     if fallback_reason:
@@ -1241,11 +1253,11 @@ class TranslationSubtaskRunner:
                         continue
                     current_text = self._postprocess(meta, accumulated[idx])
                     current_verdict = self._evaluate_confidence(
-                        meta.original_text, current_text
+                        meta.original_text, current_text, inline_slot_count=meta.inline_slot_count
                     )
                     retry_text = self._postprocess(meta, text)
                     retry_verdict = self._evaluate_confidence(
-                        meta.original_text, retry_text
+                        meta.original_text, retry_text, inline_slot_count=meta.inline_slot_count
                     )
                     if _should_replace_low_confidence_candidate(
                         meta,
@@ -1408,7 +1420,7 @@ class TranslationSubtaskRunner:
                         if retry_text is not None:
                             retry_final = self._postprocess(meta, retry_text)
                             verdict = self._evaluate_confidence(
-                                meta.original_text, retry_final
+                                meta.original_text, retry_final, inline_slot_count=meta.inline_slot_count
                             )
                             if not verdict.is_low_confidence:
                                 finalized[meta.segment_id] = retry_final
@@ -1577,7 +1589,7 @@ class TranslationSubtaskRunner:
                         continue
                     retry_final = self._postprocess(meta, retry_text)
                     verdict = self._evaluate_confidence(
-                        meta.original_text, retry_final
+                        meta.original_text, retry_final, inline_slot_count=meta.inline_slot_count
                     )
                     if not verdict.is_low_confidence:
                         finalized[meta.segment_id] = retry_final
@@ -1612,7 +1624,7 @@ class TranslationSubtaskRunner:
 
             for meta, last_text, last_reasons in pending:
                 final_verdict = self._evaluate_confidence(
-                    meta.original_text, last_text
+                    meta.original_text, last_text, inline_slot_count=meta.inline_slot_count
                 )
                 has_source_residue = "source_residue" in final_verdict.tags
                 echoes_source = (
@@ -1717,7 +1729,7 @@ class TranslationSubtaskRunner:
                         tags = ["source_residue"]
                     else:
                         verdict = self._evaluate_confidence(
-                            meta.original_text, current_text
+                            meta.original_text, current_text, inline_slot_count=meta.inline_slot_count
                         )
                         for tag in verdict.tags:
                             if tag not in tags:
@@ -2048,11 +2060,9 @@ class TranslationSubtaskRunner:
         return normalize_target_script(processed, self.target_language)
 
     def _evaluate_confidence(
-        self, source_text: str, translated_text: str
+        self, source_text: str, translated_text: str, *, inline_slot_count: int = 0
     ) -> ConfidenceVerdict:
-        if not self.enable_confidence_check:
-            return ConfidenceVerdict(is_low_confidence=False)
-        return evaluate_segment_confidence(
+        verdict = evaluate_segment_confidence(
             source_text,
             translated_text,
             min_length_ratio=self.min_length_ratio,
@@ -2061,7 +2071,18 @@ class TranslationSubtaskRunner:
             source_language=self.source_language,
             target_language=self.target_language,
             allow_source_phonetic_jamo=self.allow_source_phonetic_jamo,
-        )
+        ) if self.enable_confidence_check else ConfidenceVerdict(is_low_confidence=False)
+        if (
+            inline_slot_count > 1
+            and source_text != translated_text
+            and translated_text.count("\n") + 1 != inline_slot_count
+        ):
+            return ConfidenceVerdict(
+                is_low_confidence=True,
+                reasons=verdict.reasons + ("inline_format_boundary_mismatch",),
+                tags=verdict.tags,
+            )
+        return verdict
 
 
 def _chunk_log_id(chunk) -> str:  # noqa: ANN001 — accepts TranslationChunk
