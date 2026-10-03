@@ -299,3 +299,85 @@ def test_fallback_inserts_at_segment_position_not_before_unrelated_content(tmp_p
     assert section[1].text == "后续的完整译文。"
     assert not section[1][0].text
     assert "".join(section.itertext()) == "UnchangedNext block后续的完整译文。"
+
+
+@pytest.mark.parametrize("annotation", ["rt", "rp"])
+def test_removing_ruby_annotations_keeps_their_translated_tails(tmp_path, annotation):
+    _, _, root, _ = _export(
+        tmp_path, f'<p><ruby>A<{annotation}>reading</{annotation}>B</ruby> end.</p>',
+        "甲\n乙\n结束。",
+    )
+    p = _paragraph(root)
+    assert "".join(p.itertext()) == "甲乙结束。"
+    assert not p.xpath(".//*[local-name()='rt' or local-name()='rp']")
+
+
+def test_consecutive_ruby_annotations_preserve_all_base_characters(tmp_path):
+    _, _, root, _ = _export(
+        tmp_path, '<p><ruby>A<rt>a</rt>B<rt>b</rt>C</ruby> end.</p>',
+        "甲\n乙\n丙\n结束。",
+    )
+    assert "".join(_paragraph(root).itertext()) == "甲乙丙结束。"
+
+
+def test_ruby_cleanup_does_not_modify_untranslated_descendant_blocks(tmp_path):
+    source = _write_minimal_epub(
+        tmp_path / "book.epub",
+        chapter_body='<section><ruby>A<rt>a</rt></ruby><p><ruby>B<rt>b</rt></ruby></p></section>',
+    )
+    doc = parse_epub_file(source)
+    segment = next(s for s in doc.segments if s.text == "A")
+    written = write_translated_epub(doc, {segment.index: "甲"}, tmp_path / "out", target_language=Language.CHINESE_SIMPLIFIED)
+    with zipfile.ZipFile(written) as archive:
+        root = parse_xhtml_or_html(archive.read("OEBPS/Text/chapter.xhtml"))
+    assert _paragraph(root).xpath(".//*[local-name()='rt']")[0].text == "b"
+
+
+def test_bilingual_nested_blocks_and_tails_are_not_duplicated(tmp_path):
+    source = _write_minimal_epub(
+        tmp_path / "book.epub", chapter_body='<section>Before<p>Inner text</p>After</section>',
+    )
+    doc = parse_epub_file(source)
+    translated = {s.index: "译" + s.text for s in doc.segments if s.kind == EpubTextKind.BODY}
+    written = write_bilingual_epub(doc, translated, tmp_path / "out", source_language=Language.ENGLISH, target_language=Language.CHINESE_SIMPLIFIED)
+    with zipfile.ZipFile(written) as archive:
+        root = parse_xhtml_or_html(archive.read("OEBPS/Text/chapter.xhtml"))
+    sections = root.xpath(".//*[local-name()='section']")
+    assert len(sections) == 2
+    assert "".join(sections[0].itertext()) == "BeforeInner textAfter"
+    assert "".join(sections[1].itertext()) == "译Before译Inner text译After"
+    assert len(root.xpath(".//*[local-name()='p']")) == 2
+
+
+def test_bilingual_parent_snapshot_is_taken_before_translating_children(tmp_path):
+    source = _write_minimal_epub(
+        tmp_path / "book.epub", chapter_body='<section><p>Inner text</p>After</section>',
+    )
+    doc = parse_epub_file(source)
+    translated = {s.index: "译" + s.text for s in doc.segments if s.kind == EpubTextKind.BODY}
+    written = write_bilingual_epub(doc, translated, tmp_path / "out", source_language=Language.ENGLISH, target_language=Language.CHINESE_SIMPLIFIED)
+    with zipfile.ZipFile(written) as archive:
+        root = parse_xhtml_or_html(archive.read("OEBPS/Text/chapter.xhtml"))
+    sections = root.xpath(".//*[local-name()='section']")
+    assert "".join(sections[0].itertext()) == "Inner textAfter"
+    assert "".join(sections[1].itertext()) == "译Inner text译After"
+
+
+def test_bilingual_copy_excludes_parent_tail_and_duplicate_anchors(tmp_path):
+    _, _, root, _ = _export(
+        tmp_path,
+        '<section><p id="chapter" xml:id="xml-chapter" class="prose" style="color:red">'
+        'Before <a id="anchor" name="legacy" href="#chapter">link</a></p>Outside</section>',
+        "正文\n链接", bilingual=True,
+    )
+    paragraphs = root.xpath(".//*[local-name()='p']")
+    clone, translated = paragraphs
+    assert clone.tail == "\n"
+    assert translated.tail == "Outside"
+    assert root.xpath('count(//*[@id="chapter"])') == 1
+    assert root.xpath('count(//*[@id="anchor"])') == 1
+    assert root.xpath('count(//*[@name="legacy"])') == 1
+    assert clone.get("class") == "prose"
+    assert clone.get("style") == "color:red;opacity:0.50;"
+    assert clone[0].get("href") == "#chapter"
+    assert root.xpath("//*[@id='chapter']")[0] is translated

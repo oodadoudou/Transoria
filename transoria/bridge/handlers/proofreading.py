@@ -1023,7 +1023,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
 
         translations_by_segment = _collect_translations_from_cache(snapshot)
         cached_source_texts = _collect_source_texts_from_cache(snapshot)
-        if snapshot.record.status is TaskStatus.COMPLETED:
+        if cached_source_texts or translations_by_segment or snapshot.record.status is TaskStatus.COMPLETED:
             mismatched_files = []
             for parsed in parsed_files:
                 prepared_segments = prepared_per_file.get(parsed.file_index, [])
@@ -1044,10 +1044,24 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 ]
                 current_fingerprint = _source_segments_fingerprint(current_source_segments)
                 cached_fingerprint = _source_segments_fingerprint(cached_source_segments)
-                if 0 < matched_segments and (
-                    matched_segments != expected_segments
-                    or current_fingerprint != cached_fingerprint
-                ):
+                current_sources = dict(current_source_segments)
+                changed_cached_source = any(
+                    current_sources.get(segment_id) != source_text
+                    for segment_id, source_text in cached_source_segments
+                ) or any(
+                    segment_id not in cached_source_texts
+                    for segment_id in current_sources
+                    if segment_id in translations_by_segment
+                )
+                incomplete_completed_task = (
+                    snapshot.record.status is TaskStatus.COMPLETED
+                    and 0 < matched_segments
+                    and (
+                        matched_segments != expected_segments
+                        or current_fingerprint != cached_fingerprint
+                    )
+                )
+                if changed_cached_source or incomplete_completed_task:
                     first_missing_segment_id = next(
                         (
                             segment.segment_id
@@ -1060,7 +1074,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                         {
                             "path": str(parsed.document.path),
                             "reason": (
-                                "completed task cache no longer matches parsed source "
+                                "task cache no longer matches parsed source "
                                 "segments"
                             ),
                             "code": "cache_segment_mismatch",

@@ -1281,6 +1281,103 @@ def test_regenerate_outputs_blocks_changed_source_with_same_segment_ids(
     assert list(output_dir.iterdir()) == []
 
 
+@pytest.mark.parametrize("status", [TaskStatus.COMPLETED, TaskStatus.STOPPED, TaskStatus.FAILED])
+@pytest.mark.parametrize("kind", ["txt", "epub"])
+def test_regeneration_blocks_changed_source_for_all_exportable_states(router_and_service, status, kind):
+    from tests.unit.formats.test_formats_epub_parser import _write_minimal_epub
+    from transoria.formats.epub_parser import parse_epub_file
+
+    router, service, tmp_path = router_and_service
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    source = input_dir / f"book.{kind}"
+    if kind == "txt":
+        source.write_text("Old sentence.\n", encoding="utf-8")
+        cached = [("0:0", "Old sentence.", "旧译文。")]
+    else:
+        _write_minimal_epub(source, chapter_body="<p>Old sentence.</p>")
+        cached = [(f"0:{s.index}", s.text, "旧译文。") for s in parse_epub_file(source).segments]
+    _seed_translation_task(
+        service, task_id="translation-pf-source-guard", input_dir=input_dir,
+        output_dir=output_dir, file_segments=cached, status=status,
+        metadata_overrides={"source_language": Language.ENGLISH.value},
+    )
+    if kind == "txt":
+        source.write_text("Different sentence.\n", encoding="utf-8")
+    else:
+        _write_minimal_epub(source, chapter_body="<p>Different sentence.</p>")
+    previous_output = output_dir / f"book-zh.{kind}"
+    previous_output.write_bytes(b"previous delivery must survive")
+    before = source.read_bytes()
+    response = router.call("proofreading.regenerate_outputs", {"task_id": "translation-pf-source-guard", "bilingual": True})
+    assert not response["translated_files"]
+    assert not response["bilingual_files"]
+    assert response["failed_files"][0]["code"] == "cache_segment_mismatch"
+    assert previous_output.read_bytes() == b"previous delivery must survive"
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize("status", [TaskStatus.STOPPED, TaskStatus.FAILED])
+def test_partial_regeneration_still_exports_unchanged_source(router_and_service, status):
+    router, service, tmp_path = router_and_service
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    (input_dir / "book.txt").write_text("First sentence.\nSecond sentence.\n", encoding="utf-8")
+    _seed_translation_task(
+        service, task_id="translation-pf-partial", input_dir=input_dir,
+        output_dir=output_dir, file_segments=[("0:0", "First sentence.", "第一句。")],
+        status=status, metadata_overrides={"source_language": Language.ENGLISH.value},
+    )
+    response = router.call("proofreading.regenerate_outputs", {"task_id": "translation-pf-partial"})
+    assert len(response["translated_files"]) == 1
+    assert Path(response["translated_files"][0]).read_text(encoding="utf-8") == "第一句。\nSecond sentence.\n"
+    assert response["failed_files"][0]["code"] == "missing_translations"
+
+
+def test_partial_regeneration_rejects_removed_cached_segment(router_and_service):
+    router, service, tmp_path = router_and_service
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    (input_dir / "book.txt").write_text("First sentence.\n", encoding="utf-8")
+    _seed_translation_task(
+        service, task_id="translation-pf-removed", input_dir=input_dir,
+        output_dir=output_dir,
+        file_segments=[("0:0", "First sentence.", "第一句。"), ("0:1", "Removed sentence.", "第二句。")],
+        status=TaskStatus.STOPPED, metadata_overrides={"source_language": Language.ENGLISH.value},
+    )
+    response = router.call("proofreading.regenerate_outputs", {"task_id": "translation-pf-removed"})
+    assert not response["translated_files"]
+    assert response["failed_files"][0]["code"] == "cache_segment_mismatch"
+    assert not list(output_dir.iterdir())
+
+
+@pytest.mark.parametrize("status", [TaskStatus.COMPLETED, TaskStatus.STOPPED, TaskStatus.FAILED])
+def test_regeneration_never_trusts_translation_without_cached_source_identity(router_and_service, status):
+    router, service, tmp_path = router_and_service
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    (input_dir / "book.txt").write_text("Current sentence.\n", encoding="utf-8")
+    _seed_translation_task(
+        service, task_id="translation-pf-missing-source", input_dir=input_dir,
+        output_dir=output_dir, file_segments=[("0:0", "Old sentence.", "旧译文。")],
+        status=status, metadata_overrides={"source_language": Language.ENGLISH.value},
+    )
+    subtask = service.cache.load_subtasks("translation-pf-missing-source")[0]
+    service.cache.save_subtask(replace(subtask, request_payload={"version": 1, "segments": []}))
+    response = router.call("proofreading.regenerate_outputs", {"task_id": "translation-pf-missing-source"})
+    assert not response["translated_files"]
+    assert response["failed_files"][0]["code"] == "cache_segment_mismatch"
+    assert not list(output_dir.iterdir())
+
+
 def test_regenerate_outputs_reuses_cached_pre_replacements_for_segment_filter(
     router_and_service,
 ):

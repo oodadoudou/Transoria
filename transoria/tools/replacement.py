@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import io
 from pathlib import Path
 import re
+import zipfile
 
-from transoria.formats.epub_parser import parse_epub_file
-from transoria.formats.epub_writer import write_epub_to_path
+from transoria.formats.epub_parser import (
+    find_by_path,
+    parse_epub_file,
+    parse_ncx_xml,
+    parse_xhtml_or_html,
+    read_archive_entry,
+)
+from transoria.formats.epub_writer import write_epub_slots_to_path
 from transoria.formats.text import parse_txt_file
 
 
@@ -215,17 +223,27 @@ def replace_epub_file(
     *,
     collect_occurrences: bool = False,
 ) -> FileReplacementResult:
-    document = parse_epub_file(source_path)
-    translations: dict[int, str] = {}
+    document = parse_epub_file(source_path, buffer_archive=True)
+    replacements: dict[int, tuple[str, ...]] = {}
     replacement_count = 0
     errors: list[str] = []
     occurrences: list[ReplacementOccurrence] = []
     # Per-rule budget across the whole epub so a single chapter can't
     # exhaust the cap and starve later chapters from showing up.
     per_rule_used: dict[int, int] = {}
+    with zipfile.ZipFile(io.BytesIO(document.archive_bytes)) as archive:
+        roots = {}
+        for path in dict.fromkeys(segment.doc_path for segment in document.segments):
+            raw = read_archive_entry(archive, path)
+            roots[path] = parse_ncx_xml(raw) if path.lower().endswith(".ncx") else parse_xhtml_or_html(raw)
 
     for segment in document.segments:
-        lines = segment.text.split("\n")
+        lines = []
+        for part in segment.parts:
+            elem = find_by_path(roots[segment.doc_path], part.path)
+            if elem is None:
+                raise ValueError("EPUB replacement cannot resolve the source text slot")
+            lines.append((elem.text if part.slot == "text" else elem.tail) or "")
         replaced_lines: list[str] = []
         segment_count = 0
         for line in lines:
@@ -241,12 +259,12 @@ def replace_epub_file(
                     per_rule_used[occ.rule_index] = used + 1
                     occurrences.append(occ)
         if segment_count > 0:
-            translations[segment.index] = "\n".join(replaced_lines)
+            replacements[segment.index] = tuple(replaced_lines)
             replacement_count += segment_count
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / _replaced_filename(source_path)
-    write_epub_to_path(document, translations, output_path)
+    write_epub_slots_to_path(document, replacements, output_path)
     return FileReplacementResult(
         output_path=output_path,
         replacement_count=replacement_count,

@@ -92,6 +92,23 @@ def write_epub_to_path(
     return output_path
 
 
+def write_epub_slots_to_path(
+    document: EpubDocument,
+    replacements: dict[int, tuple[str, ...]],
+    output_path: Path,
+) -> Path:
+    segments = {segment.index: segment for segment in document.segments}
+    for index, texts in replacements.items():
+        if index not in segments or len(texts) != len(segments[index].parts):
+            raise ValueError("EPUB slot replacement does not match the source segment")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_epub(
+        document, {index: "\n".join(texts) for index, texts in replacements.items()},
+        output_path, bilingual=False, slot_replacements=replacements,
+    )
+    return output_path
+
+
 def _normalize_translations(
     translations: dict[int, str],
     target_language: Language,
@@ -109,6 +126,7 @@ def _write_epub(
     *,
     bilingual: bool,
     dedup_when_same: bool = True,
+    slot_replacements: dict[int, tuple[str, ...]] | None = None,
 ) -> list[dict[str, object]]:
     segments_by_doc = _segments_by_doc(document, translations)
     format_warnings: list[dict[str, object]] = []
@@ -136,6 +154,7 @@ def _write_epub(
                             bilingual,
                             dedup_when_same=dedup_when_same,
                             format_warnings=format_warnings,
+                            slot_replacements=slot_replacements,
                         )
 
                     output_archive.writestr(_clone_zip_info(info), raw)
@@ -250,12 +269,16 @@ def _apply_doc_segments(
     *,
     dedup_when_same: bool = True,
     format_warnings: list[dict[str, object]] | None = None,
+    slot_replacements: dict[int, tuple[str, ...]] | None = None,
 ) -> bytes:
     root = _parse_doc(raw, doc_path)
     elem_by_path = build_elem_by_path(root)
     block_refs: list[tuple[etree._Element, etree._Element]] = []
     inserted_block_paths: set[str] = set()
     allow_bilingual = bilingual and not _is_nav_or_metadata_doc(doc_path, root, segments)
+    original_root = copy.deepcopy(root) if allow_bilingual else None
+    original_paths = build_elem_by_path(original_root) if original_root is not None else {}
+    translated_rubies: set[etree._Element] = set()
 
     for segment in segments:
         translation = _xml_compatible_text(translations[segment.index])
@@ -278,13 +301,19 @@ def _apply_doc_segments(
             if sha1_with_null_separator(current_texts) != segment.source_digest:
                 continue
 
+            if slot_replacements is not None:
+                for (slot, elem), text in zip(resolved, slot_replacements[segment.index], strict=True):
+                    _set_slot(slot, elem, _xml_compatible_text(text))
+                continue
+
             should_insert_bilingual_block = allow_bilingual and (
                 not dedup_when_same or segment.text != translation
             )
             if should_insert_bilingual_block and segment.block_path not in inserted_block_paths:
                 block = _resolve_elem(root, elem_by_path, segment.block_path)
                 if block is not None:
-                    block_refs.append((block, copy.deepcopy(block)))
+                    original = original_paths[segment.block_path]
+                    block_refs.append((block, copy.deepcopy(original)))
                     inserted_block_paths.add(segment.block_path)
 
             if translation == segment.text:
@@ -306,18 +335,27 @@ def _apply_doc_segments(
                     doc_path, segment.block_path, segment.index,
                 )
             if _segment_uses_ruby(segment):
-                block = _resolve_elem(root, elem_by_path, segment.block_path)
-                if block is not None:
-                    _remove_ruby_annotations(block)
+                for _, elem in resolved:
+                    translated_rubies.update(
+                        node for node in (elem, *elem.iterancestors())
+                        if isinstance(node.tag, str) and local_name(node.tag) == "ruby"
+                    )
+
+    for ruby in translated_rubies:
+        _remove_ruby_annotations(ruby)
 
     if allow_bilingual:
+        cloned_blocks = {block for block, _ in block_refs}
         for block, clone in reversed(block_refs):
+            if any(ancestor in cloned_blocks for ancestor in block.iterancestors()):
+                continue
             parent = block.getparent()
             if parent is None:
                 continue
             _mark_bilingual_clone(clone)
             parent.insert(parent.index(block), clone)
-            clone.tail = clone.tail or "\n"
+            # A block's tail belongs to its parent, not to the original-text copy.
+            clone.tail = "\n"
 
     return _serialize_doc(root, doc_path)
 
@@ -510,6 +548,12 @@ def _remove_ruby_annotations(block: etree._Element) -> None:
     for elem in list(block.xpath(".//*[local-name()='rt' or local-name()='rp']")):
         parent = elem.getparent()
         if parent is not None:
+            if elem.tail:
+                previous = elem.getprevious()
+                if previous is None:
+                    parent.text = (parent.text or "") + elem.tail
+                else:
+                    previous.tail = (previous.tail or "") + elem.tail
             parent.remove(elem)
 
 
@@ -524,6 +568,13 @@ def _is_nav_page(root: etree._Element) -> bool:
 
 
 def _mark_bilingual_clone(clone: etree._Element) -> None:
+    for elem in clone.iter():
+        if not isinstance(elem.tag, str):
+            continue
+        elem.attrib.pop("id", None)
+        elem.attrib.pop("{http://www.w3.org/XML/1998/namespace}id", None)
+        if local_name(elem.tag) == "a":
+            elem.attrib.pop("name", None)
     style = clone.get("style", "").rstrip(";")
     clone.set("style", f"{style + ';' if style else ''}opacity:0.50;")
 

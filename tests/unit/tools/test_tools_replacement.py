@@ -3,7 +3,10 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 import zipfile
 
+import pytest
+
 from tests.unit.formats.test_formats_epub_parser import _write_minimal_epub
+from transoria.formats.epub_parser import parse_xhtml_or_html
 from transoria.tools.replacement import (
     ReplacementRule,
     apply_rules,
@@ -11,6 +14,58 @@ from transoria.tools.replacement import (
     replace_epub_file,
     replace_txt_file,
 )
+
+
+@pytest.mark.parametrize("regex_rule", [False, True])
+def test_epub_replacement_preserves_unmatched_slots_styles_spaces_and_ruby(tmp_path, regex_rule):
+    body = '<p><ruby>A<rt>reading</rt>B</ruby> old <em>styled</em> tail.</p>'
+    source = _write_minimal_epub(tmp_path / "book.epub", chapter_body=body)
+    before = source.read_bytes()
+    result = replace_epub_file(
+        source, tmp_path / "out",
+        [ReplacementRule(src="old", dst="new & improved", regex=regex_rule)],
+        collect_occurrences=True,
+    )
+    with zipfile.ZipFile(result.output_path) as archive:
+        root = parse_xhtml_or_html(archive.read("OEBPS/Text/chapter.xhtml"))
+    p = root.xpath(".//*[local-name()='p']")[0]
+    assert p[0].text == "A"
+    assert p[0][0].text == "reading"
+    assert p[0][0].tail == "B"
+    assert p[0].tail == " new & improved "
+    assert p[1].text == "styled"
+    assert p[1].tail == " tail."
+    assert result.replacement_count == 1
+    assert len(result.occurrences) == 1
+    assert source.read_bytes() == before
+
+
+def test_epub_replacement_keeps_newlines_in_the_matched_slot(tmp_path):
+    source = _write_minimal_epub(
+        tmp_path / "book.epub", chapter_body='<p>Hello <em>world</em> friend.</p>',
+    )
+    result = replace_epub_file(source, tmp_path / "out", [ReplacementRule(src="Hello", dst="Greetings\nagain")])
+    with zipfile.ZipFile(result.output_path) as archive:
+        root = parse_xhtml_or_html(archive.read("OEBPS/Text/chapter.xhtml"))
+    p = root.xpath(".//*[local-name()='p']")[0]
+    assert p.text == "Greetings\nagain "
+    assert p[0].text == "world"
+    assert p[0].tail == " friend."
+
+
+def test_epub_replacement_preserves_initial_slot_and_annotation_changes_are_excluded(tmp_path):
+    source = _write_minimal_epub(
+        tmp_path / "book.epub",
+        chapter_body='<p><span class="cap">A</span> old <ruby>B<rt>old</rt></ruby>.</p>',
+    )
+    result = replace_epub_file(source, tmp_path / "out", [ReplacementRule(src="A", dst="ABC"), ReplacementRule(src="old", dst="new")])
+    with zipfile.ZipFile(result.output_path) as archive:
+        root = parse_xhtml_or_html(archive.read("OEBPS/Text/chapter.xhtml"))
+    p = root.xpath(".//*[local-name()='p']")[0]
+    assert p[0].text == "ABC"
+    assert p[0].tail == " new "
+    assert p[1][0].text == "old"
+    assert result.replacement_count == 2
 
 
 class ReplacementTests(TestCase):
