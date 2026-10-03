@@ -79,7 +79,7 @@ export function resourcePreviewPath(
   const media = new Map(files.map((file) => [file.path, file.media_type]));
   const previewable = (target: string) => target !== navPath && ["application/xhtml+xml", "text/html", "image/svg+xml"].includes(media.get(target) ?? "");
   if (media.get(path) === "text/css") return previewable(preferred) ? preferred : spine.find(previewable) ?? "";
-  return previewable(path) ? path : "";
+  return previewable(path) || media.get(path)?.startsWith("image/") ? path : "";
 }
 
 export function resourceAfterMutation(

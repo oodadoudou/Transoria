@@ -35,6 +35,7 @@ def main() -> None:
     parser.add_argument("--mixed-writing", action="store_true")
     parser.add_argument("--navigation", action="store_true")
     parser.add_argument("--preview-resources", action="store_true", help="Prepare standalone SVG and non-previewable XML books for session-switch checks.")
+    parser.add_argument("--image-resources", action="store_true", help="Prepare distinct image resources for file-selection preview checks.")
     parser.add_argument("--state-dir", type=Path, help="Isolated test cache to retain across native test launches.")
     parser.add_argument("--separate-window", action="store_true", help="Use production native window and close handling.")
     args = parser.parse_args()
@@ -100,6 +101,29 @@ def main() -> None:
                 "OEBPS/Styles/book.css": 'body{font:20px/1.7 serif;margin:20px;writing-mode:horizontal-tb}.columns{display:flex;gap:24px}.columns section{width:45%;height:230px;border:2px solid #216f54;padding:12px;box-sizing:border-box}.rl{-epub-writing-mode:tb-rl}.lr{-ms-writing-mode:tb-lr}.number{-epub-text-combine:horizontal}aside{writing-mode:horizontal-tb;font-size:14px;background:#d5ebe2}ruby{ruby-position:over}.rtl{direction:rtl;unicode-bidi:isolate}',
             })
         state_dir = args.state_dir or folder / "cache"
+        if args.image_resources:
+            with zipfile.ZipFile(book) as archive:
+                opf = archive.read("OEBPS/book.opf")
+            entries = []
+            changes = {}
+            for name, media, format, color, size in (
+                ("landscape.jpg", "image/jpeg", "JPEG", "#216f54", (900, 450)),
+                ("portrait.png", "image/png", "PNG", "#6146a2", (450, 900)),
+                ("square.gif", "image/gif", "GIF", "#a23b46", (600, 600)),
+                ("cover.webp", "image/webp", "WEBP", "#3674a0", (600, 900)),
+            ):
+                canvas = Image.new("RGB", size, color)
+                ImageDraw.Draw(canvas).text((40, 80), name, fill="white", font_size=40)
+                encoded = io.BytesIO()
+                canvas.save(encoded, format)
+                changes[f"OEBPS/Images/{name}"] = encoded.getvalue()
+                entries.append(f'<item id="{format}" href="Images/{name}" media-type="{media}"/>')
+            entries.append('<item id="drawing" href="Images/drawing.svg" media-type="image/svg+xml"/>')
+            changes["OEBPS/Images/drawing.svg"] = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900"><rect width="600" height="900" fill="#3674a0"/><text x="40" y="100" fill="white" font-size="40">SVG RESOURCE</text></svg>'
+            entries.append('<item id="binary" href="Misc/unsupported.bin" media-type="application/octet-stream"/>')
+            changes["OEBPS/Misc/unsupported.bin"] = b"not a previewable resource"
+            changes["OEBPS/book.opf"] = opf.replace(b"</manifest>", "".join(entries).encode() + b"</manifest>")
+            fixtures["_rewrite_book"](book, changes)
         if args.preview_resources:
             with zipfile.ZipFile(book) as archive:
                 opf = archive.read("OEBPS/book.opf")

@@ -91,6 +91,11 @@ test("preview selection uses media types and rejects stale chapters and navigati
     { path: "nav.xhtml", media_type: "application/xhtml+xml" },
     { path: "book.css", media_type: "text/css" },
     { path: "notes.xml", media_type: "application/xml" },
+    { path: "Images/cover.jpg", media_type: "image/jpeg" },
+    { path: "Images/pixel.png", media_type: "image/png" },
+    { path: "Images/animation.gif", media_type: "image/gif" },
+    { path: "Images/cover.webp", media_type: "image/webp" },
+    { path: "font.ttf", media_type: "font/ttf" },
   ];
   const spine = ["nav.xhtml", "notes.xml", "cover.resource", "chapter.xhtml"];
   const pick = (path, preferred) => resourcePreviewPath(path, files, spine, "nav.xhtml", preferred);
@@ -98,7 +103,11 @@ test("preview selection uses media types and rejects stale chapters and navigati
   assert.equal(pick("chapter.xhtml"), "chapter.xhtml");
   for (const preferred of ["previous-book.xhtml", "nav.xhtml", "notes.xml", ""]) assert.equal(pick("book.css", preferred), "cover.resource");
   assert.equal(pick("book.css", "chapter.xhtml"), "chapter.xhtml");
-  for (const path of ["nav.xhtml", "notes.xml", "missing"]) assert.equal(pick(path, "chapter.xhtml"), "");
+  for (const path of ["Images/cover.jpg", "Images/pixel.png", "Images/animation.gif", "Images/cover.webp"]) {
+    assert.equal(pick(path, "chapter.xhtml"), path);
+    assert.equal(pick("book.css", path), "cover.resource");
+  }
+  for (const path of ["nav.xhtml", "notes.xml", "font.ttf", "missing"]) assert.equal(pick(path, "chapter.xhtml"), "");
   assert.equal(resourcePreviewPath("book.css", files, [], "nav.xhtml"), "");
 });
 

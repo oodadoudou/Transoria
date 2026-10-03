@@ -280,6 +280,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const dirty = Boolean(session?.dirty || sourceDirty || tocDirty);
   const currentFile = session?.files.find((file) => file.path === selectedPath);
   const currentResource = session?.files.find((file) => file.path === resourcePath);
+  const previewFile = session?.files.find((file) => file.path === previewPath);
   const operationPaths = fileSelection.length ? fileSelection : currentResource ? [resourcePath] : [];
   const isHtml = currentFile?.media_type === "application/xhtml+xml" || currentFile?.media_type === "text/html";
   const isPreviewable = isHtml || currentFile?.media_type === "image/svg+xml";
@@ -415,6 +416,21 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
     setPreviewPath(""); setPreview(""); setPreviewError(""); setOpenPaths([]);
   };
 
+  useEffect(() => {
+    if (!session || !currentResource || currentResource.editable) return;
+    const target = resourcePreviewPath(currentResource.path, session.files, session.spine, session.nav_path);
+    let active = true;
+    setPreviewPath(target);
+    setPreview(""); setPreviewError(""); setComputedStyles(null);
+    previewSource.current = { path: "", content: "" };
+    if (target) {
+      void epubContentBridge.preview(session.session_id, target)
+        .then((rendered) => { if (active) setPreview(rendered.html); })
+        .catch((cause: unknown) => { if (active) setPreviewError(cause instanceof Error ? cause.message : String(cause)); });
+    }
+    return () => { active = false; };
+  }, [session, currentResource]);
+
   const commitSource = useCallback(async () => {
     if (!session || !selectedPath || content === loadedContent) return session;
     const next = await epubContentBridge.write(session.session_id, selectedPath, content);
@@ -441,7 +457,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   };
 
   useEffect(() => {
-    if (!session || !selectedPath || !sourceDirty || !previewPath || (!isPreviewable && currentFile?.media_type !== "text/css")) return;
+    if (!session || !selectedPath || currentResource?.editable === false || !sourceDirty || !previewPath || (!isPreviewable && currentFile?.media_type !== "text/css")) return;
     const sid = session.session_id;
     const path = selectedPath;
     let active = true;
@@ -451,7 +467,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
         .catch((cause: unknown) => { if (active) { setPreview(""); setPreviewError(cause instanceof Error ? cause.message : String(cause)); } });
     }, 900);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [session?.session_id, selectedPath, previewPath, sourceDirty, content, isPreviewable, currentFile?.media_type]);
+  }, [session?.session_id, selectedPath, currentResource?.editable, previewPath, sourceDirty, content, isPreviewable, currentFile?.media_type]);
 
   useEffect(() => {
     if (!session || sideView !== "book") return;
@@ -603,7 +619,7 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
   const selectResource = async (path: string) => {
     if (!session) return;
     setResourcePath(path);
-    if (!session.files.find((file) => file.path === path)?.editable || path === selectedPath) return;
+    if (!session.files.find((file) => file.path === path)?.editable || (path === selectedPath && previewPath === resourcePreviewPath(path, session.files, session.spine, session.nav_path, previewPath))) return;
     await run(async () => {
       await commitSource();
       await loadResource(session.session_id, path);
@@ -1540,13 +1556,13 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
           </section>
           {separator("source", sourceWidth)}
           <section className={styles.previewPane}>
-            <div className={styles.paneHeader}><h3>{t.preview}</h3><div className={styles.previewHeaderControls}>
+            <div className={styles.paneHeader}><h3>{t.preview}</h3>{previewFile?.media_type.startsWith("image/") ? <span className={styles.previewResourceName} title={previewFile.path}>{previewFile.path.split("/").at(-1)}</span> : null}<div className={styles.previewHeaderControls}>
               <button type="button" title={t.syncPreview} aria-label={t.syncPreview} aria-pressed={syncPreview} onClick={() => { if (sourceEditor.current) setSourceLine(sourceEditor.current.state.doc.lineAt(sourceEditor.current.state.selection.main.head).number); setSyncPreview((value) => !value); }}><Link2 size={16} /></button>
               <button type="button" title={t.inspectStyle} aria-label={t.inspectStyle} aria-pressed={inspectPreview} onClick={() => { setInspectPreview((value) => !value); setComputedStyles(null); }}><ScanLine size={16} /></button>
               {wrapControl}{zoomControls(previewZoom, setPreviewZoom, t.previewZoom, 30)}
             </div></div>
             {computedStyles ? <div className={styles.styleInspector}><strong>{t.styles}</strong><button type="button" title={t.close} onClick={() => setComputedStyles(null)}><X size={14} /></button><dl>{Object.entries(computedStyles).map(([property, value]) => <div key={property}><dt>{property}</dt><dd>{value}</dd></div>)}</dl></div> : null}
-            {previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : ((isPreviewable && selectedPath !== session.nav_path) || currentFile?.media_type === "text/css") && previewPath ? <div className={styles.previewViewport}>
+            {previewError ? <div className={styles.noPreview}>{t.previewInvalid}</div> : previewPath ? <div className={styles.previewViewport}>
               <EpubPreviewFrame key={previewPath} html={chapterPreviewHtml} title={t.preview} zoom={previewZoom} inspect={inspectPreview} sourceLine={syncPreview ? sourceLine : 0} sourceColumn={sourceColumn} sourceRequest={sourceRequest} fragment={previewFragment.path === previewPath ? previewFragment.fragment : ""} navigation={previewFragment.request} location={readingLocations.current[`source:${previewPath}`]} onLocation={(location) => { rememberLocation(`source:${previewPath}`, location); if (location.anchorLine && (location.origin === "user" || (location.origin === "layout" && !sourceLine))) locateSource(location.anchorLine, location.anchorColumn); }} onLocate={locateSource} onBoundary={turnChapter} onFind={openSearch} onInspect={inspectElement} onLink={previewLink} />
             </div> : <div className={styles.noPreview}>{t.noPreview}</div>}
           </section>

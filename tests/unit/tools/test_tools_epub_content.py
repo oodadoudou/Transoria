@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +11,7 @@ from threading import Event
 
 import pytest
 from lxml import etree
+from PIL import Image
 
 from transoria.bridge import BridgeError, BridgeRouter
 from transoria.bridge.handlers.epub_content import register
@@ -363,6 +365,82 @@ def test_malformed_navigation_is_readable_without_rewriting_source(tmp_path: Pat
     session.save(str(output), False)
     with zipfile.ZipFile(source) as before, zipfile.ZipFile(output) as after:
         assert {name: before.read(name) for name in before.namelist()} == {name: after.read(name) for name in after.namelist()}
+
+
+@pytest.mark.parametrize("extension,media_type,format", [
+    ("jpg", "image/jpeg", "JPEG"),
+    ("png", "image/png", "PNG"),
+    ("gif", "image/gif", "GIF"),
+    ("webp", "image/webp", "WEBP"),
+    ("bmp", "image/bmp", "BMP"),
+])
+def test_image_resource_preview_is_sandboxed_and_preserves_archive(
+    tmp_path: Path, extension: str, media_type: str, format: str
+):
+    source = tmp_path / "images.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    buffer = io.BytesIO()
+    Image.new("RGB", (24, 36), "red").save(buffer, format)
+    data = buffer.getvalue()
+    path = f"OEBPS/Images/cover & '中文.{extension}"
+    session.add_resource(path, data, media_type)
+    before = session._snapshot()
+
+    markup = session.preview(path)
+    root = epub_content_module.lxml_html.fromstring(markup)
+    image = root.xpath("//img")[0]
+    assert image.get("alt") == path
+    assert image.get("src") == f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
+    assert root.xpath('//meta[@http-equiv="Content-Security-Policy"]')
+    assert "max-height:calc(100vh - 24px)" in markup and "object-fit:contain" in markup
+    assert not root.xpath("//script")
+    assert session._snapshot() == before
+    assert source.read_bytes() == original
+    output = tmp_path / "saved-images.epub"
+    session.save(str(output), False)
+    assert ContentSession.open(str(output))._bytes(path) == data
+
+
+def test_image_preview_uses_staged_replacements_rename_and_history(tmp_path: Path):
+    source = tmp_path / "image-history.epub"
+    _book(source)
+    session = ContentSession.open(str(source))
+    original_path = "OEBPS/Images/pixel.png"
+    original = session._bytes(original_path)
+    session.replace_resource(original_path, b"updated-image")
+    assert base64.b64encode(b"updated-image").decode() in session.preview(original_path)
+    renamed = "OEBPS/Images/renamed.png"
+    session.rename_resource(original_path, renamed)
+    assert base64.b64encode(b"updated-image").decode() in session.preview(renamed)
+    session.history("undo")
+    session.history("undo")
+    assert base64.b64encode(original).decode() in session.preview(original_path)
+
+
+def test_image_preview_ignores_fixed_book_layout_and_enforces_budget(tmp_path: Path, monkeypatch):
+    source = tmp_path / "fixed-image.epub"
+    _book(source)
+    with zipfile.ZipFile(source) as archive:
+        opf = archive.read("OEBPS/book.opf")
+    _rewrite_book(source, {"OEBPS/book.opf": opf.replace(b"</metadata>", b'<meta property="rendition:layout">pre-paginated</meta></metadata>')})
+    session = ContentSession.open(str(source))
+    path = "OEBPS/Images/pixel.png"
+    assert "pre-paginated" not in session.preview(path)
+    monkeypatch.setattr(epub_content_module, "MAX_PREVIEW_BYTES", 10)
+    with pytest.raises(ValueError, match="48 MB"):
+        session.preview(path)
+
+
+def test_image_resource_preview_bridge(tmp_path: Path):
+    source = tmp_path / "image-bridge.epub"
+    _book(source)
+    router = BridgeRouter()
+    register(router, cache_root=tmp_path / "cache")
+    session = router.call("epub_content.open", {"input_path": str(source)})
+    result = router.call("epub_content.preview", {"session_id": session["session_id"], "path": "OEBPS/Images/pixel.png"})
+    assert "data:image/png;base64," in result["html"]
 
 
 def test_ncx_without_namespace_can_be_read(tmp_path: Path):

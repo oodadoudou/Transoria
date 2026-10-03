@@ -1833,8 +1833,10 @@ class ContentSession:
         self, path: str, draft_path: str = "", draft_content: str | None = None
     ) -> str:
         item = self._file(path)
-        if item["media_type"] not in {"application/xhtml+xml", "text/html", "image/svg+xml"}:
-            raise ValueError("Preview is available for XHTML/HTML/SVG resources only.")
+        media_type = str(item["media_type"])
+        image_resource = media_type.startswith("image/") and media_type != "image/svg+xml"
+        if not image_resource and media_type not in {"application/xhtml+xml", "text/html", "image/svg+xml"}:
+            raise ValueError("Preview is available for HTML and image resources only.")
         drafts: dict[str, bytes] = {}
         if draft_path and draft_content is not None:
             self._file(draft_path, editable=True)
@@ -1861,12 +1863,20 @@ class ContentSession:
         if int(item["size"]) > MAX_PREVIEW_BYTES and path not in drafts:
             raise ValueError("Preview resources exceed the 48 MB limit.")
         markup_bytes = preview_bytes(path)
-        if path not in drafts and len(markup_bytes) <= MAX_TEXT_BYTES:
-            formatted = _editor_text(markup_bytes, str(item["media_type"]))
-            markup_bytes = _encode(formatted, _decode(markup_bytes)[1])
-        root = _preview_root(markup_bytes, html_document=item["media_type"] == "text/html")
+        if image_resource:
+            root = etree.Element("html")
+            etree.SubElement(etree.SubElement(root, "head"), "title").text = path
+            body = etree.SubElement(root, "body", style="margin:12px;display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 24px)")
+            etree.SubElement(body, "img", alt=path, src=f"data:{media_type};base64,{base64.b64encode(markup_bytes).decode('ascii')}")
+        else:
+            if path not in drafts and len(markup_bytes) <= MAX_TEXT_BYTES:
+                formatted = _editor_text(markup_bytes, media_type)
+                markup_bytes = _encode(formatted, _decode(markup_bytes)[1])
+            root = _preview_root(markup_bytes, html_document=media_type == "text/html")
         from transoria.tools.epub_rendition import rendition
         rendering = rendition(_xml(drafts.get(self.opf_path, self._bytes(self.opf_path))), root, self.opf_path, path)
+        if image_resource:
+            rendering["layout"] = "reflowable"
         if item["media_type"] == "image/svg+xml":
             svg = root
             root = etree.Element("html")
