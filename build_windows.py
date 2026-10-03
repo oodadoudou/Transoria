@@ -245,11 +245,9 @@ def _require_runtime_imports() -> None:
 def _refresh_egg_info() -> None:
     """Regenerate transoria.egg-info to match current pyproject.toml.
 
-    PyInstaller bundles egg-info into the exe; at runtime,
-    importlib.metadata reads it before the bundled pyproject.toml.
-    Stale egg-info from an earlier `pip install -e .` causes the exe
-    to report the wrong version. --force-reinstall is required: pip
-    skips re-running setuptools otherwise.
+    PyInstaller bundles egg-info as the runtime version fallback when
+    pyproject.toml is unavailable. --force-reinstall keeps that metadata
+    current even after an earlier editable install.
     """
 
     egg_info = ROOT / "transoria.egg-info"

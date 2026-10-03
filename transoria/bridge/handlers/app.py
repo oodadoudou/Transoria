@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import platform
 import sys
+import tomllib
 from pathlib import Path
 from typing import Mapping
 
@@ -29,35 +30,29 @@ def _platform_key() -> str:
 
 
 def _read_app_version() -> str:
-    """Return the package version.
+    """Prefer the running code's version over potentially stale egg-info."""
 
-    Frozen builds read pyproject.toml first to avoid stale egg-info
-    bundled at build time. Source runs prefer importlib.metadata.
-    """
-
-    if getattr(sys, "frozen", False):
-        version_from_pyproject = _read_version_from_pyproject()
-        if version_from_pyproject != "0.0.0":
-            return version_from_pyproject
+    version_from_pyproject = _read_version_from_pyproject()
+    if version_from_pyproject != "0.0.0":
+        return version_from_pyproject
 
     try:
         from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
 
         return version("transoria")
     except PackageNotFoundError:
-        return _read_version_from_pyproject()
+        return "0.0.0"
 
 
 def _read_version_from_pyproject() -> str:
     pyproject = Path(__file__).resolve().parents[3] / "pyproject.toml"
-    if not pyproject.exists():
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError):
         return "0.0.0"
-    for line in pyproject.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("version") and "=" in stripped:
-            _, _, value = stripped.partition("=")
-            return value.strip().strip('"').strip("'")
-    return "0.0.0"
+    project = data.get("project")
+    value = project.get("version") if isinstance(project, dict) else None
+    return value.strip() if isinstance(value, str) and value.strip() else "0.0.0"
 
 
 def _build_mode() -> str:
