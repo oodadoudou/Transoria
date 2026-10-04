@@ -5,6 +5,7 @@ import json
 import os
 import posixpath
 import re
+import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from transoria.tools.epub_structure import (
     compare_epub_structure_checks,
     inspect_epub_structure,
 )
+from transoria.utils.files import publish_file
 
 
 _EPUB_SUFFIX = ".epub"
@@ -216,7 +218,7 @@ def compress_epub_file(
 ) -> EpubCompressResult:
     source = Path(action.source_path).expanduser().resolve()
     output = Path(action.output_path).expanduser().resolve()
-    tmp_output = output
+    tmp_output: Path | None = None
     try:
         if not source.exists() or not source.is_file():
             raise FileNotFoundError(f"source EPUB not found: {source}")
@@ -225,11 +227,13 @@ def compress_epub_file(
         original_size = source.stat().st_size
         source_check = inspect_epub_structure(source)
         if options.replace_original:
-            tmp_output = source.with_name(f".{source.name}.transoria-compress.tmp")
             output = source
         else:
             output.parent.mkdir(parents=True, exist_ok=True)
-            tmp_output = _unique_output(output)
+            output = _unique_output(output)
+        fd, name = tempfile.mkstemp(prefix=".epub-compress-", dir=output.parent)
+        os.close(fd)
+        tmp_output = Path(name)
 
         stats = _compress_archive(
             source,
@@ -264,18 +268,15 @@ def compress_epub_file(
         )
         if comparison["status"] == "failed":
             raise ValueError("compressed EPUB failed structure validation")
-        if options.replace_original:
-            os.replace(tmp_output, source)
-            output = source
-        else:
-            output = tmp_output
+        output_size = tmp_output.stat().st_size
+        publish_file(tmp_output, output, overwrite=options.replace_original)
         return EpubCompressResult(
             action_id=action.id,
             source_path=str(source),
             output_path=str(output),
             status="compressed",
             original_size_bytes=original_size,
-            output_size_bytes=output.stat().st_size,
+            output_size_bytes=output_size,
             fonts_removed=stats["fonts_removed"],
             images_compressed=stats["images_compressed"],
             images_skipped=stats["images_skipped"],
@@ -289,11 +290,6 @@ def compress_epub_file(
             structure_comparison=comparison,
         )
     except Exception as exc:  # noqa: BLE001
-        if tmp_output != source and tmp_output.exists():
-            try:
-                tmp_output.unlink()
-            except OSError:
-                pass
         return EpubCompressResult(
             action_id=action.id,
             source_path=str(source),
@@ -302,6 +298,12 @@ def compress_epub_file(
             outcome="failed",
             error=f"{type(exc).__name__}: {exc}",
         )
+    finally:
+        if tmp_output is not None:
+            try:
+                tmp_output.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def build_epub_compress_report(

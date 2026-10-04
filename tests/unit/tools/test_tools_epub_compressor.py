@@ -4,7 +4,9 @@ import io
 import zipfile
 from pathlib import Path
 
+import pytest
 from PIL import Image
+from transoria.tools import epub_compressor as compressor
 
 from transoria.tools.epub_compressor import (
     EpubCompressAction,
@@ -12,6 +14,60 @@ from transoria.tools.epub_compressor import (
     build_epub_compress_plan,
     compress_epub_file,
 )
+
+
+def test_missing_source_preserves_existing_destination(tmp_path):
+    output = tmp_path / "existing.epub"
+    output.write_bytes(b"precious existing book")
+    action = EpubCompressAction("test", str(tmp_path / "missing.epub"), str(output))
+    result = compress_epub_file(action, EpubCompressOptions())
+    assert result.status == "failed"
+    assert output.read_bytes() == b"precious existing book"
+
+
+@pytest.mark.parametrize("overwrite", [False, True])
+@pytest.mark.parametrize("failure", ["write", "validate", "publish"])
+def test_compression_failure_preserves_books(tmp_path, monkeypatch, overwrite, failure):
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    _write_epub(source)
+    output.write_bytes(b"existing output")
+    original = source.read_bytes()
+    stale = source.with_name(f".{source.name}.transoria-compress.tmp")
+    stale.write_bytes(b"unrelated old temporary file")
+    action = EpubCompressAction("test", str(source), str(output))
+
+    def fail(*args, **kwargs):
+        if failure == "write":
+            Path(args[1]).write_bytes(b"partial archive")
+        raise OSError("injected failure")
+
+    target = {"write": "_compress_archive", "validate": "compare_epub_structure_checks", "publish": "publish_file"}[failure]
+    monkeypatch.setattr(compressor, target, fail)
+    result = compress_epub_file(action, EpubCompressOptions(replace_original=overwrite))
+    assert result.status == "failed"
+    assert source.read_bytes() == original
+    assert output.read_bytes() == b"existing output"
+    assert stale.read_bytes() == b"unrelated old temporary file"
+    assert not list(tmp_path.glob(".epub-compress-*"))
+    assert sorted(p.name for p in tmp_path.glob("*.epub")) == ["output.epub", "source.epub"]
+
+
+def test_compression_publication_race_preserves_competing_file(tmp_path, monkeypatch):
+    source, output = tmp_path / "source.epub", tmp_path / "output.epub"
+    _write_epub(source)
+    original = source.read_bytes()
+    link = compressor.os.link
+
+    def race(src, dst):
+        Path(dst).write_bytes(b"competing output")
+        link(src, dst)
+
+    monkeypatch.setattr(compressor.os, "link", race)
+    result = compress_epub_file(EpubCompressAction("test", str(source), str(output)), EpubCompressOptions())
+    assert result.status == "failed"
+    assert output.read_bytes() == b"competing output"
+    assert source.read_bytes() == original
+    assert not list(tmp_path.glob(".epub-compress-*"))
 
 
 def test_build_epub_compress_plan_uses_localized_suffix(tmp_path: Path) -> None:
