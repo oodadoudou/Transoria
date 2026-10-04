@@ -2087,6 +2087,8 @@ class ContentSession:
                             target.writestr(path, data)
                         else:
                             raise ValueError(f"Edited resource is missing from manifest: {path}")
+                # Windows cannot replace the source while our read handle is open.
+                source.close()
                 with zipfile.ZipFile(temp) as check_archive:
                     bad = check_archive.testzip()
                     if bad:

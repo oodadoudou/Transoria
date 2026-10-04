@@ -1911,6 +1911,91 @@ def test_combined_edits_export_exact_content_navigation_and_resources(
         assert source.read_bytes() == original
 
 
+@pytest.mark.parametrize("destination", ["source", "existing", "new"])
+def test_save_closes_archive_handles_before_publishing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, destination: str,
+):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    output = source if destination == "source" else tmp_path / "edited.epub"
+    if destination == "existing":
+        _book(output)
+    session = ContentSession.open(str(source))
+    chapter = session.spine[0]
+    session.write(chapter, session.read(chapter)["content"].replace("Hello world.", "First edit."))
+    opened: list[zipfile.ZipFile] = []
+    archive_type = zipfile.ZipFile
+    publish = epub_content_module.os.link if destination == "new" else epub_content_module.os.replace
+    published = []
+
+    def track_archive(*args, **kwargs):
+        archive = archive_type(*args, **kwargs)
+        opened.append(archive)
+        return archive
+
+    def check_publish(temp, target):
+        assert opened and all(archive.fp is None for archive in opened)
+        with archive_type(temp) as archive:
+            assert archive.testzip() is None
+            assert b"First edit." in archive.read(chapter)
+        published.append(Path(target))
+        return publish(temp, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(zipfile, "ZipFile", track_archive)
+        patch.setattr(epub_content_module.os, "link" if destination == "new" else "replace", check_publish)
+        session.save(str(output), overwrite=destination != "new")
+    assert published == [output]
+    assert not session.dirty and session.path == output
+    assert "First edit." in ContentSession.open(str(output)).read(chapter)["content"]
+    if output != source:
+        assert source.read_bytes() == original
+    session.write(chapter, session.read(chapter)["content"].replace("First edit.", "Second edit."))
+    session.save(str(output), overwrite=True)
+    assert "Second edit." in ContentSession.open(str(output)).read(chapter)["content"]
+    assert not list(tmp_path.glob(".epub-content-*"))
+
+
+@pytest.mark.parametrize("winerror", [5, 32, 33])
+def test_failed_overwrite_retains_original_edits_and_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, winerror: int,
+):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    chapter = session.spine[0]
+    session.write(chapter, session.read(chapter)["content"].replace("Hello world.", "Retained edit."))
+    session.set_toc([{"label": "Edited directory", "href": chapter, "depth": 0}])
+    staged = session._snapshot()
+    fingerprint = session.fingerprint
+    undo = session.undo_stack.copy()
+    error = PermissionError(13, "Replacement denied", str(source))
+    error.winerror = winerror
+
+    def deny_replace(temp, target):
+        assert Path(target) == source
+        with zipfile.ZipFile(temp) as archive:
+            assert b"Retained edit." in archive.read(chapter)
+        raise error
+
+    with monkeypatch.context() as patch:
+        patch.setattr(epub_content_module.os, "replace", deny_replace)
+        with pytest.raises(PermissionError) as caught:
+            session.save(str(source), overwrite=True)
+    assert caught.value is error
+    assert source.read_bytes() == original
+    assert session._snapshot() == staged and session.dirty
+    assert session.fingerprint == fingerprint and session.undo_stack == undo
+    assert not list(tmp_path.glob(".epub-content-*"))
+    session.save(str(source), overwrite=True)
+    reopened = ContentSession.open(str(source))
+    assert "Retained edit." in reopened.read(chapter)["content"]
+    assert reopened.toc == [{"label": "Edited directory", "href": chapter, "depth": 0}]
+    assert not session.dirty
+
+
 def test_toc_spine_save_as_and_source_protection(tmp_path: Path):
     source = tmp_path / "book.epub"
     target = tmp_path / "edited.epub"
