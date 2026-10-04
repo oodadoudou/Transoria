@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import html
 import mimetypes
+import os
 import re
+import tempfile
 import unicodedata
 import uuid
 import zipfile
@@ -12,6 +14,8 @@ from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from lxml import etree
+
+from transoria.utils.files import publish_file
 
 
 _TXT_SUFFIX = ".txt"
@@ -529,6 +533,7 @@ def build_txt_to_epub_plan(options: TxtToEpubOptions) -> TxtToEpubPlan:
 def convert_txt_to_epub(action: TxtToEpubAction) -> TxtToEpubResult:
     source = Path(action.source_path).expanduser().resolve()
     output = Path(action.output_path).expanduser().resolve()
+    candidate: Path | None = None
     try:
         if not source.exists() or not source.is_file():
             raise FileNotFoundError(f"source TXT not found: {source}")
@@ -545,8 +550,11 @@ def convert_txt_to_epub(action: TxtToEpubAction) -> TxtToEpubResult:
             action.options.toc_entries,
             default_title=action.options.title.strip() or source.stem,
         )
+        fd, name = tempfile.mkstemp(prefix=".txt-epub-", dir=output.parent)
+        os.close(fd)
+        candidate = Path(name)
         _write_epub(
-            output,
+            candidate,
             title=action.options.title.strip() or source.stem,
             author=action.options.author.strip(),
             language=action.options.language.strip() or "zh",
@@ -556,7 +564,8 @@ def convert_txt_to_epub(action: TxtToEpubAction) -> TxtToEpubResult:
             if action.options.cover_path.strip()
             else None,
         )
-        _validate_epub(output)
+        _validate_epub(candidate)
+        publish_file(candidate, output, overwrite=action.options.overwrite)
         return TxtToEpubResult(
             action_id=action.id,
             source_path=str(source),
@@ -574,6 +583,12 @@ def convert_txt_to_epub(action: TxtToEpubAction) -> TxtToEpubResult:
             status="failed",
             error=f"{type(exc).__name__}: {exc}",
         )
+    finally:
+        if candidate is not None:
+            try:
+                candidate.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def build_txt_to_epub_report(

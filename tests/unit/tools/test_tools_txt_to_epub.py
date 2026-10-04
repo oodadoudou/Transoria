@@ -4,6 +4,7 @@ import zipfile
 import pytest
 
 from transoria.formats.epub_parser import EpubTextKind, parse_epub_file
+from transoria.tools import txt_to_epub as converter
 from transoria.tools.txt_to_epub import (
     TxtToEpubOptions,
     TxtToEpubTocEntry,
@@ -14,6 +15,73 @@ from transoria.tools.txt_to_epub import (
     locate_txt_toc_entry,
     scan_txt_toc,
 )
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("failure", ["write", "validate", "publish"])
+def test_conversion_failure_preserves_destination(tmp_path, monkeypatch, existing, failure):
+    source = tmp_path / "source.txt"
+    source.write_text("Chapter one\nNovel text", encoding="utf-8")
+    source_bytes = source.read_bytes()
+    plan = build_txt_to_epub_plan(TxtToEpubOptions(source_path=str(source), output_dir=str(tmp_path), overwrite=existing))
+    output = Path(plan.action.output_path)
+    if existing:
+        output.write_bytes(b"precious existing EPUB")
+
+    def fail(*args, **kwargs):
+        raise OSError("injected failure")
+
+    if failure == "write":
+        writestr = zipfile.ZipFile.writestr
+        calls = 0
+
+        def fail_write(archive, *args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("disk full")
+            return writestr(archive, *args, **kwargs)
+
+        monkeypatch.setattr(zipfile.ZipFile, "writestr", fail_write)
+    else:
+        monkeypatch.setattr(converter, "_validate_epub" if failure == "validate" else "publish_file", fail)
+    result = convert_txt_to_epub(plan.action)
+    assert result.status == "failed"
+    assert source.read_bytes() == source_bytes
+    if existing:
+        assert output.read_bytes() == b"precious existing EPUB"
+    else:
+        assert not output.exists()
+    assert not list(tmp_path.glob(".txt-epub-*"))
+
+
+def test_conversion_publication_race_preserves_competing_file(tmp_path, monkeypatch):
+    source = tmp_path / "source.txt"
+    source.write_text("Novel text", encoding="utf-8")
+    plan = build_txt_to_epub_plan(TxtToEpubOptions(source_path=str(source), output_dir=str(tmp_path)))
+    link = converter.os.link
+
+    def race(src, dst):
+        Path(dst).write_bytes(b"competing output")
+        link(src, dst)
+
+    monkeypatch.setattr(converter.os, "link", race)
+    result = convert_txt_to_epub(plan.action)
+    assert result.status == "failed"
+    assert Path(plan.action.output_path).read_bytes() == b"competing output"
+    assert not list(tmp_path.glob(".txt-epub-*"))
+
+
+def test_conversion_overwrite_publishes_validated_book(tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("Novel text", encoding="utf-8")
+    plan = build_txt_to_epub_plan(TxtToEpubOptions(source_path=str(source), output_dir=str(tmp_path), overwrite=True))
+    output = Path(plan.action.output_path)
+    output.write_bytes(b"old EPUB")
+    result = convert_txt_to_epub(plan.action)
+    assert result.status == "converted"
+    converter._validate_epub(output)
+    assert not list(tmp_path.glob(".txt-epub-*"))
 
 
 def _write_txt(tmp_path: Path, lines: list[str]) -> Path:
