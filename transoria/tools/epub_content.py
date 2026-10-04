@@ -33,6 +33,7 @@ from transoria.formats.epub_paths import (
     resolve_epub_href,
 )
 from transoria.tools.epub_structure import inspect_epub_structure
+from transoria.utils.files import publish_file
 
 
 OPF = "http://www.idpf.org/2007/opf"
@@ -1072,13 +1073,10 @@ class ContentSession:
         try:
             with os.fdopen(fd, "wb") as stream:
                 stream.write(data)
-            if overwrite:
-                os.replace(temp, output)
-            else:
-                try:
-                    os.link(temp, output)
-                except FileExistsError as exc:
-                    raise ValueError("Output exists; confirm overwrite first.") from exc
+            try:
+                publish_file(temp, output, overwrite=overwrite)
+            except FileExistsError as exc:
+                raise ValueError("Output exists; confirm overwrite first.") from exc
         finally:
             temp.unlink(missing_ok=True)
         return str(output)
@@ -1332,7 +1330,7 @@ class ContentSession:
                 for path in paths:
                     archive.writestr(path, self._bytes(path))
             try:
-                os.link(temp, output)
+                publish_file(temp, output)
             except FileExistsError as exc:
                 raise ValueError("Output exists; choose another file.") from exc
         finally:
@@ -2115,15 +2113,12 @@ class ContentSession:
                     raise ValueError(
                         f"New broken resource references: {', '.join(sorted(added_missing)[:5])}"
                     )
-                if overwrite:
-                    os.replace(temp, output)
-                else:
-                    try:
-                        os.link(temp, output)
-                    except FileExistsError as exc:
-                        raise ValueError(
-                            "Output exists; confirm overwrite first."
-                        ) from exc
+                try:
+                    publish_file(temp, output, overwrite=overwrite)
+                except FileExistsError as exc:
+                    raise ValueError(
+                        "Output exists; confirm overwrite first."
+                    ) from exc
             finally:
                 temp.unlink(missing_ok=True)
         reopened = ContentSession.open(str(output))

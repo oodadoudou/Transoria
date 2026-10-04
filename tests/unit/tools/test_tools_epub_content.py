@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
 import io
 import time
@@ -19,6 +20,78 @@ from transoria.tools import epub_content as epub_content_module
 from transoria.tools.epub_content import ContentSession, ContentSessionStore
 from transoria.tools.epub_editor_tools import cleanup_css, compare, image_report, issues, run_tool, set_cover, text_report, upgrade_epub
 from transoria.tools import epub_editor_tools
+
+
+@pytest.mark.parametrize("operation", ["save", "resource", "zip"])
+def test_exports_without_hardlink_support(tmp_path, monkeypatch, operation):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    chapter = "OEBPS/Text/one.xhtml"
+    session.write(chapter, str(session.read(chapter)["content"]).replace("Hello world", "Edited text"))
+
+    def unsupported(*args):
+        raise OSError(errno.ENOTSUP, "hard links unsupported")
+
+    monkeypatch.setattr(epub_content_module.os, "link", unsupported)
+    if operation == "save":
+        output = tmp_path / "edited.epub"
+        session.save(str(output), False)
+        assert "Edited text" in ContentSession.open(str(output)).read(chapter)["content"]
+        assert not session.dirty
+    elif operation == "resource":
+        output = tmp_path / "chapter.xhtml"
+        session.export_resource(chapter, str(output), False)
+        assert "Edited text" in output.read_text()
+        assert session.dirty
+    else:
+        output = tmp_path / "selected.zip"
+        session.export_resources([chapter, "OEBPS/Images/pixel.png"], str(output))
+        with zipfile.ZipFile(output) as archive:
+            assert archive.namelist() == [chapter, "OEBPS/Images/pixel.png"]
+            assert "Edited text" in archive.read(chapter).decode()
+            assert archive.read("OEBPS/Images/pixel.png") == b"image-bytes"
+        assert session.dirty
+    assert source.read_bytes() == original
+    assert not list(tmp_path.glob(".epub-*"))
+
+
+@pytest.mark.parametrize("operation", ["save", "resource", "zip"])
+def test_export_copy_failure_preserves_unsaved_edits(tmp_path, monkeypatch, operation):
+    from transoria.utils import files
+
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    session = ContentSession.open(str(source))
+    chapter = "OEBPS/Text/one.xhtml"
+    session.write(chapter, str(session.read(chapter)["content"]).replace("Hello world", "Unsaved text"))
+    snapshot = session._snapshot()
+    output = tmp_path / ("output.zip" if operation == "zip" else "output.epub")
+
+    def unsupported(*args):
+        raise OSError(errno.ENOTSUP, "hard links unsupported")
+
+    def disk_full(reader, writer):
+        writer.write(b"partial")
+        raise OSError(errno.ENOSPC, "disk full")
+
+    monkeypatch.setattr(files.sys, "platform", "darwin")
+    monkeypatch.setattr(files.os, "link", unsupported)
+    monkeypatch.setattr(files.shutil, "copyfileobj", disk_full)
+    with pytest.raises(OSError, match="disk full"):
+        if operation == "save":
+            session.save(str(output), False)
+        elif operation == "resource":
+            session.export_resource(chapter, str(output), False)
+        else:
+            session.export_resources([chapter], str(output))
+    assert not output.exists()
+    assert source.read_bytes() == original
+    assert session.dirty
+    assert session._snapshot() == snapshot
+    assert not list(tmp_path.glob(".epub-*"))
 
 
 def _book(path: Path) -> None:
