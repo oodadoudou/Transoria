@@ -1292,7 +1292,7 @@ export interface Messages {
     current: string; textFiles: string; styleFiles: string; all: string; selection: string; caseSensitive: string; regularExpression: string; matches: string;
     noMatches: string; previousMatch: string; nextMatch: string; narrowSearch: string;
     replaceOne: string; replaceAll: string; confirmReplace: string; save: string; saveAs: string;
-    overwrite: string; confirmOverwrite: string; outputPath: string; saved: string; undo: string;
+    overwrite: string; confirmOverwrite: string; outputPath: string; saved: string; savedCacheWarning: string; undo: string;
     redo: string; applyToc: string; addEntry: string; addSibling: string; addChild: string; newTocEntry: string; generateToc: string; confirmGenerateToc: string; generatedToc: string; approximateToc: string; removeEntry: string; target: string;
     label: string; indent: string; outdent: string; up: string; down: string; loading: string;
     tocLevel: string; tocPatternHelp: string; tocFromFilesHelp: string; tocPatternPlaceholder: string; previewToc: string; fromHeadings: string; fromFiles: string; tocXPathHelp: string;

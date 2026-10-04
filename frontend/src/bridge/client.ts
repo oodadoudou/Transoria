@@ -1257,7 +1257,7 @@ export const epubContentBridge = {
       ? call("epub_content.undo", { session_id: sessionId })
       : call("epub_content.redo", { session_id: sessionId });
   },
-  save(sessionId: string, outputPath: string, overwrite: boolean): Promise<EpubContentSession & { output_path: string; structure_check: Record<string, unknown> }> {
+  save(sessionId: string, outputPath: string, overwrite: boolean): Promise<EpubContentSession & { output_path: string; structure_check: Record<string, unknown>; cache_warning?: string }> {
     return call("epub_content.save", { session_id: sessionId, output_path: outputPath, overwrite });
   },
 };

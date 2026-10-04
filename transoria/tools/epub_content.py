@@ -2624,6 +2624,11 @@ class ContentSessionStore:
         finally:
             Path(temp_name).unlink(missing_ok=True)
 
+    def discard_persisted(self, session_id: str) -> None:
+        target = self._state_path(session_id)
+        if target is not None:
+            target.unlink(missing_ok=True)
+
     def open(self, path: str) -> dict[str, object]:
         session = ContentSession.open(path)
         session_id = uuid.uuid4().hex

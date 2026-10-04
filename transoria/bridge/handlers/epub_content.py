@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import zipfile
 from pathlib import Path
 from threading import RLock
@@ -275,7 +276,18 @@ def register(router: BridgeRouter, *, cache_root: Path | None = None) -> None:
                     expect_string(payload, "output_path"),
                     bool(payload.get("overwrite", False)),
                 )
-                store.persist(session_id)
+                try:
+                    store.persist(session_id)
+                except OSError as exc:
+                    # The EPUB is already published; a cache error cannot undo it.
+                    result["cache_warning"] = str(exc) or type(exc).__name__
+                    try:
+                        store.discard_persisted(session_id)
+                    except OSError:
+                        logging.getLogger(__name__).warning(
+                            "Unable to discard stale editor cache after saving EPUB",
+                            exc_info=True,
+                        )
                 return {**result, **session.info(session_id)}
             else:
                 raise ValueError("Unknown EPUB content editor action.")

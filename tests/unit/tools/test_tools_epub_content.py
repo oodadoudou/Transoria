@@ -94,6 +94,59 @@ def test_export_copy_failure_preserves_unsaved_edits(tmp_path, monkeypatch, oper
     assert not list(tmp_path.glob(".epub-*"))
 
 
+@pytest.mark.parametrize("overwrite", [False, True])
+@pytest.mark.parametrize("cannot_discard", [False, True])
+def test_cache_failure_after_save_is_success_with_warning(tmp_path, monkeypatch, overwrite, cannot_discard):
+    source = tmp_path / "book.epub"
+    _book(source)
+    original = source.read_bytes()
+    cache = tmp_path / "cache"
+    router = BridgeRouter()
+    register(router, cache_root=cache)
+    opened = router.call("epub_content.open", {"input_path": str(source)})
+    sid = opened["session_id"]
+    chapter = "OEBPS/Text/one.xhtml"
+    content = router.call("epub_content.read", {"session_id": sid, "path": chapter})["content"]
+    router.call("epub_content.write", {"session_id": sid, "path": chapter, "content": content.replace("Hello world", "Saved text")})
+    replace = epub_content_module.os.replace
+    state_path = cache / "epub-editor-sessions" / f"{sid}.json"
+
+    def cache_denied(src, dst):
+        if Path(dst) == state_path:
+            raise OSError(errno.ENOSPC, "cache disk full")
+        replace(src, dst)
+
+    monkeypatch.setattr(epub_content_module.os, "replace", cache_denied)
+    if cannot_discard:
+        def discard_denied(*args):
+            raise PermissionError("cache deletion denied")
+        monkeypatch.setattr(ContentSessionStore, "discard_persisted", discard_denied)
+    output = source if overwrite else tmp_path / "saved.epub"
+    result = router.call("epub_content.save", {"session_id": sid, "output_path": str(output), "overwrite": overwrite})
+    assert "cache disk full" in result["cache_warning"]
+    assert result["output_path"] == str(output)
+    assert result["dirty"] is False
+    assert router.call("epub_content.info", {"session_id": sid})["dirty"] is False
+    assert "Saved text" in ContentSession.open(str(output)).read(chapter)["content"]
+    assert state_path.exists() == cannot_discard
+    assert not list(state_path.parent.glob(".session-*"))
+    if not overwrite:
+        assert source.read_bytes() == original
+    if not cannot_discard:
+        restarted = BridgeRouter()
+        register(restarted, cache_root=cache)
+        with pytest.raises(BridgeError, match="expired"):
+            restarted.call("epub_content.info", {"session_id": sid})
+    monkeypatch.setattr(epub_content_module.os, "replace", replace)
+    # A later checkpoint repairs cache persistence without losing the saved book.
+    router.call("epub_content.checkpoint", {"session_id": sid})
+    restarted = BridgeRouter()
+    register(restarted, cache_root=cache)
+    restored = restarted.call("epub_content.info", {"session_id": sid})
+    assert restored["input_path"] == str(output)
+    assert "Saved text" in restarted.call("epub_content.read", {"session_id": sid, "path": chapter})["content"]
+
+
 def _book(path: Path) -> None:
     container = """<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/book.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"""
     opf = """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">test</dc:identifier><dc:title>Book</dc:title></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="one" href="Text/one.xhtml" media-type="application/xhtml+xml"/><item id="two" href="Text/two.xhtml" media-type="application/xhtml+xml"/><item id="css" href="Styles/book.css" media-type="text/css"/><item id="img" href="Images/pixel.png" media-type="image/png"/></manifest><spine toc="ncx"><itemref idref="one"/><itemref idref="two"/></spine></package>"""

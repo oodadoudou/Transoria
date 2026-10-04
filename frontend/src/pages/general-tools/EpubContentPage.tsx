@@ -1249,9 +1249,10 @@ export function EpubContentPage({ onClose, initialPath = "" }: { onClose: () => 
       setOutputPath(editedPath(result.output_path));
       setSaveOpen(false);
       clearStagedEditorDraft();
-      setFeedback(`${t.saved}: ${result.output_path}`);
-      setFeedbackWarning(false);
-      if (closeAfterSave) closeEditor();
+      setFeedback(`${t.saved}: ${result.output_path}${result.cache_warning ? ` · ${t.savedCacheWarning}` : ""}`);
+      setFeedbackWarning(Boolean(result.cache_warning));
+      if (closeAfterSave && !result.cache_warning) closeEditor();
+      setCloseAfterSave(false);
     });
   };
 
