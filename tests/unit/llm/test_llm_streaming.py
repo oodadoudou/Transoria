@@ -339,6 +339,36 @@ def _reject_stream_once_then_succeed(transport: StreamingFakeTransport):
 # HttpxChatTransport SSE accumulation (uses MockTransport so no real network).
 
 
+@pytest.mark.parametrize("provider,event", [
+    (ProviderFormat.OPENAI, {"choices": [{"delta": {"reasoning_content": "thinking"}}]}),
+    (ProviderFormat.ANTHROPIC, {"type": "content_block_start", "content_block": {"type": "thinking", "thinking": ""}}),
+    (ProviderFormat.ANTHROPIC, {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "reasoning"}}),
+])
+def test_off_detects_reasoning_in_stream_events_instead_of_hiding_it(provider, event) -> None:
+    import httpx
+    from transoria.llm.client import HttpxChatTransport
+
+    body = "data: " + json.dumps(event) + "\n"
+    body += 'data: {"choices":[{"delta":{"content":"OK"}}]}\n'
+    body += "data: [DONE]\n"
+    transport = HttpxChatTransport()
+
+    async def run():
+        transport._client = httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, text=body),
+        ))
+        try:
+            return await LlmClient(transport).chat(ChatRequest(
+                model=_model(provider_format=provider), system_prompt="", user_prompt="ping", stream=True,
+            ))
+        finally:
+            await transport.aclose()
+
+    with pytest.raises(LlmRequestError) as caught:
+        asyncio.run(run())
+    assert caught.value.code == "llm.thinking_off_unsupported"
+
+
 @pytest.mark.parametrize("detect_repetition", [False, True])
 def test_streaming_progress_updates_independently_of_repetition_detection(
     detect_repetition: bool,

@@ -695,7 +695,7 @@ def test_inline_connection_sends_native_thinking_budget(env_with_stubs, provider
         assert payload["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 512}
 
 
-def test_inline_connection_reports_compatibility_fallback(env_with_stubs):
+def test_inline_connection_rejected_off_does_not_report_default_thinking_success(env_with_stubs):
     transport = env_with_stubs["chat_transport"]
     transport.responses.extend([
         (400, {"error": {"message": "thinking.type disabled is not supported by this model", "code": "InvalidParameter", "param": ""}}),
@@ -706,9 +706,11 @@ def test_inline_connection_reports_compatibility_fallback(env_with_stubs):
         "base_url": "https://api.example.com", "api_key": "sk-inline",
         "model_id": "any-model", "thinking_level": "off",
     })
-    assert result["ok"] is True
-    assert result["provider_response"]["unsupported_parameters"] == ['thinking={"type": "disabled"}']
-    assert "thinking" not in transport.last_request["payload"]
+    assert result["ok"] is False
+    assert result["provider_response"]["error_code"] == "llm.thinking_off_unsupported"
+    assert result["provider_response"]["status_code"] == 400
+    assert transport.last_request["payload"]["thinking"] == {"type": "disabled"}
+    assert len(transport.responses) == 1
 
 
 @pytest.mark.parametrize("provider", ["openai", "custom", "sakura", "anthropic", "google"])

@@ -273,6 +273,7 @@ def _build_handlers(
                 "provider_response": {
                     "model": profile.model_id,
                     "status_code": _status_code_from_error(exc),
+                    "error_code": exc.code,
                     "detail": f"[{exc.code}] {exc}",
                 },
             }

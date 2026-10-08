@@ -306,6 +306,7 @@ export const en: Messages = {
     testFailed: "Connection failed",
     testLatency: "Latency",
     testCompatibilityWarning: "The API rejected these settings; provider defaults were used instead:",
+    testThinkingOffUnsupported: "This model/API rejected thinking-off or still returned reasoning. The request stopped without falling back to default thinking. Choose a model/API that supports disabling thinking.",
     fetchModels: "Fetch model list",
     fetchModelsHint:
       "Call the provider's /models endpoint to list available model IDs.",
@@ -1758,7 +1759,7 @@ export const en: Messages = {
       "Soft cap on input + output tokens consumed per minute. Useful when the provider throttles by token bucket. 0 = unlimited.",
     reasoning: "Reasoning",
     reasoningHint:
-      "Controls native model reasoning. Has no effect on non-thinking models.",
+      "Controls native reasoning. If Off is rejected or reasoning is still reported, the request fails without falling back to default thinking.",
     thinkingLevel: "Reasoning level",
     thinking: { off: "Off", low: "Low", medium: "Medium", high: "High" },
     advanced: "Advanced",

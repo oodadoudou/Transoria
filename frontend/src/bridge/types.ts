@@ -286,6 +286,7 @@ export interface ModelTestResult {
   ok: boolean;
   latency_ms: number;
   provider_response: {
+    error_code?: string;
     model: string | null;
     status_code: number | null;
     detail: string;

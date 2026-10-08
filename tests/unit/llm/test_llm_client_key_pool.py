@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Mapping
 
 import pytest
@@ -16,7 +16,7 @@ from transoria.llm.client import (
     LlmRequestError,
     TransportResult,
 )
-from transoria.llm.config import ModelConfig, ProviderFormat
+from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.runtime.cache import TaskCache
 from transoria.runtime.key_pool import KeyPool
 from transoria.runtime.request_log import append_local_failure, request_log_scope
@@ -394,7 +394,7 @@ def test_pool_falls_back_when_provider_rejects_thinking() -> None:
     client = LlmClient(transport=transport)
     pool = KeyPool(("ka", "kb"))
     request = ChatRequest(
-        model=_model("ka", "kb"),
+        model=replace(_model("ka", "kb"), thinking_level=ThinkingLevel.MEDIUM),
         system_prompt="",
         user_prompt="ping",
         key_pool=pool,
@@ -407,8 +407,23 @@ def test_pool_falls_back_when_provider_rejects_thinking() -> None:
         "Bearer ka",
         "Bearer ka",
     ]
-    assert transport.payloads_seen[0]["thinking"] == {"type": "disabled"}
+    assert transport.payloads_seen[0]["thinking"] == {"type": "enabled"}
     assert "thinking" not in transport.payloads_seen[1]
+    assert pool.dead_keys == frozenset()
+
+
+def test_pool_does_not_drop_thinking_off_or_rotate_keys_after_rejection() -> None:
+    transport = RecordingTransport(queue=[_http(400, {
+        "error": {"message": "thinking.type disabled is not supported"},
+    })])
+    pool = KeyPool(("ka", "kb"))
+    with pytest.raises(LlmRequestError) as caught:
+        asyncio.run(LlmClient(transport).chat(ChatRequest(
+            model=_model("ka", "kb"), system_prompt="", user_prompt="ping", key_pool=pool,
+        )))
+    assert caught.value.code == "llm.thinking_off_unsupported"
+    assert len(transport.payloads_seen) == 1
+    assert transport.payloads_seen[0]["thinking"] == {"type": "disabled"}
     assert pool.dead_keys == frozenset()
 
 

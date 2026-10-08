@@ -297,6 +297,7 @@ export const zh: Messages = {
     testFailed: "连接失败",
     testLatency: "延迟",
     testCompatibilityWarning: "接口不支持以下设置，已使用服务端默认行为；连接成功不代表这些设置已生效：",
+    testThinkingOffUnsupported: "当前模型或接口不支持关闭思考，或返回仍包含思考内容。请求已停止，未改用默认思考模式；请切换到支持关闭思考的模型或接口。",
     fetchModels: "拉取模型列表",
     fetchModelsHint: "调用 provider 的 /models 接口列出可用模型 ID。",
     fetchRunning: "拉取中…",
@@ -1696,7 +1697,7 @@ export const zh: Messages = {
     tpmHelp:
       "每分钟输入+输出token总数软上限。服务商按token桶节流时尤其有用。0 = 不限。",
     reasoning: "推理",
-    reasoningHint: "控制模型原生思考强度；非思考模型开启无效。",
+    reasoningHint: "控制模型原生思考强度。关闭参数被拒绝或回复仍包含思考内容时，请求会失败，不会自动改用默认思考模式。",
     thinkingLevel: "推理强度",
     thinking: { off: "关", low: "低", medium: "中", high: "高" },
     advanced: "高级",

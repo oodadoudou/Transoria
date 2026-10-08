@@ -185,14 +185,14 @@ def test_chat_retries_without_unsupported_thinking_and_remembers_capability() ->
         ]
     )
     client = LlmClient(transport=transport)
-    request = ChatRequest(model=_model(), system_prompt="sys", user_prompt="user")
+    request = ChatRequest(model=_model(thinking_level=ThinkingLevel.MEDIUM), system_prompt="sys", user_prompt="user")
 
     first = asyncio.run(client.chat(request))
     second = asyncio.run(client.chat(request))
 
     assert first.content == "first"
     assert second.content == "second"
-    assert transport.calls[0]["payload"]["thinking"] == {"type": "disabled"}
+    assert transport.calls[0]["payload"]["thinking"] == {"type": "enabled"}
     assert "thinking" not in transport.calls[1]["payload"]
     assert "thinking" not in transport.calls[2]["payload"]
 
@@ -231,7 +231,7 @@ def test_chat_retries_without_thinking_when_enabled_model_rejects_parameter() ->
     assert "thinking" not in transport.calls[1]["payload"]
 
 
-def test_chat_rejected_thinking_type_warns_without_poisoning_other_values() -> None:
+def test_chat_rejected_thinking_off_fails_without_retry_or_poisoning_enabled() -> None:
     transport = FakeTransport(
         responses=[
             TransportResult(
@@ -245,17 +245,16 @@ def test_chat_rejected_thinking_type_warns_without_poisoning_other_values() -> N
                     }
                 },
             ),
-            TransportResult(200, _ok_body("OK")),
             TransportResult(200, _ok_body("enabled")),
-            TransportResult(200, _ok_body("cached")),
+            TransportResult(400, {"error": {"message": "thinking.type disabled is not supported"}}),
         ]
     )
     client = LlmClient(transport=transport)
     off_request = ChatRequest(model=_model(), system_prompt="", user_prompt="ping")
-    response = asyncio.run(client.chat(off_request))
-    assert response.content == "OK"
-    assert response.unsupported_parameters == ('thinking={"type": "disabled"}',)
-    assert "thinking" not in transport.calls[1]["payload"]
+    with pytest.raises(LlmRequestError) as caught:
+        asyncio.run(client.chat(off_request))
+    assert caught.value.code == "llm.thinking_off_unsupported"
+    assert len(transport.calls) == 1
     response = asyncio.run(client.chat(ChatRequest(
         model=_model(thinking_level=ThinkingLevel.MEDIUM),
         system_prompt="", user_prompt="ping", stream=False,
@@ -263,12 +262,12 @@ def test_chat_rejected_thinking_type_warns_without_poisoning_other_values() -> N
     assert response.content == "enabled"
     assert response.unsupported_parameters == ()
     assert transport.calls[0]["payload"]["thinking"] == {"type": "disabled"}
-    assert transport.calls[2]["payload"]["thinking"] == {"type": "enabled"}
-    assert transport.calls[2]["payload"]["reasoning_effort"] == "medium"
-    response = asyncio.run(client.chat(off_request))
-    assert response.content == "cached"
-    assert "thinking" not in transport.calls[3]["payload"]
-    assert response.unsupported_parameters == ('thinking={"type": "disabled"}',)
+    assert transport.calls[1]["payload"]["thinking"] == {"type": "enabled"}
+    assert transport.calls[1]["payload"]["reasoning_effort"] == "medium"
+    with pytest.raises(LlmRequestError) as caught:
+        asyncio.run(client.chat(off_request))
+    assert caught.value.code == "llm.thinking_off_unsupported"
+    assert transport.calls[2]["payload"]["thinking"] == {"type": "disabled"}
 
 
 @pytest.mark.parametrize("level", [ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH])
@@ -278,6 +277,73 @@ def test_chat_sends_native_reasoning_effort_for_selected_level(level) -> None:
         model=_model(thinking_level=level), system_prompt="", user_prompt="ping",
     )))
     assert transport.calls[0]["payload"]["reasoning_effort"] == level.value
+
+
+@pytest.mark.parametrize("provider", list(ProviderFormat))
+def test_off_uses_explicit_native_parameters_and_no_reasoning_effort(provider) -> None:
+    bodies = {
+        ProviderFormat.GOOGLE: {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]},
+        ProviderFormat.ANTHROPIC: {"content": [{"type": "text", "text": "OK"}]},
+    }
+    transport = FakeTransport(responses=[TransportResult(200, bodies.get(provider, _ok_body()))])
+    response = asyncio.run(LlmClient(transport).chat(ChatRequest(
+        model=_model(provider_format=provider), system_prompt="sys", user_prompt="ping",
+    )))
+    assert response.unsupported_parameters == ()
+    payload = transport.calls[0]["payload"]
+    if provider is ProviderFormat.GOOGLE:
+        assert payload["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+    else:
+        assert payload["thinking"] == {"type": "disabled"}
+    assert "reasoning_effort" not in payload
+
+
+@pytest.mark.parametrize("provider,body", [
+    (ProviderFormat.OPENAI, {"choices": [{"message": {"content": "OK", "reasoning_content": "thinking"}}]}),
+    (ProviderFormat.OPENAI, {"choices": [{"message": {"content": "OK"}}], "usage": {"completion_tokens_details": {"reasoning_tokens": 5}}}),
+    (ProviderFormat.ANTHROPIC, {"content": [{"type": "thinking", "thinking": "reasoning"}, {"type": "text", "text": "OK"}]}),
+    (ProviderFormat.GOOGLE, {"candidates": [{"content": {"parts": [{"thought": True, "text": "thinking"}, {"text": "OK"}]}}]}),
+    (ProviderFormat.GOOGLE, {"candidates": [{"content": {"parts": [{"text": "OK"}]}}], "usageMetadata": {"thoughtsTokenCount": 5}}),
+])
+def test_off_rejects_successful_http_response_that_still_contains_reasoning(provider, body) -> None:
+    transport = FakeTransport(responses=[TransportResult(200, body)])
+    with pytest.raises(LlmRequestError) as caught:
+        asyncio.run(LlmClient(transport).chat(ChatRequest(
+            model=_model(provider_format=provider), system_prompt="", user_prompt="ping",
+        )))
+    assert caught.value.code == "llm.thinking_off_unsupported"
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("provider,field_name", [
+    (ProviderFormat.ANTHROPIC, "thinking"), (ProviderFormat.GOOGLE, "thinkingConfig"),
+])
+def test_off_rejected_native_setting_does_not_fall_back_to_default(provider, field_name) -> None:
+    transport = FakeTransport(responses=[TransportResult(400, {
+        "error": {"message": f"Unknown parameter: {field_name}"},
+    })])
+    client = LlmClient(transport)
+    with pytest.raises(LlmRequestError) as caught:
+        asyncio.run(client.chat(ChatRequest(
+            model=_model(provider_format=provider, api_keys=("first", "second")),
+            system_prompt="", user_prompt="ping",
+        )))
+    assert caught.value.code == "llm.thinking_off_unsupported"
+    assert len(transport.calls) == 1
+    assert not client._unsupported_payload_fields
+
+
+def test_off_is_not_removed_by_an_old_compatibility_cache() -> None:
+    from transoria.llm.client import _payload_capability_key
+
+    transport = FakeTransport(responses=[TransportResult(200, _ok_body())])
+    client = LlmClient(transport)
+    model = _model()
+    client._unsupported_payload_fields.add(_payload_capability_key(
+        model, "thinking", {"thinking": {"type": "disabled"}},
+    ))
+    asyncio.run(client.chat(ChatRequest(model=model, system_prompt="", user_prompt="ping")))
+    assert transport.calls[0]["payload"]["thinking"] == {"type": "disabled"}
 
 
 @pytest.mark.parametrize("param", ["", "reasoning_effort"])
@@ -302,16 +368,16 @@ def test_chat_rejected_reasoning_effort_preserves_thinking_and_other_values(para
 
 def test_failed_compatibility_retry_does_not_cache_capability() -> None:
     transport = FakeTransport(responses=[
-        TransportResult(400, {"error": {"message": "thinking.type disabled is not supported"}}),
+        TransportResult(400, {"error": {"message": "thinking.type enabled is not supported"}}),
         TransportResult(503, {"error": {"message": "temporarily unavailable"}}),
         TransportResult(200, _ok_body()),
     ])
     client = LlmClient(transport=transport)
-    request = ChatRequest(model=_model(), system_prompt="", user_prompt="ping")
+    request = ChatRequest(model=_model(thinking_level=ThinkingLevel.MEDIUM), system_prompt="", user_prompt="ping")
     with pytest.raises(LlmRequestError, match="503"):
         asyncio.run(client.chat(request))
     asyncio.run(client.chat(request))
-    assert transport.calls[2]["payload"]["thinking"] == {"type": "disabled"}
+    assert transport.calls[2]["payload"]["thinking"] == {"type": "enabled"}
 
 
 def test_rejected_sampling_value_does_not_disable_other_values() -> None:
@@ -442,7 +508,7 @@ def test_chat_applies_sequential_openai_compatibility_fallbacks() -> None:
     response = asyncio.run(
         client.chat(
             ChatRequest(
-                model=_model(),
+                model=_model(thinking_level=ThinkingLevel.MEDIUM),
                 system_prompt="sys",
                 user_prompt="user",
                 stream=True,
@@ -483,19 +549,19 @@ def test_stream_option_mention_without_rejection_does_not_retry(status_code) -> 
 ])
 def test_rejected_parameter_cache_is_isolated_by_endpoint_model_and_format(overrides) -> None:
     transport = FakeTransport(responses=[
-        TransportResult(400, {"error": {"message": "thinking.type disabled is not supported"}}),
+        TransportResult(400, {"error": {"message": "thinking.type enabled is not supported"}}),
         TransportResult(200, _ok_body()),
         TransportResult(200, _ok_body()),
     ])
     client = LlmClient(transport=transport)
     asyncio.run(client.chat(ChatRequest(
-        model=_model(), system_prompt="", user_prompt="ping",
+        model=_model(thinking_level=ThinkingLevel.MEDIUM), system_prompt="", user_prompt="ping",
     )))
     response = asyncio.run(client.chat(ChatRequest(
-        model=_model(**overrides), system_prompt="", user_prompt="ping",
+        model=_model(thinking_level=ThinkingLevel.MEDIUM, **overrides), system_prompt="", user_prompt="ping",
     )))
     assert response.unsupported_parameters == ()
-    assert transport.calls[2]["payload"]["thinking"] == {"type": "disabled"}
+    assert transport.calls[2]["payload"]["thinking"] == {"type": "enabled"}
 
 
 def test_google_nested_parameter_rejection_preserves_other_sampling_settings() -> None:
@@ -517,12 +583,12 @@ def test_google_nested_parameter_rejection_preserves_other_sampling_settings() -
     assert response.unsupported_parameters == ("presencePenalty=0.2",)
     assert transport.calls[0]["payload"]["generationConfig"]["presencePenalty"] == 0.2
     assert transport.calls[1]["payload"]["generationConfig"] == {
-        "temperature": 0.4, "topP": 0.8,
+        "temperature": 0.4, "topP": 0.8, "thinkingConfig": {"thinkingBudget": 0},
     }
     response = asyncio.run(client.chat(request))
     assert response.unsupported_parameters == ("presencePenalty=0.2",)
     assert transport.calls[2]["payload"]["generationConfig"] == {
-        "temperature": 0.4, "topP": 0.8,
+        "temperature": 0.4, "topP": 0.8, "thinkingConfig": {"thinkingBudget": 0},
     }
 
 
@@ -783,7 +849,7 @@ def test_google_response_skips_thought_parts() -> None:
     response = asyncio.run(
         client.chat(
             ChatRequest(
-                model=_model(provider_format=ProviderFormat.GOOGLE),
+                model=_model(provider_format=ProviderFormat.GOOGLE, thinking_level=ThinkingLevel.MEDIUM),
                 system_prompt="sys",
                 user_prompt="user",
             )

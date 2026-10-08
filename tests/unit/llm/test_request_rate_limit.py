@@ -7,7 +7,7 @@ import pytest
 
 from tests.helpers.transport import QueuedTransport
 from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError, TransportResult
-from transoria.llm.config import ModelConfig, ProviderFormat
+from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.llm.retry import retry_async
 from transoria.runtime import rate_limit
 from transoria.workflows.translation.routing import RouteLimitedClient
@@ -62,7 +62,8 @@ def test_advanced_and_single_clients_share_history_without_double_counting(monke
 def test_key_rotation_and_compatibility_retries_each_consume_rpm(monkeypatch, failure):
     _, now, waits = _virtual_limiter(monkeypatch)
     transport = QueuedTransport([failure, _ok()])
-    request = _request(api_keys=("first", "second"), rotate_keys=True, rpm_limit=1)
+    request = _request(api_keys=("first", "second"), rotate_keys=True, rpm_limit=1,
+                       thinking_level=ThinkingLevel.MEDIUM)
 
     result = asyncio.run(LlmClient(transport).chat(request))
 

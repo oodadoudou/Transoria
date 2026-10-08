@@ -272,6 +272,7 @@ class HttpxChatTransport:
         last_progress_chars = 0
         current_chars = 0
         first_token_logged = False
+        thinking_detected = False
         last_repetition_check_chars = 0
         prompt_text = (
             _prompt_text_from_payload(payload) if detect_stream_repetition else ""
@@ -308,6 +309,7 @@ class HttpxChatTransport:
                     event = json.loads(data)
                 except ValueError:
                     continue
+                thinking_detected = thinking_detected or _response_has_thinking(event)
                 # OpenAI / Volcengine: ``choices[*].delta.content``
                 choices = event.get("choices") or []
                 for choice in choices:
@@ -431,6 +433,8 @@ class HttpxChatTransport:
                 }
             ],
         }
+        if thinking_detected:
+            body["_thinking_detected"] = True
         if usage is not None:
             body["usage"] = dict(usage)
             # Mirror to Google's usageMetadata for parser symmetry.
@@ -922,6 +926,55 @@ def _payload_field_value(payload: Mapping[str, object], field_name: str) -> obje
     return None
 
 
+def _response_has_thinking(body: Mapping[str, object]) -> bool:
+    if body.get("_thinking_detected") is True:
+        return True
+    for choice in body.get("choices") or []:
+        if not isinstance(choice, Mapping):
+            continue
+        for name in ("message", "delta"):
+            message = choice.get(name)
+            if isinstance(message, Mapping) and any(
+                message.get(field) for field in ("reasoning_content", "reasoning")
+            ):
+                return True
+    blocks = body.get("content") or []
+    block = body.get("content_block")
+    if isinstance(block, Mapping):
+        blocks = [*blocks, block] if isinstance(blocks, list) else [block]
+    if isinstance(blocks, list) and any(
+        isinstance(block, Mapping)
+        and block.get("type") in {"thinking", "redacted_thinking"}
+        for block in blocks
+    ):
+        return True
+    delta = body.get("delta")
+    if isinstance(delta, Mapping) and delta.get("type") == "thinking_delta":
+        return True
+    for candidate in body.get("candidates") or []:
+        if not isinstance(candidate, Mapping):
+            continue
+        content = candidate.get("content")
+        if isinstance(content, Mapping) and any(
+            isinstance(part, Mapping) and part.get("thought") is True
+            for part in content.get("parts") or []
+        ):
+            return True
+    usage = body.get("usage")
+    if isinstance(usage, Mapping):
+        details = usage.get("completion_tokens_details")
+        if isinstance(details, Mapping):
+            count = details.get("reasoning_tokens")
+            if isinstance(count, (int, float)) and count > 0:
+                return True
+    usage = body.get("usageMetadata")
+    if isinstance(usage, Mapping):
+        count = usage.get("thoughtsTokenCount")
+        if isinstance(count, (int, float)) and count > 0:
+            return True
+    return False
+
+
 def _payload_capability_key(
     model: ModelConfig, field_name: str, payload: Mapping[str, object]
 ) -> tuple[str, ...]:
@@ -958,6 +1011,8 @@ class LlmClient:
             "stream_options",
             "stream",
         ):
+            if not model.thinking_enabled and field_name in {"thinking", "thinkingConfig"}:
+                continue
             if _payload_capability_key(model, field_name, payload) in cached:
                 _drop_payload_field(payload, field_name)
 
@@ -1075,6 +1130,8 @@ class LlmClient:
             "messages": messages,
             "max_tokens": _anthropic_max_tokens(request.model.max_output_tokens),
         }
+        if request.stream:
+            payload["stream"] = True
         if request.system_prompt:
             # Anthropic silently ignores cache_control below its minimum
             # cacheable token threshold; applying it to stable system text is harmless.
@@ -1096,6 +1153,8 @@ class LlmClient:
                 "type": "enabled",
                 "budget_tokens": request.model.effective_thinking_budget(),
             }
+        else:
+            payload["thinking"] = {"type": "disabled"}
 
         url = request.model.base_url.rstrip("/") + "/v1/messages"
         custom = request.model.custom_headers_dict()
@@ -1147,10 +1206,9 @@ class LlmClient:
             value = getattr(request.model, config_name)
             if value is not None:
                 generation_config[field_name] = value
-        if request.model.thinking_enabled:
-            generation_config["thinkingConfig"] = {
-                "thinkingBudget": request.model.effective_thinking_budget()
-            }
+        generation_config["thinkingConfig"] = {
+            "thinkingBudget": request.model.effective_thinking_budget()
+        }
         if generation_config:
             payload["generationConfig"] = generation_config
 
@@ -1279,6 +1337,26 @@ class LlmClient:
 
         rejected_keys: set[tuple[str, ...]] = set()
         while True:
+            if not request.model.thinking_enabled:
+                rejected_off = result.status_code in {400, 422} and any(
+                    _payload_contains_field(payload, name)
+                    and _body_rejects_payload_field(result.body, name)
+                    for name in ("thinking", "thinkingConfig")
+                )
+                ignored_off = result.status_code < 400 and _response_has_thinking(result.body)
+                if rejected_off or ignored_off:
+                    error = LlmRequestError(
+                        f"HTTP {result.status_code}: The API rejected or ignored the explicit "
+                        "thinking-off setting. Choose a model/API that supports disabling "
+                        "thinking; no default-thinking retry was sent.",
+                        code="llm.thinking_off_unsupported",
+                    )
+                    if request_log is not None:
+                        request_log.fail(
+                            error=str(error), status_code=result.status_code,
+                            response_text=_body_to_request_log_text(result.body),
+                        )
+                    raise error
             fallback = _payload_rejection_fallback(payload, result)
             if fallback is None:
                 if result.status_code < 400:
@@ -1389,7 +1467,7 @@ class LlmClient:
                         provider_attempt=attempt + 1,
                     )
                 )
-            except LlmDegenerateOutputError:
+            except LlmRequestError:
                 raise
             except asyncio.CancelledError:
                 raise
@@ -1554,7 +1632,7 @@ class LlmClient:
                         provider_attempt=provider_attempt,
                     )
                 )
-            except LlmDegenerateOutputError:
+            except LlmRequestError:
                 raise
             except asyncio.CancelledError:
                 raise
