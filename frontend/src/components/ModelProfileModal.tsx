@@ -754,7 +754,9 @@ function FormStep({
             {me.testLatency}: {testResult.latency_ms}ms ·{" "}
             {testResult.provider_response.error_code === "llm.thinking_off_unsupported"
               ? me.testThinkingOffUnsupported
-              : testResult.provider_response.detail}
+              : testResult.provider_response.error_code === "llm.thinking_off_ignored"
+                ? me.testThinkingOffIgnored
+                : testResult.provider_response.detail}
           </div>
         ) : null}
         {testResult?.provider_response.unsupported_parameters?.length ? (

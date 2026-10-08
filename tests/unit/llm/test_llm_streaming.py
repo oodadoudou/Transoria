@@ -366,7 +366,8 @@ def test_off_detects_reasoning_in_stream_events_instead_of_hiding_it(provider, e
 
     with pytest.raises(LlmRequestError) as caught:
         asyncio.run(run())
-    assert caught.value.code == "llm.thinking_off_unsupported"
+    assert caught.value.code == "llm.thinking_off_ignored"
+    assert "still returned reasoning" in str(caught.value)
 
 
 @pytest.mark.parametrize("detect_repetition", [False, True])

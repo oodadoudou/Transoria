@@ -311,7 +311,9 @@ def test_off_rejects_successful_http_response_that_still_contains_reasoning(prov
         asyncio.run(LlmClient(transport).chat(ChatRequest(
             model=_model(provider_format=provider), system_prompt="", user_prompt="ping",
         )))
-    assert caught.value.code == "llm.thinking_off_unsupported"
+    assert caught.value.code == "llm.thinking_off_ignored"
+    assert "still returned reasoning" in str(caught.value)
+    assert "model-x" in str(caught.value)
     assert len(transport.calls) == 1
 
 
@@ -329,6 +331,8 @@ def test_off_rejected_native_setting_does_not_fall_back_to_default(provider, fie
             system_prompt="", user_prompt="ping",
         )))
     assert caught.value.code == "llm.thinking_off_unsupported"
+    assert "does not support disabling thinking" in str(caught.value)
+    assert "Enable thinking" in str(caught.value)
     assert len(transport.calls) == 1
     assert not client._unsupported_payload_fields
 

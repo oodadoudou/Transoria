@@ -1345,11 +1345,23 @@ class LlmClient:
                 )
                 ignored_off = result.status_code < 400 and _response_has_thinking(result.body)
                 if rejected_off or ignored_off:
+                    if rejected_off:
+                        detail = (
+                            f"Model '{request.model.model_id}' on this API does not support "
+                            "disabling thinking with the explicit Off setting. Enable thinking "
+                            "or choose a model/API that supports disabling it."
+                        )
+                        code = "llm.thinking_off_unsupported"
+                    else:
+                        detail = (
+                            f"Model '{request.model.model_id}' on this API still returned "
+                            "reasoning despite the explicit Off setting. Thinking was not "
+                            "disabled; check the model/API's thinking controls."
+                        )
+                        code = "llm.thinking_off_ignored"
                     error = LlmRequestError(
-                        f"HTTP {result.status_code}: The API rejected or ignored the explicit "
-                        "thinking-off setting. Choose a model/API that supports disabling "
-                        "thinking; no default-thinking retry was sent.",
-                        code="llm.thinking_off_unsupported",
+                        f"HTTP {result.status_code}: {detail} No default-thinking retry was sent.",
+                        code=code,
                     )
                     if request_log is not None:
                         request_log.fail(

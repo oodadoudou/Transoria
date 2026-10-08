@@ -280,6 +280,7 @@ export interface Messages {
     testLatency: string;
     testCompatibilityWarning: string;
     testThinkingOffUnsupported: string;
+    testThinkingOffIgnored: string;
     fetchModels: string;
     fetchModelsHint: string;
     fetchRunning: string;

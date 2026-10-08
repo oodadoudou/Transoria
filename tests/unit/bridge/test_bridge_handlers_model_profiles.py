@@ -709,6 +709,27 @@ def test_inline_connection_rejected_off_does_not_report_default_thinking_success
     assert result["ok"] is False
     assert result["provider_response"]["error_code"] == "llm.thinking_off_unsupported"
     assert result["provider_response"]["status_code"] == 400
+    assert "does not support disabling thinking" in result["provider_response"]["detail"]
+    assert "any-model" in result["provider_response"]["detail"]
+    assert transport.last_request["payload"]["thinking"] == {"type": "disabled"}
+    assert len(transport.responses) == 1
+
+
+def test_inline_connection_ignored_off_reports_reasoning_instead_of_success(env_with_stubs):
+    transport = env_with_stubs["chat_transport"]
+    transport.responses.extend([
+        (200, {"choices": [{"message": {"content": "OK", "reasoning_content": "thinking"}}]}),
+        (200, {"choices": [{"message": {"content": "OK"}}]}),
+    ])
+    result = env_with_stubs["router"].call("model_profiles.test_connection", {
+        "request_id": "ignored-off-probe", "provider_format": "openai",
+        "base_url": "https://api.example.com", "api_key": "sk-inline",
+        "model_id": "any-model", "thinking_level": "off",
+    })
+    assert result["ok"] is False
+    assert result["provider_response"]["error_code"] == "llm.thinking_off_ignored"
+    assert result["provider_response"]["status_code"] == 200
+    assert "still returned reasoning" in result["provider_response"]["detail"]
     assert transport.last_request["payload"]["thinking"] == {"type": "disabled"}
     assert len(transport.responses) == 1
 

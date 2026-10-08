@@ -306,7 +306,8 @@ export const en: Messages = {
     testFailed: "Connection failed",
     testLatency: "Latency",
     testCompatibilityWarning: "The API rejected these settings; provider defaults were used instead:",
-    testThinkingOffUnsupported: "This model/API rejected thinking-off or still returned reasoning. The request stopped without falling back to default thinking. Choose a model/API that supports disabling thinking.",
+    testThinkingOffUnsupported: "This model does not support disabling thinking on this API. Enable thinking or choose a model/API that supports disabling it. This request did not fall back to default thinking.",
+    testThinkingOffIgnored: "This model/API did not honor Off: the response still contains reasoning content or reasoning tokens. Check the API's thinking controls. This request did not fall back to default thinking.",
     fetchModels: "Fetch model list",
     fetchModelsHint:
       "Call the provider's /models endpoint to list available model IDs.",
