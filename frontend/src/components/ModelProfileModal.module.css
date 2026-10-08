@@ -202,6 +202,14 @@
   font-size: 12.5px;
 }
 
+.statusWarning {
+  margin-top: 8px;
+  color: var(--text-warn, #6b3a1f);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .statusOk {
   background: var(--surface-ok, #ecf6ec);
   color: var(--text-ok, #2c5e2e);

@@ -296,6 +296,7 @@ export const zh: Messages = {
     testOk: "连接成功",
     testFailed: "连接失败",
     testLatency: "延迟",
+    testCompatibilityWarning: "接口不支持以下设置，已使用服务端默认行为；连接成功不代表这些设置已生效：",
     fetchModels: "拉取模型列表",
     fetchModelsHint: "调用 provider 的 /models 接口列出可用模型 ID。",
     fetchRunning: "拉取中…",

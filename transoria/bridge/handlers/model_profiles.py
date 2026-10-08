@@ -4,7 +4,7 @@ Profiles persist via :class:`ModelProfileStore`. API keys live in a
 separate file and never appear in the profile body returned to the
 frontend — only ``api_key_status`` and a masked tail.
 
-``test_connection`` issues a minimal LLM call (max 1 output token) using
+``test_connection`` issues a short LLM call using
 the configured profile and returns latency + status, so users can verify
 their API key + base URL + provider format are correct without leaving
 the Model page.
@@ -17,6 +17,7 @@ live dropdown instead of typing it.
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 import time
 from dataclasses import replace
@@ -251,7 +252,6 @@ def _build_handlers(
             model=profile,
             system_prompt="",
             user_prompt="ping",
-            temperature=0.0,
             stream=False,
         )
         start = time.monotonic()
@@ -300,6 +300,7 @@ def _build_handlers(
                     f"received {len(response.content)} chars; "
                     f"in={response.usage.input_tokens} out={response.usage.output_tokens}"
                 ),
+                "unsupported_parameters": list(response.unsupported_parameters),
             },
         }
 
@@ -343,7 +344,12 @@ def _build_handlers(
 
 
 _INLINE_PROFILE_FIELDS: frozenset[str] = frozenset(
-    {"provider_format", "base_url", "api_key"}
+    {
+        "provider_format", "base_url", "api_key", "model_id", "custom_headers",
+        "thinking_level", "thinking_budget_tokens", "max_output_tokens",
+        "temperature", "top_p", "presence_penalty", "frequency_penalty",
+        "timeout_seconds",
+    }
 )
 
 
@@ -442,6 +448,44 @@ def _resolve_profile_for_probe(
             if isinstance(item, (list, tuple)) and len(item) == 2
         )
 
+    thinking_level_raw = payload.get("thinking_level", ThinkingLevel.OFF.value)
+    if not isinstance(thinking_level_raw, str) or thinking_level_raw not in {
+        level.value for level in ThinkingLevel
+    }:
+        raise BridgeError.invalid_argument(
+            "thinking_level must be 'off', 'low', 'medium', or 'high'.",
+            field="thinking_level",
+        )
+    token_limits: dict[str, int] = {}
+    for name in ("thinking_budget_tokens", "max_output_tokens"):
+        if name not in payload:
+            continue
+        value = payload[name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise BridgeError.invalid_argument(
+                f"{name} must be a non-negative integer.", field=name
+            )
+        token_limits[name] = value
+
+    numeric_options: dict[str, float | None] = {}
+    for name in ("temperature", "top_p", "presence_penalty", "frequency_penalty", "timeout_seconds"):
+        if name not in payload:
+            continue
+        value = payload[name]
+        if value is None and name != "timeout_seconds":
+            numeric_options[name] = None
+            continue
+        if (
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or (name == "timeout_seconds" and value <= 0)
+        ):
+            raise BridgeError.invalid_argument(
+                f"{name} must be a finite number" + (" greater than zero." if name == "timeout_seconds" else " or null."),
+                field=name,
+            )
+        numeric_options[name] = value
+
     return ModelConfig(
         id="inline-probe",
         display_name="inline probe",
@@ -450,6 +494,9 @@ def _resolve_profile_for_probe(
         model_id=model_id,
         api_keys=(api_key,),
         custom_headers=custom_headers,
+        thinking_level=ThinkingLevel(thinking_level_raw),
+        **token_limits,
+        **numeric_options,
     )
 
 

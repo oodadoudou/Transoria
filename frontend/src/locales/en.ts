@@ -305,6 +305,7 @@ export const en: Messages = {
     testOk: "Connection OK",
     testFailed: "Connection failed",
     testLatency: "Latency",
+    testCompatibilityWarning: "The API rejected these settings; provider defaults were used instead:",
     fetchModels: "Fetch model list",
     fetchModelsHint:
       "Call the provider's /models endpoint to list available model IDs.",

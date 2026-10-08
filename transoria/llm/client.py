@@ -11,7 +11,7 @@ import asyncio
 import json
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Mapping, Protocol
 
 import httpx
@@ -141,6 +141,7 @@ class ChatResponse:
     usage: TokenUsage
     raw: Mapping[str, object] | None = None
     finish_reason: str | None = None
+    unsupported_parameters: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -728,9 +729,13 @@ _PAYLOAD_FIELD_REJECTION_TERMS: tuple[str, ...] = (
 
 _OPTIONAL_COMPATIBILITY_FIELDS: tuple[str, ...] = (
     "thinking",
+    "reasoning_effort",
     "thinkingConfig",
     "cache_control",
     "temperature",
+    "topP",
+    "presencePenalty",
+    "frequencyPenalty",
     "top_p",
     "presence_penalty",
     "frequency_penalty",
@@ -751,6 +756,10 @@ def _body_rejects_payload_field(
     if isinstance(error, Mapping):
         param = str(error.get("param", "")).strip("'\" ").lower()
         code = str(error.get("code", "")).lower()
+        if param and not re.match(
+            rf"(?:body\.)?{re.escape(field_name.lower())}(?:\.|\[|$)", param
+        ):
+            return False
         if param == field_name.lower() and any(
             marker in code
             for marker in ("unknown", "unsupported", "unrecognized", "unexpected")
@@ -758,15 +767,39 @@ def _body_rejects_payload_field(
             return True
 
     text = json.dumps(body, ensure_ascii=False, default=str).lower()
-    field_word = rf"(?<![a-z0-9_]){re.escape(field_name.lower())}(?![a-z0-9_])"
+    named_rejections = re.findall(
+        r"(?:unknown|unrecognized|unexpected|unsupported)\s+(?:request\s+)?"
+        r"(?:parameter|field|argument|name)(?:\s+(?:supplied|provided))?"
+        r"\s*:?\s*['\"`]*([a-z0-9_]+(?:\.[a-z0-9_]+)*)",
+        text,
+    )
+    if named_rejections:
+        return any(
+            name.removeprefix("body.").split(".", 1)[0] == field_name.lower()
+            for name in named_rejections
+        )
+    field_word = (
+        rf"(?<![a-z0-9_]){re.escape(field_name.lower())}(?![a-z0-9_])"
+        r"(?:\.[a-z0-9_]+)*"
+    )
     if re.search(field_word, text) is None:
         return False
     rejection = "|".join(_PAYLOAD_FIELD_REJECTION_TERMS)
     nearby = r"[^.;\n]{0,120}"
-    return bool(
-        re.search(f"{field_word}{nearby}(?:{rejection})", text)
-        or re.search(f"(?:{rejection}){nearby}{field_word}", text)
-    )
+    for pattern in (
+        f"{field_word}{nearby}(?:{rejection})",
+        f"(?:{rejection}){nearby}{field_word}",
+    ):
+        for match in re.finditer(pattern, text):
+            # Mentioning an enabled option next to a rejected, different
+            # option must not discard both (or remove the wrong one first).
+            if not any(
+                other.lower() != field_name.lower()
+                and re.search(rf"(?<![a-z0-9_]){re.escape(other.lower())}(?![a-z0-9_])", match.group())
+                for other in _OPTIONAL_COMPATIBILITY_FIELDS
+            ):
+                return True
+    return False
 
 
 def _body_rejects_streaming(body: Mapping[str, object]) -> bool:
@@ -795,7 +828,10 @@ def _should_retry_without_stream_options(
         return False
     if result.status_code not in {400, 422}:
         return False
-    return _body_mentions_stream_options(result.body)
+    return any(
+        _body_rejects_payload_field(result.body, name)
+        for name in ("stream_options", "include_usage")
+    )
 
 
 def _should_retry_without_streaming(
@@ -873,12 +909,28 @@ def _payload_rejection_fallback(
     return None
 
 
-def _payload_capability_key(model: ModelConfig, field_name: str) -> tuple[str, ...]:
+def _payload_field_value(payload: Mapping[str, object], field_name: str) -> object:
+    if field_name in payload:
+        return payload[field_name]
+    generation_config = payload.get("generationConfig")
+    if isinstance(generation_config, Mapping) and field_name in generation_config:
+        return generation_config[field_name]
+    if field_name == "cache_control":
+        system = payload.get("system")
+        if isinstance(system, list):
+            return [block[field_name] for block in system if isinstance(block, Mapping) and field_name in block]
+    return None
+
+
+def _payload_capability_key(
+    model: ModelConfig, field_name: str, payload: Mapping[str, object]
+) -> tuple[str, ...]:
     return (
         model.provider_format.value,
         model.base_url.rstrip("/").lower(),
         model.model_id,
         field_name.lower(),
+        json.dumps(_payload_field_value(payload, field_name), sort_keys=True),
     )
 
 
@@ -906,7 +958,7 @@ class LlmClient:
             "stream_options",
             "stream",
         ):
-            if _payload_capability_key(model, field_name) in cached:
+            if _payload_capability_key(model, field_name, payload) in cached:
                 _drop_payload_field(payload, field_name)
 
     async def _execute_transport(
@@ -991,11 +1043,12 @@ class LlmClient:
         thinking = _thinking_payload(request.model.thinking_level)
         if thinking is not None:
             payload["thinking"] = thinking
-        self._drop_cached_unsupported_fields(request.model, payload)
+        if request.model.thinking_enabled:
+            payload["reasoning_effort"] = request.model.thinking_level.value
 
         url = request.model.base_url.rstrip("/") + "/chat/completions"
         custom = request.model.custom_headers_dict()
-        return await self._send_with_rotation(
+        return await self._send_with_compatibility(
             request,
             url,
             payload,
@@ -1043,11 +1096,10 @@ class LlmClient:
                 "type": "enabled",
                 "budget_tokens": request.model.effective_thinking_budget(),
             }
-        self._drop_cached_unsupported_fields(request.model, payload)
 
         url = request.model.base_url.rstrip("/") + "/v1/messages"
         custom = request.model.custom_headers_dict()
-        return await self._send_with_rotation(
+        return await self._send_with_compatibility(
             request,
             url,
             payload,
@@ -1085,20 +1137,29 @@ class LlmClient:
         generation_config: dict[str, object] = {}
         if request.temperature is not None:
             generation_config["temperature"] = request.temperature
+        elif request.model.temperature is not None:
+            generation_config["temperature"] = request.model.temperature
+        for config_name, field_name in (
+            ("top_p", "topP"),
+            ("presence_penalty", "presencePenalty"),
+            ("frequency_penalty", "frequencyPenalty"),
+        ):
+            value = getattr(request.model, config_name)
+            if value is not None:
+                generation_config[field_name] = value
         if request.model.thinking_enabled:
             generation_config["thinkingConfig"] = {
                 "thinkingBudget": request.model.effective_thinking_budget()
             }
         if generation_config:
             payload["generationConfig"] = generation_config
-        self._drop_cached_unsupported_fields(request.model, payload)
 
         # Google uses URL-bound API keys: ?key=<key>
         url_template = (
             request.model.base_url.rstrip("/")
             + f"/v1beta/models/{request.model.model_id}:generateContent?key={{key}}"
         )
-        return await self._send_with_rotation(
+        return await self._send_with_compatibility(
             request,
             url_template,
             payload,
@@ -1106,6 +1167,22 @@ class LlmClient:
             parser=_parse_google_response,
             url_takes_key=True,
         )
+
+    async def _send_with_compatibility(
+        self, request: ChatRequest, url: str, payload: dict[str, object], **kwargs
+    ) -> ChatResponse:
+        requested = {
+            name: _payload_field_value(payload, name)
+            for name in (*_OPTIONAL_COMPATIBILITY_FIELDS, "stream_options", "stream")
+            if _payload_contains_field(payload, name)
+        }
+        self._drop_cached_unsupported_fields(request.model, payload)
+        response = await self._send_with_rotation(request, url, payload, **kwargs)
+        return replace(response, unsupported_parameters=tuple(
+            f"{name}={json.dumps(value, sort_keys=True)}"
+            for name, value in requested.items()
+            if not _payload_contains_field(payload, name)
+        ))
 
     async def _retry_after_payload_rejection(
         self,
@@ -1200,14 +1277,17 @@ class LlmClient:
         still handling gateways that reject extensions one at a time.
         """
 
+        rejected_keys: set[tuple[str, ...]] = set()
         while True:
             fallback = _payload_rejection_fallback(payload, result)
             if fallback is None:
+                if result.status_code < 400:
+                    self._unsupported_payload_fields.update(rejected_keys)
                 return result, send_start, request_log
             rejected_feature, retry_action, drop_fields = fallback
             for field_name in drop_fields:
-                self._unsupported_payload_fields.add(
-                    _payload_capability_key(request.model, field_name)
+                rejected_keys.add(
+                    _payload_capability_key(request.model, field_name, payload)
                 )
             result, send_start, request_log = (
                 await self._retry_after_payload_rejection(

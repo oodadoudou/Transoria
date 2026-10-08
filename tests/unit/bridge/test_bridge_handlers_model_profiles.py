@@ -12,7 +12,7 @@ import pytest
 from transoria.bridge import BridgeError, BridgeRouter
 from transoria.bridge.handlers.model_profiles import register
 from transoria.llm.client import TransportResult
-from transoria.llm.config import ModelConfig, ProviderFormat
+from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
 from transoria.model_profiles import DEFAULT_PROFILE_IDS, ModelProfileStore
 from transoria.settings import SettingsStore
 
@@ -577,6 +577,163 @@ def test_test_connection_inline_requires_model_id(env_with_stubs):
         )
     assert caught.value.code == "bridge.invalid_argument"
     assert caught.value.payload.details["field"] == "model_id"
+
+
+@pytest.mark.parametrize("provider", ["openai", "custom", "sakura", "anthropic", "google"])
+@pytest.mark.parametrize("level", ["off", "low", "medium", "high"])
+def test_inline_probe_preserves_draft_thinking_settings(env_with_stubs, provider, level):
+    from transoria.bridge.handlers.model_profiles import _resolve_profile_for_probe
+
+    profile = _resolve_profile_for_probe(
+        {
+            "provider_format": provider,
+            "base_url": "https://api.example.com",
+            "api_key": "sk-inline",
+            "model_id": "glm-5.3-flash",
+            "thinking_level": level,
+            "thinking_budget_tokens": 2048,
+            "max_output_tokens": 4096,
+        },
+        profile_store=env_with_stubs["profile_store"],
+        require_model_id=True,
+        usage="testing",
+    )
+    assert profile.thinking_level is ThinkingLevel(level)
+    assert profile.thinking_budget_tokens == 2048
+    assert profile.max_output_tokens == 4096
+
+
+@pytest.mark.parametrize("provider", ["openai", "custom", "sakura"])
+@pytest.mark.parametrize("level", ["off", "low", "medium", "high"])
+def test_inline_connection_sends_selected_thinking_type(env_with_stubs, provider, level):
+    transport = env_with_stubs["chat_transport"]
+    transport.responses.append((200, {"choices": [{"message": {"content": "OK"}}]}))
+    before = env_with_stubs["profile_store"].load()
+    result = env_with_stubs["router"].call(
+        "model_profiles.test_connection",
+        {
+            "request_id": "thinking-probe",
+            "provider_format": provider,
+            "base_url": "https://api.example.com",
+            "api_key": "sk-inline",
+            "model_id": "glm-5.3-flash",
+            "thinking_level": level,
+        },
+    )
+    assert result["ok"] is True
+    expected = "disabled" if level == "off" else "enabled"
+    assert transport.last_request["payload"]["thinking"] == {"type": expected}
+    assert env_with_stubs["profile_store"].load() == before
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("thinking_level", "invalid"),
+        ("thinking_level", None),
+        ("thinking_level", []),
+        ("thinking_budget_tokens", -1),
+        ("thinking_budget_tokens", True),
+        ("thinking_budget_tokens", "2048"),
+        ("max_output_tokens", -1),
+        ("max_output_tokens", False),
+        ("temperature", True),
+        ("top_p", float("inf")),
+        ("frequency_penalty", float("nan")),
+        ("presence_penalty", "0.1"),
+        ("timeout_seconds", 0),
+        ("timeout_seconds", None),
+    ],
+)
+def test_inline_probe_rejects_invalid_thinking_settings(env_with_stubs, field, value):
+    with pytest.raises(BridgeError) as caught:
+        env_with_stubs["router"].call(
+            "model_profiles.test_connection",
+            {
+                "request_id": "invalid-probe",
+                "provider_format": "openai",
+                "base_url": "https://api.example.com",
+                "api_key": "sk-do-not-echo",
+                "model_id": "glm-5.3-flash",
+                field: value,
+            },
+        )
+    assert caught.value.code == "bridge.invalid_argument"
+    assert caught.value.payload.details["field"] == field
+    assert "sk-do-not-echo" not in str(caught.value)
+    assert env_with_stubs["chat_transport"].last_request is None
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "google"])
+def test_inline_connection_sends_native_thinking_budget(env_with_stubs, provider):
+    transport = env_with_stubs["chat_transport"]
+    response_body = (
+        {"content": [{"type": "text", "text": "OK"}]}
+        if provider == "anthropic"
+        else {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]}
+    )
+    transport.responses.append((200, response_body))
+    result = env_with_stubs["router"].call(
+        "model_profiles.test_connection",
+        {
+            "request_id": "native-thinking-probe",
+            "provider_format": provider,
+            "base_url": "https://api.example.com",
+            "api_key": "sk-inline",
+            "model_id": "test-model",
+            "thinking_level": "medium",
+            "thinking_budget_tokens": 512,
+            "max_output_tokens": 4096,
+        },
+    )
+    assert result["ok"] is True
+    payload = transport.last_request["payload"]
+    if provider == "anthropic":
+        assert payload["thinking"] == {"type": "enabled", "budget_tokens": 512}
+        assert payload["max_tokens"] == 4096
+    else:
+        assert payload["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 512}
+
+
+def test_inline_connection_reports_compatibility_fallback(env_with_stubs):
+    transport = env_with_stubs["chat_transport"]
+    transport.responses.extend([
+        (400, {"error": {"message": "thinking.type disabled is not supported by this model", "code": "InvalidParameter", "param": ""}}),
+        (200, {"choices": [{"message": {"content": "OK"}}]}),
+    ])
+    result = env_with_stubs["router"].call("model_profiles.test_connection", {
+        "request_id": "compatibility-probe", "provider_format": "openai",
+        "base_url": "https://api.example.com", "api_key": "sk-inline",
+        "model_id": "any-model", "thinking_level": "off",
+    })
+    assert result["ok"] is True
+    assert result["provider_response"]["unsupported_parameters"] == ['thinking={"type": "disabled"}']
+    assert "thinking" not in transport.last_request["payload"]
+
+
+@pytest.mark.parametrize("provider", ["openai", "custom", "sakura", "anthropic", "google"])
+def test_inline_connection_preserves_sampling_options(env_with_stubs, provider):
+    transport = env_with_stubs["chat_transport"]
+    bodies = {
+        "anthropic": {"content": [{"type": "text", "text": "OK"}]},
+        "google": {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]},
+    }
+    transport.responses.append((200, bodies.get(provider, {"choices": [{"message": {"content": "OK"}}]})))
+    result = env_with_stubs["router"].call("model_profiles.test_connection", {
+        "request_id": "sampling-probe", "provider_format": provider,
+        "base_url": "https://api.example.com", "api_key": "sk-inline",
+        "model_id": "any-model", "temperature": 0.6, "top_p": 0.8,
+        "presence_penalty": 0.1, "frequency_penalty": 0.2, "timeout_seconds": 15,
+    })
+    assert result["ok"] is True
+    assert transport.last_request["timeout"] == 15
+    payload = transport.last_request["payload"]
+    config = payload["generationConfig"] if provider == "google" else payload
+    assert config["temperature"] == 0.6
+    assert config["topP" if provider == "google" else "top_p"] == 0.8
+    if provider != "anthropic":
+        assert config["presencePenalty" if provider == "google" else "presence_penalty"] == 0.1
+        assert config["frequencyPenalty" if provider == "google" else "frequency_penalty"] == 0.2
 
 
 def test_test_connection_rejects_mixed_id_and_inline(env_with_stubs):

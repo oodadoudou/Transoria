@@ -289,6 +289,7 @@ export interface ModelTestResult {
     model: string | null;
     status_code: number | null;
     detail: string;
+    unsupported_parameters?: string[];
   };
 }
 
@@ -396,6 +397,14 @@ export interface InlineProbeCredentials {
    *  optional for fetchModelListInline (only base_url + key matter). */
   model_id?: string;
   custom_headers?: Array<[string, string]>;
+  thinking_level?: ThinkingLevel;
+  thinking_budget_tokens?: number;
+  max_output_tokens?: number;
+  temperature?: number | null;
+  top_p?: number | null;
+  presence_penalty?: number | null;
+  frequency_penalty?: number | null;
+  timeout_seconds?: number;
 }
 
 export interface ProviderTemplateFieldHint {

@@ -256,6 +256,8 @@ export function ModelProfileModal({
   );
   const [probeBusy, setProbeBusy] = useState<"test" | "fetch" | null>(null);
   const requestSeq = useRef(0);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   // Snapshot of the initial draft for the unsaved-changes guard.
   const baselineRef = useRef<Draft>(draft);
 
@@ -324,6 +326,10 @@ export function ModelProfileModal({
 
   const update = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
+    setTestResult(null);
+    setError(null);
+    if (key === "provider_format" || key === "base_url" || key === "api_keys")
+      setFetchedModels(null);
   };
 
   const handlePickTemplate = (template: ProviderTemplate) => {
@@ -350,6 +356,14 @@ export function ModelProfileModal({
       provider_format: normalized.provider_format,
       base_url: normalized.base_url,
       api_key: apiKeys[0],
+      thinking_level: normalized.thinking_level,
+      thinking_budget_tokens: normalized.thinking_budget_tokens,
+      max_output_tokens: normalized.max_output_tokens,
+      temperature: normalized.temperature,
+      top_p: normalized.top_p,
+      presence_penalty: normalized.presence_penalty,
+      frequency_penalty: normalized.frequency_penalty,
+      timeout_seconds: Math.min(normalized.timeout_seconds, INLINE_PROBE_TIMEOUT_MS / 1000),
     };
     if (normalized.model_id) creds.model_id = normalized.model_id;
     if (normalized.custom_headers.length)
@@ -361,6 +375,7 @@ export function ModelProfileModal({
     const creds = inlineCreds();
     if (!creds || !creds.model_id) return;
     const seq = ++requestSeq.current;
+    const testedDraft = draft;
     setProbeBusy("test");
     setTestResult(null);
     setError(null);
@@ -372,9 +387,9 @@ export function ModelProfileModal({
         ),
         INLINE_PROBE_TIMEOUT_MS,
       );
-      if (seq === requestSeq.current) setTestResult(result);
+      if (seq === requestSeq.current && draftRef.current === testedDraft) setTestResult(result);
     } catch (err) {
-      if (seq === requestSeq.current) setError(asBridgeError(err));
+      if (seq === requestSeq.current && draftRef.current === testedDraft) setError(asBridgeError(err));
     } finally {
       if (seq === requestSeq.current) setProbeBusy(null);
     }
@@ -384,6 +399,7 @@ export function ModelProfileModal({
     const creds = inlineCreds();
     if (!creds) return;
     const seq = ++requestSeq.current;
+    const testedDraft = draft;
     setProbeBusy("fetch");
     setFetchedModels(null);
     setError(null);
@@ -395,9 +411,9 @@ export function ModelProfileModal({
         ),
         INLINE_PROBE_TIMEOUT_MS,
       );
-      if (seq === requestSeq.current) setFetchedModels(result.models);
+      if (seq === requestSeq.current && draftRef.current === testedDraft) setFetchedModels(result.models);
     } catch (err) {
-      if (seq === requestSeq.current) setError(asBridgeError(err));
+      if (seq === requestSeq.current && draftRef.current === testedDraft) setError(asBridgeError(err));
     } finally {
       if (seq === requestSeq.current) setProbeBusy(null);
     }
@@ -737,6 +753,12 @@ function FormStep({
             <strong>{testResult.ok ? me.testOk : me.testFailed}</strong> ·{" "}
             {me.testLatency}: {testResult.latency_ms}ms ·{" "}
             {testResult.provider_response.detail}
+          </div>
+        ) : null}
+        {testResult?.provider_response.unsupported_parameters?.length ? (
+          <div className={styles.statusWarning} role="status">
+            {me.testCompatibilityWarning}{" "}
+            {testResult.provider_response.unsupported_parameters.join(", ")}
           </div>
         ) : null}
       </section>
