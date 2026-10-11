@@ -9,7 +9,7 @@ import {
 import { useTaskStore, type GlossaryEntry } from "@/store/useTaskStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import { TextField } from "@/components/TextField";
 import { Segmented } from "@/components/Segmented";
@@ -665,18 +665,21 @@ function EntryEditor({
   return (
     <div className={ruleTableStyles.editor}>
       <TextField
+        stacked
         label={g.editor.source}
         value={entry.source}
         onChange={(v) => onChange({ source: v })}
         placeholder={g.editor.sourcePlaceholder}
       />
       <TextField
+        stacked
         label={g.editor.translation}
         value={entry.translation}
         onChange={(v) => onChange({ translation: v })}
         placeholder={g.editor.translationPlaceholder}
       />
       <TextField
+        stacked
         label={g.editor.description}
         value={entry.description}
         onChange={(v) => onChange({ description: v })}
@@ -700,9 +703,9 @@ function EntryEditor({
         onChange={(next) => onChange({ enabled: next })}
       />
       <div className={ruleTableStyles.editorActions}>
-        <Pill variant="ghost" onClick={onDelete}>
+        <Button variant="danger" onClick={onDelete}>
           {g.actions.delete}
-        </Pill>
+        </Button>
       </div>
     </div>
   );

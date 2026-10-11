@@ -1,6 +1,6 @@
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import styles from "./CompletionWithFailuresDialog.module.css";
 
 interface CompletionWithFailuresDialogProps {
@@ -33,9 +33,9 @@ export function CompletionWithFailuresDialog({
           {messages.bodySuffix}
         </p>
         <div className={styles.footer}>
-          <Pill variant="ghost" onClick={onAccept}>
+          <Button variant="ghost" onClick={onAccept}>
             {messages.acceptAction}
-          </Pill>
+          </Button>
         </div>
       </div>
     </div>

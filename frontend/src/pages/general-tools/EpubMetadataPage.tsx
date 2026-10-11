@@ -8,7 +8,7 @@ import {
   type EpubMetadataInfo,
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { CompactPath } from "@/components/CompactPath";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
@@ -79,7 +79,7 @@ function joinPath(dir: string, name: string): string {
   return `${folder.replace(/[\\/]+$/, "")}${separator}${name}`;
 }
 
-export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded?: boolean; onEditContent?: (path: string) => void } = {}) {
+export function EpubMetadataPage({ onEditContent }: { onEditContent?: (path: string) => void } = {}) {
   const messages = useMessages();
   const text = messages.epubMetadataTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
@@ -254,8 +254,8 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
   return (
     <EpubToolWorkspace>
       <Panel
-        title={embedded ? undefined : text.title}
-        subtitle={embedded ? undefined : text.sub}
+        title={text.title}
+        subtitle={text.sub}
       >
         <div className={styles.pathGrid}>
           <label className={styles.field}>
@@ -266,9 +266,9 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
                 onChange={(event) => setInputPath(event.target.value)}
                 placeholder={text.inputPlaceholder}
               />
-              <Pill variant="ghost" onClick={handleChooseInput} disabled={loading}>
+              <Button variant="ghost" onClick={handleChooseInput} disabled={loading}>
                 {text.chooseEpub}
-              </Pill>
+              </Button>
             </div>
           </label>
         </div>
@@ -278,7 +278,6 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
       <EpubToolStage>
       <Panel
         label={text.currentLabel}
-        labelHelp={!info ? text.noMetadata : undefined}
       >
         {info ? (
           <div className={styles.summaryGrid}>
@@ -311,7 +310,7 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
             />
           </div>
         ) : (
-          <div className={styles.empty}>-</div>
+          <div className={styles.empty}>{text.noMetadata}</div>
         )}
       </Panel>
       </EpubToolStage>
@@ -329,17 +328,17 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
         }
         actions={
           <>
-            <Pill onClick={handleOpenEditor} disabled={!inputPath || loading}>
+            <Button onClick={handleOpenEditor} disabled={!inputPath || loading}>
               {text.openEditor}
-            </Pill>
-            {onEditContent ? <Pill variant="ghost" onClick={() => onEditContent(result?.output_path || inputPath.trim())} disabled={!inputPath || loading}>{text.editContent}</Pill> : null}
-            <Pill
+            </Button>
+            {onEditContent ? <Button variant="ghost" onClick={() => onEditContent(result?.output_path || inputPath.trim())} disabled={!inputPath || loading}>{text.editContent}</Button> : null}
+            <Button
               variant="ghost"
               onClick={handleRevealOutput}
               disabled={!result}
             >
               {text.openOutput}
-            </Pill>
+            </Button>
           </>
         }
         error={
@@ -404,9 +403,9 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
                       }}
                       placeholder={text.coverPlaceholder}
                     />
-                    <Pill variant="ghost" onClick={handleChooseCover}>
+                    <Button variant="ghost" onClick={handleChooseCover}>
                       {text.chooseCover}
-                    </Pill>
+                    </Button>
                   </div>
                 </label>
               </div>
@@ -444,9 +443,9 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
                       onChange={(event) => setOutputFolderPath(event.target.value)}
                       placeholder={defaultOutputFolder(inputPath)}
                     />
-                    <Pill variant="ghost" onClick={handleChooseOutputFolder}>
+                    <Button variant="ghost" onClick={handleChooseOutputFolder}>
                       {text.chooseOutputFolder}
-                    </Pill>
+                    </Button>
                   </div>
                 </label>
                 <label className={styles.checkboxRow}>
@@ -493,15 +492,15 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
             </div>
 
             <div className={styles.dialogFooter}>
-              <Pill variant="ghost" onClick={() => setEditorOpen(false)}>
+              <Button variant="ghost" onClick={() => setEditorOpen(false)}>
                 {text.cancel}
-              </Pill>
-              <Pill
+              </Button>
+              <Button
                 onClick={handleApplyRequest}
                 disabled={!inputPath || !resolvedOutputPath || loading}
               >
                 {text.ok}
-              </Pill>
+              </Button>
             </div>
           </div>
         </div>
@@ -519,16 +518,16 @@ export function EpubMetadataPage({ embedded = false, onEditContent }: { embedded
             <p>{text.overwriteBody}</p>
             <code>{resolvedOutputPath}</code>
             <div className={styles.dialogFooter}>
-              <Pill
+              <Button
                 variant="ghost"
                 onClick={() => setConfirmOverwriteOpen(false)}
                 disabled={loading}
               >
                 {text.overwriteNo}
-              </Pill>
-              <Pill onClick={() => void applyMetadata(true)} disabled={loading}>
+              </Button>
+              <Button onClick={() => void applyMetadata(true)} disabled={loading}>
                 {text.overwriteYes}
-              </Pill>
+              </Button>
             </div>
           </div>
         </div>

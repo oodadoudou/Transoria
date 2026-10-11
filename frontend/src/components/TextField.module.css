@@ -2,6 +2,11 @@
   grid-template-columns: minmax(160px, max-content) minmax(0, 1fr);
 }
 
+.rowStacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
 .inputWrap {
   display: flex;
   align-items: center;
@@ -12,13 +17,6 @@
   width: 100%;
   text-align: left;
   font-weight: 500;
-  font-size: 13px;
-  padding: 8px 12px;
-}
-
-.text:focus-visible {
-  border-color: var(--action);
-  background: var(--panel);
 }
 
 .mono {
@@ -28,7 +26,6 @@
 
 .multi {
   resize: vertical;
-  line-height: 1.55;
   min-height: 80px;
   font-family: var(--font-mono);
   font-size: 12.5px;

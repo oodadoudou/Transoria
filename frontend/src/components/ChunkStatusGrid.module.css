@@ -58,7 +58,7 @@
 
 .canvasWrap {
   display: block;
-  padding: 8px 0;
+  padding: 6px 0 0;
 }
 
 .summary {
@@ -83,7 +83,6 @@
   width: 7px;
   height: 7px;
   border-radius: 2px;
-  background: var(--hairline-strong, #d8d2c7);
   flex: 0 0 auto;
 }
 
@@ -100,7 +99,7 @@
 }
 
 .canvasDetail {
-  margin-top: 6px;
+  margin-top: 4px;
   color: var(--ink-soft, #1f1f23);
   font-size: 11px;
   line-height: 1.45;

@@ -64,27 +64,8 @@
 }
 
 .input {
-  background: var(--panel-soft);
-  border: 1px solid transparent;
-  border-radius: var(--radius-inset);
-  padding: 7px 12px;
-  font-family: inherit;
-  font-size: 13px;
   font-weight: 600;
-  color: var(--ink);
   text-align: right;
-  outline: none;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
-.input:hover:not(:read-only) {
-  background: var(--panel);
-}
-
-.input:focus-visible {
-  border-color: var(--action);
-  background: var(--panel);
-  box-shadow: none;
 }
 
 .input::-webkit-inner-spin-button,

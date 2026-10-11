@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import styles from "./GuidedEmptyState.module.css";
 
 interface GuidedEmptyStateProps {
@@ -27,9 +27,9 @@ export function GuidedEmptyState({
         <p>{body}</p>
       </div>
       {actionLabel && onAction ? (
-        <Pill variant="primary" onClick={onAction}>
+        <Button variant="primary" onClick={onAction}>
           {actionLabel}
-        </Pill>
+        </Button>
       ) : null}
       {children ? <div className={styles.extra}>{children}</div> : null}
     </section>

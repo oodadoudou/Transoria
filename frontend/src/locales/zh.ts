@@ -238,7 +238,7 @@ export const zh: Messages = {
     titlePrompt: "切换激活 Prompt",
     titlePreset: "切换预设",
     closeAction: "关闭",
-    activeBadge: "激活",
+    activeBadge: "当前",
     emptyModel: "尚未配置 API。请到 Model 页添加。",
     emptyPrompt: "尚未配置 Prompt 预设。",
     emptyPreset: "无预设。请先到预设管理页创建一套配置组合。",
@@ -1644,7 +1644,7 @@ export const zh: Messages = {
       },
       configured: {
         title: "已配置模型",
-        sub: "你新增的自定义模型。点击「设为当前」应用,或编辑 / 删除条目。",
+        sub: "双击条目或通过 ··· 菜单编辑、复制、删除；在各模块运行页切换使用的模型。",
         empty: "暂无自定义模型。点击右上角「+ 新增模型」添加一个。",
         applyAction: "设为当前",
         appliedBadge: "当前",

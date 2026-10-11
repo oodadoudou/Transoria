@@ -10,7 +10,7 @@ import {
   type TranslationRuleKind,
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
 import {
@@ -361,6 +361,7 @@ function RuleEditor({
   return (
     <div className={ruleTableStyles.editor}>
       <TextField
+        stacked
         label={labels.srcLabel}
         value={rule.src}
         onChange={(v) => onChange({ src: v })}
@@ -368,6 +369,7 @@ function RuleEditor({
         mono
       />
       <TextField
+        stacked
         label={labels.dstLabel}
         value={rule.dst}
         onChange={(v) => onChange({ dst: v })}
@@ -385,6 +387,7 @@ function RuleEditor({
         onChange={(next) => onChange({ case_sensitive: next })}
       />
       <TextField
+        stacked
         label={labels.noteLabel}
         value={rule.note}
         onChange={(v) => onChange({ note: v })}
@@ -395,9 +398,9 @@ function RuleEditor({
         onChange={(next) => onChange({ enabled: next })}
       />
       <div className={ruleTableStyles.editorActions}>
-        <Pill variant="ghost" onClick={onDelete}>
+        <Button variant="danger" onClick={onDelete}>
           {labels.deleteAction}
-        </Pill>
+        </Button>
       </div>
     </div>
   );

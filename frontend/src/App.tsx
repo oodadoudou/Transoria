@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n, useMessages } from "./locales";
 import { isRunPage, useTaskStore, type Route } from "./store/useTaskStore";
 import { useSettingsStore } from "./store/useSettingsStore";
@@ -49,6 +49,12 @@ export function App() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(
     firstRunOnboardingDismissed,
   );
+  const mainRef = useRef<HTMLElement>(null);
+  const routeKey = `${route.module}/${route.page}`;
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [routeKey]);
 
   useEffect(() => {
     void hydrateSettings();
@@ -90,7 +96,16 @@ export function App() {
           showRunActions={false}
         />
         <Rail />
-        <section className={styles.main}>
+        <section
+          ref={mainRef}
+          className={[
+            styles.main,
+            isTablePage(route) ? styles.mainWide : "",
+            isFramePage(route) ? styles.mainFrame : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <PageBody route={route} />
         </section>
         {onRunPage ? <StatusBar /> : null}
@@ -127,6 +142,23 @@ export function App() {
       <ToastHost />
     </div>
   );
+}
+
+function isTablePage(route: Route): boolean {
+  return (
+    (route.module === "translation" &&
+      (route.page === "proofreading" ||
+        route.page === "glossary" ||
+        route.page === "textPreserve" ||
+        route.page === "preReplacement" ||
+        route.page === "postReplacement")) ||
+    (route.module === "glossary-review" && route.page === "review")
+  );
+}
+
+// Frame pages size themselves to the viewport and scroll only their list region.
+function isFramePage(route: Route): boolean {
+  return route.module === "translation" && route.page === "proofreading";
 }
 
 function PageBody({ route }: { route: Route }) {

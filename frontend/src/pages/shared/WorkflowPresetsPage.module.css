@@ -169,7 +169,7 @@
 .errorCode {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--code-bg);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -189,7 +189,7 @@
 }
 
 .errorDismiss:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-wash);
 }
 
 .overlay {
@@ -273,22 +273,6 @@
 
 .select {
   width: 100%;
-  height: 40px;
-  min-height: 40px;
-  box-sizing: border-box;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--panel-soft);
-  color: var(--ink);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 0 32px 0 12px;
-}
-
-.select:focus {
-  outline: none;
-  border-color: var(--hairline-strong);
 }
 
 .languageGrid {
@@ -297,13 +281,6 @@
   gap: 12px;
 }
 
-.languageGrid select {
-  height: 40px;
-  min-height: 40px;
-  box-sizing: border-box;
-  padding-top: 0;
-  padding-bottom: 0;
-}
 
 .toggleRow,
 .advancedHeading {

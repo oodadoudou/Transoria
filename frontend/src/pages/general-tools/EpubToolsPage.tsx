@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
+import { Button } from "@/components/Button";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import type { GeneralToolsPage } from "@/store/useTaskStore";
@@ -15,6 +16,7 @@ import { EpubRepairPage } from "./EpubRepairPage";
 import { TxtToEpubPage } from "./TxtToEpubPage";
 import { editorWasOpen, markEditorOpen } from "./epubEditorDraft";
 import { nativeEditor } from "@/bridge/native";
+import { ChevronLeft } from "lucide-react";
 import styles from "./EpubToolsPage.module.css";
 
 type EpubToolPage = Exclude<GeneralToolsPage, "epubTools">;
@@ -29,7 +31,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   const text = messages.generalTools.epubTools;
   const navigate = useTaskStore((state) => state.navigate);
   const desktop = new URLSearchParams(window.location.search).has("desktop");
-  const [activeTool, setActiveTool] = useState<EpubToolPage | null>(() => desktop && initialTool === "epubContent" ? null : initialTool ?? (!desktop && editorWasOpen() ? "epubContent" : null));
+  const [contentOpen, setContentOpen] = useState(() => !desktop && (initialTool === "epubContent" || (!initialTool && editorWasOpen())));
   const [openError, setOpenError] = useState("");
   const [contentPath, setContentPath] = useState("");
   const tools = useMemo(
@@ -78,20 +80,20 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
       ] satisfies Array<{ id: EpubToolPage; title: string; sub: string }>,
     [messages],
   );
-  const activeSpec = tools.find((tool) => tool.id === activeTool) ?? null;
+  const contentSpec = tools.find((tool) => tool.id === "epubContent");
 
   useEffect(() => {
     if (initialTool === "epubContent" && desktop) {
       void nativeEditor.open().catch((cause) => setOpenError(String(cause)));
-    } else if (initialTool) setActiveTool(initialTool);
-    else if (!desktop && editorWasOpen()) setActiveTool("epubContent");
+    } else if (initialTool === "epubContent" || (!initialTool && !desktop && editorWasOpen())) {
+      setContentOpen(true);
+    }
   }, [initialTool, desktop]);
   useEffect(() => {
-    if (activeTool !== "epubContent") return;
+    if (!contentOpen) return;
     document.documentElement.classList.add("transoria-epub-editor-open");
     return () => document.documentElement.classList.remove("transoria-epub-editor-open");
-  }, [activeTool]);
-  useEscapeKey(() => setActiveTool(null), activeTool !== null && activeTool !== "epubContent");
+  }, [contentOpen]);
 
   const openContent = (path: string) => {
     setOpenError("");
@@ -99,62 +101,82 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
       if (!opened) {
         markEditorOpen(true);
         setContentPath(path);
-        setActiveTool("epubContent");
+        setContentOpen(true);
       }
     }).catch((cause) => setOpenError(String(cause)));
   };
 
   const closeContent = () => {
     markEditorOpen(false);
-    setActiveTool(null);
+    setContentOpen(false);
     if (initialTool === "epubContent") navigate({ module: "general-tools", page: "epubTools" });
   };
 
+  const tool = initialTool && initialTool !== "epubContent" ? initialTool : null;
+  const backToTools = () => navigate({ module: "general-tools", page: "epubTools" });
+  useEscapeKey(() => {
+    // Tool dialogs that don't register their own Escape handler must keep the page.
+    if (document.querySelector('[aria-modal="true"]')) return;
+    backToTools();
+  }, tool !== null && !contentOpen);
+
   return (
     <>
-      <Panel title={text.title} subtitle={text.sub}>
-        {openError ? <div role="alert">{openError}</div> : null}
-        <div className={styles.toolGrid}>
-          {tools.map((tool) => (
-            <button
-              key={tool.id}
-              type="button"
-              className={styles.toolButton}
-              onClick={() => { if (tool.id === "epubContent") openContent(""); else setActiveTool(tool.id); }}
-            >
-              <span>{tool.title}</span>
-              <small>{tool.sub}</small>
-              <strong>{text.open}</strong>
-            </button>
-          ))}
+      {tool ? (
+        <div className={styles.toolPage}>
+          <Button
+            size="sm"
+            variant="quiet"
+            className={styles.backButton}
+            icon={<ChevronLeft size={14} />}
+            onClick={backToTools}
+          >
+            {messages.pages.generalTools.epubTools}
+          </Button>
+          {renderTool(tool, openContent)}
         </div>
-      </Panel>
+      ) : (
+        <Panel title={text.title} subtitle={text.sub}>
+          {openError ? <div role="alert">{openError}</div> : null}
+          <div className={styles.toolGrid}>
+            {tools.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={styles.toolButton}
+                onClick={() => {
+                  if (item.id === "epubContent") openContent("");
+                  else navigate({ module: "general-tools", page: item.id });
+                }}
+              >
+                <span>{item.title}</span>
+                <small>{item.sub}</small>
+                <strong>{text.open}</strong>
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
 
-      {activeTool && activeSpec ? (
+      {contentOpen && contentSpec ? (
         <div className={styles.overlay} role="presentation">
           <section
-            className={`${styles.dialog} ${activeTool === "epubContent" ? styles.contentDialog : ""}`}
+            className={`${styles.dialog} ${styles.contentDialog}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="epub-tool-dialog-title"
           >
             <div className={styles.dialogHeader}>
-              <div>
-                <div className={styles.dialogTitleRow}>
-                  <h2 id="epub-tool-dialog-title">{activeSpec.title}</h2>
-                  <HelpTip>{activeSpec.sub}</HelpTip>
-                </div>
+              <div className={styles.dialogTitleRow}>
+                <h2 id="epub-tool-dialog-title">{contentSpec.title}</h2>
+                <HelpTip>{contentSpec.sub}</HelpTip>
               </div>
-              {activeTool !== "epubContent" ? <button
-                type="button"
-                className={styles.closeButton}
-                onClick={() => setActiveTool(null)}
-                aria-label={text.close}
-              >
-                ×
-              </button> : null}
             </div>
-            <div className={`${styles.dialogBody} ${activeTool === "epubContent" ? styles.contentBody : ""}`}>{activeTool === "epubContent" ? <Suspense fallback={null}><EpubContentPage onClose={closeContent} initialPath={contentPath} /></Suspense> : renderTool(activeTool, openContent)}</div>
+            <div className={styles.contentBody}>
+              <Suspense fallback={null}>
+                <EpubContentPage onClose={closeContent} initialPath={contentPath} />
+              </Suspense>
+            </div>
           </section>
         </div>
       ) : null}
@@ -162,23 +184,21 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
   );
 }
 
-function renderTool(tool: EpubToolPage, openContent: (path: string) => void) {
+function renderTool(tool: Exclude<EpubToolPage, "epubContent">, openContent: (path: string) => void) {
   switch (tool) {
     case "epubCompress":
-      return <EpubCompressPage embedded />;
+      return <EpubCompressPage />;
     case "epubMerge":
-      return <EpubMergePage embedded />;
+      return <EpubMergePage />;
     case "epubConvert":
-      return <EpubConvertPage embedded />;
+      return <EpubConvertPage />;
     case "txtToEpub":
-      return <TxtToEpubPage embedded />;
+      return <TxtToEpubPage />;
     case "epubMetadata":
-      return <EpubMetadataPage embedded onEditContent={openContent} />;
-    case "epubContent":
-      return null;
+      return <EpubMetadataPage onEditContent={openContent} />;
     case "epubRepair":
-      return <EpubRepairPage embedded />;
+      return <EpubRepairPage />;
     case "batchReplacement":
-      return <BatchReplacementPage embedded />;
+      return <BatchReplacementPage />;
   }
 }

@@ -2,7 +2,7 @@ import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useRuntimeStore, type RunKind } from "@/store/useRuntimeStore";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import styles from "./QuickSwitchModal.module.css";
 
 const ERROR_CODE = "llm.all_keys_failed";
@@ -77,10 +77,10 @@ export function AllKeysFailedDialog() {
           ) : null}
         </div>
         <div className={styles.footer}>
-          <Pill variant="ghost" onClick={dismiss}>
+          <Button variant="ghost" onClick={dismiss}>
             {labels.dismiss}
-          </Pill>
-          <Pill onClick={goToModelConfig}>{labels.openModelConfig}</Pill>
+          </Button>
+          <Button onClick={goToModelConfig}>{labels.openModelConfig}</Button>
         </div>
       </div>
     </div>

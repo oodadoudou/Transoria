@@ -14,7 +14,7 @@ import { useMessages } from "@/locales";
 import { useModelProfilesStore } from "@/store/useModelProfilesStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useToastStore } from "@/store/useToastStore";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import styles from "./FirstRunOnboardingModal.module.css";
 
 const API_KEY_STATUSES_READY = new Set(["present", "from_env"]);
@@ -331,12 +331,12 @@ export function FirstRunOnboardingModal({
         </section>
 
         <footer className={styles.footer}>
-          <Pill variant="ghost" onClick={onSkip} disabled={saving}>
+          <Button variant="ghost" onClick={onSkip} disabled={saving}>
             {m.skipAction}
-          </Pill>
-          <Pill onClick={handleFinish} disabled={!canSave || saving}>
+          </Button>
+          <Button onClick={handleFinish} disabled={!canSave || saving}>
             {saving ? m.savingAction : m.finishAction}
-          </Pill>
+          </Button>
         </footer>
       </div>
     </div>

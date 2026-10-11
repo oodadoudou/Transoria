@@ -4,23 +4,21 @@
   box-sizing: border-box;
 }
 
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*:hover {
+  scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+}
+
 html,
 body,
 #root {
   margin: 0;
   padding: 0;
   height: 100%;
-}
-
-/*
- * Packaged desktop application. The OS window enforces a minimum size on the
- * pywebview host; this CSS clamp mirrors that contract so layout never
- * collapses to mobile-style stacks. Below the minimum, scrollbars appear
- * (the desktop convention).
- */
-body {
-  min-width: 1280px;
-  min-height: 800px;
 }
 
 html {
@@ -81,6 +79,67 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+
+:where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']),
+    select,
+    textarea
+  ) {
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--control-radius);
+  background-color: var(--field-bg);
+  color: var(--ink);
+  font-size: var(--control-font-size);
+  font-weight: 500;
+  outline: none;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+:where(textarea) {
+  height: auto;
+  padding: 8px 10px;
+  line-height: 1.55;
+}
+
+:where(select:not([multiple])) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 30px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+:where(select[multiple]) {
+  height: auto;
+  padding: 4px;
+}
+
+:where(input, select, textarea):hover:not(:disabled, :focus-visible, [readonly]) {
+  border-color: var(--muted);
+}
+
+:where(input, select, textarea):focus-visible {
+  border-color: var(--action);
+  box-shadow: var(--focus-ring);
+}
+
+:where(input, select, textarea):disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 0.8;
 }
 
 input[type='checkbox'] {

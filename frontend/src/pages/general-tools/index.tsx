@@ -1,5 +1,4 @@
 import type { GeneralToolsPage } from '@/store/useTaskStore';
-import { BatchReplacementPage } from './BatchReplacementPage';
 import { EpubToolsPage } from './EpubToolsPage';
 
 interface GeneralToolsModuleProps {
@@ -9,7 +8,7 @@ interface GeneralToolsModuleProps {
 export function GeneralToolsModule({ page }: GeneralToolsModuleProps) {
   switch (page) {
     case 'batchReplacement':
-      return <BatchReplacementPage />;
+      return <EpubToolsPage initialTool="batchReplacement" />;
     case 'epubTools':
       return <EpubToolsPage />;
     case 'epubCompress':

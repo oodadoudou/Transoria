@@ -11,7 +11,8 @@ import {
   type EpubCompressReport,
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
+import { Segmented } from "@/components/Segmented";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { CompactPath } from "@/components/CompactPath";
 import { epubCompressDefaultSuffixes, useMessages } from "@/locales";
@@ -56,7 +57,7 @@ function defaultOptions(suffix: string): EpubCompressOptions {
   };
 }
 
-export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function EpubCompressPage() {
   const messages = useMessages();
   const text = messages.epubCompressTool;
   const [mode, setMode] = useSessionState<"file" | "folder">(
@@ -250,26 +251,18 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
     <EpubToolWorkspace>
       <Panel
         className={styles.configuration}
-        title={embedded ? undefined : text.title}
-        subtitle={embedded ? undefined : text.sub}
+        title={text.title}
+        subtitle={text.sub}
       >
         <div className={styles.configLine}>
-          <div className={styles.modeRow}>
-            <button
-              type="button"
-              className={mode === "folder" ? styles.modeActive : styles.modeButton}
-              onClick={() => setMode("folder")}
-            >
-              {text.folderMode}
-            </button>
-            <button
-              type="button"
-              className={mode === "file" ? styles.modeActive : styles.modeButton}
-              onClick={() => setMode("file")}
-            >
-              {text.fileMode}
-            </button>
-          </div>
+          <Segmented<"folder" | "file">
+            options={[
+              { id: "folder", label: text.folderMode },
+              { id: "file", label: text.fileMode },
+            ]}
+            value={mode}
+            onChange={(next) => setMode(next)}
+          />
           {mode === "folder" ? (
             <FolderPickerRow
               label={text.inputFolder}
@@ -277,7 +270,6 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               variant="input"
               onChange={setInputPath}
               historyKey="general_tools:epub_compress:input_folder"
-              compact
             />
           ) : (
             <div className={styles.fileRow}>
@@ -287,9 +279,9 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
                 onChange={(event) => setInputPath(event.target.value)}
                 placeholder={text.filePlaceholder}
               />
-              <Pill variant="ghost" onClick={handleChooseFile}>
+              <Button variant="ghost" onClick={handleChooseFile}>
                 {text.chooseFile}
-              </Pill>
+              </Button>
             </div>
           )}
         </div>
@@ -369,7 +361,6 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
         {stage === "idle" || stage === "preview" ? (
           <Panel
             label={stage === "preview" ? text.previewLabel : text.readyLabel}
-            labelHelp={!plan ? text.noPlan : undefined}
           >
             {plan ? (
               <>
@@ -442,7 +433,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
                 )}
               </>
             ) : (
-              <div className={styles.empty}>-</div>
+              <div className={styles.empty}>{text.noPlan}</div>
             )}
           </Panel>
         ) : null}
@@ -481,22 +472,22 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
             {report ? <Stat label={text.result} value={outcomeLabel(report.outcome, text)} /> : null}
           </div>
           <div className={styles.artifactActions}>
-            <Pill
+            <Button
               variant="ghost"
               onClick={() =>
                 void openOutputFolder(artifacts.output_folder, setArtifactFeedback)
               }
             >
               {text.openOutputFolder}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               variant="ghost"
               onClick={() => void dialogsBridge.revealFile(artifacts.output_files[0])}
               disabled={artifacts.output_files.length === 0}
             >
               {text.revealOutput}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               variant="ghost"
               onClick={() =>
                 void copyOutputPaths(
@@ -508,7 +499,7 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
               disabled={artifacts.output_files.length === 0}
             >
               {text.copyOutputPaths}
-            </Pill>
+            </Button>
             {artifactFeedback ? (
               <span className={styles.artifactFeedback}>{artifactFeedback}</span>
             ) : null}
@@ -526,9 +517,9 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
           ) : null}
           {report ? (
             <div className={styles.reportToggle}>
-              <Pill variant="ghost" onClick={() => setShowReport((v) => !v)}>
+              <Button variant="ghost" onClick={() => setShowReport((v) => !v)}>
                 {showReport ? text.hideReport : text.viewReport}
-              </Pill>
+              </Button>
             </div>
           ) : null}
           {showReport && report ? (
@@ -592,18 +583,18 @@ export function EpubCompressPage({ embedded = false }: { embedded?: boolean } = 
         }
         actions={
           <>
-          <Pill variant="ghost" onClick={handlePreview} disabled={!inputPath || isRunning}>
+          <Button variant="ghost" onClick={handlePreview} disabled={!inputPath || isRunning}>
             {text.scan}
-          </Pill>
-          <Pill
+          </Button>
+          <Button
             onClick={handleExecute}
             disabled={!plan || selectedCount === 0 || isRunning}
           >
             {text.execute}
-          </Pill>
-          <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
+          </Button>
+          <Button variant="ghost" onClick={handleStop} disabled={!isRunning}>
             {text.stop}
-          </Pill>
+          </Button>
           </>
         }
         error={actionError ? (

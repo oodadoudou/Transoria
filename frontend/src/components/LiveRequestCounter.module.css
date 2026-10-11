@@ -10,7 +10,7 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 2px 9px;
   border-radius: 999px;
   background: var(--panel-soft, #f3f2ec);
   border: 1px solid var(--hairline, rgba(17, 17, 20, 0.09));

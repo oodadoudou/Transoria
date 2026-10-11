@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { TaskFailure } from "@/bridge";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import styles from "./FailedSubtasksModal.module.css";
 
 interface FailedSubtasksModalProps {
@@ -237,9 +237,9 @@ export function FailedSubtasksModal({
           )}
         </div>
         <div className={styles.footer}>
-          <Pill variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             {messages.close}
-          </Pill>
+          </Button>
         </div>
       </div>
     </div>

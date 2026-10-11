@@ -26,6 +26,7 @@ export function Panel({
   const composed = [
     styles.section,
     subtitleSingleLine ? styles.singleLineSubtitle : "",
+    title && !label && !children ? styles.titleOnly : "",
     className ?? "",
   ]
     .filter(Boolean)

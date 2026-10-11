@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useMessages } from "@/locales";
+import { Button } from "./Button";
 import styles from "./RuleTable.module.css";
 
 export interface RuleTableColumnEdit<T> {
@@ -483,16 +484,16 @@ export function RuleTable<T>({
         <aside className={styles.sidebar}>
           <div className={styles.toolbar}>
             {toolbar.map((action) => (
-              <button
+              <Button
                 key={action.label}
-                type="button"
-                className={`${styles.toolbarBtn} ${action.primary ? styles.toolbarBtnPrimary : ""}`.trim()}
+                size="sm"
+                variant={action.primary ? "primary" : "ghost"}
                 onClick={action.onClick}
                 disabled={action.disabled}
               >
                 {action.primary ? "+ " : ""}
                 {action.label}
-              </button>
+              </Button>
             ))}
           </div>
           <div className={styles.editorBlock}>{editor}</div>

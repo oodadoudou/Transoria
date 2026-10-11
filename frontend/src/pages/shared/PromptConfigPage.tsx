@@ -5,7 +5,7 @@ import {
   usePromptPresetsStore,
 } from "@/store/usePromptPresetsStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { OverflowMenu } from "@/components/OverflowMenu";
 import { PromptPresetModal } from "@/components/PromptPresetModal";
 import type { PromptKind, PromptPresetBody } from "@/bridge";
@@ -123,16 +123,16 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
         labelExtra={
           <div className={styles.headerActions}>
             <span>{p.availableHint}</span>
-            <Pill variant="ghost" onClick={handleAdd}>
+            <Button variant="ghost" onClick={handleAdd}>
               {p.actions.add}
-            </Pill>
+            </Button>
             {activeSummary ? (
-              <Pill
+              <Button
                 variant="ghost"
                 onClick={() => void handleDuplicateActive()}
               >
                 {p.actions.duplicate}
-              </Pill>
+              </Button>
             ) : null}
           </div>
         }

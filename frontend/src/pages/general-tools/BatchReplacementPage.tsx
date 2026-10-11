@@ -20,7 +20,7 @@ import {
 } from "@/store/useRuntimeStore";
 import { useToastStore } from "@/store/useToastStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { CompactPath } from "@/components/CompactPath";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
@@ -72,11 +72,7 @@ function normalizeRuleFilePath(path: string): string {
   }
 }
 
-export function BatchReplacementPage({
-  embedded = false,
-}: {
-  embedded?: boolean;
-}) {
+export function BatchReplacementPage() {
   const messages = useMessages();
   const moduleSettings = useModuleSettings("replacement");
   const draft = moduleSettings.draft;
@@ -231,8 +227,8 @@ export function BatchReplacementPage({
   if (!draft) {
     return (
       <Panel
-        title={embedded ? undefined : messages.batchReplacement.title}
-        subtitle={embedded ? undefined : messages.batchReplacement.sub}
+        title={messages.batchReplacement.title}
+        subtitle={messages.batchReplacement.sub}
       />
     );
   }
@@ -347,8 +343,8 @@ export function BatchReplacementPage({
     <>
       <EpubToolWorkspace>
         <Panel
-          title={embedded ? undefined : messages.batchReplacement.title}
-          subtitle={embedded ? undefined : messages.batchReplacement.sub}
+          title={messages.batchReplacement.title}
+          subtitle={messages.batchReplacement.sub}
         >
           <div className={styles.pickerStack}>
             <FolderPickerRow
@@ -357,7 +353,6 @@ export function BatchReplacementPage({
               variant="input"
               onChange={setInputFolder}
               historyKey="general_tools:batch_replacement:input_folder"
-              compact
             />
             <FolderPickerRow
               label={messages.batchReplacement.outputFolder}
@@ -365,7 +360,6 @@ export function BatchReplacementPage({
               variant="output"
               onChange={setOutputFolder}
               historyKey="general_tools:batch_replacement:output_folder"
-              compact
             />
           </div>
         </Panel>
@@ -373,9 +367,6 @@ export function BatchReplacementPage({
         <EpubToolStage>
           <Panel
             label={messages.batchReplacement.rulesLabel}
-            labelHelp={
-              rules.length === 0 ? messages.batchReplacement.noRules : undefined
-            }
           >
         <div className={styles.ruleImportRow}>
           <label className={styles.ruleField}>
@@ -387,18 +378,20 @@ export function BatchReplacementPage({
               spellCheck={false}
             />
           </label>
-          <Pill variant="ghost" onClick={handleChooseRuleFile}>
+          <Button variant="ghost" onClick={handleChooseRuleFile}>
             {messages.batchReplacement.chooseRuleFile}
-          </Pill>
-          <Pill
+          </Button>
+          <Button
             onClick={() => void importRulesFromPath(ruleFilePath)}
             disabled={!normalizeRuleFilePath(ruleFilePath)}
           >
             {messages.batchReplacement.importRules}
-          </Pill>
+          </Button>
         </div>
         {rules.length === 0 ? (
-          <div className={styles.empty}>-</div>
+          <div className={styles.empty}>
+            {messages.batchReplacement.noRules}
+          </div>
         ) : (
           <>
             {searchOpen ? (
@@ -473,12 +466,12 @@ export function BatchReplacementPage({
           </div>
           {snapshot.failures.length > 0 ? (
             <div className={styles.failures}>
-              <Pill
+              <Button
                 variant="ghost"
                 onClick={() => setFailedModalOpen(true)}
               >
                 {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
-              </Pill>
+              </Button>
             </div>
           ) : null}
         </Panel>
@@ -497,15 +490,15 @@ export function BatchReplacementPage({
             />
           </div>
           <div className={styles.artifactActions}>
-            <Pill
+            <Button
               variant="ghost"
               onClick={() =>
                 void openOutputFolder(artifacts.output_folder, setArtifactFeedback)
               }
             >
               {messages.batchReplacement.openOutputFolder}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               variant="ghost"
               onClick={() =>
                 void copyOutputPaths(
@@ -517,7 +510,7 @@ export function BatchReplacementPage({
               disabled={artifacts.output_files.length === 0}
             >
               {messages.batchReplacement.copyOutputPaths}
-            </Pill>
+            </Button>
             {artifactFeedback ? (
               <span className={styles.artifactFeedback}>{artifactFeedback}</span>
             ) : null}
@@ -553,9 +546,9 @@ export function BatchReplacementPage({
           ) : null}
           {report ? (
             <div className={styles.statsLine}>
-              <Pill variant="ghost" onClick={() => setReportOpen(true)}>
+              <Button variant="ghost" onClick={() => setReportOpen(true)}>
                 {messages.batchReplacement.viewReport}
-              </Pill>
+              </Button>
             </div>
           ) : null}
           {reportError ? (
@@ -576,19 +569,19 @@ export function BatchReplacementPage({
           }
           actions={
             <>
-              <Pill
+              <Button
                 onClick={handleExecute}
                 disabled={isRunning || rules.length === 0 || !inputFolder}
               >
                 {messages.batchReplacement.execute}
-              </Pill>
-              <Pill
+              </Button>
+              <Button
                 variant="ghost"
                 onClick={handleStop}
                 disabled={!isRunning || !activeTaskId}
               >
                 {messages.batchReplacement.stop}
-              </Pill>
+              </Button>
             </>
           }
           error={

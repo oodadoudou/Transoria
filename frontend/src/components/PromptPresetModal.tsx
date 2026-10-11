@@ -9,7 +9,7 @@ import {
 } from "@/bridge";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useToastStore } from "@/store/useToastStore";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import { TextField } from "./TextField";
 import { ToggleSwitch } from "./ToggleSwitch";
 import styles from "./PromptPresetModal.module.css";
@@ -320,13 +320,13 @@ export function PromptPresetModal({
           {mode === "edit" && seed ? (
             <div className={styles.previewBlock}>
               <div className={styles.previewActions}>
-                <Pill
+                <Button
                   variant="ghost"
                   onClick={handlePreview}
                   disabled={previewBusy}
                 >
                   {previewBusy ? m.previewRunning : m.previewAction}
-                </Pill>
+                </Button>
                 <span className={styles.previewSampleNote}>
                   {m.previewSampleContext}: {m.sampleSourceLanguage} →{" "}
                   {m.sampleTargetLanguage}
@@ -350,25 +350,25 @@ export function PromptPresetModal({
           {readOnly ? null : (
             <>
               {mode === "edit" && isDefault ? (
-                <Pill variant="ghost" onClick={() => void handleReset()}>
+                <Button variant="ghost" onClick={() => void handleReset()}>
                   {m.resetAction}
-                </Pill>
+                </Button>
               ) : null}
               {mode === "edit" && !isDefault && seed ? (
-                <Pill variant="ghost" onClick={() => void handleDelete()}>
+                <Button variant="ghost" onClick={() => void handleDelete()}>
                   {m.deleteAction}
-                </Pill>
+                </Button>
               ) : null}
             </>
           )}
           <div className={styles.footerRight}>
-            <Pill variant="ghost" onClick={handleCancel}>
+            <Button variant="ghost" onClick={handleCancel}>
               {readOnly ? m.closeAction : m.cancelAction}
-            </Pill>
+            </Button>
             {readOnly ? null : (
-              <Pill onClick={() => void handleSave()} disabled={saving}>
+              <Button onClick={() => void handleSave()} disabled={saving}>
                 {m.saveAction}
-              </Pill>
+              </Button>
             )}
           </div>
         </div>

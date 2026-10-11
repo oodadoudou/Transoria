@@ -314,48 +314,50 @@ export function RunControls({ kind, children }: RunControlsProps) {
 
   return (
     <>
-      <div className={styles.bar} role="group" aria-label={labels.taskControls}>
-        <div className={styles.primaryActions}>
-          <Button
-            kind="primary"
-            icon={ICON_PLAY}
-            label={startLabel}
-            disabled={false}
-            inactive={startActive}
-            title={startTitle}
-            onClick={handleStartClick}
-          />
-          <Button
-            kind="ghost"
-            icon={ICON_CONTINUE}
-            label={labels.continue}
-            disabled={!canContinue}
-            title={continueTitle}
-            onClick={handleContinue}
-          />
-          <Button
-            kind="warn"
-            icon={ICON_STOP}
-            label={stopLabel}
-            disabled={!canStop}
-            title={stopTitle}
-            onClick={handleStop}
-          />
+      <div className={styles.dock}>
+        <div className={styles.bar} role="group" aria-label={labels.taskControls}>
+          <div className={styles.primaryActions}>
+            <Button
+              kind="primary"
+              icon={ICON_PLAY}
+              label={startLabel}
+              disabled={false}
+              inactive={startActive}
+              title={startTitle}
+              onClick={handleStartClick}
+            />
+            <Button
+              kind="ghost"
+              icon={ICON_CONTINUE}
+              label={labels.continue}
+              disabled={!canContinue}
+              title={continueTitle}
+              onClick={handleContinue}
+            />
+            <Button
+              kind="warn"
+              icon={ICON_STOP}
+              label={stopLabel}
+              disabled={!canStop}
+              title={stopTitle}
+              onClick={handleStop}
+            />
+          </div>
+          {children ? <div className={styles.secondaryActions}>{children}</div> : null}
         </div>
-        {children ? <div className={styles.secondaryActions}>{children}</div> : null}
+        {restartClicks > 0 && restartRemaining > 0 ? (
+          <p className={styles.hint} role="status" aria-live="polite">
+            {labels.restartHint.replace("{count}", String(restartRemaining))}
+          </p>
+        ) : null}
+        {canContinue ? (
+          <p className={styles.hint} role="status">
+            {labels.continueHint
+              .replace("{failed}", String(probe.failed))
+              .replace("{pending}", String(probe.pending))}
+          </p>
+        ) : null}
       </div>
-      {restartClicks > 0 && restartRemaining > 0 ? (
-        <p className={styles.hint} role="status" aria-live="polite">
-          {labels.restartHint.replace("{count}", String(restartRemaining))}
-        </p>
-      ) : null}
-      {canContinue ? (
-        <p className={styles.hint} role="status">
-          {labels.continueHint
-            .replace("{failed}", String(probe.failed))
-            .replace("{pending}", String(probe.pending))}
-        </p>
-      ) : null}
       {confirmOpen ? (
         <ConfirmStartDialog
           title={labels.confirmStartTitle}

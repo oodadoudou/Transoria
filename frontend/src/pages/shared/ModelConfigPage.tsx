@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMessages } from "@/locales";
 import { useModelProfiles } from "@/store/useModelProfilesStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { ChevronDownIcon } from "@/components/Icon";
 import { ModelProfileModal } from "@/components/ModelProfileModal";
 import { OverflowMenu } from "@/components/OverflowMenu";
@@ -73,42 +73,44 @@ export function ModelConfigPage() {
         const cfg = m.sections.configured;
         return (
           <>
-            <Panel
-              label={m.sections.preset.title}
-              labelExtra={
-                <div className={styles.presetActions}>
-                  <span>{m.sections.preset.sub}</span>
+            {seeded.length > 0 ? (
+              <Panel
+                label={m.sections.preset.title}
+                labelExtra={
+                  <div className={styles.presetActions}>
+                    <span>{m.sections.preset.sub}</span>
+                  </div>
+                }
+              >
+                <div className={styles.chipGrid}>
+                  {seeded.map((profile) => (
+                    <ModelChip
+                      key={profile.id}
+                      profile={profile}
+                      editing={
+                        modalState?.mode === "edit" &&
+                        modalState.profileId === profile.id
+                      }
+                      onEdit={() =>
+                        setModalState({ mode: "edit", profileId: profile.id })
+                      }
+                    />
+                  ))}
                 </div>
-              }
-            >
-              <div className={styles.chipGrid}>
-                {seeded.map((profile) => (
-                  <ModelChip
-                    key={profile.id}
-                    profile={profile}
-                    editing={
-                      modalState?.mode === "edit" &&
-                      modalState.profileId === profile.id
-                    }
-                    onEdit={() =>
-                      setModalState({ mode: "edit", profileId: profile.id })
-                    }
-                  />
-                ))}
-              </div>
-            </Panel>
+              </Panel>
+            ) : null}
 
             <Panel
               label={cfg.title}
               labelExtra={
                 <div className={styles.presetActions}>
                   <span>{cfg.sub}</span>
-                  <Pill
+                  <Button
                     variant="ghost"
                     onClick={() => setModalState({ mode: "create" })}
                   >
                     + {modelExtra.addCustom}
-                  </Pill>
+                  </Button>
                 </div>
               }
             >

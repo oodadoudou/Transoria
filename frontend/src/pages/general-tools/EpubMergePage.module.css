@@ -16,13 +16,6 @@
 .field input,
 .field select {
   width: 100%;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  padding: 7px 10px;
-  min-height: 36px;
 }
 
 .optionsGrid {
@@ -57,11 +50,9 @@
 }
 
 .field span {
-  color: var(--muted, #7a7166);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .labelWithHelp {
@@ -153,12 +144,7 @@
 
 .orderInput {
   width: 64px;
-  min-height: 34px;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
+  height: var(--control-height-sm);
   text-align: center;
 }
 

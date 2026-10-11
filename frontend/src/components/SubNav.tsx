@@ -1,7 +1,7 @@
 import { useI18n, useMessages, type Locale } from "@/locales";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import type { Route } from "@/store/useTaskStore";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import { MoonIcon, PlayIcon, StopIcon, SunIcon } from "./Icon";
 import { useTypewriter } from "./useTypewriter";
 import styles from "./SubNav.module.css";
@@ -123,20 +123,20 @@ export function SubNav({
       <div className={styles.actions}>
         {showRunActions ? (
           <>
-            <Pill
+            <Button
               variant="ghost"
               icon={<StopIcon size={12} />}
               onClick={onStop}
             >
               {messages.topbar.stop}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               icon={<PlayIcon size={12} />}
               disabled={primaryDisabled}
               onClick={onStart}
             >
               {primaryLabel ?? messages.topbar.start.translation}
-            </Pill>
+            </Button>
           </>
         ) : (
           <>

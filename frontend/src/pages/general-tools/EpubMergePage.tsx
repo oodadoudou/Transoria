@@ -14,7 +14,7 @@ import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { CompactPath } from "@/components/CompactPath";
 import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { useMessages } from "@/locales";
 import {
   hasShownCleanCompletionToast,
@@ -59,7 +59,7 @@ function defaultOptions(): EpubMergeOptions {
   };
 }
 
-export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {}) {
+export function EpubMergePage() {
   const messages = useMessages();
   const text = messages.epubMergeTool;
   const [inputDir, setInputDir] = useLocalState(INPUT_DIR_LOCAL_KEY, "");
@@ -296,8 +296,8 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
   return (
     <EpubToolWorkspace>
       <Panel
-        title={embedded ? undefined : text.title}
-        subtitle={embedded ? undefined : text.sub}
+        title={text.title}
+        subtitle={text.sub}
       >
         <div className={styles.folderGrid}>
           <FolderPickerRow
@@ -306,7 +306,6 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             variant="input"
             onChange={setInputDir}
             historyKey="general_tools:epub_merge:input_folder"
-            compact
           />
           <FolderPickerRow
             label={text.outputFolder}
@@ -314,7 +313,6 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             variant="output"
             onChange={setOutputDir}
             historyKey="general_tools:epub_merge:output_folder"
-            compact
             help={<HelpTip>{text.outputFolderHint}</HelpTip>}
           />
         </div>
@@ -396,7 +394,6 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
       {stage === "idle" || stage === "preview" ? (
       <Panel
         label={text.previewLabel}
-        labelHelp={!plan ? text.noPlan : undefined}
       >
         {plan ? (
           <>
@@ -534,7 +531,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             )}
           </>
         ) : (
-          <p className={styles.empty}>-</p>
+          <p className={styles.empty}>{text.noPlan}</p>
         )}
       </Panel>
       ) : null}
@@ -562,22 +559,22 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
               {report ? <Stat label={text.result} value={outcomeLabel(report.outcome, text)} /> : null}
             </div>
             <div className={styles.artifactActions}>
-              <Pill
+              <Button
                 variant="ghost"
                 onClick={() =>
                   void openOutputFolder(artifacts.output_folder, setArtifactFeedback)
                 }
               >
                 {text.openOutputFolder}
-              </Pill>
-              <Pill
+              </Button>
+              <Button
                 variant="ghost"
                 onClick={() => void dialogsBridge.revealFile(artifacts.output_files[0])}
                 disabled={artifacts.output_files.length === 0}
               >
                 {text.revealOutput}
-              </Pill>
-              <Pill
+              </Button>
+              <Button
                 variant="ghost"
                 onClick={() =>
                   void copyOutputPaths(
@@ -589,7 +586,7 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
                 disabled={artifacts.output_files.length === 0}
               >
                 {text.copyOutputPaths}
-              </Pill>
+              </Button>
               {artifactFeedback ? (
                 <span className={styles.artifactFeedback}>{artifactFeedback}</span>
               ) : null}
@@ -607,9 +604,9 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
             ) : null}
             {report ? (
               <div className={styles.reportToggle}>
-                <Pill variant="ghost" onClick={() => setShowReport((prev) => !prev)}>
+                <Button variant="ghost" onClick={() => setShowReport((prev) => !prev)}>
                   {showReport ? text.hideReport : text.viewReport}
-                </Pill>
+                </Button>
               </div>
             ) : null}
             {showReport && report ? (
@@ -667,18 +664,18 @@ export function EpubMergePage({ embedded = false }: { embedded?: boolean } = {})
         }
         actions={
           <>
-            <Pill variant="ghost" onClick={handlePreview} disabled={!inputDir || isRunning}>
+            <Button variant="ghost" onClick={handlePreview} disabled={!inputDir || isRunning}>
               {text.scan}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               onClick={handleExecute}
               disabled={!plan || selectedCount < 1 || isRunning}
             >
               {text.execute}
-            </Pill>
-            <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
+            </Button>
+            <Button variant="ghost" onClick={handleStop} disabled={!isRunning}>
               {text.stop}
-            </Pill>
+            </Button>
           </>
         }
         error={actionError ? (

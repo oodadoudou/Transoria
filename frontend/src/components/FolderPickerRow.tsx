@@ -1,6 +1,8 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useMessages } from "@/locales";
 import { dialogsBridge, BridgeError } from "@/bridge";
+import { Button } from "./Button";
+import { Field, fieldStyles } from "./Field";
 import styles from "./FolderPickerRow.module.css";
 
 const MAX_HISTORY_ITEMS = 5;
@@ -12,7 +14,6 @@ interface FolderPickerRowProps {
   variant: 'input' | 'output';
   onChange: (path: string) => void;
   onError?: (error: BridgeError) => void;
-  compact?: boolean;
   historyKey?: string;
   help?: ReactNode;
 }
@@ -33,7 +34,6 @@ export function FolderPickerRow({
   variant,
   onChange,
   onError,
-  compact = false,
   historyKey,
   help,
 }: FolderPickerRowProps) {
@@ -46,6 +46,15 @@ export function FolderPickerRow({
   const [history, setHistory] = useState<string[]>(() =>
     historyKey ? loadHistory(historyKey) : [],
   );
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Long paths differ at the tail, so keep the folder name visible while idle.
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (input && document.activeElement !== input) {
+      input.scrollLeft = input.scrollWidth;
+    }
+  }, [value]);
 
   useEffect(() => {
     setHistory(historyKey ? loadHistory(historyKey) : []);
@@ -95,50 +104,45 @@ export function FolderPickerRow({
   };
 
   return (
-    <div className={compact ? `${styles.row} ${styles.compact}` : styles.row}>
-      <div className={styles.field}>
-        <span className={styles.label}>
-          {label}
-          {help}
-        </span>
+    <Field label={label} help={help}>
+      <span className={fieldStyles.inline}>
         <input
+          ref={inputRef}
           type="text"
-          className={styles.input}
           value={value}
+          title={value || undefined}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={commitManualPath}
+          onBlur={(e) => {
+            e.currentTarget.scrollLeft = e.currentTarget.scrollWidth;
+            commitManualPath();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") commitManualPath();
           }}
           spellCheck={false}
         />
-      </div>
-      <div className={styles.actions}>
         {history.length > 0 ? (
-          <label className={styles.recentWrap}>
-            <span className={styles.srOnly}>{recentLabel}</span>
-            <select
-              className={styles.recentSelect}
-              value=""
-              onChange={(e) => handleRecentChange(e.target.value)}
-              aria-label={recentLabel}
-            >
-              <option value="">{recentPlaceholder}</option>
-              {history.map((path) => (
-                <option key={path} value={path}>
-                  {path}
-                </option>
-              ))}
-              <option value="__clear__">{clearRecentLabel}</option>
-            </select>
-          </label>
+          <select
+            className={styles.recentSelect}
+            value=""
+            onChange={(e) => handleRecentChange(e.target.value)}
+            aria-label={recentLabel}
+          >
+            <option value="">{recentPlaceholder}</option>
+            {history.map((path) => (
+              <option key={path} value={path}>
+                {path}
+              </option>
+            ))}
+            <option value="__clear__">{clearRecentLabel}</option>
+          </select>
         ) : null}
-        <button type="button" className={styles.pickBtn} onClick={handlePick}>
+        <Button variant="ghost" onClick={handlePick}>
           {buttonLabel}
-        </button>
-      </div>
-    </div>
+        </Button>
+      </span>
+    </Field>
   );
 }
 

@@ -65,7 +65,7 @@
 }
 
 .errorBanner code {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--code-bg);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -144,17 +144,24 @@
 }
 
 .formatRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(160px, max-content) minmax(0, 1fr);
   align-items: center;
   gap: 12px;
 }
 
+.formatControl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .formatLabel {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--muted, #7a7166);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .formatLockedHint {
@@ -173,18 +180,13 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  padding-left: 172px;
 }
 
 .modelPicker {
   align-self: flex-start;
+  margin-left: 172px;
   max-width: 100%;
-  border: 1px solid var(--hairline-strong, #d8d2c7);
-  background: var(--panel, #fff);
-  color: var(--ink, #2c2620);
-  padding: 6px 10px;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 12.5px;
 }
 
 
@@ -367,6 +369,6 @@
 
 .customHeadersError {
   font-size: 11.5px;
-  color: #b04038;
+  color: var(--danger);
   font-family: var(--font-mono);
 }

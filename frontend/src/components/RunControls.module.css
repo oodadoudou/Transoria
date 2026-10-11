@@ -1,18 +1,27 @@
+.dock {
+  position: sticky;
+  bottom: -32px;
+  z-index: 2;
+  margin: -12px 0 -32px;
+  padding: 12px 0 32px;
+  background: var(--canvas);
+}
+
 .bar {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
-  border-radius: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-inset);
   background: var(--panel-soft, #f5f0e9);
   border: 1px solid var(--hairline, #ece8e2);
 }
 
 .primaryActions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -26,9 +35,10 @@
 .button {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 22px;
-  border-radius: 999px;
+  gap: 8px;
+  height: var(--control-height-lg);
+  padding: 0 18px;
+  border-radius: var(--control-radius);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -38,8 +48,8 @@
     transform 0.1s ease,
     border-color 0.15s ease;
   border: 1px solid transparent;
-  font-size: 14px;
-  min-width: 120px;
+  font-size: 13.5px;
+  min-width: 104px;
   justify-content: center;
 }
 
@@ -90,7 +100,7 @@
 }
 
 .ghost:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-wash);
 }
 
 .warn {

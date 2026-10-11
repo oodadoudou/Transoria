@@ -29,6 +29,30 @@
 
   --success: #2f7d57;
   --warn: #b6541b;
+  --danger: #b04038;
+  --warning: #8a4b0c;
+  --panel-hover: #ebeae3;
+  --overlay: rgba(15, 15, 18, 0.4);
+  --code-bg: rgba(17, 17, 20, 0.05);
+  --hover-wash: rgba(17, 17, 20, 0.04);
+  --surface-warn: #fdf2ec;
+  --surface-warn-border: #e0b0a0;
+  --text-warn: #6b3a1f;
+  --surface-ok: #ecf6ec;
+  --text-ok: #2c5e2e;
+  --surface-quiet: #faf7f2;
+  --surface-quiet-border: #ece8e2;
+  --accent-danger: #b14b3f;
+  --select-chevron: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3e%3cpath fill='none' stroke='%237a7166' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round' d='M3 4.5L6 7.5L9 4.5'/%3e%3c/svg%3e");
+  --scrollbar-thumb: rgba(17, 17, 20, 0.2);
+  --scrollbar-thumb-hover: rgba(17, 17, 20, 0.34);
+  --surface: var(--panel);
+  --text: var(--ink);
+  --text-muted: var(--muted);
+  --border-color: var(--hairline-strong);
+  --on-action: var(--action-fg);
+  --warn-text: var(--text-warn);
+  --warn-border: var(--surface-warn-border);
 
   --font-ui: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     Roboto, sans-serif;
@@ -43,6 +67,15 @@
   --space-7: 22px;
   --space-8: 28px;
   --space-9: 36px;
+
+  --control-height: 32px;
+  --control-height-sm: 28px;
+  --control-height-lg: 38px;
+  --control-radius: 8px;
+  --control-padding-x: 12px;
+  --control-font-size: 13px;
+  --field-bg: var(--panel);
+  --field-border: var(--hairline-strong);
 
   --radius-pill: 999px;
   --radius-card: 14px;          /* legacy alias for inspector inner widgets */
@@ -123,6 +156,14 @@
   --hairline-strong: rgba(245, 241, 232, 0.22);
   --success: #62b784;
   --warn: #e0a05f;
+  --danger: #e78b7f;
+  --warning: #e0a05f;
+  --panel-hover: #2d2a25;
+  --overlay: rgba(0, 0, 0, 0.56);
+  --code-bg: rgba(245, 241, 232, 0.08);
+  --hover-wash: rgba(245, 241, 232, 0.06);
+  --scrollbar-thumb: rgba(245, 241, 232, 0.18);
+  --scrollbar-thumb-hover: rgba(245, 241, 232, 0.32);
   --focus-ring: 0 0 0 2px rgba(216, 200, 168, 0.38);
   --text-selection-bg: rgba(243, 111, 177, 0.72);
   --text-selection-fg: #151411;
@@ -149,6 +190,7 @@
   --surface-ok: rgba(47, 125, 87, 0.22);
   --text-ok: #9ad7b1;
   --surface-quiet: #1c1a17;
+  --surface-quiet-border: rgba(245, 241, 232, 0.12);
   --accent-danger: #e78b7f;
 }
 

@@ -29,7 +29,7 @@ import {
   useWorkflowPresetsStore,
 } from "@/store/useWorkflowPresetsStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { ProgressRing } from "@/components/ProgressRing";
 import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
@@ -435,12 +435,12 @@ export function RunPage() {
 
       {showFailures ? (
         <div className={styles.failuresPillRow}>
-          <Pill
+          <Button
             variant="ghost"
             onClick={() => setFailedModalOpen(true)}
           >
             {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
-          </Pill>
+          </Button>
           <span className={styles.failuresHint}>
             {failedModalMessages.continueHint}
           </span>
@@ -530,17 +530,17 @@ export function RunPage() {
 
       {canViewReport ? (
         <div className={styles.failuresPillRow}>
-          <Pill
+          <Button
             variant="ghost"
             onClick={() => void handleUseFinalGlossary()}
             disabled={importingFinal}
             title={run.importFinalToTranslation}
           >
             {importingFinal ? run.importingFinal : run.importFinalToTranslation}
-          </Pill>
-          <Pill variant="ghost" onClick={handleOpenReport} title={run.viewReport}>
+          </Button>
+          <Button variant="ghost" onClick={handleOpenReport} title={run.viewReport}>
             {run.viewReport}
-          </Pill>
+          </Button>
         </div>
       ) : null}
 

@@ -24,7 +24,7 @@ import {
   useWorkflowPresetsStore,
 } from "@/store/useWorkflowPresetsStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { ProgressRing } from "@/components/ProgressRing";
 import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
 import { LiveRequestCounter } from "@/components/LiveRequestCounter";
@@ -368,12 +368,12 @@ export function RunPage() {
 
       {showFailures ? (
         <div className={styles.failuresPillRow}>
-          <Pill
+          <Button
             variant="ghost"
             onClick={() => setFailedModalOpen(true)}
           >
             {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
-          </Pill>
+          </Button>
           {snapshot.status === "failed" ||
           snapshot.status === "stopped" ||
           snapshot.status === "paused" ||
@@ -449,13 +449,13 @@ export function RunPage() {
 
       {showSendToReview ? (
         <div className={styles.followupActions}>
-          <Pill
+          <Button
             type="button"
             onClick={() => void handleSendToReview()}
             disabled={reviewBusy || sendingToReview}
           >
             {run.sendToReview}
-          </Pill>
+          </Button>
         </div>
       ) : null}
 

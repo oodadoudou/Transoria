@@ -32,26 +32,12 @@
 .field input {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--hairline, #e8dfd4);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  padding: 7px 10px;
-  min-height: 36px;
 }
 
 .descriptionInput {
   width: 100%;
   min-width: 0;
   resize: vertical;
-  border: 1px solid var(--hairline, #e8dfd4);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  line-height: 1.5;
-  padding: 8px 10px;
 }
 
 .fileRow {
@@ -61,9 +47,6 @@
   align-items: center;
 }
 
-.fileRow > :global(button) {
-  min-height: 36px;
-}
 
 .feedback {
   color: var(--accent, #2f855a);

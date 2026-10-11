@@ -42,7 +42,7 @@ export function LiveRequestCounter({
           .replace("{total}", String(total))}
       </span>
       <span
-        className={`${styles.chip} ${styles.inflight} ${
+        className={`${styles.chip} ${inflight > 0 ? styles.inflight : ""} ${
           inflightFlash ? styles.flash : ""
         }`.trim()}
       >

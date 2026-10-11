@@ -14,7 +14,7 @@ import {
   type ProofreadingFilterKey,
 } from "@/store/useTaskStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import { ChevronDownIcon } from "@/components/Icon";
 import { RequestLogPanel } from "@/components/RequestLogPanel";
@@ -2054,7 +2054,7 @@ export function ProofreadingPage() {
   const hasActiveRetranslate = Object.keys(inflightRetranslates).length > 0;
 
   return (
-    <Panel title={m.title} subtitle={m.sub}>
+    <Panel title={m.title} subtitle={m.sub} className={styles.page}>
       <div className={styles.taskToolbar}>
         <div className={styles.taskIdentity}>
           <select
@@ -2070,15 +2070,15 @@ export function ProofreadingPage() {
             ))}
           </select>
           {activeTaskId ? (
-            <button
-              type="button"
-              className={styles.copyButton}
+            <Button
+              size="sm"
+              variant="quiet"
               onClick={() =>
                 void copyToClipboard(activeTaskId, m.copyTaskIdDone)
               }
             >
               {m.copyTaskId}
-            </button>
+            </Button>
           ) : null}
         </div>
         <div className={styles.taskActions}>
@@ -2088,15 +2088,15 @@ export function ProofreadingPage() {
             taskStatus={hasActiveRetranslate ? "running" : activeTaskStatus}
             launcherVariant="bare"
           />
-          <Pill
+          <Button
             onClick={() => void handleRegenerate(false)}
             disabled={Boolean(regenerating) || !activeTaskId}
           >
             {regenerating === "translated"
               ? m.regenerating
               : m.regenerateAction}
-          </Pill>
-          <Pill
+          </Button>
+          <Button
             variant="ghost"
             onClick={() => void handleRegenerate(true)}
             disabled={Boolean(regenerating) || !activeTaskId}
@@ -2104,7 +2104,7 @@ export function ProofreadingPage() {
             {regenerating === "bilingual"
               ? m.regenerating
               : m.regenerateBilingualAction}
-          </Pill>
+          </Button>
         </div>
         {snapshot?.output_dir ? (
           <div className={styles.outputLocation}>
@@ -2115,9 +2115,9 @@ export function ProofreadingPage() {
             >
               {snapshot.output_dir}
             </span>
-            <button
-              type="button"
-              className={`${styles.copyButton} ${styles.copyPathButton}`}
+            <Button
+              size="sm"
+              variant="quiet"
               onClick={() =>
                 void copyToClipboard(snapshot.output_dir, m.copyOutputPathDone)
               }
@@ -2125,9 +2125,56 @@ export function ProofreadingPage() {
               title={m.copyOutputPath}
             >
               {m.copyOutputPath}
-            </button>
+            </Button>
           </div>
         ) : null}
+        <div className={styles.retranslateConfigRow}>
+          <button
+            type="button"
+            className={styles.retranslateConfigButton}
+            onClick={() => setSwitchOpen("preset")}
+          >
+            <span className={styles.retranslateConfigLabel}>
+              {m.retranslatePreset}
+            </span>
+            <span className={styles.retranslateConfigName}>
+              {activeProofreadingPreset?.name ?? messages.runConfig.customPreset}
+            </span>
+            <span className={styles.retranslateConfigSwitch} aria-hidden="true">
+              <ChevronDownIcon size={13} />
+            </span>
+          </button>
+          <button
+            type="button"
+            className={styles.retranslateConfigButton}
+            onClick={() => setSwitchOpen("model")}
+          >
+            <span className={styles.retranslateConfigLabel}>
+              {m.retranslateModel}
+            </span>
+            <span className={styles.retranslateConfigName}>
+              {selectedProofreadingModel?.display_name ?? "—"}
+            </span>
+            <span className={styles.retranslateConfigSwitch} aria-hidden="true">
+              <ChevronDownIcon size={13} />
+            </span>
+          </button>
+          <button
+            type="button"
+            className={styles.retranslateConfigButton}
+            onClick={() => setSwitchOpen("prompt")}
+          >
+            <span className={styles.retranslateConfigLabel}>
+              {m.retranslatePrompt}
+            </span>
+            <span className={styles.retranslateConfigName}>
+              {selectedProofreadingPrompt?.name ?? "—"}
+            </span>
+            <span className={styles.retranslateConfigSwitch} aria-hidden="true">
+              <ChevronDownIcon size={13} />
+            </span>
+          </button>
+        </div>
         {regenerateFeedback ? (
           <span
             className={`${styles.inlineFeedback} ${
@@ -2141,54 +2188,6 @@ export function ProofreadingPage() {
             {regenerateFeedback.text}
           </span>
         ) : null}
-      </div>
-
-      <div className={styles.retranslateConfigRow}>
-        <button
-          type="button"
-          className={styles.retranslateConfigButton}
-          onClick={() => setSwitchOpen("preset")}
-        >
-          <span className={styles.retranslateConfigLabel}>
-            {m.retranslatePreset}
-          </span>
-          <span className={styles.retranslateConfigName}>
-            {activeProofreadingPreset?.name ?? messages.runConfig.customPreset}
-          </span>
-          <span className={styles.retranslateConfigSwitch} aria-hidden="true">
-            <ChevronDownIcon size={13} />
-          </span>
-        </button>
-        <button
-          type="button"
-          className={styles.retranslateConfigButton}
-          onClick={() => setSwitchOpen("model")}
-        >
-          <span className={styles.retranslateConfigLabel}>
-            {m.retranslateModel}
-          </span>
-          <span className={styles.retranslateConfigName}>
-            {selectedProofreadingModel?.display_name ?? "—"}
-          </span>
-          <span className={styles.retranslateConfigSwitch} aria-hidden="true">
-            <ChevronDownIcon size={13} />
-          </span>
-        </button>
-        <button
-          type="button"
-          className={styles.retranslateConfigButton}
-          onClick={() => setSwitchOpen("prompt")}
-        >
-          <span className={styles.retranslateConfigLabel}>
-            {m.retranslatePrompt}
-          </span>
-          <span className={styles.retranslateConfigName}>
-            {selectedProofreadingPrompt?.name ?? "—"}
-          </span>
-          <span className={styles.retranslateConfigSwitch} aria-hidden="true">
-            <ChevronDownIcon size={13} />
-          </span>
-        </button>
       </div>
 
       {switchOpen === "preset" ? (
@@ -2567,7 +2566,7 @@ export function ProofreadingPage() {
               />
               <span>{m.replacementRegex}</span>
             </label>
-            <Pill
+            <Button
               variant="ghost"
               onClick={() => void handleReplaceSelected()}
               disabled={replacing !== null || !selectedItem}
@@ -2575,13 +2574,13 @@ export function ProofreadingPage() {
               {replacing === "one"
                 ? m.replacementRunning
                 : m.replacementSelected}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               onClick={() => void handleReplaceAll()}
               disabled={replacing !== null || filteredItems.length === 0}
             >
               {replacing === "all" ? m.replacementRunning : m.replacementAll}
-            </Pill>
+            </Button>
           </div>
         ) : null}
       </div>
@@ -2753,142 +2752,144 @@ export function ProofreadingPage() {
           </div>
         </div>
 
-        {selectedItem ? (
-          <div className={styles.editor}>
-            <div>
-              <div className={styles.label}>{m.editorSrcLabel}</div>
-              <textarea
-                className={styles.editorSrc}
-                value={selectedItem.src}
-                readOnly
-                onFocus={(e) => e.currentTarget.select()}
-              />
-            </div>
-            <div>
-              <div className={styles.label}>{m.editorDstLabel}</div>
-              <textarea
-                className={styles.editorTextarea}
-                value={draftDst}
-                onChange={(e) => setDraftDst(e.target.value)}
-              />
-            </div>
-            <div className={styles.editorActions}>
-              <span className={styles.editorHint}>
-                {dirty ? (
-                  <span className={styles.dirty}>{m.editorDirty}</span>
-                ) : savedTick > 0 ? (
-                  m.editorSavedHint
-                ) : null}
-              </span>
-              <span style={{ display: "flex", gap: 8 }}>
-                <Pill
-                  variant="ghost"
-                  onClick={() => void handleRetranslate()}
-                  disabled={Boolean(
-                    inflightRetranslates[selectedItem.segment_id],
-                  )}
-                >
-                  {inflightRetranslates[selectedItem.segment_id]
-                    ? retranslateActivities[selectedItem.segment_id]
-                      ? format(m.retranslatingDetail, {
-                          phase:
-                            retranslateActivities[selectedItem.segment_id]
-                              .status === "pending"
-                              ? m.retranslateQueued
-                              : m.retranslateRequesting,
-                          time: formatRetranslateElapsed(
-                            retranslateActivities[selectedItem.segment_id]
-                              .elapsedSeconds,
-                          ),
+        <aside className={styles.side}>
+          {selectedItem ? (
+            <div className={styles.editor}>
+              <div>
+                <div className={styles.label}>{m.editorSrcLabel}</div>
+                <textarea
+                  className={styles.editorSrc}
+                  value={selectedItem.src}
+                  readOnly
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+              </div>
+              <div>
+                <div className={styles.label}>{m.editorDstLabel}</div>
+                <textarea
+                  className={styles.editorTextarea}
+                  value={draftDst}
+                  onChange={(e) => setDraftDst(e.target.value)}
+                />
+              </div>
+              <div className={styles.editorActions}>
+                <span className={styles.editorHint}>
+                  {dirty ? (
+                    <span className={styles.dirty}>{m.editorDirty}</span>
+                  ) : savedTick > 0 ? (
+                    m.editorSavedHint
+                  ) : null}
+                </span>
+                <span className={styles.editorButtons}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => void handleRetranslate()}
+                    disabled={Boolean(
+                      inflightRetranslates[selectedItem.segment_id],
+                    )}
+                  >
+                    {inflightRetranslates[selectedItem.segment_id]
+                      ? retranslateActivities[selectedItem.segment_id]
+                        ? format(m.retranslatingDetail, {
+                            phase:
+                              retranslateActivities[selectedItem.segment_id]
+                                .status === "pending"
+                                ? m.retranslateQueued
+                                : m.retranslateRequesting,
+                            time: formatRetranslateElapsed(
+                              retranslateActivities[selectedItem.segment_id]
+                                .elapsedSeconds,
+                            ),
+                          })
+                        : m.retranslating
+                      : m.retranslateAction}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => void handleRetranslateSelected()}
+                    disabled={batchRetranslating || selectedCount === 0}
+                  >
+                    {batchRetranslating
+                      ? m.retranslating
+                      : format(m.retranslateSelectedAction, {
+                          n: selectedCount,
+                        })}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => void handleUndoRetranslate()}
+                    disabled={!retranslateUndo || undoingRetranslate || dirty}
+                  >
+                    {undoingRetranslate
+                      ? m.retranslateUndoRunning
+                      : m.retranslateUndoAction}
+                  </Button>
+                  <Button onClick={() => void handleSave()} disabled={!dirty}>
+                    {m.editorSaveAction}
+                  </Button>
+                </span>
+              </div>
+              {selectedRejectedCandidate ? (
+                <div className={styles.rejectedCandidate}>
+                  <div className={styles.label}>{m.retranslateCandidateLabel}</div>
+                  <div className={styles.rejectedCandidateText}>
+                    {selectedRejectedCandidate.text}
+                  </div>
+                  <div className={styles.rejectedCandidateReason}>
+                    {m.retranslateCandidateReason}{" "}
+                    {selectedRejectedCandidate.reason}
+                  </div>
+                  <div className={styles.rejectedCandidateActions}>
+                    <Button
+                      variant="ghost"
+                      disabled={
+                        dirty || selectedRejectedCandidate.text === selectedItem.dst
+                      }
+                      onClick={() => setDraftDst(selectedRejectedCandidate.text)}
+                    >
+                      {m.retranslateCandidateEdit}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        setRejectedCandidates((prev) => {
+                          const next = { ...prev };
+                          delete next[selectedItem.segment_id];
+                          return next;
                         })
-                      : m.retranslating
-                    : m.retranslateAction}
-                </Pill>
-                <Pill
-                  variant="ghost"
-                  onClick={() => void handleRetranslateSelected()}
-                  disabled={batchRetranslating || selectedCount === 0}
-                >
-                  {batchRetranslating
-                    ? m.retranslating
-                    : format(m.retranslateSelectedAction, {
-                        n: selectedCount,
-                      })}
-                </Pill>
-                <Pill
-                  variant="ghost"
-                  onClick={() => void handleUndoRetranslate()}
-                  disabled={!retranslateUndo || undoingRetranslate || dirty}
-                >
-                  {undoingRetranslate
-                    ? m.retranslateUndoRunning
-                    : m.retranslateUndoAction}
-                </Pill>
-                <Pill onClick={() => void handleSave()} disabled={!dirty}>
-                  {m.editorSaveAction}
-                </Pill>
-              </span>
-            </div>
-            {selectedRejectedCandidate ? (
-              <div className={styles.rejectedCandidate}>
-                <div className={styles.label}>{m.retranslateCandidateLabel}</div>
-                <div className={styles.rejectedCandidateText}>
-                  {selectedRejectedCandidate.text}
+                      }
+                    >
+                      {m.retranslateCandidateKeep}
+                    </Button>
+                  </div>
                 </div>
-                <div className={styles.rejectedCandidateReason}>
-                  {m.retranslateCandidateReason}{" "}
-                  {selectedRejectedCandidate.reason}
-                </div>
-                <div className={styles.rejectedCandidateActions}>
-                  <Pill
-                    variant="ghost"
-                    disabled={
-                      dirty || selectedRejectedCandidate.text === selectedItem.dst
-                    }
-                    onClick={() => setDraftDst(selectedRejectedCandidate.text)}
-                  >
-                    {m.retranslateCandidateEdit}
-                  </Pill>
-                  <Pill
-                    variant="ghost"
+              ) : null}
+              {selectedItem.subtask_ids?.length ? (
+                <div className={styles.debugHintRow}>
+                  <div className={styles.debugHint}>
+                    {format(m.subtaskHint, {
+                      ids: selectedItem.subtask_ids.join(", "),
+                    })}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="quiet"
                     onClick={() =>
-                      setRejectedCandidates((prev) => {
-                        const next = { ...prev };
-                        delete next[selectedItem.segment_id];
-                        return next;
-                      })
+                      void copyToClipboard(
+                        selectedItem.subtask_ids?.join(", ") ?? "",
+                        m.copySubtaskIdsDone,
+                      )
                     }
                   >
-                    {m.retranslateCandidateKeep}
-                  </Pill>
+                    {m.copySubtaskIds}
+                  </Button>
                 </div>
-              </div>
-            ) : null}
-            {selectedItem.subtask_ids?.length ? (
-              <div className={styles.debugHintRow}>
-                <div className={styles.debugHint}>
-                  {format(m.subtaskHint, {
-                    ids: selectedItem.subtask_ids.join(", "),
-                  })}
-                </div>
-                <button
-                  type="button"
-                  className={styles.copyButton}
-                  onClick={() =>
-                    void copyToClipboard(
-                      selectedItem.subtask_ids?.join(", ") ?? "",
-                      m.copySubtaskIdsDone,
-                    )
-                  }
-                >
-                  {m.copySubtaskIds}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className={styles.editorEmpty}>{m.editorEmpty}</div>
-        )}
+              ) : null}
+            </div>
+          ) : (
+            <div className={styles.editorEmpty}>{m.editorEmpty}</div>
+          )}
+        </aside>
       </div>
 
       {feedback ? (

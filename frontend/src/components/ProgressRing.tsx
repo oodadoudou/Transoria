@@ -28,14 +28,14 @@ export function ProgressRing({
 
   return (
     <div className={styles.ring}>
-      <svg width="160" height="160" viewBox="0 0 180 180" aria-hidden>
+      <svg viewBox="0 0 180 180" aria-hidden>
         <circle
           cx="90"
           cy="90"
           r={RADIUS}
           fill="none"
-          stroke="#ebe9e2"
-          strokeWidth="9"
+          stroke="var(--hairline)"
+          strokeWidth="10"
         />
         <circle
           cx="90"
@@ -43,7 +43,7 @@ export function ProgressRing({
           r={RADIUS}
           fill="none"
           stroke="var(--action)"
-          strokeWidth="9"
+          strokeWidth="10"
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={offset}

@@ -13,7 +13,7 @@ import {
   type UpdateCheckResult,
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { NumberField } from "@/components/NumberField";
 import { TextField } from "@/components/TextField";
 import { Segmented } from "@/components/Segmented";
@@ -64,7 +64,6 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
 
   const interfaceLanguage = draft?.interface_language ?? locale;
   const colorTheme = draft?.color_theme === "dark" ? "dark" : "light";
-  const nextColorTheme = colorTheme === "dark" ? "light" : "dark";
 
   const handleLanguageChange = async (next: Locale) => {
     const previous = locale;
@@ -94,37 +93,34 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
           label={messages.appSettings.interfaceLanguage}
           hint={messages.appSettings.interfaceLanguageHint}
         >
-          <div className={styles.inlineControls}>
-            <Segmented<Locale>
-              ariaLabel={messages.appSettings.interfaceLanguage}
-              options={[
-                { id: "en", label: messages.appSettings.languageEnglish },
-                { id: "zh", label: messages.appSettings.languageChinese },
-              ]}
-              value={interfaceLanguage as Locale}
-              onChange={(v) => {
-                void handleLanguageChange(v);
-              }}
-            />
-            {draft ? (
-              <button
-                type="button"
-                className={styles.themeShortcut}
-                onClick={() =>
-                  moduleSettings.update("color_theme", nextColorTheme)
-                }
-                aria-label={appSettingsExtra.colorTheme}
-                title={appSettingsExtra.colorThemeHint}
-              >
-                {colorTheme === "dark"
-                  ? appSettingsExtra.colorThemeLight
-                  : appSettingsExtra.colorThemeDark}
-              </button>
-            ) : null}
-          </div>
+          <Segmented<Locale>
+            ariaLabel={messages.appSettings.interfaceLanguage}
+            options={[
+              { id: "en", label: messages.appSettings.languageEnglish },
+              { id: "zh", label: messages.appSettings.languageChinese },
+            ]}
+            value={interfaceLanguage as Locale}
+            onChange={(v) => {
+              void handleLanguageChange(v);
+            }}
+          />
         </SettingRow>
         {draft ? (
           <>
+            <SettingRow
+              label={appSettingsExtra.colorTheme}
+              hint={appSettingsExtra.colorThemeHint}
+            >
+              <Segmented<"light" | "dark">
+                ariaLabel={appSettingsExtra.colorTheme}
+                options={[
+                  { id: "light", label: appSettingsExtra.colorThemeLight },
+                  { id: "dark", label: appSettingsExtra.colorThemeDark },
+                ]}
+                value={colorTheme}
+                onChange={(v) => moduleSettings.update("color_theme", v)}
+              />
+            </SettingRow>
             <SettingRow
               label={appSettingsExtra.uiScale}
               hint={appSettingsExtra.uiScaleHint}
@@ -258,11 +254,11 @@ function UpdatesPanel() {
     <Panel
       label={appSettingsExtra.updatesLabel}
       labelExtra={
-        <Pill variant="ghost" onClick={handleCheck} disabled={checking}>
+        <Button variant="ghost" onClick={handleCheck} disabled={checking}>
           {checking
             ? appSettingsExtra.checking
             : appSettingsExtra.checkForUpdates}
-        </Pill>
+        </Button>
       }
     >
       {result ? (
@@ -279,13 +275,13 @@ function UpdatesPanel() {
                 {result.release_notes_markdown}
               </pre>
               <div className={styles.updateActions}>
-                <Pill variant="ghost" onClick={handleOpen}>
+                <Button variant="ghost" onClick={handleOpen}>
                   {appSettingsExtra.openReleasePage}
-                </Pill>
+                </Button>
                 {result.asset ? (
-                  <Pill onClick={handleDownload}>
+                  <Button onClick={handleDownload}>
                     {appSettingsExtra.download} {result.asset.name}
-                  </Pill>
+                  </Button>
                 ) : null}
               </div>
             </>
@@ -368,14 +364,14 @@ function CachePanel() {
     <Panel
       label={labels.cacheLabel}
       labelExtra={
-        <Pill
+        <Button
           variant="ghost"
           onClick={() => setOpen(true)}
           disabled={cleanupBlocked}
           title={cleanupBlocked ? labels.cacheRunningBlock : undefined}
         >
           {labels.cacheManageAction}
-        </Pill>
+        </Button>
       }
     >
       <div className={styles.row}>
@@ -406,9 +402,9 @@ function CachePanel() {
         </div>
         {summary?.cache_root ? (
           <div className={styles.rowControl}>
-            <Pill variant="ghost" onClick={() => void handleOpenCacheRoot()}>
+            <Button variant="ghost" onClick={() => void handleOpenCacheRoot()}>
               {labels.cacheOpenAction}
-            </Pill>
+            </Button>
           </div>
         ) : null}
       </div>

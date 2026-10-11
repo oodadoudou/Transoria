@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMessages } from "@/locales";
 import { glossaryBridge, BridgeError } from "@/bridge";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import styles from "./QuickSwitchModal.module.css";
 
 interface PresetSummary {
@@ -122,9 +122,9 @@ export function GlossaryPresetModal({
         </div>
         {directory && presets && presets.length > 0 ? (
           <div className={styles.footer}>
-            <Pill variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose}>
               {labels.close}
-            </Pill>
+            </Button>
           </div>
         ) : null}
       </div>

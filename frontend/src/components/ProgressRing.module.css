@@ -1,12 +1,14 @@
 .ring {
-  width: 160px;
-  height: 160px;
+  width: 112px;
+  height: 112px;
   position: relative;
   display: grid;
   place-items: center;
 }
 
 .ring svg {
+  width: 100%;
+  height: 100%;
   transform: rotate(-90deg);
 }
 
@@ -16,7 +18,7 @@
 }
 
 .num b {
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);
@@ -26,7 +28,6 @@
   display: block;
   color: var(--muted);
   font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  margin-top: 4px;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
 }

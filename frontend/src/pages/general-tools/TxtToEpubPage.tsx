@@ -13,10 +13,11 @@ import {
   type TxtToEpubTocEntry,
 } from "@/bridge";
 import { CompactPath } from "@/components/CompactPath";
+import { Segmented } from "@/components/Segmented";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { HelpTip } from "@/components/HelpTip";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { useMessages } from "@/locales";
 import {
   hasShownCleanCompletionToast,
@@ -204,7 +205,7 @@ function normalizeOutputFilename(
   return name.toLowerCase().endsWith(".epub") ? name : `${name}.epub`;
 }
 
-export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function TxtToEpubPage() {
   const messages = useMessages();
   const pageText = messages.generalTools.txtToEpub;
   const text = messages.txtToEpubTool;
@@ -612,8 +613,8 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
   return (
     <EpubToolWorkspace>
       <Panel
-        title={embedded ? undefined : pageText.title}
-        subtitle={embedded ? undefined : pageText.sub}
+        title={pageText.title}
+        subtitle={pageText.sub}
       >
         <div className={styles.grid2}>
           <div className={styles.fileField}>
@@ -625,9 +626,9 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                 onChange={(event) => updateInputPath(event.target.value)}
                 placeholder={text.inputPlaceholder}
               />
-              <Pill variant="ghost" onClick={handleChooseTxt}>
+              <Button variant="ghost" onClick={handleChooseTxt}>
                 {text.chooseTxt}
-              </Pill>
+              </Button>
             </div>
           </div>
           <FolderPickerRow
@@ -637,7 +638,6 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             onChange={setOutputDir}
             onError={setActionError}
             historyKey="general_tools:txt_to_epub:output_folder"
-            compact
           />
         </div>
         <EpubToolAdvancedSettings label={messages.common.advancedSettings}>
@@ -670,9 +670,9 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                 onChange={(event) => setCoverPath(event.target.value)}
                 placeholder={text.coverPlaceholder}
               />
-              <Pill variant="ghost" onClick={handleChooseCover}>
+              <Button variant="ghost" onClick={handleChooseCover}>
                 {text.chooseCover}
-              </Pill>
+              </Button>
             </div>
           </label>
           <label className={styles.checkboxField}>
@@ -728,22 +728,15 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
           </span>
         }
       >
-        <div className={styles.modeRow}>
-          {(["preset", "simple", "advanced"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={draft.regexMode === mode ? styles.modeActive : styles.modeButton}
-              onClick={() => setDraft((prev) => ({ ...prev, regexMode: mode }))}
-            >
-              {mode === "preset"
-                ? text.modePreset
-                : mode === "simple"
-                  ? text.modeSimple
-                  : text.modeAdvanced}
-            </button>
-          ))}
-        </div>
+        <Segmented<"preset" | "simple" | "advanced">
+          options={[
+            { id: "preset", label: text.modePreset },
+            { id: "simple", label: text.modeSimple },
+            { id: "advanced", label: text.modeAdvanced },
+          ]}
+          value={draft.regexMode}
+          onChange={(mode) => setDraft((prev) => ({ ...prev, regexMode: mode }))}
+        />
         {draft.regexMode === "preset" ? (
           <EpubToolSelectField
             className={styles.selectBlock}
@@ -836,9 +829,9 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             <option value={3}>3</option>
             <option value={4}>4</option>
           </EpubToolSelectField>
-          <Pill variant="ghost" onClick={() => void handleAddTocEntry()}>
+          <Button variant="ghost" onClick={() => void handleAddTocEntry()}>
             {text.addToc}
-          </Pill>
+          </Button>
         </div>
         <div className={styles.batchBar}>
           <span className={styles.hint}>
@@ -855,34 +848,34 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
             <option value={3}>3</option>
             <option value={4}>4</option>
           </EpubToolSelectField>
-          <Pill
+          <Button
             variant="ghost"
             onClick={() => patchSelectedEntries({ level: batchLevel })}
             disabled={selectedTocCount === 0}
           >
             {text.applyLevel}
-          </Pill>
-          <Pill
+          </Button>
+          <Button
             variant="ghost"
             onClick={() => patchSelectedEntries({ enabled: true })}
             disabled={selectedTocCount === 0}
           >
             {text.enableSelected}
-          </Pill>
-          <Pill
+          </Button>
+          <Button
             variant="ghost"
             onClick={() => patchSelectedEntries({ enabled: false })}
             disabled={selectedTocCount === 0}
           >
             {text.disableSelected}
-          </Pill>
-          <Pill
+          </Button>
+          <Button
             variant="ghost"
             onClick={() => deleteEntries(selectedTocIds)}
             disabled={selectedTocCount === 0}
           >
             {text.deleteSelected}
-          </Pill>
+          </Button>
         </div>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
@@ -1015,24 +1008,24 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
         <div className={styles.cssGrid}>
           <div>
             <div className={styles.actionRow}>
-              <Pill
+              <Button
                 variant="ghost"
                 onClick={() => {
                   void navigator.clipboard.writeText(styleTemplate || draft.customCss);
                 }}
               >
                 {text.copyTemplate}
-              </Pill>
-              <Pill variant="ghost" onClick={handleDownloadTemplate}>
+              </Button>
+              <Button variant="ghost" onClick={handleDownloadTemplate}>
                 {text.downloadTemplate}
-              </Pill>
-              <Pill
+              </Button>
+              <Button
                 variant="ghost"
                 onClick={() => cssFileInputRef.current?.click()}
               >
                 {text.importCss}
-              </Pill>
-              <Pill
+              </Button>
+              <Button
                 variant="ghost"
                 onClick={() =>
                   setDraft((prev) => ({
@@ -1043,7 +1036,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                 }
               >
                 {text.resetTemplate}
-              </Pill>
+              </Button>
             </div>
             <input
               ref={cssFileInputRef}
@@ -1110,15 +1103,15 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
               <span className={styles.hint}>{text.noOutput}</span>
             )}
             <div className={styles.actionRow}>
-              <Pill
+              <Button
                 variant="ghost"
                 onClick={() => {
                   void dialogsBridge.openDirectory(artifacts.output_folder);
                 }}
               >
                 {text.openOutputFolder}
-              </Pill>
-              <Pill
+              </Button>
+              <Button
                 variant="ghost"
                 onClick={() => {
                   void navigator.clipboard.writeText(artifacts.output_files.join("\n"));
@@ -1126,7 +1119,7 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
                 }}
               >
                 {text.copyPath}
-              </Pill>
+              </Button>
               {artifactFeedback ? <span className={styles.hint}>{artifactFeedback}</span> : null}
             </div>
           </div>
@@ -1159,15 +1152,15 @@ export function TxtToEpubPage({ embedded = false }: { embedded?: boolean } = {})
         }
         actions={
           <>
-            <Pill variant="ghost" onClick={handleScan} disabled={isRunning}>
+            <Button variant="ghost" onClick={handleScan} disabled={isRunning}>
               {text.scanToc}
-            </Pill>
-            <Pill onClick={handleExecute} disabled={isRunning || !inputPath.trim()}>
+            </Button>
+            <Button onClick={handleExecute} disabled={isRunning || !inputPath.trim()}>
               {isRunning ? text.generating : text.generate}
-            </Pill>
-            <Pill variant="ghost" onClick={handleStop} disabled={!isRunning}>
+            </Button>
+            <Button variant="ghost" onClick={handleStop} disabled={!isRunning}>
               {text.stop}
-            </Pill>
+            </Button>
           </>
         }
         error={actionError ? (

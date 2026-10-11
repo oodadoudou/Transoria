@@ -1,6 +1,6 @@
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import styles from "./QuickSwitchModal.module.css";
 
 export interface QuickSwitchItem {
@@ -96,7 +96,7 @@ export function QuickSwitchModal({
         </div>
         {onManage ? (
           <div className={styles.footer}>
-            <Pill
+            <Button
               variant="ghost"
               onClick={() => {
                 onClose();
@@ -104,7 +104,7 @@ export function QuickSwitchModal({
               }}
             >
               {labels.manageLink}
-            </Pill>
+            </Button>
           </div>
         ) : null}
       </div>

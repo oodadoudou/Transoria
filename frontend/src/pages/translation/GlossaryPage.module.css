@@ -96,7 +96,7 @@
 
 .ruleChipOn {
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
   border-color: var(--action);
 }
 
@@ -140,30 +140,6 @@
   margin-top: 18px;
 }
 
-.toolbarBtn {
-  background: transparent;
-  border: 1px solid var(--hairline-strong);
-  color: var(--ink);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
-}
 
-.toolbarBtn:hover {
-  background: var(--panel-soft);
-}
 
-.toolbarBtnPrimary,
-.toolbarBtnPrimary:hover {
-  background: var(--action);
-  color: #fff;
-  border-color: var(--action);
-}
 
-.toolbarBtn:active {
-  transform: translateY(0.5px);
-}

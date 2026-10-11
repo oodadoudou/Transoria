@@ -40,7 +40,7 @@
 
 .headerSortable:hover {
   color: var(--ink, #2c2620);
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-wash);
 }
 
 .headerSortActive {
@@ -141,7 +141,7 @@
 }
 
 .cellEditable:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--hover-wash);
   border-radius: 4px;
 }
 
@@ -325,35 +325,7 @@
   border-bottom: 1px solid var(--hairline);
 }
 
-.toolbarBtn {
-  background: transparent;
-  border: 1px solid var(--hairline-strong);
-  color: var(--ink);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
-}
 
-.toolbarBtn:hover:not(:disabled) {
-  background: var(--panel-soft);
-}
 
-.toolbarBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
-.toolbarBtnPrimary,
-.toolbarBtnPrimary:hover {
-  background: var(--action);
-  color: var(--action-fg);
-  border-color: var(--action);
-}
 
-.toolbarBtn:active {
-  transform: translateY(0.5px);
-}

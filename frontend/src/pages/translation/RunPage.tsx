@@ -29,7 +29,7 @@ import {
   useWorkflowPresetsStore,
 } from "@/store/useWorkflowPresetsStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { ProgressRing } from "@/components/ProgressRing";
 import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
 import { LiveRequestCounter } from "@/components/LiveRequestCounter";
@@ -472,12 +472,12 @@ export function RunPage() {
 
       {showFailures ? (
         <div className={styles.failuresPillRow}>
-          <Pill
+          <Button
             variant="ghost"
             onClick={() => setFailedModalOpen(true)}
           >
             {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
-          </Pill>
+          </Button>
           {snapshot.status === "failed" ||
           snapshot.status === "stopped" ||
           snapshot.status === "paused" ||
@@ -514,13 +514,17 @@ export function RunPage() {
         />
       ) : null}
 
-      <Panel label={run.progress}>
-        {activeTaskId ? (
-          <div className={styles.taskIdStrip}>
-            <span>{run.taskId}</span>
-            <code>{activeTaskId}</code>
-          </div>
-        ) : null}
+      <Panel
+        label={run.progress}
+        labelExtra={
+          activeTaskId ? (
+            <span className={styles.taskIdStrip}>
+              <span>{run.taskId}</span>
+              <code>{activeTaskId}</code>
+            </span>
+          ) : undefined
+        }
+      >
         {showProgressEmpty ? (
           <GuidedEmptyState
             label={run.emptyState.label}
@@ -669,9 +673,9 @@ function NextStepCard({
         <p>{content.body}</p>
       </div>
       <div className={styles.nextStepActions}>
-        <Pill variant="primary" onClick={content.onAction}>
+        <Button variant="primary" onClick={content.onAction}>
           {content.action}
-        </Pill>
+        </Button>
         {!persistent ? (
           <button
             type="button"

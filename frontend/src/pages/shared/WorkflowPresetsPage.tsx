@@ -8,7 +8,7 @@ import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { useWorkflowPresets } from "@/store/useWorkflowPresetsStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { LanguageSelect } from "@/components/LanguageSelect";
 import { OverflowMenu } from "@/components/OverflowMenu";
@@ -253,9 +253,9 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
         labelExtra={
           <div className={styles.headerActions}>
             <span>{labels.availableHint}</span>
-            <Pill variant="ghost" onClick={beginCreate}>
+            <Button variant="ghost" onClick={beginCreate}>
               {labels.addAction}
-            </Pill>
+            </Button>
           </div>
         }
       >
@@ -769,12 +769,12 @@ function WorkflowPresetModal({
           </div>
         </div>
         <div className={styles.modalFooter}>
-          <Pill variant="ghost" onClick={handleCancel}>
+          <Button variant="ghost" onClick={handleCancel}>
             {labels.cancelAction}
-          </Pill>
-          <Pill onClick={() => onSave(form)} disabled={!canSave}>
+          </Button>
+          <Button onClick={() => onSave(form)} disabled={!canSave}>
             {labels.saveAction}
-          </Pill>
+          </Button>
         </div>
       </div>
     </div>

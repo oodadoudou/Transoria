@@ -13,6 +13,7 @@ interface TextFieldProps {
   rows?: number;
   /** Use the monospace font (e.g., model IDs, URLs, JSON snippets). */
   mono?: boolean;
+  stacked?: boolean;
 }
 
 /**
@@ -29,6 +30,7 @@ export function TextField({
   multiline,
   rows = 3,
   mono,
+  stacked = false,
 }: TextFieldProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const helpId = useId();
@@ -44,22 +46,26 @@ export function TextField({
 
   return (
     <div className={nfStyles.field}>
-      <div className={`${nfStyles.row} ${tfStyles.row}`}>
-        <div className={nfStyles.labelWrap}>
-          <span className={nfStyles.label}>{label}</span>
-          {help ? (
-            <button
-              type="button"
-              className={nfStyles.help}
-              aria-expanded={helpOpen}
-              aria-controls={helpId}
-              onClick={() => setHelpOpen(!helpOpen)}
-              title={help}
-            >
-              ?
-            </button>
-          ) : null}
-        </div>
+      <div
+        className={`${nfStyles.row} ${tfStyles.row} ${stacked || !(label || help) ? tfStyles.rowStacked : ""}`.trim()}
+      >
+        {label || help ? (
+          <div className={nfStyles.labelWrap}>
+            <span className={nfStyles.label}>{label}</span>
+            {help ? (
+              <button
+                type="button"
+                className={nfStyles.help}
+                aria-expanded={helpOpen}
+                aria-controls={helpId}
+                onClick={() => setHelpOpen(!helpOpen)}
+                title={help}
+              >
+                ?
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className={tfStyles.inputWrap}>
           {multiline ? (
             <textarea

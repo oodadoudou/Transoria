@@ -245,7 +245,7 @@ export const en: Messages = {
     titlePrompt: "Switch active prompt",
     titlePreset: "Switch preset",
     closeAction: "Close",
-    activeBadge: "Active",
+    activeBadge: "Current",
     emptyModel: "No API profiles configured. Add one on the Model page.",
     emptyPrompt: "No prompt presets configured.",
     emptyPreset:
@@ -1700,7 +1700,7 @@ export const en: Messages = {
       },
       configured: {
         title: "Configured Models",
-        sub: "Custom models you added. Click 'Set as active' to apply, or edit / delete entries.",
+        sub: "Double-click an entry or use the ··· menu to edit, duplicate, or delete. Switch the model in use from each module's Run page.",
         empty:
           "No custom models yet. Use '+ Add Model' in the top right to create one.",
         applyAction: "Set as active",

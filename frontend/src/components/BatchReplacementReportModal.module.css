@@ -307,7 +307,7 @@
 
 .matchHighlight {
   background: rgba(176, 65, 24, 0.18);
-  color: #6b3a1f;
+  color: var(--text-warn);
   border-radius: 3px;
   padding: 0 2px;
   font-weight: 600;
@@ -315,7 +315,7 @@
 
 .replacementHighlight {
   background: rgba(47, 125, 87, 0.18);
-  color: #1f5b3d;
+  color: var(--text-ok);
   border-radius: 3px;
   padding: 0 2px;
   font-weight: 600;

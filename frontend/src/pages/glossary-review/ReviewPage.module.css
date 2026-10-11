@@ -95,7 +95,7 @@
 
 .sortButton:hover {
   color: var(--ink);
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-wash);
 }
 
 .sortActive {
@@ -188,7 +188,7 @@
 }
 
 .dirty {
-  color: #b04038;
+  color: var(--danger);
   font-size: 12px;
   font-weight: 600;
 }
@@ -200,9 +200,9 @@
 }
 
 .error {
-  color: #b04038;
+  color: var(--danger);
 }
 
 .success {
-  color: #2c7a55;
+  color: var(--success);
 }

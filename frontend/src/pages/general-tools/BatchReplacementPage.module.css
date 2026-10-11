@@ -20,29 +20,16 @@
 }
 
 .ruleField span {
-  color: var(--muted, #7a7166);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .ruleField input {
   width: 100%;
-  min-height: 36px;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-  font-size: 12.5px;
-  padding: 6px 10px;
 }
 
-.ruleImportRow > :global(button) {
-  min-height: 36px;
-}
 
 .empty {
   color: var(--muted, #7a7166);
@@ -93,7 +80,7 @@
 
 .issues code,
 .warnings code {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--code-bg);
   padding: 1px 4px;
   border-radius: 3px;
   margin-right: 4px;

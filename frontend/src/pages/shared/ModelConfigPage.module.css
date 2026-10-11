@@ -36,13 +36,13 @@
 }
 
 .chip:hover:not(.chipActive) {
-  background: #ebeae3;
+  background: var(--panel-hover);
 }
 
 .chipActive,
 .chipActive:hover {
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
 }
 
 .chip:active {
@@ -186,7 +186,7 @@
 .errorCode {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--code-bg);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -206,7 +206,7 @@
 }
 
 .errorDismiss:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-wash);
 }
 
 .presetActions {
@@ -243,7 +243,7 @@
 .primaryButton {
   border: 1px solid var(--ink, #1a1a1a);
   background: var(--ink, #1a1a1a);
-  color: #fff;
+  color: var(--canvas);
   padding: 8px 18px;
   border-radius: 999px;
   font: inherit;
@@ -293,15 +293,15 @@
 }
 
 .statusOk {
-  background: rgba(64, 132, 96, 0.07);
-  border-color: rgba(64, 132, 96, 0.32);
-  color: #2c5840;
+  background: var(--surface-ok);
+  border-color: color-mix(in srgb, var(--success) 32%, transparent);
+  color: var(--text-ok);
 }
 
 .statusFail {
-  background: rgba(176, 64, 56, 0.06);
-  border-color: rgba(176, 64, 56, 0.28);
-  color: #6b3a1f;
+  background: var(--surface-warn);
+  border-color: var(--surface-warn-border);
+  color: var(--text-warn);
 }
 
 .statusHeader {
@@ -374,11 +374,11 @@
 }
 
 .configuredRow:hover {
-  background: #ebeae3;
+  background: var(--panel-hover);
 }
 
 .configuredRowActive {
-  background: #ebeae3;
+  background: var(--panel-hover);
   outline: 1px solid var(--action);
 }
 
@@ -422,7 +422,7 @@
   padding: 3px 10px;
   border-radius: 999px;
   background: var(--action);
-  color: #fff;
+  color: var(--action-fg);
 }
 
 @media (max-width: 720px) {

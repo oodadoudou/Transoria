@@ -268,3 +268,29 @@
   font-weight: 400;
   color: var(--muted);
 }
+
+:global(:root[data-theme='dark']) .githubLink {
+  border-color: rgba(240, 200, 77, 0.42);
+  color: #f0b46a;
+  background: rgba(240, 200, 77, 0.08);
+}
+
+:global(:root[data-theme='dark']) .githubLink:hover {
+  border-color: rgba(240, 200, 77, 0.66);
+  color: #f6c788;
+  background: rgba(240, 200, 77, 0.14);
+}
+
+:global(:root[data-theme='dark']) .githubFace {
+  color: #f0b46a;
+}
+
+:global(:root[data-theme='dark']) .githubStar {
+  text-shadow: none;
+}
+
+.parentCurrent,
+.parentCurrent:hover {
+  background: var(--panel-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}

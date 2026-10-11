@@ -10,32 +10,6 @@
   width: 100%;
 }
 
-.modeRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 0;
-}
-
-.modeButton,
-.modeActive {
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 999px;
-  background: var(--panel, #fffaf3);
-  color: var(--muted, #7a7166);
-  padding: 6px 12px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.modeActive {
-  background: var(--ink, #2f281f);
-  color: var(--panel, #fffaf3);
-}
-
 .fileRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -48,18 +22,8 @@
 .field input,
 .field select {
   width: 100%;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  padding: 7px 10px;
-  min-height: 36px;
 }
 
-.fileRow > :global(button) {
-  min-height: 36px;
-}
 
 .optionsGrid {
   display: grid;
@@ -89,11 +53,9 @@
 }
 
 .field span {
-  color: var(--muted, #7a7166);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .actionError {

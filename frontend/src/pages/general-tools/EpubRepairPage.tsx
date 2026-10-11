@@ -8,7 +8,7 @@ import {
   type EpubRepairResult,
 } from "@/bridge";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { CompactPath } from "@/components/CompactPath";
 import { useMessages } from "@/locales";
 import { useLocalState } from "@/utils/localState";
@@ -44,7 +44,7 @@ function repairedFilename(inputPath: string): string {
   return fallback ? `${fallback}-repaired.epub` : "repaired.epub";
 }
 
-export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}) {
+export function EpubRepairPage() {
   const messages = useMessages();
   const text = messages.epubRepairTool;
   const [inputPath, setInputPath] = useLocalState(INPUT_LOCAL_KEY, "");
@@ -149,10 +149,10 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
   };
 
   return (
-    <EpubToolWorkspace compact>
+    <EpubToolWorkspace>
       <Panel
-        title={embedded ? undefined : text.title}
-        subtitle={embedded ? undefined : text.sub}
+        title={text.title}
+        subtitle={text.sub}
       >
         <div className={styles.pathGridSingle}>
           <label className={styles.field}>
@@ -167,9 +167,9 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
                 }}
                 placeholder={text.inputPlaceholder}
               />
-              <Pill variant="ghost" onClick={handleChooseInput} disabled={loading}>
+              <Button variant="ghost" onClick={handleChooseInput} disabled={loading}>
                 {text.chooseEpub}
-              </Pill>
+              </Button>
             </div>
           </label>
           <label className={styles.field}>
@@ -184,13 +184,13 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
                 }}
                 placeholder={defaultOutputFolder(inputPath)}
               />
-              <Pill
+              <Button
                 variant="ghost"
                 onClick={handleChooseOutputFolder}
                 disabled={loading}
               >
                 {text.chooseOutputFolder}
-              </Pill>
+              </Button>
             </div>
           </label>
         </div>
@@ -210,7 +210,6 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
         {!result ? (
           <Panel
             label={text.previewLabel}
-            labelHelp={!preview ? text.noResult : undefined}
           >
             {preview ? (
               <div className={styles.summaryGrid}>
@@ -231,7 +230,7 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
                 />
               </div>
             ) : (
-              <div className={styles.empty}>-</div>
+              <div className={styles.empty}>{text.noResult}</div>
             )}
           </Panel>
         ) : null}
@@ -279,22 +278,22 @@ export function EpubRepairPage({ embedded = false }: { embedded?: boolean } = {}
         }
         actions={
           <>
-            <Pill variant="ghost" onClick={handlePreview} disabled={!inputPath || loading}>
+            <Button variant="ghost" onClick={handlePreview} disabled={!inputPath || loading}>
               {text.preview}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               onClick={handleRepair}
               disabled={!preview || preview.output_path !== resolvedOutputPath || loading}
             >
               {text.repair}
-            </Pill>
-            <Pill
+            </Button>
+            <Button
               variant="ghost"
               onClick={handleRevealOutput}
               disabled={!result}
             >
               {text.openOutput}
-            </Pill>
+            </Button>
           </>
         }
         error={

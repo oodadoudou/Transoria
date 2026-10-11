@@ -195,13 +195,13 @@
 }
 
 .groupHead:hover {
-  background: rgba(0, 0, 0, 0.025);
+  background: var(--hover-wash);
 }
 
 .groupCode {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--code-bg);
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;

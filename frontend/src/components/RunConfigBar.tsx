@@ -25,8 +25,8 @@ export function RunConfigBar({ items }: RunConfigBarProps) {
           onClick={item.onClick}
           title={[item.primary, item.secondary].filter(Boolean).join("\n")}
         >
-          <span className={styles.meta}>
-            <span className={styles.label}>{item.label}</span>
+          <span className={styles.label}>{item.label}</span>
+          <span className={styles.value}>
             <span className={styles.primary}>{item.primary}</span>
             {item.secondary ? (
               <span className={styles.secondary}>{item.secondary}</span>

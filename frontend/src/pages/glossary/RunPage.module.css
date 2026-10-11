@@ -1,8 +1,9 @@
 .progressCard {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 112px 1fr;
   gap: 28px;
   align-items: center;
+  margin-bottom: 8px;
 }
 
 .startupNotice {
@@ -29,8 +30,8 @@
 
 .statGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px 24px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px 20px;
 }
 
 .stat {
@@ -39,15 +40,13 @@
 
 .statLabel {
   color: var(--muted);
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  font-size: 12px;
   margin-bottom: 4px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .stat b {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);

@@ -17,7 +17,7 @@ import {
   type ThinkingLevel,
 } from "@/bridge";
 import { useToastStore } from "@/store/useToastStore";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import { TextField } from "./TextField";
 import { NumberField } from "./NumberField";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -535,28 +535,28 @@ export function ModelProfileModal({
 
         <div className={styles.footer}>
           {mode === "create" && selectedTemplate !== null ? (
-            <Pill variant="ghost" onClick={handleBackToPicker}>
+            <Button variant="ghost" onClick={handleBackToPicker}>
               {m.pickerBack}
-            </Pill>
+            </Button>
           ) : null}
           {mode === "edit" && onDelete ? (
-            <Pill variant="ghost" onClick={() => void onDelete()}>
+            <Button variant="danger" onClick={() => void onDelete()}>
               {messages.modelExtra.deleteProfile}
-            </Pill>
+            </Button>
           ) : null}
           {mode === "edit" && onSetActive && !isActive ? (
-            <Pill variant="ghost" onClick={() => void onSetActive()}>
+            <Button variant="ghost" onClick={() => void onSetActive()}>
               {messages.modelExtra.setActive}
-            </Pill>
+            </Button>
           ) : null}
           <div className={styles.footerRight}>
-            <Pill variant="ghost" onClick={handleCancel}>
+            <Button variant="ghost" onClick={handleCancel}>
               {m.cancelAction}
-            </Pill>
+            </Button>
             {!showStep1 ? (
-              <Pill onClick={handleSave} disabled={saving}>
+              <Button onClick={handleSave} disabled={saving}>
                 {m.saveAction}
-              </Pill>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -656,20 +656,22 @@ function FormStep({
         />
         <div className={styles.formatRow}>
           <span className={styles.formatLabel}>{model.apiFormatLabel}</span>
-          <Segmented<ProviderFormat>
-            ariaLabel={model.apiFormatLabel}
-            options={PROVIDER_OPTIONS}
-            value={draft.provider_format}
-            onChange={(v) => {
-              if (providerLocked) return;
-              update("provider_format", v);
-            }}
-          />
-          {providerLocked ? (
-            <span className={styles.formatLockedHint}>
-              ({hintTemplate?.display_name})
-            </span>
-          ) : null}
+          <div className={styles.formatControl}>
+            <Segmented<ProviderFormat>
+              ariaLabel={model.apiFormatLabel}
+              options={PROVIDER_OPTIONS}
+              value={draft.provider_format}
+              onChange={(v) => {
+                if (providerLocked) return;
+                update("provider_format", v);
+              }}
+            />
+            {providerLocked ? (
+              <span className={styles.formatLockedHint}>
+                ({hintTemplate?.display_name})
+              </span>
+            ) : null}
+          </div>
         </div>
         <TextField
           label={model.baseUrl}
@@ -695,12 +697,13 @@ function FormStep({
                 : me.fetchModels;
             return (
               <div className={styles.fetchButtonRow}>
-                <Pill
+                <Button
+                  variant="ghost"
                   onClick={onFetch}
                   disabled={probeBusy !== null || fetchUnsupported}
                 >
                   {fetchLabel}
-                </Pill>
+                </Button>
               </div>
             );
           })()}
@@ -744,9 +747,9 @@ function FormStep({
 
       <section className={styles.section}>
         <div className={styles.actionRow}>
-          <Pill onClick={onTest} disabled={probeBusy !== null}>
+          <Button variant="ghost" onClick={onTest} disabled={probeBusy !== null}>
             {probeBusy === "test" ? me.testRunning : me.testConnection}
-          </Pill>
+          </Button>
         </div>
         {testResult ? (
           <div className={testResult.ok ? styles.statusOk : styles.statusFail}>

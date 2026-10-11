@@ -3,7 +3,7 @@ import { BridgeError, glossaryReviewBridge, type GlossaryReviewFinalRow, type Gl
 import { format, useMessages } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
 import { Panel } from "@/components/Panel";
-import { Pill } from "@/components/Pill";
+import { Button } from "@/components/Button";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import styles from "./ReviewPage.module.css";
 import { ImportFinalGlossaryConfirmModal } from "./ImportFinalGlossaryConfirmModal";
@@ -419,14 +419,14 @@ export function ReviewPage() {
         <span className={styles.hint} title={sheet?.path ?? undefined}>
           {sheet ? format(labels.pathHint, { path: sheet.path }) : null}
         </span>
-        <Pill
+        <Button
           disabled={!sheet || importingFinal || saving}
           onClick={() => void handleImportFinal()}
         >
           {importingFinal
             ? runLabels.importingFinal
             : runLabels.importFinalToTranslation}
-        </Pill>
+        </Button>
       </div>
 
       <input
@@ -567,19 +567,19 @@ export function ReviewPage() {
                     : ""}
               </span>
               <span style={{ display: "flex", gap: 8 }}>
-                <Pill
+                <Button
                   variant="ghost"
                   disabled={saving || selectedCount === 0}
                   onClick={() => void deleteSelectedRows()}
                 >
                   {selectedCount > 1 ? labels.deleteSelected : labels.delete}
-                </Pill>
-                <Pill
+                </Button>
+                <Button
                   disabled={saving || !dirty}
                   onClick={() => void save(false)}
                 >
                   {labels.save}
-                </Pill>
+                </Button>
               </span>
             </div>
           </div>

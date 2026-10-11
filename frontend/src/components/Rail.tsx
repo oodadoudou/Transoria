@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMessages } from "@/locales";
 import {
   defaultPageFor,
@@ -172,10 +172,53 @@ export function Rail() {
     });
   };
 
+  const activeModuleHasChildren = Boolean(
+    [...tree.modules, ...tree.workspace].find((mod) => mod.id === route.module)
+      ?.children,
+  );
+
+  useEffect(() => {
+    if (!activeModuleHasChildren) return;
+    setExpanded((prev) => {
+      if (prev.has(route.module)) return prev;
+      const next = new Set(prev);
+      next.add(route.module);
+      saveExpandedModules(next);
+      return next;
+    });
+  }, [route.module, activeModuleHasChildren]);
+
+  const railRef = useRef<HTMLElement>(null);
+  const activeModuleOpen = expanded.has(route.module);
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const revealActive = () => {
+      const item = rail.querySelector('[aria-current="page"]');
+      if (!item) return;
+      const railBox = rail.getBoundingClientRect();
+      const itemBox = item.getBoundingClientRect();
+      if (itemBox.top < railBox.top) {
+        rail.scrollTop += itemBox.top - railBox.top;
+      } else if (itemBox.bottom > railBox.bottom) {
+        rail.scrollTop += itemBox.bottom - railBox.bottom;
+      }
+    };
+    revealActive();
+    // The rail shrinks once the top bar finishes hydrating.
+    const observer = new ResizeObserver(revealActive);
+    observer.observe(rail);
+    return () => observer.disconnect();
+  }, [route.module, route.page, activeModuleOpen]);
+
   const isOpen = (id: ModuleId) => expanded.has(id);
 
   return (
-    <nav className={styles.rail} aria-label={messages.rail.modulesAria}>
+    <nav
+      ref={railRef}
+      className={styles.rail}
+      aria-label={messages.rail.modulesAria}
+    >
       <div className={styles.label}>{messages.rail.modules}</div>
       {tree.modules.map((mod) => (
         <ModuleNode
@@ -258,7 +301,7 @@ function ModuleNode({
     <div className={styles.group}>
       <button
         type="button"
-        className={`${styles.row} ${styles.parent}`.trim()}
+        className={`${styles.row} ${styles.parent} ${!open && route.module === spec.id ? styles.parentCurrent : ""}`.trim()}
         onClick={onToggle}
         aria-expanded={open}
       >
@@ -310,7 +353,10 @@ function ChildButton({
   onNavigate,
   nested = false,
 }: ChildButtonProps) {
-  const active = route.module === moduleId && route.page === child.page;
+  const active =
+    route.module === moduleId &&
+    (route.page === child.page ||
+      (moduleId === "general-tools" && child.page === "epubTools"));
   return (
     <button
       type="button"

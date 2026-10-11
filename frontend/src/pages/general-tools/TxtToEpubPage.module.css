@@ -29,11 +29,9 @@
 
 .label,
 .field span {
-  color: var(--muted, #7a7166);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .labelWithHelp {
@@ -48,19 +46,9 @@
 .tableInput,
 .cssEditor {
   width: 100%;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  padding: 8px 10px;
-  min-height: 36px;
 }
 
 .fileRow > :global(button),
-.inlinePicker > :global(button) {
-  min-height: 36px;
-}
 
 .field {
   display: grid;
@@ -89,34 +77,12 @@
   align-items: center;
 }
 
-.modeRow,
 .actionRow {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
-}
-
-.modeRow {
-  margin-top: 0;
-}
-
-.modeButton,
-.modeActive {
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 999px;
-  background: var(--panel, #fffaf3);
-  color: var(--muted, #7a7166);
-  padding: 6px 12px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.modeActive {
-  background: var(--ink, #2f281f);
-  color: var(--panel, #fffaf3);
 }
 
 .selectBlock {
@@ -127,22 +93,13 @@
 }
 
 .selectBlock span {
-  color: var(--muted, #7a7166);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .selectBlock select {
   width: 100%;
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  padding: 8px 10px;
-  min-height: 36px;
 }
 
 .selectedSummary {
@@ -178,23 +135,12 @@
 
 .addTocField span,
 .compactSelect span {
-  color: var(--muted, #7a7166);
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .addTocField input,
-.compactSelect select {
-  border: 1px solid var(--hairline, #ece8e2);
-  border-radius: 8px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  padding: 7px 9px;
-  min-height: 36px;
-}
 
 .compactSelect {
   display: grid;
@@ -253,24 +199,20 @@
 
 .table select {
   min-width: 64px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--panel-soft, #f5f0e9);
-  color: var(--ink, #2a2620);
-  font: inherit;
-  padding: 5px 7px;
+  height: var(--control-height-sm);
+  padding-left: 8px;
+  font-size: 12px;
 }
 
 .tableAction {
-  border: 1px solid var(--hairline-strong, #d8d0c5);
-  border-radius: 999px;
-  background: var(--panel, #fffaf3);
-  color: var(--ink, #2a2620);
-  cursor: pointer;
-  font: inherit;
+  height: var(--control-height-sm);
+  padding: 0 10px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--control-radius);
+  background: var(--field-bg);
+  color: var(--ink);
   font-size: 12px;
-  font-weight: 700;
-  padding: 5px 9px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -318,7 +260,6 @@
   min-height: 280px;
   margin-top: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
   resize: vertical;
 }
 

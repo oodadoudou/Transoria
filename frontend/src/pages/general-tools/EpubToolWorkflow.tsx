@@ -1,21 +1,10 @@
 import type { ReactNode, SelectHTMLAttributes } from "react";
 
+import { Field } from "@/components/Field";
 import styles from "./EpubToolWorkflow.module.css";
 
-export function EpubToolWorkspace({
-  children,
-  compact = false,
-}: {
-  children: ReactNode;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={`${styles.workspace} ${compact ? styles.workspaceCompact : ""}`.trim()}
-    >
-      {children}
-    </div>
-  );
+export function EpubToolWorkspace({ children }: { children: ReactNode }) {
+  return <div className={styles.workspace}>{children}</div>;
 }
 
 export function EpubToolStage({ children }: { children: ReactNode }) {
@@ -33,10 +22,9 @@ export function EpubToolSelectField({
   children: ReactNode;
 } & SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <label className={`${styles.selectField} ${className ?? ""}`.trim()}>
-      <span className={styles.selectFieldLabel}>{label}</span>
+    <Field label={label} className={className}>
       <select {...selectProps}>{children}</select>
-    </label>
+    </Field>
   );
 }
 

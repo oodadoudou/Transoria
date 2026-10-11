@@ -1,7 +1,7 @@
 import { useMessages } from "@/locales";
 import type { UpdateCheckResult } from "@/bridge";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
-import { Pill } from "./Pill";
+import { Button } from "./Button";
 import type { AutoUpdateState } from "./useUpdatePrompt";
 import styles from "./UpdateAvailableModal.module.css";
 
@@ -86,19 +86,19 @@ export function UpdateAvailableModal({
           ) : null}
         </div>
         <div className={styles.footer}>
-          <Pill variant="ghost" onClick={onDismiss} disabled={inFlight}>
+          <Button variant="ghost" onClick={onDismiss} disabled={inFlight}>
             {messages.laterAction}
-          </Pill>
+          </Button>
           {canAutoUpdate && autoUpdateState !== "error" ? (
-            <Pill onClick={onAutoUpdate} disabled={inFlight}>
+            <Button onClick={onAutoUpdate} disabled={inFlight}>
               {autoUpdateState === "preparing"
                 ? messages.autoPreparingAction
                 : autoUpdateState === "ready"
                   ? messages.autoReadyAction
                   : messages.autoUpdateAction}
-            </Pill>
+            </Button>
           ) : (
-            <Pill onClick={onUpdateNow}>{messages.updateAction}</Pill>
+            <Button onClick={onUpdateNow}>{messages.updateAction}</Button>
           )}
         </div>
       </div>

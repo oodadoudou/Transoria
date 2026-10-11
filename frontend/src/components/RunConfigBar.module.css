@@ -2,19 +2,18 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 8px;
 }
 
 .item {
   min-width: 0;
-  min-height: 72px;
+  height: var(--control-height-lg);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 0 12px;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-inset);
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   color: var(--ink);
   font: inherit;
@@ -46,42 +45,38 @@
   color: var(--muted);
 }
 
-.itemInactive .secondary {
-  opacity: 0.8;
-}
-
-.meta {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
 .label {
   color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .primary {
-  color: var(--ink);
-  font-size: 13.5px;
-  font-weight: 650;
-  line-height: 1.25;
+  flex: 0 0 auto;
+  max-width: 100%;
   overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .secondary {
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.25;
-  overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .action {

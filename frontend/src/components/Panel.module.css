@@ -7,10 +7,10 @@
 
 .labelRow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
 }
 
 .label {
@@ -61,4 +61,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.titleOnly {
+  margin-bottom: -8px;
 }
