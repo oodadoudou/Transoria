@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { ModalOverlay } from "@/components/ModalOverlay";
 import {
   BridgeError,
   glossaryBridge,
@@ -434,7 +435,7 @@ function ConfirmStartDialog({
   useEscapeKey(onCancel);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.dialogOverlay}
       role="dialog"
       aria-modal="true"
@@ -463,6 +464,6 @@ function ConfirmStartDialog({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

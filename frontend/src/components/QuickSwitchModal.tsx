@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { Button } from "./Button";
@@ -43,7 +44,7 @@ export function QuickSwitchModal({
   };
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -108,6 +109,6 @@ export function QuickSwitchModal({
           </div>
         ) : null}
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

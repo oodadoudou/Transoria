@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { format, useI18n, useMessages, type Locale } from "@/locales";
 import type { AppSettingsPage } from "@/store/useTaskStore";
 import { useRuntimeStore } from "@/store/useRuntimeStore";
@@ -474,7 +475,7 @@ function CacheCleanupModal({
   };
 
   return (
-    <div
+    <ModalOverlay
       className={modalStyles.overlay}
       role="dialog"
       aria-modal="true"
@@ -600,7 +601,7 @@ function CacheCleanupModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

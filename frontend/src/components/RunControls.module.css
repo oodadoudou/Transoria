@@ -131,6 +131,9 @@
   border: 1px solid var(--hairline, #ece8e2);
   padding: 24px;
   max-width: 420px;
+  width: 100%;
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
@@ -152,6 +155,7 @@
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 760px) {

@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMessages } from "@/locales";
 import type { UpdateCheckResult } from "@/bridge";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -36,7 +37,7 @@ export function UpdateAvailableModal({
   useEscapeKey(onDismiss, !inFlight);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="alertdialog"
       aria-modal="true"
@@ -102,7 +103,7 @@ export function UpdateAvailableModal({
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

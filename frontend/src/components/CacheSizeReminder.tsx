@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ModalOverlay } from "@/components/ModalOverlay";
 
 import { dialogsBridge, tasksBridge } from "@/bridge";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -60,7 +61,7 @@ export function CacheSizeReminder() {
   if (cacheInfo === null) return null;
 
   return (
-    <div className={modalStyles.overlay} role="presentation">
+    <ModalOverlay className={modalStyles.overlay} role="presentation">
       <section
         aria-labelledby="cache-size-reminder-title"
         aria-modal="true"
@@ -122,6 +123,6 @@ export function CacheSizeReminder() {
           </button>
         </footer>
       </section>
-    </div>
+    </ModalOverlay>
   );
 }

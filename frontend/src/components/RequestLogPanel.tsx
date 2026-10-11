@@ -13,6 +13,7 @@ import type {
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useMessages } from "@/locales";
 import { ToggleSwitch } from "@/components/ToggleSwitch";
+import { ModalOverlay } from "@/components/ModalOverlay";
 import styles from "./RequestLogPanel.module.css";
 
 type RequestLogKind = "translation" | "glossary" | "glossary_review";
@@ -255,7 +256,7 @@ export function RequestLogPanel({
       </section>
 
       {visible ? (
-        <div
+        <ModalOverlay
           className={styles.overlay}
           role="dialog"
           aria-modal="true"
@@ -622,7 +623,7 @@ export function RequestLogPanel({
               ) : null}
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       ) : null}
     </>
   );

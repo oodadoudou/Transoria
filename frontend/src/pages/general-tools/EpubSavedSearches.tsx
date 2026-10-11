@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { useMessages } from "@/locales";
@@ -38,7 +39,7 @@ export function EpubSavedSearches({ current, load, execute, close }: {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
-  return <div className={styles.modalBackdrop}><div className={`${styles.saveDialog} ${styles.tocPatternDialog}`} role="dialog" aria-modal="true" aria-label={t.savedSearches}>
+  return <ModalOverlay className={styles.modalBackdrop}><div className={`${styles.saveDialog} ${styles.tocPatternDialog}`} role="dialog" aria-modal="true" aria-label={t.savedSearches}>
     <div className={styles.toolHeading}><h3>{t.savedSearches}</h3><button type="button" aria-label={t.close} disabled={busy} onClick={close}><X size={18} /></button></div>
     <label htmlFor="saved-search-name">{t.label}</label><div className={styles.toolControls}><input id="saved-search-name" value={name} onChange={(event) => setName(event.target.value)} /><button type="button" disabled={!name.trim() || !current.query || entries.length >= 100 || busy} onClick={() => { update([...entries, { ...current, id: crypto.randomUUID(), name: name.trim() }]); setName(""); }}><Plus size={16} />{t.saveSearch}</button></div>
     {entries.map((entry, index) => <div key={entry.id} className={styles.savedSearchRow}>
@@ -52,5 +53,5 @@ export function EpubSavedSearches({ current, load, execute, close }: {
     {error ? <div className={styles.error} role="alert">{error}</div> : null}
     {proposal ? <div role="status">{String(proposal.result.replacements)} {t.matches} · {String(proposal.result.files_changed)} {t.filesChanged}</div> : null}
     <div className={styles.saveActions}><button type="button" disabled={!selected.length || busy} onClick={() => void run(false)}>{t.previewReplace}</button><button type="button" disabled={!proposal || !proposal.result.replacements || busy} onClick={() => void run(true)}>{t.applyTool}</button></div>
-  </div></div>;
+  </div></ModalOverlay>;
 }

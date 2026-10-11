@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import styles from "./GlossaryExportModal.module.css";
@@ -14,7 +15,7 @@ export function RuleExportModal({ onPick, onClose }: RuleExportModalProps) {
   useEscapeKey(onClose);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -69,6 +70,6 @@ export function RuleExportModal({ onPick, onClose }: RuleExportModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

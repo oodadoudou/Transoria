@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -45,7 +46,7 @@ export function AllKeysFailedDialog() {
   };
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="alertdialog"
       aria-modal="true"
@@ -83,6 +84,6 @@ export function AllKeysFailedDialog() {
           <Button onClick={goToModelConfig}>{labels.openModelConfig}</Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

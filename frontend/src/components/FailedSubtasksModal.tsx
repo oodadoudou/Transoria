@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMemo, useState } from "react";
 import type { TaskFailure } from "@/bridge";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -91,7 +92,7 @@ export function FailedSubtasksModal({
   };
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -242,7 +243,7 @@ export function FailedSubtasksModal({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useState } from "react";
 import { FolderOpen, X } from "lucide-react";
 import { dialogsBridge, epubContentBridge, type EpubContentSession } from "@/bridge";
@@ -57,7 +58,7 @@ export function EpubEditorTools({ session, commit, update, select, close }: {
   });
   const pick = async () => run(async () => { const chosen = await dialogsBridge.chooseAnyFile(localPath || undefined); if (chosen.path) setLocalPath(chosen.path); });
   const resources = session.files.filter((file) => tool === "set_cover" ? file.media_type.startsWith("image/") : /\.(ttf|otf|woff2?)$/i.test(file.path));
-  return <div className={styles.modalBackdrop}><section className={`${styles.saveDialog} ${styles.toolsDialog}`} role="dialog" aria-modal="true" aria-label={t.tools}>
+  return <ModalOverlay className={styles.modalBackdrop}><section className={`${styles.saveDialog} ${styles.toolsDialog}`} role="dialog" aria-modal="true" aria-label={t.tools}>
     <div className={styles.toolHeader}><h3>{t.tools}</h3><button type="button" title={t.close} aria-label={t.close} disabled={busy} onClick={close}><X size={18} /></button></div>
     <div className={styles.toolControls}><select aria-label={t.tools} value={tool} disabled={busy} onChange={(event) => { setTool(event.target.value); setTransformPath(""); setReport(null); setProposal(null); setError(""); }}>{choices.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <button type="button" disabled={busy} onClick={() => void execute()}>{reversible ? t.previewTool : t.runTool}</button>
@@ -92,5 +93,5 @@ export function EpubEditorTools({ session, commit, update, select, close }: {
       {report?.words?.length ? <details><summary>{t.textReport}</summary><table><tbody>{report.words.map((word) => <tr key={word.word}><td>{word.word}</td><td>{word.count.toLocaleString()}</td></tr>)}</tbody></table></details> : null}
       {report?.output ? <pre>{report.output}</pre> : null}
     </div>
-  </section></div>;
+  </section></ModalOverlay>;
 }

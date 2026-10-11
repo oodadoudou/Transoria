@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type { GlossaryEntry } from "@/store/useTaskStore";
@@ -43,7 +44,7 @@ export function GlossaryStatsModal({
     .slice(0, 5);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -99,7 +100,7 @@ export function GlossaryStatsModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

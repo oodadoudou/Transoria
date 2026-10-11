@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMemo, useState } from "react";
 import { format, useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -75,7 +76,7 @@ export function BatchReplacementReportModal({
   };
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -157,7 +158,7 @@ export function BatchReplacementReportModal({
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

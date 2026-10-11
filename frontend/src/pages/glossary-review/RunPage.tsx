@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useEffect, useMemo, useState } from "react";
 import { format, useMessages, useI18n } from "@/locales";
 import {
@@ -680,7 +681,7 @@ function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
   };
 
   return (
-    <div className={reportStyles.overlay} role="dialog" aria-modal="true">
+    <ModalOverlay className={reportStyles.overlay} role="dialog" aria-modal="true">
       <div className={reportStyles.modal}>
         <header className={reportStyles.header}>
           <h2>{labels.title}</h2>
@@ -760,6 +761,6 @@ function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
           </div>
         )}
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

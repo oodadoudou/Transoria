@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { HelpTip } from "@/components/HelpTip";
@@ -159,7 +160,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
       )}
 
       {contentOpen && contentSpec ? (
-        <div className={styles.overlay} role="presentation">
+        <ModalOverlay className={styles.overlay} role="presentation">
           <section
             className={`${styles.dialog} ${styles.contentDialog}`}
             role="dialog"
@@ -178,7 +179,7 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
               </Suspense>
             </div>
           </section>
-        </div>
+        </ModalOverlay>
       ) : null}
     </>
   );

@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { format } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import styles from "@/components/GlossaryExportModal.module.css";
@@ -31,7 +32,7 @@ export function ImportFinalGlossaryConfirmModal({
   useEscapeKey(onCancel);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="alertdialog"
       aria-modal="true"
@@ -91,6 +92,6 @@ export function ImportFinalGlossaryConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

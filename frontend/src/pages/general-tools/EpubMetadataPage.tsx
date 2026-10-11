@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { type ReactNode, useState } from "react";
 
 import {
@@ -353,7 +354,7 @@ export function EpubMetadataPage({ onEditContent }: { onEditContent?: (path: str
       />
 
       {editorOpen ? (
-        <div className={styles.overlay} role="presentation">
+        <ModalOverlay className={styles.overlay} role="presentation">
           <div
             className={styles.dialog}
             role="dialog"
@@ -503,11 +504,11 @@ export function EpubMetadataPage({ onEditContent }: { onEditContent?: (path: str
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       ) : null}
 
       {confirmOverwriteOpen ? (
-        <div className={styles.overlay} role="presentation">
+        <ModalOverlay className={styles.overlay} role="presentation">
           <div
             className={styles.confirmDialog}
             role="dialog"
@@ -530,7 +531,7 @@ export function EpubMetadataPage({ onEditContent }: { onEditContent?: (path: str
               </Button>
             </div>
           </div>
-        </div>
+        </ModalOverlay>
       ) : null}
     </EpubToolWorkspace>
   );

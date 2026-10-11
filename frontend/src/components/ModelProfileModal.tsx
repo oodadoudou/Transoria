@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMessages } from "@/locales";
@@ -481,7 +482,7 @@ export function ModelProfileModal({
   const showStep1 = mode === "create" && selectedTemplate === null;
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -561,7 +562,7 @@ export function ModelProfileModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

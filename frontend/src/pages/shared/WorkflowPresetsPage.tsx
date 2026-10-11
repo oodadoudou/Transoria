@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Language, PresetRoute, PromptKind, WorkflowPreset } from "@/bridge";
@@ -456,7 +457,7 @@ function WorkflowPresetModal({
   useEscapeKey(handleCancel);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -777,7 +778,7 @@ function WorkflowPresetModal({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

@@ -1,0 +1,13 @@
+.viewport.viewport {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  align-items: safe center;
+  justify-content: safe center;
+}
+
+.viewport > * {
+  min-width: 0;
+  min-height: 0;
+}

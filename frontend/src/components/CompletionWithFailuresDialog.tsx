@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { Button } from "./Button";
@@ -16,7 +17,7 @@ export function CompletionWithFailuresDialog({
   useEscapeKey(onAccept);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="alertdialog"
       aria-modal="true"
@@ -38,6 +39,6 @@ export function CompletionWithFailuresDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
@@ -38,7 +39,7 @@ export function RuleStatsModal(props: Props) {
     .slice(0, 5);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -132,7 +133,7 @@ export function RuleStatsModal(props: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 

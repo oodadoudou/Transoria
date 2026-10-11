@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -217,7 +218,7 @@ export function FirstRunOnboardingModal({
   };
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true">
+    <ModalOverlay className={styles.overlay} role="dialog" aria-modal="true">
       <div className={styles.modal}>
         <header className={styles.header}>
           <div>
@@ -339,6 +340,6 @@ export function FirstRunOnboardingModal({
           </Button>
         </footer>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

@@ -1,3 +1,4 @@
+import { ModalOverlay } from "@/components/ModalOverlay";
 import { useEffect, useState } from "react";
 import { useMessages } from "@/locales";
 import { glossaryBridge, BridgeError } from "@/bridge";
@@ -58,7 +59,7 @@ export function GlossaryPresetModal({
   }, []);
 
   return (
-    <div
+    <ModalOverlay
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
@@ -128,6 +129,6 @@ export function GlossaryPresetModal({
           </div>
         ) : null}
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
