@@ -1095,6 +1095,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                 record_metadata.get("bilingual_dedup_when_same", True),
                 default=True,
             ),
+            debug_log_dir=service.cache.task_dir(task_id) / "debug",
         )
 
         try:

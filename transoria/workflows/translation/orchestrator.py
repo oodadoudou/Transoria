@@ -1087,6 +1087,7 @@ def _write_outputs(
                     per_file_translations,
                     config.output_dir,
                     target_language=config.target_language,
+                    report_dir=config.debug_log_dir,
                 )
                 translated_outputs.append(translated_path)
                 if config.bilingual_enabled:
@@ -1098,6 +1099,7 @@ def _write_outputs(
                         target_language=config.target_language,
                         subfolder=config.bilingual_subfolder,
                         dedup_when_same=config.bilingual_dedup_when_same,
+                        report_dir=config.debug_log_dir,
                     )
                     bilingual_outputs.append(bilingual_path)
         except Exception as exc:  # pragma: no cover — writer-level failure is rare

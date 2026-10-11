@@ -1269,6 +1269,42 @@ def test_orchestrator_translates_epub_file_and_preserves_structure(tmp_path: Pat
     assert all(_PREFIX not in seg.text for seg in src_doc.segments)
 
 
+def test_orchestrator_sends_epub_format_reports_to_the_task_log_dir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from dataclasses import replace as dataclass_replace
+
+    from transoria.workflows.translation import orchestrator as orchestrator_module
+
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    _write_minimal_epub(input_dir / "Korean.epub")
+    report_dirs: list[object] = []
+    for name in ("write_translated_epub", "write_bilingual_epub"):
+        original = getattr(orchestrator_module, name)
+
+        def capture(*args, _original=original, **kwargs):
+            report_dirs.append(kwargs.get("report_dir"))
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(orchestrator_module, name, capture)
+
+    debug_dir = tmp_path / "cache" / "debug"
+    config = dataclass_replace(
+        _build_config(
+            input_dir=input_dir, output_dir=tmp_path / "out", bilingual=True, chunk_size=8
+        ),
+        debug_log_dir=debug_dir,
+    )
+    result = asyncio.run(
+        _new_orchestrator(EchoTranslateTransport(), tmp_path / "cache").run(config)
+    )
+
+    assert result.final_status is TaskStatus.COMPLETED
+    assert report_dirs == [debug_dir, debug_dir]
+    assert not list((tmp_path / "out").rglob("*.format-warnings.json"))
+
+
 def test_orchestrator_passes_glossary_only_when_matched(tmp_path: Path) -> None:
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"

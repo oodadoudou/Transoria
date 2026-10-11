@@ -20,16 +20,22 @@ def _export(tmp_path, body, translation, *, bilingual=False):
             document, translations, tmp_path / "out",
             source_language=Language.ENGLISH,
             target_language=Language.CHINESE_SIMPLIFIED,
+            report_dir=tmp_path / "logs",
         )
     else:
         written = write_translated_epub(
             document, translations, tmp_path / "out",
             target_language=Language.CHINESE_SIMPLIFIED,
+            report_dir=tmp_path / "logs",
         )
     with zipfile.ZipFile(written) as archive:
         assert archive.testzip() is None
         root = parse_xhtml_or_html(archive.read("OEBPS/Text/chapter.xhtml"))
     return source, written, root, segment
+
+
+def _report(tmp_path, written):
+    return tmp_path / "logs" / f"{written.stem}.format-warnings.json"
 
 
 def _paragraph(root):
@@ -55,7 +61,7 @@ def test_initials_do_not_expand_to_whole_paragraph(tmp_path, prefix, translation
     assert "".join(p[0].itertext()) == initial
     assert "".join(p.itertext()) == translation
     assert p[0].tail == translation[len(initial):]
-    assert not written.with_suffix(".format-warnings.json").exists()
+    assert not _report(tmp_path, written).exists()
     with zipfile.ZipFile(source) as before, zipfile.ZipFile(written) as after:
         assert before.namelist() == after.namelist()
         for name in before.namelist():
@@ -69,7 +75,7 @@ def test_initial_scope_is_normalized_even_with_matching_line_count(tmp_path, tra
     p = _paragraph(root)
     assert p[0].text == "首"
     assert "".join(p.itertext()) == translation.replace("\n", "")
-    assert not written.with_suffix(".format-warnings.json").exists()
+    assert not _report(tmp_path, written).exists()
 
 
 def test_initial_next_to_italic_sibling_never_spills_into_italics(tmp_path):
@@ -82,7 +88,7 @@ def test_initial_next_to_italic_sibling_never_spills_into_italics(tmp_path):
     assert p[0].tail == "个名字走远了。\u201d"
     assert not p[1].text
     assert "".join(p.itertext()) == "\u201c一个名字走远了。\u201d"
-    report = json.loads(written.with_suffix(".format-warnings.json").read_text())
+    report = json.loads(_report(tmp_path, written).read_text())
     assert report["warnings"][0]["segment_index"] == segment.index
 
 
@@ -97,7 +103,7 @@ def test_initial_nested_inside_full_paragraph_wrapper_keeps_both_scopes(tmp_path
     assert whole[0][0].text == "首"
     assert whole[0].tail == "字正常的正文。"
     assert "".join(whole.itertext()) == "首字正常的正文。"
-    assert not written.with_suffix(".format-warnings.json").exists()
+    assert not _report(tmp_path, written).exists()
 
 
 def test_comment_before_initial_does_not_disable_scope_protection(tmp_path):
@@ -109,7 +115,7 @@ def test_comment_before_initial_does_not_disable_scope_protection(tmp_path):
     assert p[0].text == " note "
     assert p[1].text == "首"
     assert p[1].tail == "字正文。"
-    assert not written.with_suffix(".format-warnings.json").exists()
+    assert not _report(tmp_path, written).exists()
 
 
 @pytest.mark.parametrize("wrapper", ["a", "mark", "sup"])
@@ -123,7 +129,7 @@ def test_initial_inside_partial_ancestor_cannot_style_entire_remainder(tmp_path,
     assert "".join(p[0].itertext()) == "首"
     assert p[0].tail == "字和完整的普通正文。"
     assert "".join(p.itertext()) == "首字和完整的普通正文。"
-    assert written.with_suffix(".format-warnings.json").exists()
+    assert _report(tmp_path, written).exists()
 
 
 def test_initial_preserves_mapped_italic_and_bold_siblings(tmp_path):
@@ -137,7 +143,7 @@ def test_initial_preserves_mapped_italic_and_bold_siblings(tmp_path):
     assert p[1].text == "名字"
     assert p[2].text == "地点"
     assert "".join(p.itertext()) == "新开头名字和地点。"
-    assert not written.with_suffix(".format-warnings.json").exists()
+    assert not _report(tmp_path, written).exists()
 
 
 @pytest.mark.parametrize("inline", [
@@ -154,7 +160,7 @@ def test_unmapped_partial_styles_never_receive_entire_translation(tmp_path, inli
     assert p.text == "完整正文不会变成整段特殊样式。"
     assert not p[0].text
     assert "".join(p.itertext()) == "完整正文不会变成整段特殊样式。"
-    assert written.with_suffix(".format-warnings.json").exists()
+    assert _report(tmp_path, written).exists()
     if p[0].tag.endswith("a"):
         assert p[0].get("id") == "destination"
         assert p[0].get("href") == "#next"
@@ -169,7 +175,7 @@ def test_common_full_paragraph_style_is_retained(tmp_path):
     assert p[0].text == "整段斜体依然保留。"
     assert p[0].get("class") == "whole"
     assert p[0][0].text == " marker "
-    assert not written.with_suffix(".format-warnings.json").exists()
+    assert not _report(tmp_path, written).exists()
 
 
 def test_matching_boundaries_keep_all_localized_styles(tmp_path):
@@ -182,7 +188,7 @@ def test_matching_boundaries_keep_all_localized_styles(tmp_path):
     assert p[1].text == "链接"
     assert p[2].text == "二"
     assert "".join(p.itertext()) == "普通斜体和链接二。"
-    assert not written.with_suffix(".format-warnings.json").exists()
+    assert not _report(tmp_path, written).exists()
 
 
 def test_empty_mapped_inline_text_is_reported(tmp_path):
@@ -190,7 +196,7 @@ def test_empty_mapped_inline_text_is_reported(tmp_path):
         tmp_path, '<p>Normal <em>italic</em> ending.</p>', "普通正文\n\n结束。",
     )
     assert "".join(_paragraph(root).itertext()) == "普通正文结束。"
-    assert written.with_suffix(".format-warnings.json").exists()
+    assert _report(tmp_path, written).exists()
 
 
 def test_extra_newlines_do_not_expand_initial_or_drop_any_text(tmp_path):
@@ -201,7 +207,7 @@ def test_extra_newlines_do_not_expand_initial_or_drop_any_text(tmp_path):
     p = _paragraph(root)
     assert p[0].text == "首"
     assert "".join(p.itertext()) == translation
-    assert written.with_suffix(".format-warnings.json").exists()
+    assert _report(tmp_path, written).exists()
 
 
 def test_untranslated_source_and_original_bilingual_clone_are_unchanged(tmp_path):
@@ -236,11 +242,12 @@ def test_report_is_removed_after_boundaries_are_corrected(tmp_path):
     source, written, _, segment = _export(
         tmp_path, '<p>Before <em>word</em> after.</p>', "前面强调词后面。",
     )
-    report_path = written.with_suffix(".format-warnings.json")
+    report_path = _report(tmp_path, written)
     assert report_path.exists()
     write_translated_epub(
         parse_epub_file(source), {segment.index: "前面\n强调词\n后面。"}, written.parent,
         target_language=Language.CHINESE_SIMPLIFIED,
+        report_dir=tmp_path / "logs",
     )
     assert not report_path.exists()
 
@@ -266,17 +273,48 @@ def test_report_failure_does_not_discard_successfully_saved_epub(tmp_path, monke
 def test_report_never_overwrites_or_deletes_an_unrelated_file(tmp_path, translation):
     output_dir = tmp_path / "out"
     output_dir.mkdir()
-    unrelated = output_dir / "book-zh.format-warnings.json"
-    unrelated.write_text('{"user": "keep this"}', encoding="utf-8")
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    unrelated = [output_dir / "book-zh.format-warnings.json", log_dir / "book-zh.format-warnings.json"]
+    for path in unrelated:
+        path.write_text('{"user": "keep this"}', encoding="utf-8")
     _export(tmp_path, '<p>Before <em>word</em> after.</p>', translation)
-    assert unrelated.read_text(encoding="utf-8") == '{"user": "keep this"}'
+    for path in unrelated:
+        assert path.read_text(encoding="utf-8") == '{"user": "keep this"}'
+
+
+def test_report_is_kept_out_of_the_output_folder(tmp_path):
+    _, written, _, _ = _export(tmp_path, '<p>Before <em>word</em> after.</p>', "前面强调词后面。")
+    assert _report(tmp_path, written).exists()
+    assert not list((tmp_path / "out").glob("*.format-warnings.json"))
+
+
+def test_legacy_output_report_is_removed_on_rewrite(tmp_path):
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    legacy = output_dir / "book-zh.format-warnings.json"
+    legacy.write_text('{"kind": "transoria.epub_format_warnings", "warnings": []}', encoding="utf-8")
+    _export(tmp_path, '<p>Before <em>word</em> after.</p>', "前面\n强调词\n后面。")
+    assert not legacy.exists()
+
+
+def test_report_is_skipped_without_a_report_directory(tmp_path):
+    source = _write_minimal_epub(tmp_path / "book.epub", chapter_body='<p>Before <em>word</em> after.</p>')
+    document = parse_epub_file(source)
+    segment = next(s for s in document.segments if s.kind == EpubTextKind.BODY)
+    written = write_translated_epub(
+        document, {segment.index: "前面强调词后面。"}, tmp_path / "out",
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+    assert written.exists()
+    assert not list(tmp_path.rglob("*.format-warnings.json"))
 
 
 def test_report_does_not_contain_private_prose(tmp_path):
     _, written, _, _ = _export(
         tmp_path, '<p>Private opening <em>private word</em> private ending.</p>', "私人译文。",
     )
-    text = written.with_suffix(".format-warnings.json").read_text(encoding="utf-8")
+    text = _report(tmp_path, written).read_text(encoding="utf-8")
     assert "Private opening" not in text
     assert "private word" not in text
     assert "私人译文" not in text

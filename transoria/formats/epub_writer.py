@@ -41,6 +41,7 @@ def write_translated_epub(
     output_dir: Path,
     *,
     target_language: Language,
+    report_dir: Path | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / translated_filename(document.path, target_language)
@@ -52,7 +53,7 @@ def write_translated_epub(
         bilingual=False,
         content_language=language_tag(target_language),
     )
-    _write_format_report(output_path, format_warnings)
+    _write_format_report(output_path, format_warnings, report_dir)
     return output_path
 
 
@@ -65,6 +66,7 @@ def write_bilingual_epub(
     target_language: Language,
     subfolder: str = BILINGUAL_OUTPUT_FOLDER_EN,
     dedup_when_same: bool = True,
+    report_dir: Path | None = None,
 ) -> Path:
     bilingual_dir = output_dir / subfolder
     bilingual_dir.mkdir(parents=True, exist_ok=True)
@@ -84,7 +86,7 @@ def write_bilingual_epub(
         content_language=language_tag(target_language),
         original_language=language_tag(source_language),
     )
-    _write_format_report(output_path, format_warnings)
+    _write_format_report(output_path, format_warnings, report_dir)
     return output_path
 
 
@@ -182,10 +184,18 @@ def _write_epub(
         temp_path.unlink(missing_ok=True)
 
 
-def _write_format_report(output_path: Path, records: list[dict[str, object]]) -> None:
-    report_path = output_path.with_suffix(".format-warnings.json")
+def _write_format_report(
+    output_path: Path,
+    records: list[dict[str, object]],
+    report_dir: Path | None,
+) -> None:
+    _remove_legacy_output_report(output_path)
+    if report_dir is None:
+        return
+    report_path = report_dir / f"{output_path.stem}.format-warnings.json"
     temp_path: Path | None = None
     try:
+        report_dir.mkdir(parents=True, exist_ok=True)
         if report_path.exists():
             existing = json.loads(report_path.read_text(encoding="utf-8"))
             if not isinstance(existing, dict) or existing.get("kind") != _REPORT_KIND:
@@ -223,6 +233,19 @@ def _write_format_report(output_path: Path, records: list[dict[str, object]]) ->
                 temp_path.unlink(missing_ok=True)
             except OSError as exc:
                 _LOGGER.warning("Could not remove a temporary EPUB format report: %s", exc)
+
+
+def _remove_legacy_output_report(output_path: Path) -> None:
+    # Earlier versions wrote the report beside the EPUB; only our own report is removed.
+    legacy_path = output_path.with_suffix(".format-warnings.json")
+    try:
+        if not legacy_path.exists():
+            return
+        existing = json.loads(legacy_path.read_text(encoding="utf-8"))
+        if isinstance(existing, dict) and existing.get("kind") == _REPORT_KIND:
+            legacy_path.unlink()
+    except (OSError, ValueError) as exc:
+        _LOGGER.warning("Could not remove a legacy EPUB format report: %s", exc)
 
 
 def _temporary_output_path(output_path: Path) -> Path:
