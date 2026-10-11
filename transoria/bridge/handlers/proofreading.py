@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from dataclasses import replace
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -33,6 +33,7 @@ from transoria.bridge.task_service import (
 from transoria.domain import Language, SubtaskStatus, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
 from transoria.workflows.translation import evaluate_segment_confidence
+from transoria.workflows.translation.confidence import ConfidenceVerdict
 from transoria.workflows.translation.glossary_report import target_term_present
 from transoria.workflows.translation.rules import Glossary, GlossaryEntry
 from transoria.workflows.translation.segment_state import (
@@ -63,6 +64,7 @@ _DUPLICATE_SCAN_TAGGED_PARTNER_RATIO = 0.74
 _DUPLICATE_SCAN_TAGGED_PARTNER_OVERLAP = 0.74
 _TERM_AUDIT_VERSION = "canonical-missing-v2"
 _TERM_AUDIT_CACHE_MAX_TASKS = 8
+_VERDICT_CACHE_MAX_SEGMENTS = 50_000
 _TEXT_SIMILARITY_NORMALIZE_RE = re.compile(r"[\s\W_]+", re.UNICODE)
 
 
@@ -487,6 +489,8 @@ def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
         _normalized_similarity_text(destination) for destination in destinations
     ]
     destination_lengths = [len(destination) for destination in destination_norms]
+    destination_counts: list[Counter[str] | None] = [None] * len(items)
+    translation_bound_cache: dict[tuple[int, int], tuple[float, float]] = {}
     translation_metric_cache: dict[tuple[int, int], tuple[float, float, int]] = {}
     source_overlap_cache: dict[tuple[int, int], float] = {}
 
@@ -496,6 +500,35 @@ def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
             if left_index < right_index
             else (right_index, left_index)
         )
+
+    def counts(index: int) -> Counter[str]:
+        cached = destination_counts[index]
+        if cached is None:
+            cached = Counter(destination_norms[index])
+            destination_counts[index] = cached
+        return cached
+
+    # Matching blocks never exceed the shared character multiset, so these
+    # bounds can only skip pairs whose exact metrics would fail the same test.
+    def translation_bounds(left_index: int, right_index: int) -> tuple[float, float]:
+        key = pair_key(left_index, right_index)
+        cached = translation_bound_cache.get(key)
+        if cached is not None:
+            return cached
+        left_norm = destination_norms[left_index]
+        right_norm = destination_norms[right_index]
+        if not left_norm or not right_norm:
+            cached = (0.0, 0.0)
+        elif left_norm == right_norm:
+            cached = (1.0, 1.0)
+        else:
+            shared = sum((counts(left_index) & counts(right_index)).values())
+            cached = (
+                2.0 * shared / (len(left_norm) + len(right_norm)),
+                shared / min(len(left_norm), len(right_norm)),
+            )
+        translation_bound_cache[key] = cached
+        return cached
 
     def translation_metrics(
         left_index: int, right_index: int
@@ -534,6 +567,18 @@ def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
         return cached
 
     def duplicate_match(left_index: int, right_index: int) -> bool:
+        shortest = min(destination_lengths[left_index], destination_lengths[right_index])
+        if shortest < _DUPLICATE_SCAN_MIN_TRANSLATION_LENGTH:
+            return False
+        similarity_bound, overlap_bound = translation_bounds(left_index, right_index)
+        if shortest < _DUPLICATE_SCAN_SHORT_TEXT_LENGTH:
+            if similarity_bound < _DUPLICATE_SCAN_SHORT_TRANSLATION_RATIO:
+                return False
+        elif (
+            similarity_bound < _DUPLICATE_SCAN_TRANSLATION_RATIO
+            and overlap_bound < _DUPLICATE_SCAN_OVERLAP_RATIO
+        ):
+            return False
         (
             translation_similarity,
             translation_overlap,
@@ -560,6 +605,12 @@ def _tag_possible_adjacent_duplicates(items: list[dict[str, object]]) -> None:
         return translation_overlap - overlap >= _DUPLICATE_SCAN_MIN_DELTA
 
     def tagged_partner_match(left_index: int, right_index: int) -> bool:
+        similarity_bound, overlap_bound = translation_bounds(left_index, right_index)
+        if (
+            similarity_bound < _DUPLICATE_SCAN_TAGGED_PARTNER_RATIO
+            and overlap_bound < _DUPLICATE_SCAN_TAGGED_PARTNER_OVERLAP
+        ):
+            return False
         (
             translation_similarity,
             translation_overlap,
@@ -671,6 +722,35 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
     term_audit_cache: OrderedDict[
         tuple[str, str], dict[str, dict[str, object]]
     ] = OrderedDict()
+    proofreadable_cache: dict[str, tuple[tuple[object, ...], bool]] = {}
+    verdict_cache: OrderedDict[
+        tuple[str, str, Language | None, Language | None], ConfidenceVerdict
+    ] = OrderedDict()
+
+    def cached_segment_verdict(
+        src: str,
+        dst: str,
+        source_language: Language | None,
+        target_language: Language | None,
+    ) -> ConfidenceVerdict:
+        key = (src, dst, source_language, target_language)
+        verdict = verdict_cache.get(key)
+        if verdict is not None:
+            verdict_cache.move_to_end(key)
+            return verdict
+        verdict = evaluate_segment_confidence(
+            src,
+            dst,
+            min_length_ratio=0.25,
+            max_length_ratio=4.0,
+            max_punctuation_delta=12,
+            source_language=source_language,
+            target_language=target_language,
+        )
+        verdict_cache[key] = verdict
+        while len(verdict_cache) > _VERDICT_CACHE_MAX_SEGMENTS:
+            verdict_cache.popitem(last=False)
+        return verdict
 
     def require_proofreadable_translation_task(task_id: str):
         try:
@@ -692,25 +772,42 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             )
         return snapshot
 
+    def is_proofreadable_task(task_id: str) -> bool:
+        # Only surface tasks that actually have at least one
+        # subtask in cache — runs that crashed before any subtask
+        # was seeded have nothing to proofread.
+        try:
+            snapshot = service.cache.load(task_id)
+        except (TaskNotFoundError, OSError, ValueError):
+            return False
+        if snapshot.record.status not in _PROOFREADABLE_TRANSLATION_STATUSES:
+            return False
+        return bool(snapshot.subtasks)
+
     def list_tasks(_payload: Mapping[str, object]) -> dict[str, object]:
         listing = service.list_recent_tasks(kind="translation", limit=None)
         out: list[dict[str, object]] = []
+        seen_ids: set[str] = set()
         for header in listing["tasks"]:
             task_id = header.get("id")
             if not isinstance(task_id, str):
                 continue
-            # Only surface tasks that actually have at least one
-            # subtask in cache — runs that crashed before any subtask
-            # was seeded have nothing to proofread.
+            seen_ids.add(task_id)
             try:
-                snapshot = service.cache.load(task_id)
-            except (TaskNotFoundError, OSError, ValueError):
-                continue
-            if snapshot.record.status not in _PROOFREADABLE_TRANSLATION_STATUSES:
-                continue
-            if not snapshot.subtasks:
-                continue
-            out.append(header)
+                fingerprint = service.cache.load_fingerprint(task_id)
+            except OSError:
+                fingerprint = None
+            cached = proofreadable_cache.get(task_id)
+            if fingerprint is not None and cached is not None and cached[0] == fingerprint:
+                proofreadable = cached[1]
+            else:
+                proofreadable = is_proofreadable_task(task_id)
+                if fingerprint is not None:
+                    proofreadable_cache[task_id] = (fingerprint, proofreadable)
+            if proofreadable:
+                out.append(header)
+        for stale_id in set(proofreadable_cache) - seen_ids:
+            del proofreadable_cache[stale_id]
         return {"tasks": out}
 
     def load_snapshot(payload: Mapping[str, object]) -> dict[str, object]:
@@ -782,14 +879,8 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
                     if "source_residue" not in tags:
                         tags.append("source_residue")
                 if has_cached_translation:
-                    verdict = evaluate_segment_confidence(
-                        src,
-                        dst,
-                        min_length_ratio=0.25,
-                        max_length_ratio=4.0,
-                        max_punctuation_delta=12,
-                        source_language=source_language,
-                        target_language=target_language,
+                    verdict = cached_segment_verdict(
+                        src, dst, source_language, target_language
                     )
                     if verdict.is_low_confidence:
                         low_conf_ids.add(seg_id)

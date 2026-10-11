@@ -197,6 +197,58 @@ def test_list_tasks_skips_runs_with_no_progress(router_and_service):
     assert response["tasks"] == []
 
 
+def test_list_tasks_rechecks_task_after_status_changes(router_and_service):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-1",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "你好")],
+    )
+    assert [t["id"] for t in router.call("proofreading.list_tasks", {})["tasks"]] == [
+        "translation-pf-1"
+    ]
+
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-1",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "你好")],
+        status=TaskStatus.PAUSED,
+    )
+
+    assert router.call("proofreading.list_tasks", {})["tasks"] == []
+
+
+def test_list_tasks_rechecks_task_after_subtasks_appear(router_and_service):
+    router, service, tmp_path = router_and_service
+    record = TaskRecord(
+        id="translation-late",
+        kind=TaskKind.TRANSLATION,
+        status=TaskStatus.FAILED,
+        created_at="2026-05-01T00:00:00+00:00",
+        updated_at="2026-05-01T00:00:01+00:00",
+        metadata={},
+    )
+    service.cache.write_seed(record, ())
+    assert router.call("proofreading.list_tasks", {})["tasks"] == []
+
+    _seed_translation_task(
+        service,
+        task_id="translation-late",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[("0:0", "안녕", "你好")],
+        status=TaskStatus.FAILED,
+    )
+
+    assert [t["id"] for t in router.call("proofreading.list_tasks", {})["tasks"]] == [
+        "translation-late"
+    ]
+
+
 # load_snapshot
 
 

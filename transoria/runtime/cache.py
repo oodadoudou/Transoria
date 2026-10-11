@@ -145,6 +145,21 @@ class TaskCache:
         ]
         return tuple(subtasks)
 
+    def load_fingerprint(self, task_id: str) -> tuple[object, ...]:
+        """Stat signature of every file :meth:`load` reads; raises OSError if absent."""
+        task_dir = self.task_dir(task_id)
+        record = (task_dir / _TASK_FILENAME).stat()
+        entries: list[tuple[str, int, int]] = []
+        directory = task_dir / _SUBTASKS_DIRNAME
+        if directory.exists():
+            with os.scandir(directory) as children:
+                for child in children:
+                    if child.is_file() and child.name.endswith(".json"):
+                        stat = child.stat()
+                        entries.append((child.name, stat.st_mtime_ns, stat.st_size))
+        entries.sort()
+        return (record.st_mtime_ns, record.st_size, tuple(entries))
+
     def load_subtask(self, task_id: str, subtask_id: str) -> Subtask:
         path = self.subtask_path(task_id, subtask_id)
         if not path.exists():
