@@ -52,3 +52,7 @@
   overflow: hidden;
   padding-bottom: 8px;
 }
+
+.withInspector .main {
+  gap: clamp(24px, calc(24px + (100vh - 600px) * 0.07), 40px);
+}

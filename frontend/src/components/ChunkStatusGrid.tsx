@@ -17,7 +17,7 @@ interface ChunkStatusGridProps {
 // Above this count the wrapped grid becomes a wall of squares and DOM
 // node count starts to hurt — switch to a single-row canvas heatmap.
 const CANVAS_THRESHOLD = 200;
-const CANVAS_HEIGHT = 18;
+const CANVAS_HEIGHT = 24;
 
 export function ChunkStatusGrid({
   subtasks,

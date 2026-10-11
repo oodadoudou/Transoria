@@ -2,9 +2,10 @@
   position: sticky;
   bottom: -32px;
   z-index: 2;
-  margin: -12px 0 -32px;
-  padding: 12px 0 32px;
+  margin: auto 0 -32px;
+  padding: 0 0 32px;
   background: var(--canvas);
+  box-shadow: 0 -12px 0 var(--canvas);
 }
 
 .bar {

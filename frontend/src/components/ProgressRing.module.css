@@ -1,6 +1,6 @@
 .ring {
-  width: 112px;
-  height: 112px;
+  width: clamp(112px, calc(112px + (100vh - 600px) * 0.26), 176px);
+  height: clamp(112px, calc(112px + (100vh - 600px) * 0.26), 176px);
   position: relative;
   display: grid;
   place-items: center;
@@ -18,7 +18,7 @@
 }
 
 .num b {
-  font-size: 20px;
+  font-size: clamp(20px, calc(20px + (100vh - 600px) * 0.04), 29px);
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);

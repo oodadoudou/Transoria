@@ -6,7 +6,7 @@
 
 .item {
   min-width: 0;
-  height: var(--control-height-lg);
+  height: clamp(38px, calc(38px + (100vh - 600px) * 0.036), 46px);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;

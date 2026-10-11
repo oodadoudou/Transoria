@@ -110,10 +110,10 @@
 
 .progressCard {
   display: grid;
-  grid-template-columns: 112px 1fr;
-  gap: 28px;
+  grid-template-columns: auto 1fr;
+  gap: clamp(28px, calc(28px + (100vh - 600px) * 0.07), 44px);
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: clamp(8px, calc(8px + (100vh - 600px) * 0.06), 22px);
 }
 
 .startupNotice {
@@ -155,13 +155,13 @@
 
 .statLabel {
   color: var(--muted);
-  font-size: 12px;
+  font-size: clamp(12px, calc(12px + (100vh - 600px) * 0.007), 13.5px);
   margin-bottom: 4px;
   font-weight: 500;
 }
 
 .stat b {
-  font-size: 18px;
+  font-size: clamp(18px, calc(18px + (100vh - 600px) * 0.03), 25px);
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
