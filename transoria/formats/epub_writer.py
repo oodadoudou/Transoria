@@ -12,7 +12,7 @@ from pathlib import Path
 from lxml import etree
 import regex
 
-from transoria.domain import Language, normalize_target_script, translated_filename
+from transoria.domain import Language, language_tag, normalize_target_script, translated_filename
 from transoria.formats.epub_parser import (
     EpubDocument,
     EpubTextKind,
@@ -45,7 +45,13 @@ def write_translated_epub(
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / translated_filename(document.path, target_language)
     normalized = _normalize_translations(translations, target_language)
-    format_warnings = _write_epub(document, normalized, output_path, bilingual=False)
+    format_warnings = _write_epub(
+        document,
+        normalized,
+        output_path,
+        bilingual=False,
+        content_language=language_tag(target_language),
+    )
     _write_format_report(output_path, format_warnings)
     return output_path
 
@@ -75,6 +81,8 @@ def write_bilingual_epub(
         output_path,
         bilingual=True,
         dedup_when_same=dedup_when_same,
+        content_language=language_tag(target_language),
+        original_language=language_tag(source_language),
     )
     _write_format_report(output_path, format_warnings)
     return output_path
@@ -127,6 +135,8 @@ def _write_epub(
     bilingual: bool,
     dedup_when_same: bool = True,
     slot_replacements: dict[int, tuple[str, ...]] | None = None,
+    content_language: str | None = None,
+    original_language: str | None = None,
 ) -> list[dict[str, object]]:
     segments_by_doc = _segments_by_doc(document, translations)
     format_warnings: list[dict[str, object]] = []
@@ -141,6 +151,7 @@ def _write_epub(
     try:
         with source_handle as source_archive:
             source_names = source_archive.namelist()
+            opf_path = parse_package(source_archive).opf_path if content_language else ""
             with zipfile.ZipFile(temp_path, "w") as output_archive:
                 for info in source_archive.infolist():
                     raw = source_archive.read(info.filename)
@@ -155,7 +166,13 @@ def _write_epub(
                             dedup_when_same=dedup_when_same,
                             format_warnings=format_warnings,
                             slot_replacements=slot_replacements,
+                            original_language=original_language,
                         )
+                    if content_language:
+                        if info.filename == opf_path:
+                            raw = _set_package_language(raw, content_language)
+                        elif info.filename.lower().endswith((".xhtml", ".html", ".htm")):
+                            raw = _set_document_language(raw, content_language)
 
                     output_archive.writestr(_clone_zip_info(info), raw)
         _validate_output_archive(temp_path, source_names)
@@ -270,8 +287,10 @@ def _apply_doc_segments(
     dedup_when_same: bool = True,
     format_warnings: list[dict[str, object]] | None = None,
     slot_replacements: dict[int, tuple[str, ...]] | None = None,
+    original_language: str | None = None,
 ) -> bytes:
     root = _parse_doc(raw, doc_path)
+    source_lang = _element_language(root) or original_language
     elem_by_path = build_elem_by_path(root)
     block_refs: list[tuple[etree._Element, etree._Element]] = []
     inserted_block_paths: set[str] = set()
@@ -353,6 +372,8 @@ def _apply_doc_segments(
             if parent is None:
                 continue
             _mark_bilingual_clone(clone)
+            if source_lang and _element_language(clone) is None:
+                clone.set("lang", source_lang)
             parent.insert(parent.index(block), clone)
             # A block's tail belongs to its parent, not to the original-text copy.
             clone.tail = "\n"
@@ -577,6 +598,45 @@ def _mark_bilingual_clone(clone: etree._Element) -> None:
             elem.attrib.pop("name", None)
     style = clone.get("style", "").rstrip(";")
     clone.set("style", f"{style + ';' if style else ''}opacity:0.50;")
+
+
+_XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+_LANG_ATTRIBUTE = re.compile(rb"""(\s(?:xml:)?lang\s*=\s*)(["'])([^"']*)\2""", re.IGNORECASE)
+_HTML_START = re.compile(rb"<html\b[^>]*>", re.IGNORECASE)
+_BODY_START = re.compile(rb"<body\b[^>]*>", re.IGNORECASE)
+_PACKAGE_LANGUAGE = re.compile(rb"(<(?:[\w-]+:)?language\b[^>]*>)[^<]*(</(?:[\w-]+:)?language>)")
+
+
+def _element_language(elem: etree._Element) -> str | None:
+    return elem.get(_XML_LANG) or elem.get("xml:lang") or elem.get("lang")
+
+
+def _set_document_language(raw: bytes, tag: str) -> bytes:
+    # Byte-level edit keeps untranslated documents otherwise identical to the source.
+    html = _HTML_START.search(raw)
+    if html is None:
+        return raw
+    start_tag = html.group(0)
+    previous = {match.group(3) for match in _LANG_ATTRIBUTE.finditer(start_tag)}
+    value = tag.encode("ascii")
+    if previous:
+        new_tag = _LANG_ATTRIBUTE.sub(lambda m: m.group(1) + m.group(2) + value + m.group(2), start_tag)
+    else:
+        closing = 2 if start_tag.endswith(b"/>") else 1
+        new_tag = start_tag[:-closing] + b' xml:lang="' + value + b'" lang="' + value + b'"' + start_tag[-closing:]
+    raw = raw[: html.start()] + new_tag + raw[html.end():]
+    body = _BODY_START.search(raw, html.start() + len(new_tag))
+    if body is None or not previous:
+        return raw
+    body_tag = _LANG_ATTRIBUTE.sub(
+        lambda m: m.group(1) + m.group(2) + (value if m.group(3) in previous else m.group(3)) + m.group(2),
+        body.group(0),
+    )
+    return raw[: body.start()] + body_tag + raw[body.end():]
+
+
+def _set_package_language(raw: bytes, tag: str) -> bytes:
+    return _PACKAGE_LANGUAGE.sub(lambda m: m.group(1) + tag.encode("ascii") + m.group(2), raw)
 
 
 def _serialize_doc(root: etree._Element, doc_path: str) -> bytes:

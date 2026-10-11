@@ -423,7 +423,7 @@ class EpubWriterTests(TestCase):
             with zipfile.ZipFile(written) as archive:
                 chapter = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
 
-            self.assertIn('<p style="opacity:0.50;">둘째 문장</p>', chapter)
+            self.assertIn('<p style="opacity:0.50;" lang="ko">둘째 문장</p>', chapter)
             self.assertIn("<p>第二句</p>", chapter)
 
 
@@ -475,5 +475,98 @@ def _write_custom_inline_epub(path: Path) -> Path:
         archive.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip", compress_type=zipfile.ZIP_STORED)
         archive.writestr("META-INF/container.xml", container)
         archive.writestr("OEBPS/content.opf", opf)
+        archive.writestr("OEBPS/Text/chapter.xhtml", chapter)
+    return path
+
+
+class EpubLanguageTagTests(TestCase):
+    def test_translated_epub_declares_target_language(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = _write_language_tagged_epub(Path(temp_dir) / "Novel.epub")
+            document = parse_epub_file(source)
+            translations = {
+                _first_body_text_index(document, "첫 문장"): "第一句",
+            }
+
+            written = write_translated_epub(
+                document,
+                translations,
+                Path(temp_dir) / "out",
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(written) as archive:
+                chapter = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+                cover = archive.read("OEBPS/Text/cover.xhtml").decode("utf-8")
+                opf = archive.read("OEBPS/content.opf").decode("utf-8")
+
+            self.assertIn('xml:lang="zh-CN"', chapter)
+            self.assertIn('lang="zh-CN"', chapter)
+            self.assertNotIn('lang="ko"', chapter)
+            self.assertIn('<span lang="en">Seoul</span>', chapter)
+            self.assertIn("<dc:language>zh-CN</dc:language>", opf)
+            self.assertNotIn("<dc:language>ko</dc:language>", opf)
+            self.assertIn('lang="zh-CN"', cover)
+
+    def test_bilingual_epub_keeps_source_language_on_original_blocks(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = _write_language_tagged_epub(Path(temp_dir) / "Novel.epub")
+            document = parse_epub_file(source)
+            translations = {
+                _first_body_text_index(document, "첫 문장"): "第一句",
+            }
+
+            written = write_bilingual_epub(
+                document,
+                translations,
+                Path(temp_dir) / "out",
+                source_language=Language.KOREAN,
+                target_language=Language.CHINESE_SIMPLIFIED,
+            )
+
+            with zipfile.ZipFile(written) as archive:
+                chapter = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+
+            self.assertIn('<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh-CN" lang="zh-CN">', chapter)
+            self.assertRegex(chapter, r'<p [^>]*lang="ko"[^>]*>첫 문장</p>')
+            self.assertIn("<p>第一句</p>", chapter)
+
+
+def _write_language_tagged_epub(path: Path) -> Path:
+    container = """<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+"""
+    opf = """<?xml version="1.0" encoding="utf-8"?>
+<package version="2.0" xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata><dc:title>책 제목</dc:title><dc:language>ko</dc:language></metadata>
+  <manifest>
+    <item id="cover" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="Text/chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="cover"/><itemref idref="chapter"/></spine>
+</package>
+"""
+    cover = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ko" lang="ko">
+  <body><img src="../Images/cover.jpg" alt=""/></body>
+</html>
+"""
+    chapter = """<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ko" lang="ko">
+  <body lang="ko">
+    <p>첫 문장</p>
+    <p>둘째 문장 <span lang="en">Seoul</span></p>
+  </body>
+</html>
+"""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        archive.writestr("META-INF/container.xml", container)
+        archive.writestr("OEBPS/content.opf", opf)
+        archive.writestr("OEBPS/Text/cover.xhtml", cover)
         archive.writestr("OEBPS/Text/chapter.xhtml", chapter)
     return path

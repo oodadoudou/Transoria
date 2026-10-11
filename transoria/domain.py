@@ -32,6 +32,18 @@ class Language(str, Enum):
     VIETNAMESE = "vi"
 
 
+_LANGUAGE_TAGS: dict[Language, str] = {
+    Language.KOREAN: "ko",
+    Language.CHINESE_SIMPLIFIED: "zh-CN",
+    Language.CHINESE_TRADITIONAL: "zh-Hant",
+}
+
+
+def language_tag(language: Language) -> str:
+    """BCP 47 tag for document metadata; enum values are not all valid tags."""
+    return _LANGUAGE_TAGS.get(language, language.value)
+
+
 LATIN_SOURCE_LANGUAGES = frozenset(
     {
         Language.ENGLISH,
