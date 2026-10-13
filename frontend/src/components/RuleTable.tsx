@@ -101,6 +101,9 @@ interface EditingCell {
   colKey: string;
 }
 
+const FLEX_WIDTH = /^\d*\.?\d+fr$/;
+const FLEX_MIN_WIDTH = "48px";
+
 function rangeOf(a: number, b: number): number[] {
   const [lo, hi] = a < b ? [a, b] : [b, a];
   const out: number[] = [];
@@ -131,9 +134,13 @@ export function RuleTable<T>({
   renderBatchSize,
 }: RuleTableProps<T>) {
   const messages = useMessages();
-  const gridTemplate = ["28px", "36px", ...columns.map((c) => c.width)].join(
-    " ",
-  );
+  const gridTemplate = [
+    "28px",
+    "36px",
+    ...columns.map((c) =>
+      FLEX_WIDTH.test(c.width) ? `minmax(${FLEX_MIN_WIDTH}, ${c.width})` : c.width,
+    ),
+  ].join(" ");
   const tableRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const headerCheckboxRef = useRef<HTMLInputElement>(null);

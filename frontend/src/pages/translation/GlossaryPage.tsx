@@ -416,7 +416,7 @@ export function GlossaryPage() {
     {
       key: "status",
       label: g.columns.status,
-      width: "64px",
+      width: "48px",
       align: "center",
       render: (entry) => {
         const title = conflictTitleFor(entry);
@@ -436,7 +436,7 @@ export function GlossaryPage() {
     {
       key: "frequency",
       label: g.columns.frequency,
-      width: "84px",
+      width: "64px",
       align: "right",
       sortable: true,
       render: (entry) => (
@@ -448,7 +448,7 @@ export function GlossaryPage() {
     {
       key: "rule",
       label: g.columns.rule,
-      width: "72px",
+      width: "60px",
       align: "right",
       render: (entry) => (
         <span className={ruleTableStyles.ruleChipGroup}>

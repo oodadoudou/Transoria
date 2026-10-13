@@ -678,10 +678,15 @@
 
 .editorButtons {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-left: auto;
+}
+
+.editorButtons > * {
+  flex: 1 1 auto;
 }
 
 .editorHint {
@@ -726,6 +731,7 @@
 
 .debugHintRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   justify-content: space-between;

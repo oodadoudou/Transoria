@@ -1,7 +1,8 @@
 .editorGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 18px;
+  container-type: inline-size;
+  grid-template-columns: minmax(0, 1fr) clamp(200px, 30%, 320px);
+  gap: clamp(12px, 1.6vw, 18px);
   margin-top: 8px;
 }
 
@@ -9,6 +10,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overflow-x: auto;
   border-top: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
 }
@@ -23,6 +25,14 @@
   font-weight: 600;
   color: var(--muted);
   border-bottom: 1px solid var(--hairline);
+  min-width: min-content;
+}
+
+.tableHeader > span:not(.checkboxCell) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .colIndex {
@@ -85,6 +95,7 @@
   color: var(--ink);
   transition: background 160ms ease;
   width: 100%;
+  min-width: min-content;
 }
 
 .row:last-child {
@@ -333,7 +344,10 @@
   line-height: 1.4;
 }
 
-
-
-
-
+@container (max-width: 760px) {
+  .tableHeader,
+  .row {
+    column-gap: 6px;
+    padding-inline: 6px;
+  }
+}
