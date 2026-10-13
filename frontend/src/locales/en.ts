@@ -973,6 +973,7 @@ export const en: Messages = {
       },
       importEmpty:
         "File parsed successfully but contained no importable entries.",
+      importDropUnsupported: "Drop a .xlsx or .json glossary file.",
       searchPlaceholder: "Search source / translation / description…",
       stats: {
         total: "{n} entries",

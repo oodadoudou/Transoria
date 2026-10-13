@@ -224,24 +224,7 @@ export function GlossaryPage() {
         allowXlsx: true,
       });
       if (!choice.path) return;
-      const result = await glossaryBridge.importRules(choice.path);
-      const incoming: GlossaryEntry[] = result.entries.map((entry, idx) => ({
-        id: `g-imp-${Date.now()}-${idx}`,
-        source: entry.src,
-        translation: entry.dst,
-        description: entry.info,
-        regex: entry.regex,
-        caseSensitive: entry.case_sensitive,
-        enabled: entry.enabled,
-        frequency: entry.frequency ?? 0,
-      }));
-      if (incoming.length === 0) {
-        setImportError(g.importEmpty);
-        return;
-      }
-      importEntries(
-        appendUniqueRows(state.entries, incoming, glossaryEntryKey).rows,
-      );
+      await importGlossaryFiles([choice.path]);
     } catch (error) {
       setImportError(
         BridgeError.isBridgeError(error)
@@ -250,6 +233,65 @@ export function GlossaryPage() {
       );
     }
   };
+
+  const importGlossaryFiles = async (paths: string[]) => {
+    const incoming: GlossaryEntry[] = [];
+    for (const path of paths) {
+      const result = await glossaryBridge.importRules(path);
+      for (const entry of result.entries) {
+        incoming.push({
+          id: `g-imp-${Date.now()}-${incoming.length}`,
+          source: entry.src,
+          translation: entry.dst,
+          description: entry.info,
+          regex: entry.regex,
+          caseSensitive: entry.case_sensitive,
+          enabled: entry.enabled,
+          frequency: entry.frequency ?? 0,
+        });
+      }
+    }
+    if (incoming.length === 0) {
+      setImportError(g.importEmpty);
+      return;
+    }
+    importEntries(
+      appendUniqueRows(state.entries, incoming, glossaryEntryKey).rows,
+    );
+  };
+
+  const handleDroppedFiles = async (paths: string[]) => {
+    setImportError(null);
+    const glossaryPaths = paths.filter((path) => /\.(xlsx|json)$/i.test(path));
+    if (glossaryPaths.length === 0) {
+      setImportError(g.importDropUnsupported);
+      return;
+    }
+    try {
+      await importGlossaryFiles(glossaryPaths);
+    } catch (error) {
+      setImportError(
+        BridgeError.isBridgeError(error)
+          ? `${error.code}: ${error.message}`
+          : String(error),
+      );
+    }
+  };
+  const handleDroppedFilesRef = useRef(handleDroppedFiles);
+  handleDroppedFilesRef.current = handleDroppedFiles;
+
+  useEffect(() => {
+    const onFilesDropped = (event: Event) => {
+      const paths = (event as CustomEvent<unknown>).detail;
+      if (!Array.isArray(paths)) return;
+      void handleDroppedFilesRef.current(
+        paths.filter((path): path is string => typeof path === "string"),
+      );
+    };
+    window.addEventListener("transoria-files-dropped", onFilesDropped);
+    return () =>
+      window.removeEventListener("transoria-files-dropped", onFilesDropped);
+  }, []);
 
   const findLatestGlossaryReviewOutputFolder = async () => {
     try {

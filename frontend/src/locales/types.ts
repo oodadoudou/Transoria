@@ -527,6 +527,7 @@ export interface Messages {
         action: string;
       };
       importEmpty: string;
+      importDropUnsupported: string;
       searchPlaceholder: string;
       stats: {
         total: string;

@@ -944,6 +944,7 @@ export const zh: Messages = {
         action: "新增术语",
       },
       importEmpty: "文件解析成功,但没有可导入的条目。",
+      importDropUnsupported: "只能拖入 .xlsx 或 .json 术语表文件。",
       searchPlaceholder: "搜索原文 / 译文 / 描述…",
       stats: {
         total: "共 {n} 条",

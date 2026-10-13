@@ -1,6 +1,7 @@
 """Desktop drafts must survive a normal process restart."""
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,7 +13,7 @@ def test_desktop_preserves_local_storage(monkeypatch, tmp_path, dev):
     calls = {}
     closed = []
     webview = SimpleNamespace(
-        create_window=lambda *args, **kwargs: object(),
+        create_window=lambda *args, **kwargs: MagicMock(),
         start=lambda callback, **kwargs: calls.update(kwargs),
     )
     server = SimpleNamespace(

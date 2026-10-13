@@ -24,6 +24,7 @@ cleanly so no dangling processes remain.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import signal
@@ -575,6 +576,8 @@ def _run_desktop(
     def _on_shown() -> None:
         dialog_provider.activate(window)
 
+    window.events.loaded += lambda: _bind_file_drop(window)
+
     def _terminate_vite() -> None:
         if vite_proc is None or vite_proc.poll() is not None:
             return
@@ -616,6 +619,26 @@ def _run_desktop(
             raise
     finally:
         _shutdown()
+
+
+def _bind_file_drop(window) -> None:
+    """Forward dropped files' full paths to the page; only native handlers can read them."""
+
+    from webview.dom import DOMEventHandler  # noqa: PLC0415
+
+    def on_drop(event) -> None:
+        files = (event.get("dataTransfer") or {}).get("files") or []
+        paths = [item["pywebviewFullPath"] for item in files if item.get("pywebviewFullPath")]
+        if not paths:
+            return
+        detail = json.dumps(paths, ensure_ascii=False)
+        window.evaluate_js(
+            f"window.dispatchEvent(new CustomEvent('transoria-files-dropped', {{detail: {detail}}}))"
+        )
+
+    document = window.dom.document
+    document.events.dragover += DOMEventHandler(lambda _event: None, True, False, debounce=500)
+    document.events.drop += DOMEventHandler(on_drop, True, False)
 
 
 def _start_bridge_http(
