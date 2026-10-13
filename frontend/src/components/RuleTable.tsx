@@ -46,6 +46,7 @@ export interface RuleTableAction {
   label: string;
   onClick: () => void;
   primary?: boolean;
+  danger?: boolean;
   disabled?: boolean;
 }
 
@@ -65,6 +66,7 @@ interface RuleTableProps<T> {
   emptyMessage: ReactNode;
   editor?: ReactNode;
   toolbar?: RuleTableAction[];
+  toolbarHint?: ReactNode;
   /** Right-click → "Delete N rules"; called with the rows the user
    *  acted on. When omitted, the context menu is suppressed. */
   onBulkDelete?: (indices: number[]) => void;
@@ -119,6 +121,7 @@ export function RuleTable<T>({
   emptyMessage,
   editor,
   toolbar = [],
+  toolbarHint,
   onBulkDelete,
   onBulkDuplicate,
   contextMenuLabels,
@@ -487,7 +490,9 @@ export function RuleTable<T>({
               <Button
                 key={action.label}
                 size="sm"
-                variant={action.primary ? "primary" : "ghost"}
+                variant={
+                  action.primary ? "primary" : action.danger ? "danger" : "ghost"
+                }
                 onClick={action.onClick}
                 disabled={action.disabled}
               >
@@ -495,6 +500,9 @@ export function RuleTable<T>({
                 {action.label}
               </Button>
             ))}
+            {toolbarHint ? (
+              <p className={styles.toolbarHint}>{toolbarHint}</p>
+            ) : null}
           </div>
           <div className={styles.editorBlock}>{editor}</div>
         </aside>

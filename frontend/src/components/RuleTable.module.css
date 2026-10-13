@@ -325,6 +325,14 @@
   border-bottom: 1px solid var(--hairline);
 }
 
+.toolbarHint {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
 
 
 

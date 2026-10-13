@@ -935,6 +935,7 @@ export const zh: Messages = {
         search: "搜索",
         statistics: "统计",
         preset: "预设",
+        deleteAll: "删除全部",
       },
       empty: "暂无术语条目。点击 + 新增 添加一条。",
       emptyState: {
@@ -945,6 +946,7 @@ export const zh: Messages = {
       },
       importEmpty: "文件解析成功,但没有可导入的条目。",
       importDropUnsupported: "只能拖入 .xlsx 或 .json 术语表文件。",
+      dropHint: "也可直接把 .xlsx / .json 术语表文件拖入此页导入。",
       searchPlaceholder: "搜索原文 / 译文 / 描述…",
       stats: {
         total: "共 {n} 条",

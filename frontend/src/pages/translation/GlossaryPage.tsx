@@ -480,6 +480,10 @@ export function GlossaryPage() {
     setSelection({ indices: [newIndex], last: newIndex });
   };
 
+  const allSelected =
+    filteredEntries.length > 0 &&
+    selection.indices.length === filteredEntries.length;
+
   const handleBulkDelete = (indices: number[]) => {
     // Translate indices in the filtered view to entry ids before
     // mutating, so the array shifts during deletion don't bite us.
@@ -633,7 +637,18 @@ export function GlossaryPage() {
               label: g.actions.preset,
               onClick: () => setPresetOpen(true),
             },
+            ...(allSelected
+              ? [
+                  {
+                    label: g.actions.deleteAll,
+                    onClick: () =>
+                      handleBulkDelete(filteredEntries.map((_, i) => i)),
+                    danger: true,
+                  },
+                ]
+              : []),
           ]}
+          toolbarHint={g.dropHint}
         />
 
         {importError ? (

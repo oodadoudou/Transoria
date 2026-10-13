@@ -518,6 +518,7 @@ export interface Messages {
         search: string;
         statistics: string;
         preset: string;
+        deleteAll: string;
       };
       empty: string;
       emptyState: {
@@ -528,6 +529,7 @@ export interface Messages {
       };
       importEmpty: string;
       importDropUnsupported: string;
+      dropHint: string;
       searchPlaceholder: string;
       stats: {
         total: string;

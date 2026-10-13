@@ -963,6 +963,7 @@ export const en: Messages = {
         search: "Search",
         statistics: "Statistics",
         preset: "Preset",
+        deleteAll: "Delete all",
       },
       empty: "No glossary entries yet. Click + Add to create one.",
       emptyState: {
@@ -974,6 +975,7 @@ export const en: Messages = {
       importEmpty:
         "File parsed successfully but contained no importable entries.",
       importDropUnsupported: "Drop a .xlsx or .json glossary file.",
+      dropHint: "You can also drag .xlsx / .json glossary files onto this page to import.",
       searchPlaceholder: "Search source / translation / description…",
       stats: {
         total: "{n} entries",
