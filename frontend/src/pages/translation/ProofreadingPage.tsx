@@ -59,7 +59,8 @@ type RetranslateStatus =
   | "stale"
   | "skipped"
   | "failed"
-  | "unresolved";
+  | "unresolved"
+  | "cancelled";
 
 interface RetranslateOutcome {
   status: RetranslateStatus;
@@ -476,14 +477,20 @@ export function ProofreadingPage() {
   const markRetranslateCompleted = useProofreadingRetranslateStore(
     (state) => state.markRetranslateCompleted,
   );
+  const setStoredRetranslatePausing = useProofreadingRetranslateStore(
+    (state) => state.setRetranslatePausing,
+  );
   const {
     inflightRetranslates,
     retranslateActivities,
     rejectedCandidates,
     batchRetranslating,
     batchRetranslateProgress,
+    retranslatePausing,
     completedRevision,
   } = retranslateSession;
+  const anyRetranslateInflight =
+    batchRetranslating || Object.keys(inflightRetranslates).length > 0;
   const setInflightRetranslates = (
     updater: RetranslateValueUpdater<Record<string, string>>,
   ) => {
@@ -1278,6 +1285,14 @@ export function ProofreadingPage() {
             resolve({ status: "stale" });
             return;
           }
+          if (status.status === "cancelled") {
+            if (showFeedback) {
+              setFeedback({ kind: "info", text: m.retranslateCancelled });
+            }
+            finish(true);
+            resolve({ status: "cancelled" });
+            return;
+          }
           if (status.status === "skipped") {
             finish(true);
             resolve({
@@ -1437,7 +1452,8 @@ export function ProofreadingPage() {
           if (
             status.status === "stale" ||
             status.status === "skipped" ||
-            status.status === "unresolved"
+            status.status === "unresolved" ||
+            status.status === "cancelled"
           ) {
             const reason = status.error || status.last_error;
             const terminalStatus: RetranslateStatus = status.status;
@@ -1708,6 +1724,14 @@ export function ProofreadingPage() {
     const waitForRateSlot = createRetranslateRateGate(
       selectedProofreadingModel,
     );
+    const batchTaskId = activeTaskId;
+    const pauseRequested = () =>
+      Boolean(
+        batchTaskId &&
+          useProofreadingRetranslateStore.getState().sessions[batchTaskId]
+            ?.retranslatePausing,
+      );
+    if (batchTaskId) setStoredRetranslatePausing(batchTaskId, false);
     setBatchRetranslating(true);
     setBatchRetranslateProgress({
       total: ids.length,
@@ -1731,6 +1755,7 @@ export function ProofreadingPage() {
     let unresolvedCount = 0;
     let staleCount = 0;
     let failedCount = 0;
+    let cancelledCount = 0;
     const activeBatches = new Map<number, { count: number; startedAt: number }>();
     const failedReasons: string[] = [];
     const updateProgress = () => {
@@ -1760,11 +1785,12 @@ export function ProofreadingPage() {
       const workerCount = Math.max(1, concurrency);
       await Promise.all(
         Array.from({ length: workerCount }, async () => {
-          while (nextIndex < batches.length) {
+          while (nextIndex < batches.length && !pauseRequested()) {
             const index = nextIndex;
             nextIndex += 1;
             const batch = batches[index] ?? [];
             await waitForRateSlot();
+            if (pauseRequested()) break;
             launchedCount += batch.length;
             activeBatches.set(index, {
               count: batch.length,
@@ -1783,6 +1809,10 @@ export function ProofreadingPage() {
                 status: "failed" as const,
                 reason: "missing batch result",
               };
+              if (result.status === "cancelled") {
+                cancelledCount += 1;
+                continue;
+              }
               if (result.status === "completed") {
                 completedCount += 1;
                 const previous = previousById.get(segmentId);
@@ -1813,27 +1843,38 @@ export function ProofreadingPage() {
           // Individual completed rows were already patched; keep the batch result visible.
         }
       }
+      const paused = pauseRequested() || cancelledCount > 0;
       const baseText = format(m.retranslateSelectedDone, {
         done: completedCount,
         unresolved: unresolvedCount,
         stale: staleCount,
         failed: failedCount,
       });
-      setFeedback({
-        kind:
-          failedCount > 0
-            ? "error"
-            : unresolvedCount > 0 || staleCount > 0
-              ? "info"
-              : "success",
-        text:
-          failedReasons.length > 0
-            ? format(m.retranslateSelectedDoneWithReasons, {
-                summary: baseText,
-                reasons: summarizeReasons(failedReasons),
-              })
-            : baseText,
-      });
+      if (paused) {
+        setFeedback({
+          kind: "info",
+          text: format(m.retranslatePaused, {
+            done: completedCount,
+            remaining: ids.length - processedCount,
+          }),
+        });
+      } else {
+        setFeedback({
+          kind:
+            failedCount > 0
+              ? "error"
+              : unresolvedCount > 0 || staleCount > 0
+                ? "info"
+                : "success",
+          text:
+            failedReasons.length > 0
+              ? format(m.retranslateSelectedDoneWithReasons, {
+                  summary: baseText,
+                  reasons: summarizeReasons(failedReasons),
+                })
+              : baseText,
+        });
+      }
       setRetranslateUndo(
         undoEntries.length > 0 ? { entries: undoEntries } : null,
       );
@@ -1841,6 +1882,26 @@ export function ProofreadingPage() {
       window.clearInterval(progressTimer);
       setBatchRetranslating(false);
       setBatchRetranslateProgress(null);
+      if (batchTaskId) setStoredRetranslatePausing(batchTaskId, false);
+    }
+  };
+
+  const handlePauseRetranslate = async () => {
+    const taskId = activeTaskId;
+    if (!taskId || retranslatePausing) return;
+    setStoredRetranslatePausing(taskId, true);
+    try {
+      await proofreadingBridge.cancelRetranslate(taskId);
+    } catch (err) {
+      const reason = BridgeError.isBridgeError(err)
+        ? `${err.code}: ${err.message}`
+        : String(err);
+      setFeedback({ kind: "error", text: format(m.retranslateFailed, { reason }) });
+    } finally {
+      // A running batch clears the flag itself once its workers stop.
+      if (!useProofreadingRetranslateStore.getState().sessions[taskId]?.batchRetranslating) {
+        setStoredRetranslatePausing(taskId, false);
+      }
     }
   };
 
@@ -2355,19 +2416,28 @@ export function ProofreadingPage() {
           <button
             type="button"
             className={styles.filterChip}
-            onClick={() => void handleRetranslateFiltered()}
-            disabled={batchRetranslating || filteredItems.length === 0}
+            onClick={() =>
+              void (anyRetranslateInflight
+                ? handlePauseRetranslate()
+                : handleRetranslateFiltered())
+            }
+            disabled={
+              retranslatePausing ||
+              (!anyRetranslateInflight && filteredItems.length === 0)
+            }
             title={
-              !batchRetranslating && filteredItems.length === 0
+              !anyRetranslateInflight && filteredItems.length === 0
                 ? m.retranslateFilteredDisabled
                 : undefined
             }
           >
-            {batchRetranslating
-              ? m.retranslating
-              : format(m.retranslateFilteredAction, {
-                  n: filteredItems.length,
-                })}
+            {retranslatePausing
+              ? m.retranslatePausing
+              : anyRetranslateInflight
+                ? m.retranslatePauseAction
+                : format(m.retranslateFilteredAction, {
+                    n: filteredItems.length,
+                  })}
           </button>
           <button
             type="button"

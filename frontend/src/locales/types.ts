@@ -782,6 +782,10 @@ export interface Messages {
       retranslateAction: string;
       retranslateSelectedAction: string;
       retranslateFilteredAction: string;
+      retranslatePauseAction: string;
+      retranslatePausing: string;
+      retranslatePaused: string;
+      retranslateCancelled: string;
       retranslateFilteredDisabled: string;
       retranslating: string;
       retranslatingDetail: string;

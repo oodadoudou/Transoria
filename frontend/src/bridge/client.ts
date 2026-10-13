@@ -93,7 +93,8 @@ type RetranslateStatusResponse = {
     | "failed"
     | "stale"
     | "skipped"
-    | "unresolved";
+    | "unresolved"
+    | "cancelled";
   result_dst: string;
   error: string;
   attempts: number;
@@ -542,6 +543,9 @@ export const proofreadingBridge = {
   },
   resumeRetranslate(requestId: string): Promise<RetranslateStatusResponse> {
     return call("proofreading.resume_retranslate", { request_id: requestId });
+  },
+  cancelRetranslate(taskId: string): Promise<{ cancelled: string[] }> {
+    return call("proofreading.cancel_retranslate", { task_id: taskId });
   },
 };
 

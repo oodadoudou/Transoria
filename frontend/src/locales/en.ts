@@ -1259,6 +1259,10 @@ export const en: Messages = {
       retranslateAction: "Retranslate",
       retranslateSelectedAction: "Retranslate {n} selected",
       retranslateFilteredAction: "Retranslate current list ({n})",
+      retranslatePauseAction: "Pause retranslation",
+      retranslatePausing: "Pausing…",
+      retranslatePaused: "Retranslation paused: {done} done, {remaining} not processed. Click again to continue.",
+      retranslateCancelled: "Retranslation cancelled",
       retranslateFilteredDisabled:
         "There are no rows in the current list to retranslate.",
       retranslating: "Retranslating…",

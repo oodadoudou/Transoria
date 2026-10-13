@@ -28,6 +28,7 @@ export interface ProofreadingRetranslateSession {
   rejectedCandidates: Record<string, RejectedCandidate>;
   batchRetranslating: boolean;
   batchRetranslateProgress: BatchRetranslateProgress | null;
+  retranslatePausing: boolean;
   completedRevision: number;
 }
 
@@ -39,6 +40,7 @@ const EMPTY_SESSION: ProofreadingRetranslateSession = {
   rejectedCandidates: {},
   batchRetranslating: false,
   batchRetranslateProgress: null,
+  retranslatePausing: false,
   completedRevision: 0,
 };
 
@@ -63,6 +65,7 @@ interface ProofreadingRetranslateStore {
     taskId: string,
     progress: BatchRetranslateProgress | null,
   ) => void;
+  setRetranslatePausing: (taskId: string, pausing: boolean) => void;
   markRetranslateCompleted: (taskId: string) => void;
 }
 
@@ -140,6 +143,16 @@ export const useProofreadingRetranslateStore =
           sessions: {
             ...state.sessions,
             [taskId]: { ...current, batchRetranslateProgress: progress },
+          },
+        };
+      }),
+    setRetranslatePausing: (taskId, pausing) =>
+      set((state) => {
+        const current = state.sessions[taskId] ?? EMPTY_SESSION;
+        return {
+          sessions: {
+            ...state.sessions,
+            [taskId]: { ...current, retranslatePausing: pausing },
           },
         };
       }),

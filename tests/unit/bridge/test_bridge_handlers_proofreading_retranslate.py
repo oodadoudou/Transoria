@@ -2547,3 +2547,145 @@ def test_retranslate_job_dict_evicts_oldest_above_50(tmp_path: Path):
     assert len(remaining) <= 50
     assert "retranslate-0000" not in remaining
     assert f"retranslate-{59:04d}" in remaining
+
+
+@dataclass
+class _HangingTransport(_StubTransport):
+    release: threading.Event = field(default_factory=threading.Event)
+    started: int = 0
+    cancelled: int = 0
+
+    async def execute(
+        self,
+        url: str,
+        headers: Mapping[str, str],
+        payload: Mapping[str, object],
+        timeout: float,
+    ) -> TransportResult:
+        import asyncio
+
+        self.started += 1
+        try:
+            while not self.release.is_set():
+                await asyncio.sleep(0.01)
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+        return await super().execute(url, headers, payload, timeout)
+
+
+def _wait_until(predicate, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    pytest.fail("timed out waiting for condition")
+
+
+def _cancel_setup(tmp_path: Path, *, concurrency_limit: int = 1):
+    transport = _HangingTransport()
+    service = _make_service(tmp_path, transport=transport, concurrency_limit=concurrency_limit)
+    router = BridgeRouter()
+    register(router, service=service)
+    segments = tuple((f"0:{i}", f"원문 {i}", f"旧译文 {i}") for i in range(3))
+    _seed_task_with_snapshot(service, segments=segments)
+    return transport, service, router, segments
+
+
+def _cached_translations(service: TaskService, task_id: str = "translation-pf-rt-1") -> dict[str, str]:
+    snapshot = service.cache.load(task_id)
+    return json.loads(snapshot.subtasks[0].response_content)["translations"]
+
+
+def test_cancel_retranslate_aborts_in_flight_and_queued_requests(tmp_path: Path):
+    transport, service, router, segments = _cancel_setup(tmp_path)
+    request_ids = [
+        router.call(
+            "proofreading.retranslate_segment",
+            {"task_id": "translation-pf-rt-1", "segment_id": segment_id},
+        )["request_id"]
+        for segment_id, _src, _dst in segments
+    ]
+    _wait_until(lambda: transport.started == 1)
+
+    started = time.monotonic()
+    response = router.call("proofreading.cancel_retranslate", {"task_id": "translation-pf-rt-1"})
+
+    assert sorted(response["cancelled"]) == sorted(request_ids)
+    finals = [_wait_for_status(service, request_id, {"cancelled"}) for request_id in request_ids]
+    assert time.monotonic() - started < 2.0
+    assert all(item["status"] == "cancelled" for item in finals)
+    assert transport.cancelled == 1
+    assert transport.started == 1
+    assert _cached_translations(service) == {seg: dst for seg, _src, dst in segments}
+
+
+def test_cancel_retranslate_stops_batch_jobs_without_writing(tmp_path: Path):
+    transport, service, router, segments = _cancel_setup(tmp_path)
+    request_id = router.call(
+        "proofreading.retranslate_segment",
+        {
+            "task_id": "translation-pf-rt-1",
+            "segment_id": "0:0",
+            "segment_ids": ["0:0", "0:1"],
+        },
+    )["request_id"]
+    _wait_until(lambda: transport.started == 1)
+
+    router.call("proofreading.cancel_retranslate", {"task_id": "translation-pf-rt-1"})
+
+    assert _wait_for_status(service, request_id, {"cancelled"})["status"] == "cancelled"
+    assert transport.cancelled == 1
+    assert _cached_translations(service) == {seg: dst for seg, _src, dst in segments}
+
+
+def test_cancel_retranslate_only_affects_the_requested_task(tmp_path: Path):
+    transport, service, router, _segments = _cancel_setup(tmp_path, concurrency_limit=4)
+    _seed_task_with_snapshot(
+        service, task_id="translation-pf-rt-2", segments=(("0:0", "원문", "旧译文"),)
+    )
+    cancelled_id = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )["request_id"]
+    kept_id = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-2", "segment_id": "0:0"},
+    )["request_id"]
+    _wait_until(lambda: transport.started == 2)
+
+    response = router.call("proofreading.cancel_retranslate", {"task_id": "translation-pf-rt-1"})
+    assert response["cancelled"] == [cancelled_id]
+    _wait_for_status(service, cancelled_id, {"cancelled"})
+    assert service.read_retranslate_status(request_id=kept_id)["status"] == "running"
+
+    transport.release.set()
+    assert _wait_for_status(service, kept_id, {"completed", "failed"})["status"] == "completed"
+
+
+def test_cancelled_segment_can_be_retranslated_again(tmp_path: Path):
+    transport, service, router, _segments = _cancel_setup(tmp_path)
+    first = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )["request_id"]
+    _wait_until(lambda: transport.started == 1)
+    router.call("proofreading.cancel_retranslate", {"task_id": "translation-pf-rt-1"})
+    _wait_for_status(service, first, {"cancelled"})
+
+    transport.release.set()
+    second = router.call(
+        "proofreading.retranslate_segment",
+        {"task_id": "translation-pf-rt-1", "segment_id": "0:0"},
+    )["request_id"]
+
+    assert _wait_for_status(service, second, {"completed", "failed"})["status"] == "completed"
+    assert _cached_translations(service)["0:0"].startswith("重翻译文")
+
+
+def test_cancel_retranslate_with_nothing_running_is_a_no_op(tmp_path: Path):
+    _transport, _service, router, _segments = _cancel_setup(tmp_path)
+    assert router.call("proofreading.cancel_retranslate", {"task_id": "translation-pf-rt-1"}) == {
+        "cancelled": []
+    }

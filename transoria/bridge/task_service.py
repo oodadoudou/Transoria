@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Callable, Mapping, Sequence
+from typing import Any, Callable, Coroutine, Iterable, Mapping, Sequence, TypeVar
 from uuid import uuid4
 
 from openpyxl import load_workbook
@@ -207,8 +207,9 @@ _STOP_REQUEST_STALL_SECONDS = 900.0
 _LIVE_TASK_STALL_TIMEOUT_HEADROOM_SECONDS = 120.0
 _MAX_RETRANSLATE_JOBS = 50
 _RETRANSLATE_TERMINAL_TTL_SECONDS = 300.0
+_T = TypeVar("_T")
 _RETRANSLATE_TERMINAL_STATUSES = frozenset(
-    {"completed", "failed", "stale", "skipped", "unresolved"}
+    {"completed", "failed", "stale", "skipped", "unresolved", "cancelled"}
 )
 _RETRANSLATE_QUALITY_BATCH_MAX_ITEMS = 5
 _RETRANSLATE_QUALITY_BATCH_WAIT_SECONDS = 0.2
@@ -376,6 +377,12 @@ class _RetranslateRunnerResult:
 class _RetranslateTaskIndex:
     task_updated_at: str
     owner_subtask_ids: dict[str, tuple[str, ...]]
+
+
+class _RetranslateCancelled(BaseException):
+    # BaseException so the existing ``except Exception`` failure paths never mark a
+    # user cancellation as a failed job.
+    pass
 
 
 @dataclass(frozen=True)
@@ -2070,6 +2077,69 @@ class TaskService:
         self._retranslate_quality_groups: dict[
             str, _RetranslateQualityReviewGroup
         ] = {}
+        self._retranslate_cancelled: set[str] = set()
+        self._retranslate_running_calls: dict[
+            str, list[tuple[asyncio.AbstractEventLoop, asyncio.Task]]
+        ] = {}
+
+    def cancel_retranslate(self, *, task_id: str) -> dict[str, object]:
+        with self._retranslate_lock:
+            request_ids = sorted(
+                request_id
+                for request_id, job in self._retranslate_jobs.items()
+                if job.task_id == task_id and job.status in {"pending", "running"}
+            )
+            self._retranslate_cancelled.update(request_ids)
+            calls = [
+                call
+                for request_id in request_ids
+                for call in self._retranslate_running_calls.get(request_id, ())
+            ]
+        for loop, task in calls:
+            loop.call_soon_threadsafe(task.cancel)
+        with self._retranslate_gate:
+            self._retranslate_gate.notify_all()
+        return {"cancelled": request_ids}
+
+    def _is_retranslate_cancelled(self, request_ids: Iterable[str]) -> bool:
+        with self._retranslate_lock:
+            return any(
+                request_id in self._retranslate_cancelled for request_id in request_ids
+            )
+
+    def _run_retranslate_coroutine(
+        self, request_ids: Iterable[str], coroutine: Coroutine[Any, Any, _T]
+    ) -> _T:
+        ids = tuple(request_ids)
+
+        async def guarded() -> _T:
+            call = (asyncio.get_running_loop(), asyncio.current_task())
+            with self._retranslate_lock:
+                if any(request_id in self._retranslate_cancelled for request_id in ids):
+                    coroutine.close()
+                    raise _RetranslateCancelled()
+                for request_id in ids:
+                    self._retranslate_running_calls.setdefault(request_id, []).append(call)
+            try:
+                return await coroutine
+            finally:
+                with self._retranslate_lock:
+                    for request_id in ids:
+                        calls = self._retranslate_running_calls.get(request_id, [])
+                        if call in calls:
+                            calls.remove(call)
+                        if not calls:
+                            self._retranslate_running_calls.pop(request_id, None)
+
+        try:
+            result = asyncio.run(guarded())
+        except asyncio.CancelledError as exc:
+            if self._is_retranslate_cancelled(ids):
+                raise _RetranslateCancelled() from exc
+            raise
+        if self._is_retranslate_cancelled(ids):
+            raise _RetranslateCancelled()
+        return result
 
     def _retranslate_task_lock(self, task_id: str) -> threading.Lock:
         with self._retranslate_lock:
@@ -2802,11 +2872,26 @@ class TaskService:
         if job is None:
             return
         model_key, concurrency_limit = self._retranslate_concurrency(job)
-        self._acquire_retranslate_slot(model_key, concurrency_limit)
+        if not self._acquire_retranslate_slot(
+            model_key, concurrency_limit, request_id=request_id
+        ):
+            self._finish_cancelled_retranslate(job)
+            return
         try:
             self._execute_retranslate(job)
+        except _RetranslateCancelled:
+            self._finish_cancelled_retranslate(job)
         finally:
             self._release_retranslate_slot(model_key)
+
+    def _finish_cancelled_retranslate(self, job: RetranslateJob) -> None:
+        with self._retranslate_lock:
+            self._retranslate_cancelled.discard(job.request_id)
+            job.status = "cancelled"
+            job.error = "retranslate was cancelled."
+            job.updated_at_wall = _utc_now_iso()
+            self._retranslate_jobs[job.request_id] = job
+        self._save_retranslate_job(job)
 
     def _execute_retranslate(self, job: RetranslateJob) -> None:
         if job.batch_items and len(job.batch_items) > 1:
@@ -2846,7 +2931,8 @@ class TaskService:
                     subtask_attempt=job.attempts,
                     clock=_utc_now_iso,
                 ):
-                    runner_result = asyncio.run(
+                    runner_result = self._run_retranslate_coroutine(
+                        (job.request_id,),
                         self._call_runner_for_retranslate(
                             job.seg_data,
                             job.metadata,
@@ -3176,7 +3262,8 @@ class TaskService:
                     if len(batch) == 1:
                         only = batch[0]
                         decisions = {
-                            "0": asyncio.run(
+                            "0": self._run_retranslate_coroutine(
+                                [queued.request_id for queued in batch],
                                 self._review_single_retranslation_candidate(
                                     source_text=only.source_text,
                                     existing_dst=only.existing_dst,
@@ -3191,9 +3278,20 @@ class TaskService:
                             )
                         }
                     else:
-                        decisions = asyncio.run(
-                            self._review_retranslation_candidates_batch(batch)
+                        decisions = self._run_retranslate_coroutine(
+                            [queued.request_id for queued in batch],
+                            self._review_retranslation_candidates_batch(batch),
                         )
+            except _RetranslateCancelled as exc:
+                for queued_item in batch:
+                    queued_item.error = exc
+                with self._retranslate_quality_gate:
+                    for queued_item in group.items:
+                        queued_item.error = exc
+                        queued_item.done.set()
+                    group.items.clear()
+                    self._retranslate_quality_groups.pop(group_key, None)
+                raise
             except Exception as exc:  # noqa: BLE001
                 for queued_item in batch:
                     queued_item.error = exc
@@ -3360,13 +3458,20 @@ class TaskService:
                 return model.id, effective_concurrency_limit(model)
         return job.model_id or "unknown", 1
 
-    def _acquire_retranslate_slot(self, model_key: str, limit: int) -> None:
+    def _acquire_retranslate_slot(
+        self, model_key: str, limit: int, *, request_id: str = ""
+    ) -> bool:
         with self._retranslate_gate:
             while self._active_retranslates_by_model.get(model_key, 0) >= limit:
+                if request_id and self._is_retranslate_cancelled((request_id,)):
+                    return False
                 self._retranslate_gate.wait()
+            if request_id and self._is_retranslate_cancelled((request_id,)):
+                return False
             self._active_retranslates_by_model[model_key] = (
                 self._active_retranslates_by_model.get(model_key, 0) + 1
             )
+            return True
 
     def _release_retranslate_slot(self, model_key: str) -> None:
         with self._retranslate_gate:
@@ -3460,7 +3565,8 @@ class TaskService:
                         subtask_attempt=job.attempts,
                         clock=_utc_now_iso,
                     ):
-                        runner_result = asyncio.run(
+                        runner_result = self._run_retranslate_coroutine(
+                            (job.request_id,),
                             self._call_runner_for_retranslate_batch(
                                 ready_segments,
                                 job.metadata,
@@ -3616,8 +3722,9 @@ class TaskService:
                 subtask_attempt=job.attempts,
                 clock=_utc_now_iso,
             ):
-                indexed = asyncio.run(
-                    self._review_retranslation_candidates_batch(review_items)
+                indexed = self._run_retranslate_coroutine(
+                    (job.request_id,),
+                    self._review_retranslation_candidates_batch(review_items),
                 )
         except Exception as exc:  # noqa: BLE001
             return {}, f"{type(exc).__name__}: {exc}"
