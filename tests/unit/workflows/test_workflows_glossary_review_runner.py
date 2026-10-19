@@ -620,3 +620,239 @@ def test_truncated_review_reply_stops_when_continuation_adds_nothing(tmp_path) -
     with pytest.raises(LlmTruncatedResponseError):
         asyncio.run(runner.run(_consistency_subtask(rows)))
     assert len(client.requests) == 2
+
+
+class _ScriptedClient:
+    """Replies in order; an Exception entry is raised, a str is returned as content."""
+
+    def __init__(self, replies: list[object]) -> None:
+        self.replies = list(replies)
+        self.requests = []
+
+    async def chat(self, request):
+        from transoria.llm.client import ChatResponse
+        from transoria.llm.usage import TokenUsage
+
+        self.requests.append(request)
+        reply = self.replies.pop(0)
+        if isinstance(reply, BaseException):
+            raise reply
+        return ChatResponse(
+            content=str(reply), usage=TokenUsage(input_tokens=10, output_tokens=5), raw={}
+        )
+
+
+def _review_subtask(rows: list[dict[str, object]]) -> Subtask:
+    from transoria.workflows.glossary_review.runner import encode_review_payload
+
+    return Subtask(
+        id="round-02-batch-0005",
+        task_id="t",
+        request_payload=encode_review_payload(
+            round_index=2, batch_index=5, rows=tuple(rows), novel_background=""
+        ),
+    )
+
+
+def _review_rows(*indices: int) -> list[dict[str, object]]:
+    return [
+        {"row_index": index, "src": f"단어{index}", "dst": f"词{index}", "info": "物品", "frequency": 3}
+        for index in indices
+    ]
+
+
+def _decisions_json(*items: tuple[int, str]) -> str:
+    return json.dumps(
+        [{"row_index": index, "action": action, "reason": "r"} for index, action in items]
+    )
+
+
+def test_review_ignores_stray_row_numbers_and_reasks_missing_rows(tmp_path) -> None:
+    client = _ScriptedClient(
+        [
+            _decisions_json((171, "keep"), (172, "delete")),
+            json.dumps([{"row_index": 173, "action": "modify", "suggested_dst": "新词", "reason": "r"}]),
+        ]
+    )
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    result = asyncio.run(runner.run(_review_subtask(_review_rows(171, 173))))
+
+    decisions = decode_review_response(result.response_content)
+    assert [(d.row_index, d.action) for d in decisions] == [(171, "keep"), (173, "modify")]
+    assert len(client.requests) == 2
+    followup = client.requests[1].user_prompt
+    assert '"row_index": 173' in followup
+    assert '"row_index": 171' not in followup
+    assert result.input_tokens == 20
+
+
+def test_review_changes_only_reply_does_not_reask(tmp_path) -> None:
+    client = _ScriptedClient([_decisions_json((173, "delete"))])
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    result = asyncio.run(runner.run(_review_subtask(_review_rows(171, 173))))
+
+    assert [(d.row_index, d.action) for d in decode_review_response(result.response_content)] == [
+        (173, "delete")
+    ]
+    assert len(client.requests) == 1
+
+
+def test_review_explicit_empty_list_is_accepted(tmp_path) -> None:
+    client = _ScriptedClient(['{"decisions": []}'])
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    result = asyncio.run(runner.run(_review_subtask(_review_rows(171, 173))))
+
+    assert decode_review_response(result.response_content) == ()
+    assert len(client.requests) == 1
+
+
+def test_review_blank_or_prose_reply_is_retried_then_reported(tmp_path) -> None:
+    import pytest
+
+    from transoria.workflows.glossary_review.runner import ReviewReplyUnreadableError
+
+    client = _ScriptedClient(["", "I could not review these terms."])
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    with pytest.raises(ReviewReplyUnreadableError):
+        asyncio.run(runner.run(_review_subtask(_review_rows(171, 173))))
+    assert len(client.requests) == 2
+
+
+def test_review_unreadable_first_reply_recovers_on_retry(tmp_path) -> None:
+    client = _ScriptedClient(["", _decisions_json((171, "keep"), (173, "keep"))])
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    result = asyncio.run(runner.run(_review_subtask(_review_rows(171, 173))))
+
+    assert len(decode_review_response(result.response_content)) == 2
+
+
+def test_review_failed_missing_row_followup_keeps_main_reply(tmp_path) -> None:
+    from transoria.llm.client import LlmRequestError
+
+    client = _ScriptedClient(
+        [_decisions_json((171, "keep")), LlmRequestError("HTTP 400 from x: bad", code="llm.http_error")]
+    )
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    result = asyncio.run(runner.run(_review_subtask(_review_rows(171, 173))))
+
+    assert [(d.row_index, d.action) for d in decode_review_response(result.response_content)] == [
+        (171, "keep")
+    ]
+
+
+def test_consistency_context_is_trimmed_only_for_large_name_sets(tmp_path) -> None:
+    from transoria.workflows.glossary_review.runner import (
+        CONSISTENCY_CONTEXT_BUDGET_CHARS,
+        _build_character_consistency_prompt,
+    )
+
+    excerpt = "가" * 150
+    context = "\n".join([excerpt + "1", excerpt + "2", excerpt + "3"])
+
+    def rows(count: int):
+        return tuple(
+            {"row_index": i + 2, "src": f"이름{i}", "dst": "名", "info": "男性角色", "context": context}
+            for i in range(count)
+        )
+
+    small = _build_character_consistency_prompt(instruction_prompt="", novel_background="", rows=rows(100))
+    assert small.count(excerpt + "3") == 100
+
+    large = _build_character_consistency_prompt(instruction_prompt="", novel_background="", rows=rows(400))
+    assert large.count(excerpt + "1") == 400
+    assert large.count(excerpt + "2") == 0
+
+    huge_count = 1000
+    huge = _build_character_consistency_prompt(instruction_prompt="", novel_background="", rows=rows(huge_count))
+    per_row = CONSISTENCY_CONTEXT_BUDGET_CHARS // huge_count
+    assert huge.count('"context": "' + "가" * per_row + '"') == huge_count
+
+
+def _truncated(text: str, output_tokens: int):
+    from transoria.llm.client import LlmTruncatedResponseError
+    from transoria.llm.usage import TokenUsage
+
+    return LlmTruncatedResponseError(
+        text, TokenUsage(input_tokens=10, output_tokens=output_tokens), finish_reason="length", model_id="m"
+    )
+
+
+def test_continuation_raises_output_cap_only_above_where_provider_cut(tmp_path) -> None:
+    rows = _review_rows(2, 3)
+    full = _decisions_json((2, "keep"), (3, "keep"))
+    client = _ScriptedClient([_truncated(full[:20], 4096), full[20:]])
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    asyncio.run(runner.run(_consistency_subtask(rows)))
+
+    assert client.requests[0].max_output_tokens is None
+    assert client.requests[1].max_output_tokens == runner.model.max_output_tokens == 8192
+
+
+def test_continuation_keeps_provider_default_when_cut_at_profile_cap(tmp_path) -> None:
+    rows = _review_rows(2, 3)
+    full = _decisions_json((2, "keep"), (3, "keep"))
+    client = _ScriptedClient([_truncated(full[:20], 8192), full[20:]])
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    asyncio.run(runner.run(_consistency_subtask(rows)))
+
+    assert client.requests[1].max_output_tokens is None
+
+
+def test_continuation_retries_without_cap_when_provider_rejects_it(tmp_path) -> None:
+    from transoria.llm.client import LlmRequestError
+
+    rows = _review_rows(2, 3)
+    full = _decisions_json((2, "keep"), (3, "modify"))
+    client = _ScriptedClient(
+        [
+            _truncated(full[:20], 4096),
+            LlmRequestError("HTTP 400 from x: max_tokens out of range", code="llm.http_error"),
+            full[20:],
+        ]
+    )
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    result = asyncio.run(runner.run(_consistency_subtask(rows)))
+
+    assert [r.max_output_tokens for r in client.requests] == [None, 8192, None]
+    assert [d.row_index for d in decode_review_response(result.response_content)] == [2, 3]
+
+
+def test_replay_ignores_decisions_for_rows_outside_the_batch(tmp_path) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["src", "dst", "info", "frequency"])
+    sheet.append(["하나", "一", "物品", 5])
+    sheet.append(["둘", "二", "物品", 5])
+    workbook.save(tmp_path / "terms.xlsx")
+    (tmp_path / "terms-references.txt").write_text("하나 둘", encoding="utf-8")
+
+    class StrayRunner:
+        async def run(self, subtask: Subtask) -> SubtaskResult:
+            rows = subtask.request_payload["rows"]
+            decisions = [{"row_index": row["row_index"], "action": "keep"} for row in rows]
+            if subtask.request_payload.get("batch") == 0 and subtask.request_payload.get("round") == 1:
+                decisions.append({"row_index": 3, "action": "delete", "reason": "stray"})
+            return SubtaskResult(response_content=json.dumps({"decisions": decisions}))
+
+    cache = TaskCache(root=tmp_path / "cache")
+    orchestrator = GlossaryReviewOrchestrator(
+        cache=cache,
+        client=None,  # type: ignore[arg-type]
+        runner_factory=lambda _client, _config: StrayRunner(),
+        id_factory=lambda: "review-stray",
+    )
+    config = GlossaryReviewConfig(**{**_config(tmp_path).__dict__, "review_rounds": 1, "batch_size": 1})
+
+    result = asyncio.run(orchestrator.run(config))
+
+    rows = [row for row in load_workbook(result.output_path).active.iter_rows(min_row=2, values_only=True)]
+    assert [row[0] for row in rows] == ["하나", "둘"]

@@ -518,7 +518,7 @@ class GlossaryReviewOrchestrator:
         )
         for subtask in completed:
             round_index = _subtask_round(subtask)
-            for decision in decode_review_response(subtask.response_content):
+            for decision in _subtask_decisions(subtask):
                 current = rows.get(decision.row_index)
                 if current is None:
                     continue
@@ -544,7 +544,7 @@ class GlossaryReviewOrchestrator:
             key=lambda s: (_subtask_round(s), int(s.request_payload.get("batch", 0))),
         )
         for subtask in completed:
-            for decision in decode_review_response(subtask.response_content):
+            for decision in _subtask_decisions(subtask):
                 current = rows.get(decision.row_index)
                 if current is None:
                     continue
@@ -651,6 +651,20 @@ def _has_consensus(
         latest.dst == previous.dst
         and latest.info == previous.info
         and latest.deleted == previous.deleted
+    )
+
+
+def _subtask_decisions(subtask: Subtask) -> tuple[ReviewDecision, ...]:
+    """Decisions for rows the batch actually sent; stray row numbers cannot touch other rows."""
+
+    rows = subtask.request_payload.get("rows", [])
+    batch_ids = {
+        row.get("row_index") for row in rows if isinstance(row, Mapping)
+    } if isinstance(rows, list) else set()
+    return tuple(
+        decision
+        for decision in decode_review_response(subtask.response_content)
+        if decision.row_index in batch_ids
     )
 
 

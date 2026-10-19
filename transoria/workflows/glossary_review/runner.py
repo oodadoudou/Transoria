@@ -15,10 +15,11 @@ from transoria.llm.client import (
     ChatRequest,
     ChatResponse,
     LlmClient,
+    LlmRequestError,
     LlmTruncatedResponseError,
 )
 from transoria.llm.config import ModelConfig
-from transoria.llm.retry import is_transient_llm_error, retry_async
+from transoria.llm.retry import _is_format_drift_error, is_transient_llm_error, retry_async
 from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
 from transoria.domain import Language, language_prompt_label
@@ -38,6 +39,9 @@ VALID_ACTIONS: frozenset[str] = frozenset(
 
 # Presets may demand a decision per row, so long replies continue in-conversation.
 MAX_CONTINUATIONS = 8
+# Keeps the single-request name pass inside common context windows; small glossaries are untouched.
+CONSISTENCY_CONTEXT_BUDGET_CHARS = 80_000
+UNREADABLE_RETRY_BUDGET = 1
 CONTINUE_PROMPT = (
     "Your previous reply was cut off by the output length limit. Continue the "
     "same JSON output exactly where it stopped. Do not repeat items already "
@@ -136,7 +140,13 @@ class GlossaryReviewSubtaskRunner:
         return await retry_async(
             lambda: self._attempt(subtask),
             transport_retry_attempts=self.transport_retry_attempts,
-            should_retry=is_transient_llm_error,
+            max_format_retry_attempts=UNREADABLE_RETRY_BUDGET,
+            should_retry=lambda exc: isinstance(exc, ReviewReplyUnreadableError)
+            or is_transient_llm_error(exc),
+            is_format_retry_error=lambda exc: isinstance(
+                exc, ReviewReplyUnreadableError
+            )
+            or _is_format_drift_error(exc),
         )
 
     async def _attempt(self, subtask: Subtask) -> SubtaskResult:
@@ -170,15 +180,45 @@ class GlossaryReviewSubtaskRunner:
                 round_index=round_index,
                 rows=payload_rows,
             )
+        log_label = f"glossary review r{round_index} b{batch_index}"
         content, usage, continued = await self._chat_until_complete(
-            user_prompt, log_label=f"glossary review r{round_index} b{batch_index}"
+            user_prompt, log_label=log_label
         )
+        items = _reply_items(content, continued)
+        batch_ids = {_coerce_int(row.get("row_index")) for row in payload_rows}
+        decisions = [
+            decision
+            for decision in _decisions_from_items(items or [])
+            if decision.row_index in batch_ids
+        ]
+        if items is None or (items and not decisions):
+            raise ReviewReplyUnreadableError()
 
-        decisions = (
-            _decisions_from_items(_scan_decision_items(content))
-            if continued
-            else _decode_model_decisions(content)
+        followup_content = ""
+        missing_rows = tuple(
+            row
+            for row in payload_rows
+            if _coerce_int(row.get("row_index"))
+            not in {decision.row_index for decision in decisions}
         )
+        # Only re-ask when the reply lists unchanged rows; presets that return changes only skip this.
+        if (
+            mode != SUBTASK_MODE_CHARACTER_CONSISTENCY
+            and missing_rows
+            and any(decision.action == "keep" for decision in decisions)
+        ):
+            followup_content, followup_usage, followup_decisions = (
+                await self._review_missing_rows(
+                    instruction_prompt=instruction_prompt,
+                    novel_background=str(payload.get("novel_background", "")),
+                    round_index=round_index,
+                    rows=missing_rows,
+                    log_label=f"{log_label} missing",
+                )
+            )
+            usage = usage + followup_usage
+            decisions.extend(followup_decisions)
+
         result_payload = {
             "round": round_index,
             "batch": batch_index,
@@ -194,6 +234,7 @@ class GlossaryReviewSubtaskRunner:
                     "instruction_prompt": instruction_prompt,
                     "user_prompt": user_prompt,
                     "raw_response": content,
+                    "missing_rows_response": followup_content,
                     "decisions": result_payload["decisions"],
                     "usage": usage.to_dict(),
                 },
@@ -205,6 +246,36 @@ class GlossaryReviewSubtaskRunner:
             cached_input_tokens=usage.cached_input_tokens,
         )
 
+    async def _review_missing_rows(
+        self,
+        *,
+        instruction_prompt: str,
+        novel_background: str,
+        round_index: int,
+        rows: tuple[Mapping[str, object], ...],
+        log_label: str,
+    ) -> tuple[str, TokenUsage, list[ReviewDecision]]:
+        prompt = _build_user_prompt(
+            instruction_prompt=instruction_prompt,
+            novel_background=novel_background,
+            round_index=round_index,
+            rows=rows,
+        )
+        try:
+            content, usage, continued = await self._chat_until_complete(
+                prompt, log_label=log_label
+            )
+        except LlmRequestError:
+            # The main reply already stands; unanswered rows keep their current values as before.
+            return "", TokenUsage(), []
+        wanted = {_coerce_int(row.get("row_index")) for row in rows}
+        decisions = [
+            decision
+            for decision in _decisions_from_items(_reply_items(content, continued) or [])
+            if decision.row_index in wanted
+        ]
+        return content, usage, decisions
+
     async def _chat_until_complete(
         self, user_prompt: str, *, log_label: str
     ) -> tuple[str, TokenUsage, bool]:
@@ -213,13 +284,19 @@ class GlossaryReviewSubtaskRunner:
         prompt = user_prompt
         history: tuple[ChatMessage, ...] = ()
         decided = 0
+        output_cap: int | None = None
         for continuation in range(MAX_CONTINUATIONS + 1):
             label = log_label if continuation == 0 else f"{log_label} continue {continuation}"
             try:
-                response = await self._chat_once(prompt, history, log_label=label)
+                response = await self._chat_once(
+                    prompt, history, log_label=label, output_cap=output_cap
+                )
             except LlmTruncatedResponseError as exc:
                 parts.append(exc.partial_response)
                 usage = usage + exc.usage
+                cut_at = exc.usage.output_tokens
+                if 0 < cut_at < self.model.max_output_tokens:
+                    output_cap = self.model.max_output_tokens
                 seen = len(_scan_decision_items("".join(parts)))
                 if continuation == MAX_CONTINUATIONS or (
                     continuation > 0 and seen <= decided
@@ -237,7 +314,32 @@ class GlossaryReviewSubtaskRunner:
         raise AssertionError("unreachable")
 
     async def _chat_once(
-        self, prompt: str, history: tuple[ChatMessage, ...], *, log_label: str
+        self,
+        prompt: str,
+        history: tuple[ChatMessage, ...],
+        *,
+        log_label: str,
+        output_cap: int | None = None,
+    ) -> ChatResponse:
+        if output_cap is None:
+            return await self._send(prompt, history, log_label=log_label, output_cap=None)
+        try:
+            return await self._send(prompt, history, log_label=log_label, output_cap=output_cap)
+        except (LlmTruncatedResponseError, ReviewReplyUnreadableError):
+            raise
+        except LlmRequestError as exc:
+            # Providers reject caps above their own maximum; fall back to the provider default.
+            if "HTTP 4" not in str(exc):
+                raise
+            return await self._send(prompt, history, log_label=log_label, output_cap=None)
+
+    async def _send(
+        self,
+        prompt: str,
+        history: tuple[ChatMessage, ...],
+        *,
+        log_label: str,
+        output_cap: int | None,
     ) -> ChatResponse:
         reservation = -1
         if self.tpm_limiter is not None:
@@ -257,6 +359,7 @@ class GlossaryReviewSubtaskRunner:
                     stream=self.stream,
                     key_pool=self.key_pool,
                     log_label=log_label,
+                    max_output_tokens=output_cap,
                 )
             )
         finally:
@@ -330,13 +433,14 @@ def _build_character_consistency_prompt(
     novel_background: str,
     rows: tuple[Mapping[str, object], ...],
 ) -> str:
+    context_limit = CONSISTENCY_CONTEXT_BUDGET_CHARS // max(1, len(rows))
     row_payload = [
         {
             "row_index": int(row.get("row_index", 0)),
             "src": str(row.get("src", "")),
             "dst": str(row.get("dst", "")),
             "info": str(row.get("info", "")),
-            "context": str(row.get("context", "")),
+            "context": _fit_context(str(row.get("context", "")), context_limit),
         }
         for row in rows
     ]
@@ -381,16 +485,54 @@ def _build_character_consistency_prompt(
     return "\n\n".join(part for part in parts if part)
 
 
-def _decode_model_decisions(raw: str) -> tuple[ReviewDecision, ...]:
+def _fit_context(context: str, limit: int) -> str:
+    """Keep whole excerpts while they fit; always keep at least part of the first one."""
+
+    if len(context) <= limit:
+        return context
+    kept: list[str] = []
+    used = 0
+    for excerpt in context.split("\n"):
+        cost = len(excerpt) + (1 if kept else 0)
+        if used + cost > limit:
+            break
+        kept.append(excerpt)
+        used += cost
+    if kept:
+        return "\n".join(kept)
+    return context.split("\n", 1)[0][:limit]
+
+
+class ReviewReplyUnreadableError(LlmRequestError):
+    def __init__(self) -> None:
+        super().__init__(
+            "Model reply contained no readable JSON decisions for this batch.",
+            code="llm.malformed_response",
+        )
+
+
+def _reply_items(content: str, continued: bool) -> list[Mapping[str, object]] | None:
+    """Decision objects from a reply; None when nothing readable came back."""
+
+    if continued:
+        return _scan_decision_items(content) or None
+    return _parse_decision_items(content)
+
+
+def _parse_decision_items(raw: str) -> list[Mapping[str, object]] | None:
     text = _strip_fence(raw)
+    if not text:
+        return None
     parsed = _parse_json(text)
     if parsed is None:
         parsed = _parse_json_lines(text)
-    if isinstance(parsed, Mapping):
-        parsed = parsed.get("decisions", [])
-    if not isinstance(parsed, list):
-        return ()
-    return _decisions_from_items(parsed)
+    if isinstance(parsed, Mapping) and isinstance(parsed.get("decisions"), list):
+        parsed = parsed["decisions"]
+    if isinstance(parsed, list):
+        items = [item for item in parsed if isinstance(item, Mapping)]
+        if items or not parsed:
+            return items
+    return _scan_decision_items(raw) or None
 
 
 def _scan_decision_items(text: str) -> list[Mapping[str, object]]:
