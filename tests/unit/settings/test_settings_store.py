@@ -166,3 +166,13 @@ def test_skipped_update_version_defaults_empty_and_persists(store):
     assert updated.app.skipped_update_version == "v1.2.3"
     on_disk = json.loads(store.path.read_text(encoding="utf-8"))
     assert on_disk["app"]["skipped_update_version"] == "v1.2.3"
+
+
+def test_first_run_onboarding_dismissal_defaults_false_and_persists(store):
+    assert store.load_all().app.first_run_onboarding_dismissed is False
+
+    store.save_partial("app", {"first_run_onboarding_dismissed": True})
+
+    assert store.load_all().app.first_run_onboarding_dismissed is True
+    on_disk = json.loads(store.path.read_text(encoding="utf-8"))
+    assert on_disk["app"]["first_run_onboarding_dismissed"] is True

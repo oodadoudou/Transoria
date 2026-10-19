@@ -133,7 +133,7 @@ export const zh: Messages = {
     customNameLabel: "配置名称",
     customBaseUrlLabel: "Base URL",
     customModelIdLabel: "模型 ID",
-    skipAction: "跳过",
+    skipAction: "不再显示",
     finishAction: "完成配置",
     savingAction: "保存中…",
     savedTitle: "Provider 已就绪",

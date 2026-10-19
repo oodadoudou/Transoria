@@ -162,7 +162,7 @@ export const en: Messages = {
     customNameLabel: "Profile name",
     customBaseUrlLabel: "Base URL",
     customModelIdLabel: "Model ID",
-    skipAction: "Skip",
+    skipAction: "Don't show again",
     finishAction: "Finish setup",
     savingAction: "Saving…",
     savedTitle: "Provider ready",

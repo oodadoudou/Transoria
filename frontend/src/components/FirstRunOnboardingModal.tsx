@@ -6,7 +6,6 @@ import {
   modelTemplatesBridge,
   settingsBridge,
   type AppSettings,
-  type ModelProfile,
   type ModelProfileDraft,
   type ProviderTemplate,
 } from "@/bridge";
@@ -18,7 +17,6 @@ import { useToastStore } from "@/store/useToastStore";
 import { Button } from "./Button";
 import styles from "./FirstRunOnboardingModal.module.css";
 
-const API_KEY_STATUSES_READY = new Set(["present", "from_env"]);
 const ONBOARDING_TEMPLATE_ORDER = [
   "deepseek",
   "anthropic",
@@ -34,25 +32,20 @@ type ActiveModelAppSettings = Pick<
   | "active_glossary_review_model_id"
 >;
 
+type OnboardingAppSettings = Pick<AppSettings, "first_run_onboarding_dismissed">;
+
 interface FirstRunOnboardingModalProps {
   onDone: () => void;
   onSkip: () => void;
+  onClose: () => void;
 }
 
 export function needsFirstRunOnboarding(
-  profiles: Array<Pick<ModelProfile, "api_key_status">>,
-  app: ActiveModelAppSettings | null | undefined,
+  profiles: readonly unknown[],
+  app: OnboardingAppSettings | null | undefined,
 ): boolean {
-  if (!app) return false;
-  const hasConfiguredKey = profiles.some((profile) =>
-    API_KEY_STATUSES_READY.has(profile.api_key_status),
-  );
-  const hasActiveModel = Boolean(
-    app.active_translation_model_id ||
-      app.active_glossary_model_id ||
-      app.active_glossary_review_model_id,
-  );
-  return !hasConfiguredKey || !hasActiveModel;
+  if (!app || app.first_run_onboarding_dismissed) return false;
+  return profiles.length === 0;
 }
 
 export function buildOnboardingProfileDraft(
@@ -111,6 +104,7 @@ function providerTemplatesForOnboarding(
 export function FirstRunOnboardingModal({
   onDone,
   onSkip,
+  onClose,
 }: FirstRunOnboardingModalProps) {
   const messages = useMessages();
   const m = messages.firstRun;
@@ -123,7 +117,7 @@ export function FirstRunOnboardingModal({
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<BridgeError | null>(null);
-  useEscapeKey(onSkip, !saving);
+  useEscapeKey(onClose, !saving);
 
   useEffect(() => {
     let cancelled = false;

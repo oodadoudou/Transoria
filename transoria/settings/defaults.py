@@ -44,6 +44,7 @@ class AppSettings:
     # must survive page switches and app restarts once the user clicks
     # "Don't show again".
     workflow_next_step_dismissed: bool = False
+    first_run_onboarding_dismissed: bool = False
 
 
 @dataclass(frozen=True)

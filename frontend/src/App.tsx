@@ -84,6 +84,17 @@ export function App() {
     !profileLoading &&
     needsFirstRunOnboarding(profiles, appSettings);
 
+  const dismissOnboardingForSession = () => {
+    firstRunOnboardingDismissed = true;
+    setOnboardingDismissed(true);
+  };
+  const dismissOnboardingForever = () => {
+    dismissOnboardingForSession();
+    const settingsStore = useSettingsStore.getState();
+    settingsStore.updateField("app", "first_run_onboarding_dismissed", true);
+    void settingsStore.saveNow("app");
+  };
+
   const shellClass = `${styles.app} ${onRunPage ? styles.withInspector : styles.minimal}`;
 
   return (
@@ -129,14 +140,9 @@ export function App() {
       )}
       {showFirstRunOnboarding ? (
         <FirstRunOnboardingModal
-          onDone={() => {
-            firstRunOnboardingDismissed = true;
-            setOnboardingDismissed(true);
-          }}
-          onSkip={() => {
-            firstRunOnboardingDismissed = true;
-            setOnboardingDismissed(true);
-          }}
+          onDone={dismissOnboardingForever}
+          onSkip={dismissOnboardingForever}
+          onClose={dismissOnboardingForSession}
         />
       ) : null}
       <ToastHost />

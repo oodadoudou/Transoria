@@ -124,6 +124,7 @@ export interface AppSettings {
   skipped_update_version: string;
   /** Hidden dismissal for the Translation Run "next step" guidance card. */
   workflow_next_step_dismissed: boolean;
+  first_run_onboarding_dismissed: boolean;
 }
 
 export interface PersistedGlossaryEntry {
