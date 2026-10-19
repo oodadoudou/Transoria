@@ -453,3 +453,89 @@ def _config(tmp_path, *, novel_background: str = "") -> GlossaryReviewConfig:
             system_prompt="review",
         ),
     )
+
+
+class _RecordingClient:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.prompts: list[str] = []
+
+    async def chat(self, request):
+        from transoria.llm.client import ChatResponse
+        from transoria.llm.usage import TokenUsage
+
+        self.prompts.append(request.user_prompt)
+        return ChatResponse(content=self.content, usage=TokenUsage(), raw={})
+
+
+def _consistency_subtask(rows: list[dict[str, object]]) -> Subtask:
+    from transoria.workflows.glossary_review.runner import encode_review_payload
+
+    return Subtask(
+        id="round-04-character-consistency",
+        task_id="t",
+        request_payload=encode_review_payload(
+            round_index=4,
+            batch_index=0,
+            rows=tuple(rows),
+            novel_background="",
+            mode="character_consistency",
+        ),
+    )
+
+
+def _consistency_runner(tmp_path, client: _RecordingClient):
+    from transoria.workflows.glossary_review.runner import GlossaryReviewSubtaskRunner
+
+    config = _config(tmp_path)
+    return GlossaryReviewSubtaskRunner(
+        client=client,  # type: ignore[arg-type]
+        model=config.model,
+        prompt_preset=config.prompt_preset,
+    )
+
+
+def test_consistency_prompt_asks_only_for_changed_rows(tmp_path) -> None:
+    client = _RecordingClient("[]")
+    runner = _consistency_runner(tmp_path, client)
+    rows = [
+        {"row_index": 2, "src": "하얀", "dst": "夏言", "info": "男性角色", "context": ""},
+        {"row_index": 3, "src": "하얀이", "dst": "夏言", "info": "男性角色", "context": ""},
+    ]
+
+    result = asyncio.run(runner.run(_consistency_subtask(rows)))
+
+    prompt = client.prompts[0]
+    assert "omit unchanged rows" in prompt
+    assert "Use keep for unchanged rows" not in prompt
+    assert '"하얀이"' in prompt
+    assert json.loads(result.response_content)["decisions"] == []
+    assert decode_review_response(result.response_content) == ()
+
+
+def test_consistency_runner_keeps_only_returned_changes(tmp_path) -> None:
+    client = _RecordingClient(
+        json.dumps(
+            [
+                {
+                    "row_index": 3,
+                    "action": "modify",
+                    "suggested_dst": "夏言",
+                    "reason": "同一角色",
+                }
+            ],
+            ensure_ascii=False,
+        )
+    )
+    runner = _consistency_runner(tmp_path, client)
+    rows = [
+        {"row_index": 2, "src": "하얀", "dst": "夏言", "info": "男性角色", "context": ""},
+        {"row_index": 3, "src": "하얀이", "dst": "夏彦", "info": "男性角色", "context": ""},
+    ]
+
+    result = asyncio.run(runner.run(_consistency_subtask(rows)))
+
+    decisions = decode_review_response(result.response_content)
+    assert [(d.row_index, d.action, d.suggested_dst) for d in decisions] == [
+        (3, "modify", "夏言")
+    ]

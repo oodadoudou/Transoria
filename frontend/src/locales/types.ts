@@ -1671,6 +1671,7 @@ export interface Messages {
     fileLabel: string;
     affectedLabel: string;
     failureTypes: {
+      outputLimit: string;
       timeout: string;
       rateLimit: string;
       connection: string;
@@ -1687,6 +1688,7 @@ export interface Messages {
       configValue: string;
       dominant: string;
       recommendations: {
+        outputLimit: string;
         rateLimitHighConcurrency: string;
         rateLimit: string;
         timeoutHighConcurrency: string;

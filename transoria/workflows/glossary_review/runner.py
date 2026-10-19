@@ -283,7 +283,7 @@ def _build_character_consistency_prompt(
     ]
     contract = {
         "row_index": 2,
-        "action": "keep | modify | category | modify_category",
+        "action": "modify | category | modify_category",
         "suggested_dst": "required when action changes translation",
         "suggested_info": "required when action changes category",
         "reason": "short reason",
@@ -307,13 +307,15 @@ def _build_character_consistency_prompt(
             "and novel background. Do not merge rows. Do not "
             "delete rows. Do not change src. Do not force unrelated people with the "
             "same surname, generic title, or common word into one name. If uncertain, "
-            "keep."
+            "leave the row unchanged."
         ),
         "[Character Rows]\n" + json.dumps(row_payload, ensure_ascii=False, indent=2),
         (
             "[Output Contract]\n"
             "Output JSON only. Return either a JSON array or an object with a "
-            '"decisions" array. Use keep for unchanged rows. Each item must match:\n'
+            '"decisions" array. Include only rows whose dst or category must '
+            "change; omit unchanged rows. Return an empty array when no row needs "
+            "a change. Each item must match:\n"
             + json.dumps(contract, ensure_ascii=False)
         ),
     ]

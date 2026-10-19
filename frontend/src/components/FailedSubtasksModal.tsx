@@ -28,6 +28,7 @@ interface FailureGroup {
 }
 
 type FailureType =
+  | "outputLimit"
   | "timeout"
   | "rateLimit"
   | "connection"
@@ -38,6 +39,7 @@ type FailureType =
   | "unknown";
 
 type FailureRecommendation =
+  | "outputLimit"
   | "rateLimitHighConcurrency"
   | "rateLimit"
   | "timeoutHighConcurrency"
@@ -343,6 +345,9 @@ function buildGroups(failures: TaskFailure[]): FailureGroup[] {
 
 function classifyFailure(code: string, message: string): FailureType {
   const haystack = `${code} ${message}`.toLowerCase();
+  if (haystack.includes("length_truncated")) {
+    return "outputLimit";
+  }
   if (
     haystack.includes("429") ||
     haystack.includes("rate") ||

@@ -1868,6 +1868,7 @@ export const en: Messages = {
     fileLabel: "File",
     affectedLabel: "Affected",
     failureTypes: {
+      outputLimit: "Output truncated",
       timeout: "Model timeout",
       rateLimit: "Rate limit",
       connection: "Connection failed",
@@ -1886,6 +1887,8 @@ export const en: Messages = {
         "concurrency {concurrency} · RPM {rpm} · timeout {timeout}s · retries {retries}",
       dominant: "Main cause: {type} ({count}/{total})",
       recommendations: {
+        outputLimit:
+          "The model's reply exceeded its per-reply output limit and was cut off, so retrying unchanged will fail again. Send less per request (lower Terms per batch for glossary review, or the Dynamic input token limit for translation), or switch to a model with a higher output limit, then continue failed chunks. For Anthropic models you can also raise the Output token limit under Models.",
         rateLimitHighConcurrency:
           "Failures are concentrated around rate limits and the failed batch is large. Lower concurrency or RPM, or confirm key rotation, then continue failed chunks.",
         rateLimit:

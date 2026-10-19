@@ -1804,6 +1804,7 @@ export const zh: Messages = {
     fileLabel: "文件",
     affectedLabel: "受影响",
     failureTypes: {
+      outputLimit: "输出被截断",
       timeout: "模型超时",
       rateLimit: "限流",
       connection: "连接失败",
@@ -1821,6 +1822,8 @@ export const zh: Messages = {
         "并发 {concurrency} · RPM {rpm} · 超时 {timeout}s · 重试 {retries}",
       dominant: "主要原因：{type}（{count}/{total}）",
       recommendations: {
+        outputLimit:
+          "模型回复超出了单次输出上限被截断，原样重试仍会失败。请调小每次请求的内容量（术语审查调低「每批术语数」，翻译调低「分块输入 token 上限」），或换用单次输出上限更大的模型，然后继续失败分块。Anthropic 模型也可在「模型」中调高「输出token上限」。",
         rateLimitHighConcurrency:
           "当前失败集中在限流，且失败量较大。建议先降低并发或 RPM，或确认多 key 轮换是否可用，再继续失败分块。",
         rateLimit:
