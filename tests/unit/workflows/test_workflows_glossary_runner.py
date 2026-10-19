@@ -475,7 +475,7 @@ def test_runner_splits_high_concurrency_glossary_timeout() -> None:
     payload = json.loads(result.response_content)
     assert {entry["src"] for entry in payload["entries"]} == {"신해범", "공이"}
     assert len(transport.calls) == 3
-    assert all(call["timeout"] == 90.0 for call in transport.calls)
+    assert [call["timeout"] for call in transport.calls] == [90.0, 600.0, 600.0]
 
 
 def test_runner_runs_timeout_rescue_halves_sequentially() -> None:
@@ -599,7 +599,7 @@ def test_runner_does_not_recursively_split_glossary_timeout_rescue() -> None:
 
     assert "ReadTimeout" in str(caught.value)
     assert len(transport.calls) == 2
-    assert all(call["timeout"] == 90.0 for call in transport.calls)
+    assert [call["timeout"] for call in transport.calls] == [90.0, 600.0]
 
 
 def test_runner_caps_user_timeout_for_low_concurrency_glossary_requests() -> None:
@@ -760,3 +760,58 @@ def test_runner_does_not_retry_when_chunk_legitimately_has_no_terms() -> None:
 def test_decode_glossary_subtask_response_handles_empty_input() -> None:
     assert decode_glossary_subtask_response("") == ((), ())
     assert decode_glossary_subtask_response("not json") == ((), ())
+
+
+def _cut_body(content: str) -> dict[str, object]:
+    return {
+        "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "length"}],
+        "usage": {"prompt_tokens": 30, "completion_tokens": 4096},
+    }
+
+
+def _glossary_runner(transport: FakeTransport) -> GlossarySubtaskRunner:
+    return GlossarySubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.GLOSSARY),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+
+def test_runner_splits_chunk_when_reply_is_cut_off() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _cut_body('{"src":"신해범","dst":"申海范","type":"男性角色"}\n{"src":"공')),
+            TransportResult(200, _ok_body('{"src":"신해범","dst":"申海范","type":"男性角色"}\n{"src":"공이","dst":"孔二","type":"男性角色"}\n')),
+            TransportResult(200, _ok_body('{"src":"흑룡","dst":"黑龙","type":"男性角色"}\n')),
+        ]
+    )
+
+    result = asyncio.run(_glossary_runner(transport).run(_make_subtask()))
+
+    payload = json.loads(result.response_content)
+    assert [entry["src"] for entry in payload["entries"]] == ["신해범", "공이", "흑룡"]
+    assert len(transport.calls) == 3
+    prompts = [call["payload"]["messages"][-1]["content"] for call in transport.calls[1:]]
+    assert "공이" in prompts[0] and "흑룡" not in prompts[0]
+    assert "흑룡" in prompts[1]
+
+
+def test_runner_keeps_complete_lines_when_cut_off_chunk_cannot_split() -> None:
+    chunk = GlossaryChunk(chunk_id="chunk-00001", source_file=Path("/in/Novel.txt"), text="가")
+    subtask = Subtask(id=chunk.chunk_id, task_id="t1", request_payload=encode_glossary_payload(chunk))
+    transport = FakeTransport(
+        responses=[
+            TransportResult(
+                200,
+                _cut_body('{"src":"신해범","dst":"申海范","type":"男性角色"}\n{"src":"신해","dst":"申","type":"男'),
+            )
+        ]
+    )
+
+    result = asyncio.run(_glossary_runner(transport).run(subtask))
+
+    payload = json.loads(result.response_content)
+    assert [entry["src"] for entry in payload["entries"]] == ["신해범"]
+    assert len(transport.calls) == 1

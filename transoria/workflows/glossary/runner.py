@@ -16,11 +16,17 @@ from pathlib import Path
 from typing import Mapping
 
 from transoria.domain import Language, language_prompt_label
-from transoria.llm.client import ChatRequest, LlmClient, LlmRequestError
+from transoria.llm.client import (
+    ChatRequest,
+    LlmClient,
+    LlmFilteredResponseError,
+    LlmRequestError,
+    LlmTruncatedResponseError,
+)
 from transoria.llm.config import ModelConfig
 from transoria.llm.decoders import DecodeIssue, GlossaryEntry, decode_glossary_jsonl
 from transoria.llm.retry import is_transient_llm_error, retry_async
-from transoria.llm.usage import estimate_tokens_from_text
+from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
 from transoria.runtime.executor import SubtaskResult
 from transoria.runtime.key_pool import KeyPool
@@ -58,6 +64,8 @@ _GLOSSARY_RETRY_BUDGET = 1
 _TRANSPORT_RETRY_BUDGET = 3
 _SOFT_TIMEOUT_SECONDS = 90.0
 _HIGH_CONCURRENCY_MAX_SPLIT_DEPTH = 1
+# A cut-off reply means the chunk produced too much output; halves (then quarters) fit.
+_CUTOFF_MAX_SPLIT_DEPTH = 2
 
 
 def _output_contract_reminder(target_language: str) -> str:
@@ -140,7 +148,16 @@ class GlossarySubtaskRunner:
         self, chunk_id: str, source_file: str, text: str, *, depth: int
     ) -> SubtaskResult:
         try:
-            return await self._run_single(chunk_id, source_file, text)
+            return await self._run_single(chunk_id, source_file, text, depth=depth)
+        except (LlmTruncatedResponseError, LlmFilteredResponseError) as exc:
+            parts = _split_text_in_half(text) if depth < _CUTOFF_MAX_SPLIT_DEPTH else ()
+            if len(parts) > 1:
+                return await self._run_split_parts(
+                    chunk_id, source_file, parts, suffix="c", depth=depth
+                )
+            return self._result_from_reply(
+                _complete_lines(exc.partial_response), exc.usage
+            )
         except LlmRequestError as exc:
             if not _should_split_after_transport_timeout(self.model, exc, depth):
                 raise
@@ -177,7 +194,7 @@ class GlossarySubtaskRunner:
         return _merge_glossary_results(completed_results)
 
     async def _run_single(
-        self, chunk_id: str, source_file: str, text: str
+        self, chunk_id: str, source_file: str, text: str, *, depth: int = 0
     ) -> SubtaskResult:
         attempt_index = -1
         best_result: SubtaskResult | None = None
@@ -188,7 +205,7 @@ class GlossarySubtaskRunner:
             attempt_index += 1
             try:
                 result = await self._attempt(
-                    chunk_id, source_file, text, attempt_index=attempt_index
+                    chunk_id, source_file, text, attempt_index=attempt_index, depth=depth
                 )
             except _GlossaryFormatRetry as exc:
                 if exc.args and isinstance(exc.args[0], SubtaskResult):
@@ -230,7 +247,13 @@ class GlossarySubtaskRunner:
             )
 
     async def _attempt(
-        self, chunk_id: str, source_file: str, text: str, *, attempt_index: int = 0
+        self,
+        chunk_id: str,
+        source_file: str,
+        text: str,
+        *,
+        attempt_index: int = 0,
+        depth: int = 0,
     ) -> SubtaskResult:
         instruction_prompt = build_prompt(
             self.prompt_preset,
@@ -259,7 +282,12 @@ class GlossarySubtaskRunner:
             estimated = estimate_tokens_from_text(user_prompt)
             reservation = await self.tpm_limiter.reserve(estimated)
 
-        request_model = _with_glossary_soft_timeout(self.model)
+        # The soft cap only pays off while a timeout can still split the chunk.
+        request_model = (
+            _with_glossary_soft_timeout(self.model)
+            if depth < _HIGH_CONCURRENCY_MAX_SPLIT_DEPTH
+            else self.model
+        )
         if self.debug_log_dir is not None:
             write_subtask_debug_log(
                 self.debug_log_dir,
@@ -362,6 +390,36 @@ class GlossarySubtaskRunner:
         if len(decoded.entries) == 0 and len(issues) >= _FORMAT_RETRY_MIN_ISSUES:
             raise _GlossaryFormatRetry(result)
         return result
+
+    def _result_from_reply(self, raw_content: str, usage: TokenUsage) -> SubtaskResult:
+        if self.fake_name_session is not None:
+            raw_content, _ = self.fake_name_session.restore(raw_content)
+        decoded = decode_glossary_jsonl(raw_content)
+        issues = (*decoded.issues, *_glossary_quality_issues(decoded.entries))
+        return SubtaskResult(
+            response_content=json.dumps(
+                {
+                    "entries": [
+                        {"src": entry.src, "dst": entry.dst, "info": entry.info}
+                        for entry in decoded.entries
+                    ],
+                    "issues": [
+                        {"line": issue.line, "reason": issue.reason} for issue in issues
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+        )
+
+
+def _complete_lines(partial: str) -> str:
+    """Drop the trailing line a cut-off reply may have stopped inside."""
+
+    head, newline, _tail = partial.rpartition("\n")
+    return head if newline else ""
 
 
 def _with_glossary_soft_timeout(model: ModelConfig) -> ModelConfig:
