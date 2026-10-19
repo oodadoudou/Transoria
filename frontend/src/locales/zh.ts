@@ -209,7 +209,7 @@ export const zh: Messages = {
     rpm: "每分钟请求数软上限。后端在每次请求前预先节流。",
     tpm: "每分钟 token 数软上限。0 表示不限（仅当 provider 提供 TPM 配额时启用）。",
     maxOutputTokens:
-      "单次请求输出的 token 上限。新建配置默认 8192，给长分块翻译留余地。0 表示交给 provider 默认；Anthropic 必须有上限，0 时会自动用 8192 兜底。",
+      "单次回复的 token 上限。Anthropic 每次请求都会使用（0 时自动用 8192 兜底）；其他服务商平时沿用自身默认上限，只在术语审查回复被截断后的续写请求中使用此值。新建配置默认 8192。",
     temperature: "采样温度 0–2。低值（0–0.5）更确定；高值更发散。",
   },
   modelModal: {
@@ -1695,7 +1695,7 @@ export const zh: Messages = {
       "每次翻译请求中原文、上下文、命中术语及动态格式的估算 token 上限。固定 Prompt 不计入，因此服务商显示的总输入可能更高。0 = 不限。",
     outputTokenLimit: "输出token上限",
     outputTokenLimitHelp:
-      "模型每次任务可生成的最大token数。新建配置默认 8192；0 = 自动(沿用服务商对该模型的默认值)。",
+      "单次回复的最大token数。Anthropic 每次请求都会使用；其他服务商平时沿用自身默认上限，只在术语审查回复被截断后的续写请求中使用此值。新建配置默认 8192；0 = 自动。",
     concurrency: "并发任务数",
     concurrencyHelp: "可同时进行的任务数。请参考服务商文档设置。0 = 自动。",
     rpm: "每分钟请求数 (RPM)",
@@ -1805,6 +1805,7 @@ export const zh: Messages = {
     affectedLabel: "受影响",
     failureTypes: {
       outputLimit: "输出被截断",
+      contentFilter: "内容被拦截",
       timeout: "模型超时",
       rateLimit: "限流",
       connection: "连接失败",
@@ -1822,6 +1823,8 @@ export const zh: Messages = {
         "并发 {concurrency} · RPM {rpm} · 超时 {timeout}s · 重试 {retries}",
       dominant: "主要原因：{type}（{count}/{total}）",
       recommendations: {
+        contentFilter:
+          "服务商的内容安全策略拦截了这段请求或回复，原样重试通常仍会被拦截。请换用其他模型或服务商后继续失败分块。",
         outputLimit:
           "模型回复超出了单次输出上限被截断，原样重试仍会失败。请调小每次请求的内容量（术语审查调低「每批术语数」，翻译调低「分块输入 token 上限」），或换用单次输出上限更大的模型，然后继续失败分块。Anthropic 模型也可在「模型」中调高「输出token上限」。",
         rateLimitHighConcurrency:

@@ -215,7 +215,7 @@ export const en: Messages = {
     rpm: "Soft cap on requests per minute. The backend pre-throttles before each call to stay under this.",
     tpm: "Soft cap on tokens per minute. 0 disables the cap (use only when the provider exposes a TPM quota).",
     maxOutputTokens:
-      "Upper bound on tokens emitted per request. New profiles default to 8192 for long translation chunks. 0 defers to the provider default; Anthropic requires a cap, so 0 is auto-substituted with 8192.",
+      "Upper bound on tokens per reply. Always sent to Anthropic (0 is auto-substituted with 8192); other providers keep their own default and only use this value when glossary review continues a reply that was cut off. New profiles default to 8192.",
     temperature:
       "Sampling temperature 0–2. Lower (0–0.5) is more deterministic; higher introduces variance.",
   },
@@ -1755,7 +1755,7 @@ export const en: Messages = {
       "Estimated per-request limit for source text, context, matched glossary entries, and dynamic formatting. The fixed Prompt is excluded, so provider-reported total input can be higher. 0 = unbounded.",
     outputTokenLimit: "Output token limit",
     outputTokenLimitHelp:
-      "Maximum tokens the model is allowed to produce per task. New profiles default to 8192; 0 = automatic (the provider's default for this model).",
+      "Maximum tokens per reply. Always used for Anthropic; other providers keep their own default and only use this value when glossary review continues a reply that was cut off. New profiles default to 8192; 0 = automatic.",
     concurrency: "Concurrent task limit",
     concurrencyHelp:
       "How many tasks may run in parallel. Refer to the provider's documentation for safe limits. 0 = automatic.",
@@ -1869,6 +1869,7 @@ export const en: Messages = {
     affectedLabel: "Affected",
     failureTypes: {
       outputLimit: "Output truncated",
+      contentFilter: "Blocked by provider",
       timeout: "Model timeout",
       rateLimit: "Rate limit",
       connection: "Connection failed",
@@ -1887,6 +1888,8 @@ export const en: Messages = {
         "concurrency {concurrency} · RPM {rpm} · timeout {timeout}s · retries {retries}",
       dominant: "Main cause: {type} ({count}/{total})",
       recommendations: {
+        contentFilter:
+          "The provider's content policy blocked this request or reply, and retrying unchanged is usually blocked again. Switch to another model or provider, then continue failed chunks.",
         outputLimit:
           "The model's reply exceeded its per-reply output limit and was cut off, so retrying unchanged will fail again. Send less per request (lower Terms per batch for glossary review, or the Dynamic input token limit for translation), or switch to a model with a higher output limit, then continue failed chunks. For Anthropic models you can also raise the Output token limit under Models.",
         rateLimitHighConcurrency:

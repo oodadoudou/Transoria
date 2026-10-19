@@ -29,6 +29,7 @@ interface FailureGroup {
 
 type FailureType =
   | "outputLimit"
+  | "contentFilter"
   | "timeout"
   | "rateLimit"
   | "connection"
@@ -40,6 +41,7 @@ type FailureType =
 
 type FailureRecommendation =
   | "outputLimit"
+  | "contentFilter"
   | "rateLimitHighConcurrency"
   | "rateLimit"
   | "timeoutHighConcurrency"
@@ -347,6 +349,9 @@ function classifyFailure(code: string, message: string): FailureType {
   const haystack = `${code} ${message}`.toLowerCase();
   if (haystack.includes("length_truncated")) {
     return "outputLimit";
+  }
+  if (haystack.includes("content_filter")) {
+    return "contentFilter";
   }
   if (
     haystack.includes("429") ||

@@ -1672,6 +1672,7 @@ export interface Messages {
     affectedLabel: string;
     failureTypes: {
       outputLimit: string;
+      contentFilter: string;
       timeout: string;
       rateLimit: string;
       connection: string;
@@ -1689,6 +1690,7 @@ export interface Messages {
       dominant: string;
       recommendations: {
         outputLimit: string;
+        contentFilter: string;
         rateLimitHighConcurrency: string;
         rateLimit: string;
         timeoutHighConcurrency: string;
