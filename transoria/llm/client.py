@@ -1180,7 +1180,7 @@ class LlmClient:
         contents: list[dict[str, object]] = []
         contents.extend(
             {
-                "role": message.role,
+                "role": "model" if message.role == "assistant" else message.role,
                 "parts": [{"text": message.content}],
             }
             for message in request.history

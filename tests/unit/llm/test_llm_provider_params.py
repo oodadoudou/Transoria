@@ -222,3 +222,37 @@ def test_google_retries_without_unsupported_thinking_config() -> None:
     assert response.content == "x"
     assert "thinkingConfig" in transport.captured[0]["generationConfig"]
     assert "generationConfig" not in transport.captured[1]
+
+
+def test_google_history_maps_assistant_role_to_model() -> None:
+    from transoria.llm.client import ChatMessage
+
+    body = {
+        "candidates": [{"content": {"parts": [{"text": "x"}]}, "finishReason": "STOP"}],
+        "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1},
+    }
+    transport = FakeTransport(responses=[TransportResult(200, body)])
+    model = ModelConfig(
+        id="m",
+        display_name="m",
+        provider_format=ProviderFormat.GOOGLE,
+        base_url="https://generativelanguage.googleapis.com",
+        model_id="gemini-2.5-flash",
+        api_keys=("k",),
+    )
+
+    asyncio.run(
+        LlmClient(transport=transport).chat(
+            ChatRequest(
+                model=model,
+                system_prompt="",
+                user_prompt="continue",
+                history=(
+                    ChatMessage(role="user", content="q"),
+                    ChatMessage(role="assistant", content="partial"),
+                ),
+            )
+        )
+    )
+
+    assert [c["role"] for c in transport.captured[0]["contents"]] == ["user", "model", "user"]

@@ -10,10 +10,16 @@ from typing import Mapping
 
 import json_repair
 
-from transoria.llm.client import ChatRequest, LlmClient
+from transoria.llm.client import (
+    ChatMessage,
+    ChatRequest,
+    ChatResponse,
+    LlmClient,
+    LlmTruncatedResponseError,
+)
 from transoria.llm.config import ModelConfig
 from transoria.llm.retry import is_transient_llm_error, retry_async
-from transoria.llm.usage import estimate_tokens_from_text
+from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.prompts import PromptContext, PromptPreset, build_prompt
 from transoria.domain import Language, language_prompt_label
 from transoria.runtime.executor import SubtaskResult
@@ -28,6 +34,14 @@ SUBTASK_MODE_CHARACTER_CONSISTENCY = "character_consistency"
 
 VALID_ACTIONS: frozenset[str] = frozenset(
     {"keep", "modify", "delete", "category", "modify_category"}
+)
+
+# Presets may demand a decision per row, so long replies continue in-conversation.
+MAX_CONTINUATIONS = 8
+CONTINUE_PROMPT = (
+    "Your previous reply was cut off by the output length limit. Continue the "
+    "same JSON output exactly where it stopped. Do not repeat items already "
+    "written, do not restart the array, and do not add any explanation."
 )
 
 
@@ -156,31 +170,15 @@ class GlossaryReviewSubtaskRunner:
                 round_index=round_index,
                 rows=payload_rows,
             )
-        reservation = -1
-        if self.tpm_limiter is not None:
-            reservation = await self.tpm_limiter.reserve(
-                estimate_tokens_from_text(user_prompt)
-            )
+        content, usage, continued = await self._chat_until_complete(
+            user_prompt, log_label=f"glossary review r{round_index} b{batch_index}"
+        )
 
-        response = None
-        try:
-            response = await self.client.chat(
-                ChatRequest(
-                    model=self.model,
-                    system_prompt="",
-                    user_prompt=user_prompt,
-                    stream=self.stream,
-                    key_pool=self.key_pool,
-                    log_label=f"glossary review r{round_index} b{batch_index}",
-                )
-            )
-        finally:
-            if self.tpm_limiter is not None and reservation >= 0:
-                actual = response.usage.total_tokens if response is not None else 0
-                self.tpm_limiter.settle(reservation, actual)
-        assert response is not None
-
-        decisions = _decode_model_decisions(response.content)
+        decisions = (
+            _decisions_from_items(_scan_decision_items(content))
+            if continued
+            else _decode_model_decisions(content)
+        )
         result_payload = {
             "round": round_index,
             "batch": batch_index,
@@ -195,17 +193,78 @@ class GlossaryReviewSubtaskRunner:
                     "mode": mode,
                     "instruction_prompt": instruction_prompt,
                     "user_prompt": user_prompt,
-                    "raw_response": response.content,
+                    "raw_response": content,
                     "decisions": result_payload["decisions"],
-                    "usage": response.usage.to_dict(),
+                    "usage": usage.to_dict(),
                 },
             )
         return SubtaskResult(
             response_content=json.dumps(result_payload, ensure_ascii=False),
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
-            cached_input_tokens=response.usage.cached_input_tokens,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
         )
+
+    async def _chat_until_complete(
+        self, user_prompt: str, *, log_label: str
+    ) -> tuple[str, TokenUsage, bool]:
+        parts: list[str] = []
+        usage = TokenUsage()
+        prompt = user_prompt
+        history: tuple[ChatMessage, ...] = ()
+        decided = 0
+        for continuation in range(MAX_CONTINUATIONS + 1):
+            label = log_label if continuation == 0 else f"{log_label} continue {continuation}"
+            try:
+                response = await self._chat_once(prompt, history, log_label=label)
+            except LlmTruncatedResponseError as exc:
+                parts.append(exc.partial_response)
+                usage = usage + exc.usage
+                seen = len(_scan_decision_items("".join(parts)))
+                if continuation == MAX_CONTINUATIONS or (
+                    continuation > 0 and seen <= decided
+                ):
+                    raise
+                decided = seen
+                history = (
+                    ChatMessage(role="user", content=user_prompt),
+                    ChatMessage(role="assistant", content="".join(parts)),
+                )
+                prompt = CONTINUE_PROMPT
+                continue
+            parts.append(response.content)
+            return "".join(parts), usage + response.usage, continuation > 0
+        raise AssertionError("unreachable")
+
+    async def _chat_once(
+        self, prompt: str, history: tuple[ChatMessage, ...], *, log_label: str
+    ) -> ChatResponse:
+        reservation = -1
+        if self.tpm_limiter is not None:
+            reservation = await self.tpm_limiter.reserve(
+                estimate_tokens_from_text(
+                    "".join(message.content for message in history) + prompt
+                )
+            )
+        response: ChatResponse | None = None
+        try:
+            response = await self.client.chat(
+                ChatRequest(
+                    model=self.model,
+                    system_prompt="",
+                    user_prompt=prompt,
+                    history=history,
+                    stream=self.stream,
+                    key_pool=self.key_pool,
+                    log_label=log_label,
+                )
+            )
+        finally:
+            if self.tpm_limiter is not None and reservation >= 0:
+                actual = response.usage.total_tokens if response is not None else 0
+                self.tpm_limiter.settle(reservation, actual)
+        assert response is not None
+        return response
 
 
 def _build_user_prompt(
@@ -331,8 +390,35 @@ def _decode_model_decisions(raw: str) -> tuple[ReviewDecision, ...]:
         parsed = parsed.get("decisions", [])
     if not isinstance(parsed, list):
         return ()
+    return _decisions_from_items(parsed)
+
+
+def _scan_decision_items(text: str) -> list[Mapping[str, object]]:
+    """Collect every complete decision object, skipping fragments cut at a reply boundary."""
+
+    decoder = json.JSONDecoder()
+    items: list[Mapping[str, object]] = []
+    index = text.find("{")
+    while index >= 0:
+        try:
+            value, end = decoder.raw_decode(text, index)
+        except json.JSONDecodeError:
+            index = text.find("{", index + 1)
+            continue
+        if isinstance(value, Mapping) and "row_index" in value:
+            items.append(value)
+        elif isinstance(value, Mapping) and isinstance(value.get("decisions"), list):
+            items.extend(item for item in value["decisions"] if isinstance(item, Mapping))
+        else:
+            index = text.find("{", index + 1)
+            continue
+        index = text.find("{", end)
+    return items
+
+
+def _decisions_from_items(items: list[object]) -> tuple[ReviewDecision, ...]:
     decisions: list[ReviewDecision] = []
-    for item in parsed:
+    for item in items:
         if not isinstance(item, Mapping):
             continue
         row_index = _coerce_int(item.get("row_index"))

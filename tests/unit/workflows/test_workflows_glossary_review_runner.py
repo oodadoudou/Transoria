@@ -539,3 +539,84 @@ def test_consistency_runner_keeps_only_returned_changes(tmp_path) -> None:
     assert [(d.row_index, d.action, d.suggested_dst) for d in decisions] == [
         (3, "modify", "夏言")
     ]
+
+
+class _TruncatingClient:
+    """Serves ``pieces`` in order; every piece but the last is cut off by the length cap."""
+
+    def __init__(self, pieces: list[str]) -> None:
+        self.pieces = pieces
+        self.requests = []
+
+    async def chat(self, request):
+        from transoria.llm.client import ChatResponse, LlmTruncatedResponseError
+        from transoria.llm.usage import TokenUsage
+
+        self.requests.append(request)
+        piece = self.pieces[len(self.requests) - 1]
+        usage = TokenUsage(input_tokens=100, output_tokens=10)
+        if len(self.requests) < len(self.pieces):
+            raise LlmTruncatedResponseError(
+                piece, usage, finish_reason="length", model_id="m"
+            )
+        return ChatResponse(content=piece, usage=usage, raw={})
+
+
+def _keep_all_reply(rows: list[dict[str, object]]) -> str:
+    return json.dumps(
+        [
+            {
+                "row_index": row["row_index"],
+                "action": "modify" if row["row_index"] == 3 else "keep",
+                "suggested_dst": "夏言" if row["row_index"] == 3 else "",
+                "reason": "一致",
+            }
+            for row in rows
+        ],
+        ensure_ascii=False,
+    )
+
+
+def test_truncated_review_reply_continues_until_complete(tmp_path) -> None:
+    from transoria.workflows.glossary_review.runner import CONTINUE_PROMPT
+
+    rows = [
+        {"row_index": index, "src": f"이름{index}", "dst": "名", "info": "男性角色", "context": ""}
+        for index in range(2, 12)
+    ]
+    full = _keep_all_reply(rows)
+    cuts = [len(full) // 3 + 7, 2 * len(full) // 3 + 3]
+    pieces = [full[: cuts[0]], full[cuts[0] : cuts[1]], full[cuts[1] :]]
+    client = _TruncatingClient(pieces)
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    result = asyncio.run(runner.run(_consistency_subtask(rows)))
+
+    decisions = decode_review_response(result.response_content)
+    assert [d.row_index for d in decisions] == list(range(2, 12))
+    assert [(d.row_index, d.suggested_dst) for d in decisions if d.action == "modify"] == [
+        (3, "夏言")
+    ]
+    assert len(client.requests) == 3
+    first, second, third = client.requests
+    assert first.history == ()
+    assert second.user_prompt == CONTINUE_PROMPT
+    assert [m.role for m in second.history] == ["user", "assistant"]
+    assert second.history[0].content == first.user_prompt
+    assert third.history[1].content == pieces[0] + pieces[1]
+    assert result.input_tokens == 300
+    assert result.output_tokens == 30
+
+
+def test_truncated_review_reply_stops_when_continuation_adds_nothing(tmp_path) -> None:
+    import pytest
+
+    from transoria.llm.client import LlmTruncatedResponseError
+
+    rows = [{"row_index": 2, "src": "하얀", "dst": "夏言", "info": "男性角色", "context": ""}]
+    client = _TruncatingClient(['[{"row_index": 2, "action": "keep"}, {"row', " ", " ", "]"])
+    runner = _consistency_runner(tmp_path, client)  # type: ignore[arg-type]
+
+    with pytest.raises(LlmTruncatedResponseError):
+        asyncio.run(runner.run(_consistency_subtask(rows)))
+    assert len(client.requests) == 2
