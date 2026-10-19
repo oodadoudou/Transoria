@@ -256,3 +256,117 @@ def test_google_history_maps_assistant_role_to_model() -> None:
     )
 
     assert [c["role"] for c in transport.captured[0]["contents"]] == ["user", "model", "user"]
+
+
+def test_google_usage_counts_thinking_tokens_as_output() -> None:
+    body = {
+        "candidates": [{"content": {"parts": [{"text": "x"}]}, "finishReason": "STOP"}],
+        "usageMetadata": {
+            "promptTokenCount": 10,
+            "candidatesTokenCount": 4,
+            "thoughtsTokenCount": 30,
+        },
+    }
+    transport = FakeTransport(responses=[TransportResult(200, body)])
+    model = ModelConfig(
+        id="m",
+        display_name="m",
+        provider_format=ProviderFormat.GOOGLE,
+        base_url="https://generativelanguage.googleapis.com",
+        model_id="gemini-2.5-flash",
+        api_keys=("k",),
+        thinking_level=ThinkingLevel.LOW,
+    )
+
+    response = asyncio.run(
+        LlmClient(transport=transport).chat(
+            ChatRequest(model=model, system_prompt="", user_prompt="x")
+        )
+    )
+
+    assert response.usage.input_tokens == 10
+    assert response.usage.output_tokens == 34
+
+
+def _google_model() -> ModelConfig:
+    return ModelConfig(
+        id="m",
+        display_name="m",
+        provider_format=ProviderFormat.GOOGLE,
+        base_url="https://generativelanguage.googleapis.com",
+        model_id="gemini-2.5-flash",
+        api_keys=("k",),
+    )
+
+
+def test_google_prohibited_content_finish_is_a_filtered_response() -> None:
+    import pytest
+
+    from transoria.llm.client import LlmFilteredResponseError
+
+    body = {
+        "candidates": [{"content": {"parts": [{"text": "部分"}]}, "finishReason": "PROHIBITED_CONTENT"}],
+        "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1},
+    }
+    transport = FakeTransport(responses=[TransportResult(200, body)])
+
+    with pytest.raises(LlmFilteredResponseError) as raised:
+        asyncio.run(
+            LlmClient(transport=transport).chat(
+                ChatRequest(model=_google_model(), system_prompt="", user_prompt="x")
+            )
+        )
+    assert raised.value.partial_response == "部分"
+
+
+def test_google_blocked_prompt_reports_content_filter() -> None:
+    import pytest
+
+    from transoria.llm.client import LlmRequestError
+
+    body = {"promptFeedback": {"blockReason": "PROHIBITED_CONTENT"}}
+    transport = FakeTransport(responses=[TransportResult(200, body)])
+
+    with pytest.raises(LlmRequestError) as raised:
+        asyncio.run(
+            LlmClient(transport=transport).chat(
+                ChatRequest(model=_google_model(), system_prompt="", user_prompt="x")
+            )
+        )
+    assert raised.value.code == "llm.content_filter"
+    assert "PROHIBITED_CONTENT" in str(raised.value)
+
+
+def test_explicit_request_output_cap_reaches_openai_and_google_payloads() -> None:
+    openai_body = {
+        "choices": [{"message": {"content": "x"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+    }
+    google_body = {
+        "candidates": [{"content": {"parts": [{"text": "x"}]}, "finishReason": "STOP"}],
+        "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1},
+    }
+    openai_model = ModelConfig(
+        id="o", display_name="o", provider_format=ProviderFormat.OPENAI,
+        base_url="https://api.example.com/v1", model_id="m", api_keys=("k",),
+    )
+    transport = FakeTransport(
+        responses=[TransportResult(200, openai_body), TransportResult(200, openai_body),
+                   TransportResult(200, google_body), TransportResult(200, google_body)]
+    )
+    client = LlmClient(transport=transport)
+
+    async def scenario() -> None:
+        for model in (openai_model, _google_model()):
+            await client.chat(ChatRequest(model=model, system_prompt="", user_prompt="x"))
+            await client.chat(
+                ChatRequest(model=model, system_prompt="", user_prompt="x", max_output_tokens=8192)
+            )
+
+    asyncio.run(scenario())
+
+    plain_openai, capped_openai, plain_google, capped_google = transport.captured
+    assert "max_tokens" not in plain_openai
+    assert capped_openai["max_tokens"] == 8192
+    assert "maxOutputTokens" not in plain_google["generationConfig"]
+    assert capped_google["generationConfig"]["maxOutputTokens"] == 8192

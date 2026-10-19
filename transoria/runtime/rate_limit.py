@@ -111,7 +111,8 @@ class TpmLimiter:
                 now = self.clock()
                 self._evict(now)
                 used = sum(tokens for _, _, tokens in self._entries)
-                if used + estimated_tokens <= self.limit:
+                # A request larger than the whole budget runs alone once the window drains.
+                if used + estimated_tokens <= self.limit or not self._entries:
                     self._next_id += 1
                     reservation_id = self._next_id
                     self._entries.append((now, reservation_id, estimated_tokens))

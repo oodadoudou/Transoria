@@ -80,3 +80,23 @@ def test_tpm_zero_limit_is_a_noop() -> None:
 
     asyncio.run(scenario())
     assert limiter.used_in_window() == 0
+
+
+def test_tpm_admits_request_larger_than_budget_once_window_is_empty() -> None:
+    clock = _FakeClock()
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock.advance(seconds)
+
+    limiter = TpmLimiter(limit=1000, window=60.0, clock=clock, sleep=fake_sleep)
+
+    async def scenario() -> tuple[int, int]:
+        first = await limiter.reserve(5000)
+        second = await limiter.reserve(5000)
+        return first, second
+
+    first, second = asyncio.run(scenario())
+    assert first > 0 and second > 0
+    assert sleeps == [60.0]

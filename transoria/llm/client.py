@@ -133,6 +133,8 @@ class ChatRequest:
     # Free-form tag the runner sets to identify this request in stderr
     # IO logs, e.g. ``"glossary chunk-00012"``.
     log_label: str = ""
+    # Explicit per-request output cap; None keeps each provider's own default.
+    max_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -510,7 +512,15 @@ def _body_to_request_log_text(body: Mapping[str, object]) -> str:
 # token budget ran out mid-generation. In both cases the response is
 # incomplete and should be treated as a failure, not silently accepted.
 _CONTENT_FILTER_FINISH_REASONS: frozenset[str] = frozenset(
-    {"content_filter", "safety"}
+    {
+        "content_filter",
+        "safety",
+        "prohibited_content",
+        "blocklist",
+        "spii",
+        "recitation",
+        "image_safety",
+    }
 )
 _LENGTH_FINISH_REASONS: frozenset[str] = frozenset(
     {"length", "max_tokens"}
@@ -1088,6 +1098,8 @@ class LlmClient:
             payload["presence_penalty"] = request.model.presence_penalty
         if request.model.frequency_penalty is not None:
             payload["frequency_penalty"] = request.model.frequency_penalty
+        if request.max_output_tokens:
+            payload["max_tokens"] = request.max_output_tokens
         if request.stream:
             payload["stream"] = True
             if request.model.provider_format in (
@@ -1128,7 +1140,8 @@ class LlmClient:
         payload: dict[str, object] = {
             "model": request.model.model_id,
             "messages": messages,
-            "max_tokens": _anthropic_max_tokens(request.model.max_output_tokens),
+            "max_tokens": request.max_output_tokens
+            or _anthropic_max_tokens(request.model.max_output_tokens),
         }
         if request.stream:
             payload["stream"] = True
@@ -1209,6 +1222,8 @@ class LlmClient:
         generation_config["thinkingConfig"] = {
             "thinkingBudget": request.model.effective_thinking_budget()
         }
+        if request.max_output_tokens:
+            generation_config["maxOutputTokens"] = request.max_output_tokens
         if generation_config:
             payload["generationConfig"] = generation_config
 
@@ -1813,6 +1828,13 @@ def _parse_google_response(body: Mapping[str, object]) -> ChatResponse:
     """
 
     candidates = body.get("candidates")
+    feedback = body.get("promptFeedback")
+    block_reason = feedback.get("blockReason") if isinstance(feedback, Mapping) else None
+    if (not isinstance(candidates, list) or not candidates) and block_reason:
+        raise LlmRequestError(
+            f"Google blocked the prompt (blockReason={block_reason}).",
+            code="llm.content_filter",
+        )
     if not isinstance(candidates, list) or not candidates:
         raise LlmRequestError(
         f"Google response missing candidates: {body!r}",
@@ -1843,9 +1865,9 @@ def _parse_google_response(body: Mapping[str, object]) -> ChatResponse:
     if isinstance(usage_meta, Mapping):
         usage = TokenUsage(
             input_tokens=int(usage_meta.get("promptTokenCount", 0) or 0),
-            output_tokens=int(
-                usage_meta.get("candidatesTokenCount", 0) or 0
-            ),
+            # Gemini bills thinking as output but reports it outside candidatesTokenCount.
+            output_tokens=int(usage_meta.get("candidatesTokenCount", 0) or 0)
+            + int(usage_meta.get("thoughtsTokenCount", 0) or 0),
             cached_input_tokens=int(
                 usage_meta.get("cachedContentTokenCount", 0) or 0
             ),
