@@ -1,5 +1,5 @@
 import { ModalOverlay } from "@/components/ModalOverlay";
-import { useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { format, useMessages } from "@/locales";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import type {
@@ -14,6 +14,7 @@ interface BatchReplacementReportModalProps {
 }
 
 const NUM = new Intl.NumberFormat("en");
+const RULE_RENDER_BATCH = 200;
 
 export function BatchReplacementReportModal({
   report,
@@ -40,10 +41,30 @@ export function BatchReplacementReportModal({
   });
   useEscapeKey(onClose);
 
+  const deferredQuery = useDeferredValue(query);
   const filteredRules = useMemo(
-    () => filterRules(report.rules, query.trim().toLowerCase()),
-    [report.rules, query],
+    () => filterRules(report.rules, deferredQuery.trim().toLowerCase()),
+    [report.rules, deferredQuery],
   );
+  const [renderLimit, setRenderLimit] = useState(RULE_RENDER_BATCH);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const hasMoreRules = renderLimit < filteredRules.length;
+  useEffect(() => setRenderLimit(RULE_RENDER_BATCH), [deferredQuery]);
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!hasMoreRules || !target) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setRenderLimit(filteredRules.length);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setRenderLimit((current) => current + RULE_RENDER_BATCH);
+      }
+    }, { rootMargin: "240px 0px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMoreRules, filteredRules.length, renderLimit]);
 
   const allExpanded =
     filteredRules.length > 0 &&
@@ -57,23 +78,23 @@ export function BatchReplacementReportModal({
     }
   };
 
-  const toggleOne = (ruleIndex: number) => {
+  const toggleOne = useCallback((ruleIndex: number) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(ruleIndex)) next.delete(ruleIndex);
       else next.add(ruleIndex);
       return next;
     });
-  };
+  }, []);
 
-  const handleCopyPath = async (path: string): Promise<void> => {
+  const handleCopyPath = useCallback(async (path: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(path);
       setCopyFeedback(labels.copyPathDone);
     } catch {
       setCopyFeedback(labels.copyPathFailed);
     }
-  };
+  }, [labels]);
 
   return (
     <ModalOverlay
@@ -144,18 +165,19 @@ export function BatchReplacementReportModal({
                 : labels.noRules}
             </div>
           ) : (
-            filteredRules.map((rule) => (
+            filteredRules.slice(0, renderLimit).map((rule) => (
               <RuleGroup
                 key={rule.rule_index}
                 rule={rule}
                 expanded={expanded.has(rule.rule_index)}
-                onToggle={() => toggleOne(rule.rule_index)}
-                query={query.trim()}
+                onToggle={toggleOne}
+                query={deferredQuery.trim()}
                 labels={labels}
                 onCopyPath={handleCopyPath}
               />
             ))
           )}
+          {hasMoreRules ? <div ref={loadMoreRef} aria-hidden="true" style={{ height: 1 }} /> : null}
         </div>
       </div>
     </ModalOverlay>
@@ -179,13 +201,13 @@ function Stat({ label, value }: StatProps) {
 interface RuleGroupProps {
   rule: ReplacementReportRule;
   expanded: boolean;
-  onToggle: () => void;
+  onToggle: (ruleIndex: number) => void;
   query: string;
   labels: ReturnType<typeof useMessages>["batchReplacementReport"];
   onCopyPath: (path: string) => void;
 }
 
-function RuleGroup({
+const RuleGroup = memo(function RuleGroup({
   rule,
   expanded,
   onToggle,
@@ -213,7 +235,7 @@ function RuleGroup({
       <button
         type="button"
         className={styles.ruleHeader}
-        onClick={onToggle}
+        onClick={() => onToggle(rule.rule_index)}
         aria-expanded={expanded}
       >
         <span
@@ -267,7 +289,7 @@ function RuleGroup({
       ) : null}
     </div>
   );
-}
+});
 
 interface SnippetProps {
   occurrence: import("@/bridge").ReplacementReportOccurrence;

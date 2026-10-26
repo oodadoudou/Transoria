@@ -5,6 +5,12 @@
   align-items: end;
 }
 
+.dockStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .pickerSingle {
   grid-template-columns: minmax(0, 1fr);
 }

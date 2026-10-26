@@ -1,4 +1,11 @@
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { format, useMessages } from "@/locales";
 import {
   BridgeError,
@@ -10,7 +17,7 @@ import {
   type ReplacementValidationIssue,
 } from "@/bridge";
 import { BatchReplacementReportModal } from "@/components/BatchReplacementReportModal";
-import { useModuleSettings } from "@/store/useSettingsStore";
+import { useModuleSettings, useSettingsStore } from "@/store/useSettingsStore";
 import {
   hasShownCleanCompletionToast,
   markCleanCompletionToastShown,
@@ -48,6 +55,9 @@ const OUTPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.outputFolder";
 const REPLACE_ORIGINALS_LOCAL_KEY = "transoria.generalTools.batchReplacement.replaceOriginals";
 const RULE_FILE_LOCAL_KEY = "transoria.generalTools.batchReplacement.ruleFile";
 const RULES_LOCAL_KEY = "transoria.generalTools.batchReplacement.rules";
+const RULE_RENDER_BATCH = 300;
+const MESSAGE_LIST_LIMIT = 200;
+const alwaysEnabled = () => true;
 
 const TERMINAL: ReadonlySet<string> = new Set([
   "completed",
@@ -95,27 +105,58 @@ export function BatchReplacementPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   useSearchShortcut(() => setSearchOpen(true));
-  const visibleRules = (() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!searchOpen || !q) return rules;
+  const deferredQuery = useDeferredValue(searchOpen ? searchQuery : "");
+  const visibleRules = useMemo(() => {
+    const q = deferredQuery.trim().toLowerCase();
+    if (!q) return rules;
     return rules.filter((r) =>
       [r.src, r.dst].some((field) => field.toLowerCase().includes(q)),
     );
-  })();
-  const updateRule = (filteredIndex: number, patch: Partial<ReplacementRule>) =>
-    setRules((prev) => {
-      const item = visibleRules[filteredIndex];
-      if (!item) return prev;
-      return prev.map((rule) => (rule === item ? { ...rule, ...patch } : rule));
-    });
-  const deleteRules = (filteredIndices: number[]) => {
-    const targets = new Set(
-      filteredIndices.map((i) => visibleRules[i]).filter(Boolean),
-    );
-    if (targets.size === 0) return;
-    setRules((prev) => prev.filter((rule) => !targets.has(rule)));
-    setRuleSelection(EMPTY_SELECTION);
-  };
+  }, [rules, deferredQuery]);
+  // Stable callbacks keep the large rule table from re-rendering on every status poll.
+  const visibleRulesRef = useRef(visibleRules);
+  visibleRulesRef.current = visibleRules;
+  const updateRule = useCallback(
+    (filteredIndex: number, patch: Partial<ReplacementRule>) =>
+      setRules((prev) => {
+        const item = visibleRulesRef.current[filteredIndex];
+        if (!item) return prev;
+        return prev.map((rule) => (rule === item ? { ...rule, ...patch } : rule));
+      }),
+    [setRules],
+  );
+  const deleteRules = useCallback(
+    (filteredIndices: number[]) => {
+      const current = visibleRulesRef.current;
+      const targets = new Set(filteredIndices.map((i) => current[i]).filter(Boolean));
+      if (targets.size === 0) return;
+      setRules((prev) => prev.filter((rule) => !targets.has(rule)));
+      setRuleSelection(EMPTY_SELECTION);
+    },
+    [setRules],
+  );
+  const ruleColumns = useMemo(
+    () => replacementColumns(messages, updateRule),
+    [messages, updateRule],
+  );
+  const ruleTable = useMemo(
+    () => (
+      <RuleTable
+        rules={visibleRules}
+        renderBatchSize={RULE_RENDER_BATCH}
+        selection={ruleSelection}
+        onSelectionChange={setRuleSelection}
+        isEnabled={alwaysEnabled}
+        columns={ruleColumns}
+        emptyMessage={messages.batchReplacement.noRules}
+        onBulkDelete={deleteRules}
+        contextMenuLabels={{
+          deleteSelected: (n) => format(messages.ruleTable.deleteSelected, { n }),
+        }}
+      />
+    ),
+    [visibleRules, ruleSelection, ruleColumns, messages, deleteRules],
+  );
   const [warnings, setWarnings] = useState<
     Array<{ line_number: number; message: string }>
   >([]);
@@ -295,8 +336,14 @@ export function BatchReplacementPage() {
         inputFolder,
         outputFolder,
         replaceOriginals,
+        normalizeRuleFilePath(ruleFilePath) || undefined,
       );
       setActiveTaskId("replacement", task_id);
+      // The next launch pre-fills from settings, so they must hold the folders of the latest run.
+      const settingsStore = useSettingsStore.getState();
+      settingsStore.updateField("replacement", "input_folder", inputFolder);
+      settingsStore.updateField("replacement", "output_folder", outputFolder);
+      void settingsStore.saveNow("replacement");
     } catch (error) {
       if (BridgeError.isBridgeError(error)) {
         setActionError(error);
@@ -431,24 +478,12 @@ export function BatchReplacementPage() {
                 }}
               />
             ) : null}
-            <RuleTable
-              rules={visibleRules}
-              selection={ruleSelection}
-              onSelectionChange={setRuleSelection}
-              isEnabled={() => true}
-              columns={replacementColumns(messages, updateRule)}
-              emptyMessage={messages.batchReplacement.noRules}
-              onBulkDelete={deleteRules}
-              contextMenuLabels={{
-                deleteSelected: (n) =>
-                  format(messages.ruleTable.deleteSelected, { n }),
-              }}
-            />
+            {ruleTable}
           </>
         )}
         {warnings.length > 0 ? (
           <div className={styles.warnings}>
-            {warnings.map((w, i) => (
+            {warnings.slice(0, MESSAGE_LIST_LIMIT).map((w, i) => (
               <div key={i}>
                 line {w.line_number}: {w.message}
               </div>
@@ -457,7 +492,7 @@ export function BatchReplacementPage() {
         ) : null}
         {issues.length > 0 ? (
           <div className={styles.issues}>
-            {issues.map((issue, i) => (
+            {issues.slice(0, MESSAGE_LIST_LIMIT).map((issue, i) => (
               <div key={i}>
                 <code>{issue.code}</code> · rule #{issue.rule_index}:{" "}
                 {issue.message}
@@ -563,13 +598,6 @@ export function BatchReplacementPage() {
               />
             </div>
           ) : null}
-          {report ? (
-            <div className={styles.statsLine}>
-              <Button variant="ghost" onClick={() => setReportOpen(true)}>
-                {messages.batchReplacement.viewReport}
-              </Button>
-            </div>
-          ) : null}
           {reportError ? (
             <div className={styles.statsLine}>
               <code>{reportError.code}</code> {reportError.message}
@@ -582,9 +610,16 @@ export function BatchReplacementPage() {
         <EpubToolActionDock
           statusLabel={messages.batchReplacement.statusLabel}
           status={
-            activeTaskId
-              ? `${snapshot.status} · ${NUM.format(completed)} / ${NUM.format(total)}`
-              : `${NUM.format(rules.length)} · ${messages.batchReplacement.rulesLabel}`
+            <strong className={styles.dockStatus}>
+              {activeTaskId
+                ? `${snapshot.status} · ${NUM.format(completed)} / ${NUM.format(total)}`
+                : `${NUM.format(rules.length)} · ${messages.batchReplacement.rulesLabel}`}
+              {report ? (
+                <Button size="sm" variant="ghost" onClick={() => setReportOpen(true)}>
+                  {messages.batchReplacement.viewReport}
+                </Button>
+              ) : null}
+            </strong>
           }
           actions={
             <>
