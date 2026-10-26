@@ -287,3 +287,46 @@ class ReplacementTests(TestCase):
         self.assertEqual(len(result.occurrences), 10)
         # All captured occurrences belong to rule 0.
         self.assertEqual({o.rule_index for o in result.occurrences}, {0})
+
+
+def test_in_place_txt_keeps_encoding_and_bom(tmp_path: Path) -> None:
+    gbk = tmp_path / "gbk.txt"
+    body = "姜世周推开门，看见窗外的雨还在下。他们沉默了很久，谁也没有先开口说话。\n" * 20
+    gbk.write_bytes(body.encode("gb18030"))
+    bom = tmp_path / "bom.txt"
+    bom.write_bytes(b"\xef\xbb\xbf" + "世周\n".encode("utf-8"))
+    rules = [ReplacementRule(src="世周", dst="世昼")]
+
+    replace_txt_file(gbk, tmp_path, rules, in_place=True)
+    replace_txt_file(bom, tmp_path, rules, in_place=True)
+
+    assert gbk.read_bytes().decode("gb18030") == body.replace("世周", "世昼")
+    assert bom.read_bytes() == b"\xef\xbb\xbf" + "世昼\n".encode("utf-8")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bom.txt", "gbk.txt"]
+
+
+def test_in_place_leaves_files_without_matches_untouched(tmp_path: Path) -> None:
+    source = tmp_path / "a.txt"
+    source.write_text("nothing\n", encoding="utf-8")
+    before = source.stat().st_mtime_ns
+
+    result = replace_txt_file(source, tmp_path, [ReplacementRule(src="x", dst="y")], in_place=True)
+
+    assert result.replacement_count == 0
+    assert source.stat().st_mtime_ns == before
+
+
+def test_in_place_epub_rewrites_source_only_when_something_matched(tmp_path: Path) -> None:
+    source = _write_minimal_epub(tmp_path / "book.epub", chapter_body="<p>old text</p>")
+    untouched = _write_minimal_epub(tmp_path / "other.epub", chapter_body="<p>other text</p>")
+    untouched_bytes = untouched.read_bytes()
+    rules = [ReplacementRule(src="old", dst="new")]
+
+    result = replace_epub_file(source, tmp_path, rules, in_place=True)
+    replace_epub_file(untouched, tmp_path, rules, in_place=True)
+
+    assert result.output_path == source
+    with zipfile.ZipFile(source) as archive:
+        assert "new text" in archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+    assert untouched.read_bytes() == untouched_bytes
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["book.epub", "other.epub"]

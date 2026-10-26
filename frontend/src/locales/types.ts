@@ -1065,6 +1065,8 @@ export interface Messages {
     sub: string;
     inputFolder: string;
     outputFolder: string;
+    replaceOriginals: string;
+    replaceOriginalsHelp: string;
     rulesLabel: string;
     ruleFile: string;
     ruleFilePlaceholder: string;

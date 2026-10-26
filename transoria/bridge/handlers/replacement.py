@@ -392,11 +392,18 @@ def register_tasks(router: BridgeRouter, *, service: TaskService) -> None:
                 "output_folder must be a string.",
                 field="output_folder",
             )
+        replace_originals = payload.get("replace_originals", False)
+        if not isinstance(replace_originals, bool):
+            raise BridgeError.invalid_argument(
+                "replace_originals must be a boolean.",
+                field="replace_originals",
+            )
         return service.start_replacement(
             request_id=request_id,
             rules=rules,
             input_folder=input_folder,
             output_folder=output_folder,
+            replace_originals=replace_originals,
         )
 
     def stop_task(payload: Mapping[str, object]) -> dict[str, object]:

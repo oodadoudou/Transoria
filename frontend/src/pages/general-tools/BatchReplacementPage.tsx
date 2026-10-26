@@ -39,11 +39,13 @@ import {
   EpubToolStage,
   EpubToolWorkspace,
 } from "./EpubToolWorkflow";
+import { ToggleSwitch } from "@/components/ToggleSwitch";
 import styles from "./BatchReplacementPage.module.css";
 
 const NUM = new Intl.NumberFormat("en");
 const INPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.inputFolder";
 const OUTPUT_LOCAL_KEY = "transoria.generalTools.batchReplacement.outputFolder";
+const REPLACE_ORIGINALS_LOCAL_KEY = "transoria.generalTools.batchReplacement.replaceOriginals";
 const RULE_FILE_LOCAL_KEY = "transoria.generalTools.batchReplacement.ruleFile";
 const RULES_LOCAL_KEY = "transoria.generalTools.batchReplacement.rules";
 
@@ -78,6 +80,10 @@ export function BatchReplacementPage() {
   const draft = moduleSettings.draft;
   const [inputFolder, setInputFolder] = useSessionState(INPUT_LOCAL_KEY, "");
   const [outputFolder, setOutputFolder] = useSessionState(OUTPUT_LOCAL_KEY, "");
+  const [replaceOriginals, setReplaceOriginals] = useSessionState(
+    REPLACE_ORIGINALS_LOCAL_KEY,
+    false,
+  );
   const [ruleFilePath, setRuleFilePath] = useSessionState(RULE_FILE_LOCAL_KEY, "");
   const [pathsHydrated, setPathsHydrated] = useState(false);
   const [rules, setRules] = useLocalState<ReplacementRule[]>(
@@ -288,6 +294,7 @@ export function BatchReplacementPage() {
         rules,
         inputFolder,
         outputFolder,
+        replaceOriginals,
       );
       setActiveTaskId("replacement", task_id);
     } catch (error) {
@@ -346,7 +353,9 @@ export function BatchReplacementPage() {
           title={messages.batchReplacement.title}
           subtitle={messages.batchReplacement.sub}
         >
-          <div className={styles.pickerStack}>
+          <div
+            className={`${styles.pickerStack} ${replaceOriginals ? styles.pickerSingle : ""}`}
+          >
             <FolderPickerRow
               label={messages.batchReplacement.inputFolder}
               value={inputFolder}
@@ -354,12 +363,22 @@ export function BatchReplacementPage() {
               onChange={setInputFolder}
               historyKey="general_tools:batch_replacement:input_folder"
             />
-            <FolderPickerRow
-              label={messages.batchReplacement.outputFolder}
-              value={outputFolder}
-              variant="output"
-              onChange={setOutputFolder}
-              historyKey="general_tools:batch_replacement:output_folder"
+            {replaceOriginals ? null : (
+              <FolderPickerRow
+                label={messages.batchReplacement.outputFolder}
+                value={outputFolder}
+                variant="output"
+                onChange={setOutputFolder}
+                historyKey="general_tools:batch_replacement:output_folder"
+              />
+            )}
+          </div>
+          <div className={styles.replaceOriginals}>
+            <ToggleSwitch
+              label={messages.batchReplacement.replaceOriginals}
+              checked={replaceOriginals}
+              onChange={setReplaceOriginals}
+              help={messages.batchReplacement.replaceOriginalsHelp}
             />
           </div>
         </Panel>

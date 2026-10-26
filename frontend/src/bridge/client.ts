@@ -821,6 +821,7 @@ export const replacementBridge = {
     rules: ReplacementRule[],
     inputFolder?: string,
     outputFolder?: string,
+    replaceOriginals = false,
   ): Promise<{
     task_id: string;
     started_at: string;
@@ -830,6 +831,7 @@ export const replacementBridge = {
       rules,
       input_folder: inputFolder,
       output_folder: outputFolder,
+      replace_originals: replaceOriginals,
     });
   },
   stopTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {

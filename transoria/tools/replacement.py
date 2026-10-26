@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import io
+import os
 from pathlib import Path
 import re
 import zipfile
@@ -199,15 +200,21 @@ def replace_txt_file(
     rules: list[ReplacementRule],
     *,
     collect_occurrences: bool = False,
+    in_place: bool = False,
 ) -> FileReplacementResult:
     document = parse_txt_file(source_path)
     original_text = "".join(f"{segment.text}{segment.newline}" for segment in document.segments)
     result = apply_rules(
         original_text, rules, collect_occurrences=collect_occurrences
     )
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / _replaced_filename(source_path)
-    output_path.write_text(result.text, encoding="utf-8")
+    if in_place:
+        output_path = source_path
+        if result.replacement_count > 0:
+            _overwrite_text(source_path, result.text, document.encoding)
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / _replaced_filename(source_path)
+        output_path.write_text(result.text, encoding="utf-8")
     return FileReplacementResult(
         output_path=output_path,
         replacement_count=result.replacement_count,
@@ -222,6 +229,7 @@ def replace_epub_file(
     rules: list[ReplacementRule],
     *,
     collect_occurrences: bool = False,
+    in_place: bool = False,
 ) -> FileReplacementResult:
     document = parse_epub_file(source_path, buffer_archive=True)
     replacements: dict[int, tuple[str, ...]] = {}
@@ -262,15 +270,38 @@ def replace_epub_file(
             replacements[segment.index] = tuple(replaced_lines)
             replacement_count += segment_count
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / _replaced_filename(source_path)
-    write_epub_slots_to_path(document, replacements, output_path)
+    if in_place:
+        output_path = source_path
+        if replacement_count > 0:
+            write_epub_slots_to_path(document, replacements, output_path)
+    else:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / _replaced_filename(source_path)
+        write_epub_slots_to_path(document, replacements, output_path)
     return FileReplacementResult(
         output_path=output_path,
         replacement_count=replacement_count,
         errors=errors,
         occurrences=tuple(occurrences),
     )
+
+
+def _overwrite_text(path: Path, text: str, encoding: str) -> None:
+    """Rewrite a source TXT atomically, keeping its encoding (and BOM) when it can hold the new text."""
+
+    with path.open("rb") as handle:
+        has_bom = handle.read(3) == b"\xef\xbb\xbf"
+    target = "utf-8-sig" if has_bom and encoding.lower() in {"utf-8", "utf8"} else encoding or "utf-8"
+    try:
+        data = text.encode(target)
+    except (LookupError, UnicodeEncodeError):
+        data = text.encode("utf-8")
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temp.write_bytes(data)
+        os.replace(temp, path)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def _replaced_filename(source_path: Path) -> str:

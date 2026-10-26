@@ -5,6 +5,14 @@
   align-items: end;
 }
 
+.pickerSingle {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.replaceOriginals {
+  margin-top: 10px;
+}
+
 .ruleImportRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;

@@ -3975,3 +3975,61 @@ def test_fresh_service_reconciles_running_zombie_to_stopped(tmp_path: Path):
     assert snap["header"]["status"] == "stopped"
     # The running subtask was reconciled to pending so continue can pick it up.
     assert snap["subtasks"][0]["status"] == "pending"
+
+
+def _run_replacement(service, **kwargs) -> dict[str, object]:
+    from transoria.tools.replacement import ReplacementRule
+
+    response = service.start_replacement(
+        request_id="req-1",
+        rules=(ReplacementRule(src="hello", dst="hi", case_sensitive=True),),
+        **kwargs,
+    )
+    task_id = response["task_id"]
+    _wait_until(
+        lambda: service.read_snapshot(kind="replacement", task_id=task_id)[
+            "snapshot"
+        ]["header"]["status"]
+        in {"completed", "failed", "stopped"},
+    )
+    return service.read_artifacts(kind="replacement", task_id=task_id)
+
+
+def test_replacement_without_output_folder_writes_beside_each_source(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    (input_dir / "vol2").mkdir(parents=True)
+    (input_dir / "a.txt").write_text("hello\n", encoding="utf-8")
+    (input_dir / "vol2" / "b.txt").write_text("hello\n", encoding="utf-8")
+    _seed_replacement_settings(service, input_dir=input_dir, output_dir=tmp_path / "saved")
+
+    artifacts = _run_replacement(service, input_folder=str(input_dir), output_folder="")
+
+    assert (input_dir / "a-Replaced.txt").read_text(encoding="utf-8") == "hi\n"
+    assert (input_dir / "vol2" / "b-Replaced.txt").read_text(encoding="utf-8") == "hi\n"
+    assert not (tmp_path / "saved").exists()
+    assert artifacts["output_folder"] == str(input_dir)
+    assert (input_dir / "a.txt").read_text(encoding="utf-8") == "hello\n"
+
+
+def test_replacement_can_overwrite_original_files(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    (input_dir / "vol2").mkdir(parents=True)
+    (input_dir / "a.txt").write_text("hello\n", encoding="utf-8")
+    (input_dir / "vol2" / "b.txt").write_text("hello again\n", encoding="utf-8")
+    (input_dir / "untouched.txt").write_text("nothing here\n", encoding="utf-8")
+    _seed_replacement_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
+
+    artifacts = _run_replacement(
+        service, input_folder=str(input_dir), output_folder=str(tmp_path / "out"), replace_originals=True
+    )
+
+    assert (input_dir / "a.txt").read_text(encoding="utf-8") == "hi\n"
+    assert (input_dir / "vol2" / "b.txt").read_text(encoding="utf-8") == "hi again\n"
+    assert (input_dir / "untouched.txt").read_text(encoding="utf-8") == "nothing here\n"
+    assert not list(input_dir.rglob("*-Replaced*"))
+    assert not (tmp_path / "out").exists()
+    assert sorted(artifacts["output_files"]) == sorted(
+        [str(input_dir / "a.txt"), str(input_dir / "vol2" / "b.txt")]
+    )

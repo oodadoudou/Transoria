@@ -4824,6 +4824,7 @@ class TaskService:
         rules: Sequence[ReplacementRule],
         input_folder: str | None = None,
         output_folder: str | None = None,
+        replace_originals: bool = False,
     ) -> dict[str, object]:
         with self._start_locks["replacement"]:
             return self._start_replacement_locked(
@@ -4831,6 +4832,7 @@ class TaskService:
                 rules=rules,
                 input_folder=input_folder,
                 output_folder=output_folder,
+                replace_originals=replace_originals,
             )
 
     def _start_replacement_locked(
@@ -4840,6 +4842,7 @@ class TaskService:
         rules: Sequence[ReplacementRule],
         input_folder: str | None = None,
         output_folder: str | None = None,
+        replace_originals: bool = False,
     ) -> dict[str, object]:
         settings = self.settings_store.load_all()
         replacement = settings.replacement
@@ -4847,12 +4850,16 @@ class TaskService:
         input_dir = _require_directory(
             input_folder or replacement.input_folder, field="input_folder"
         )
-        resolved_output_folder = (
-            output_folder or replacement.output_folder or str(input_dir)
+        requested_output = (
+            replacement.output_folder if output_folder is None else output_folder
+        ).strip()
+        # None means each result is written beside its own source file.
+        output_dir = (
+            None
+            if replace_originals or not requested_output
+            else _ensure_output_dir(requested_output, field="output_folder")
         )
-        output_dir = _ensure_output_dir(
-            resolved_output_folder, field="output_folder"
-        )
+        shown_output_dir = output_dir or input_dir
 
         if not rules:
             raise BridgeError.invalid_argument(
@@ -4884,7 +4891,7 @@ class TaskService:
                 started_at=started_at,
                 metadata={
                     "input_dir": str(input_dir),
-                    "output_dir": str(output_dir),
+                    "output_dir": str(shown_output_dir),
                     "request_id": request_id,
                 },
             )
@@ -4893,7 +4900,7 @@ class TaskService:
                 task_id,
                 {
                     "kind": "replacement",
-                    "output_folder": str(output_dir),
+                    "output_folder": str(shown_output_dir),
                     "output_files": [],
                     "statistics_json_path": None,
                     "total_replacements": 0,
@@ -4910,7 +4917,7 @@ class TaskService:
             updated_at=started_at,
             metadata={
                 "input_dir": str(input_dir),
-                "output_dir": str(output_dir),
+                "output_dir": str(shown_output_dir),
                 "request_id": request_id,
             },
         )
@@ -4935,6 +4942,7 @@ class TaskService:
                 task_id=task_id,
                 rules=tuple(rules),
                 output_dir=output_dir,
+                replace_originals=replace_originals,
                 stop_on_first_error=stop_on_first_error,
                 running=running,
             )
@@ -4947,9 +4955,10 @@ class TaskService:
         *,
         task_id: str,
         rules: tuple[ReplacementRule, ...],
-        output_dir: Path,
+        output_dir: Path | None,
         stop_on_first_error: bool,
         running: RunningTask,
+        replace_originals: bool = False,
     ) -> None:
         running.touch()
         self._mark_status(task_id, TaskStatus.RUNNING)
@@ -4988,15 +4997,20 @@ class TaskService:
             source = Path(str(payload.get("source_file", "")))
             fmt = str(payload.get("format", "txt"))
             try:
-                if fmt == DocumentFormat.EPUB.value:
-                    result = replace_epub_file(
-                        source, output_dir, list(rules), collect_occurrences=True
-                    )
-                else:
-                    result = replace_txt_file(
-                        source, output_dir, list(rules), collect_occurrences=True
-                    )
-                outputs.append(result.output_path)
+                replace_file = (
+                    replace_epub_file
+                    if fmt == DocumentFormat.EPUB.value
+                    else replace_txt_file
+                )
+                result = replace_file(
+                    source,
+                    output_dir or source.parent,
+                    list(rules),
+                    collect_occurrences=True,
+                    in_place=replace_originals,
+                )
+                if not replace_originals or result.replacement_count > 0:
+                    outputs.append(result.output_path)
                 total_replacements += result.replacement_count
                 per_file_replacements.append(
                     {
@@ -5091,7 +5105,7 @@ class TaskService:
 
         statistics = {
             "kind": "replacement",
-            "output_folder": str(output_dir),
+            "output_folder": str(snapshot.record.metadata.get("output_dir", "")),
             "output_files": [str(p) for p in outputs],
             "statistics_json_path": None,
             "replacement_report_path": str(report_path) if report_path else None,

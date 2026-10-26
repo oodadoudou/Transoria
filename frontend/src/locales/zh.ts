@@ -426,7 +426,10 @@ export const zh: Messages = {
     title: "批量替换",
     sub: "使用导入的 TXT 箭头规则或 Reeden 阅读器 .red 替换规则，批量替换 TXT 和 EPUB 文件。",
     inputFolder: "源文件夹",
-    outputFolder: "输出文件夹（可留空）",
+    outputFolder: "输出文件夹（留空则保存在原文件旁）",
+    replaceOriginals: "直接替换原文件",
+    replaceOriginalsHelp:
+      "开启后直接覆盖源文件夹（含子文件夹）中的原文件，不另存副本；没有匹配的文件不会改动。覆盖后无法撤销。",
     rulesLabel: "规则",
     ruleFile: "规则文件",
     ruleFilePlaceholder: "粘贴 .txt 或 .red 规则文件路径",
