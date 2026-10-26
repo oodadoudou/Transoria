@@ -4033,3 +4033,21 @@ def test_replacement_can_overwrite_original_files(tmp_path: Path):
     assert sorted(artifacts["output_files"]) == sorted(
         [str(input_dir / "a.txt"), str(input_dir / "vol2" / "b.txt")]
     )
+
+
+def test_replacement_skips_the_rule_file_inside_the_input_folder(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "a.txt").write_text("hello\n", encoding="utf-8")
+    rule_file = input_dir / "rules.txt"
+    rule_file.write_text("hello->hi\n", encoding="utf-8")
+    _seed_replacement_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
+
+    artifacts = _run_replacement(
+        service, input_folder=str(input_dir), output_folder="", replace_originals=True, rule_file=str(rule_file)
+    )
+
+    assert (input_dir / "a.txt").read_text(encoding="utf-8") == "hi\n"
+    assert rule_file.read_text(encoding="utf-8") == "hello->hi\n"
+    assert artifacts["output_files"] == [str(input_dir / "a.txt")]

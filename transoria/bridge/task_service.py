@@ -4825,6 +4825,7 @@ class TaskService:
         input_folder: str | None = None,
         output_folder: str | None = None,
         replace_originals: bool = False,
+        rule_file: str | None = None,
     ) -> dict[str, object]:
         with self._start_locks["replacement"]:
             return self._start_replacement_locked(
@@ -4833,6 +4834,7 @@ class TaskService:
                 input_folder=input_folder,
                 output_folder=output_folder,
                 replace_originals=replace_originals,
+                rule_file=rule_file,
             )
 
     def _start_replacement_locked(
@@ -4843,6 +4845,7 @@ class TaskService:
         input_folder: str | None = None,
         output_folder: str | None = None,
         replace_originals: bool = False,
+        rule_file: str | None = None,
     ) -> dict[str, object]:
         settings = self.settings_store.load_all()
         replacement = settings.replacement
@@ -4874,6 +4877,10 @@ class TaskService:
         task_id = _new_task_id("replacement")
         started_at = _utc_now_iso()
         files = scan_input_directory(input_dir)
+        if rule_file:
+            # A rules TXT inside the input folder would otherwise be rewritten by its own rules.
+            rule_path = Path(rule_file).expanduser().resolve()
+            files = [doc for doc in files if doc.path.resolve() != rule_path]
 
         cache = self._cache_for_kind("replacement")
         running = RunningTask(

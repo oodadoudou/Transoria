@@ -119,79 +119,166 @@ def apply_rules(
     occurrence_limit_per_rule: int = DEFAULT_OCCURRENCE_LIMIT_PER_RULE,
     context_chars: int = DEFAULT_CONTEXT_CHARS,
 ) -> ReplacementApplyResult:
-    """Apply ``rules`` sequentially to ``text``.
+    """Apply ``rules`` sequentially to ``text``; each rule sees the previous rule's output."""
 
-    When ``collect_occurrences=True``, also captures up to
-    ``occurrence_limit_per_rule`` match sites per rule with surrounding
-    context for the post-run report. Capping prevents a rule that
-    matches tens of thousands of times from blowing up the report
-    payload; ``truncated`` indication is the caller's job (it knows
-    which rules hit the cap).
-    """
+    result = _apply_rules_to_slots(
+        [text],
+        [[0]],
+        rules,
+        collect_occurrences=collect_occurrences,
+        occurrence_limit_per_rule=occurrence_limit_per_rule,
+        context_chars=context_chars,
+    )
+    return ReplacementApplyResult(
+        text=result.slots[0],
+        replacement_count=result.counts[0],
+        errors=result.errors,
+        occurrences=result.occurrences,
+    )
 
-    current = text
-    replacement_count = 0
+
+@dataclass(frozen=True)
+class _PreparedRule:
+    index: int
+    rule: ReplacementRule
+    # None means an exact literal handled with str.replace.
+    pattern: re.Pattern[str] | None
+
+
+@dataclass(frozen=True)
+class _SlotsResult:
+    slots: list[str]
+    counts: list[int]
+    errors: list[str]
+    occurrences: tuple[ReplacementOccurrence, ...]
+
+
+def _prepare_rules(rules: list[ReplacementRule]) -> tuple[list[_PreparedRule], list[str]]:
+    prepared: list[_PreparedRule] = []
     errors: list[str] = []
-    collected: list[ReplacementOccurrence] = []
-
     for index, rule in enumerate(rules):
-        line_number = index + 1
         if not rule.enabled:
             continue
-
+        if not rule.regex:
+            if rule.src == "":
+                continue
+            if rule.case_sensitive or _is_caseless(rule.src):
+                prepared.append(_PreparedRule(index=index, rule=rule, pattern=None))
+                continue
         flags = 0 if rule.case_sensitive else re.IGNORECASE
-        pattern = rule.src if rule.regex else re.escape(rule.src)
-
-        if not collect_occurrences:
-            try:
-                current, count = re.subn(pattern, rule.dst, current, flags=flags)
-            except re.error as exc:
-                errors.append(f"Invalid regex in rule {line_number}: {exc}")
-                continue
-            replacement_count += count
-            continue
-
-        # Two-pass when collecting: snapshot the input, find matches
-        # with context, then perform the substitution. This avoids the
-        # closure-vs-running-text confusion of a callback-based ``re.sub``
-        # and keeps offsets aligned with the snapshot the user expects
-        # to see in the report ("before this rule fired").
         try:
-            compiled = re.compile(pattern, flags=flags)
+            pattern = re.compile(rule.src if rule.regex else re.escape(rule.src), flags)
         except re.error as exc:
-            errors.append(f"Invalid regex in rule {line_number}: {exc}")
+            errors.append(f"Invalid regex in rule {index + 1}: {exc}")
             continue
+        prepared.append(_PreparedRule(index=index, rule=rule, pattern=pattern))
+    return prepared, errors
 
-        snapshot = current
-        for match_index, match in enumerate(compiled.finditer(snapshot)):
-            replacement_count += 1
-            if match_index >= occurrence_limit_per_rule:
-                continue
-            start, end = match.span()
-            before_start = max(0, start - context_chars)
-            after_end = min(len(snapshot), end + context_chars)
-            collected.append(
-                ReplacementOccurrence(
-                    rule_index=index,
-                    char_offset=start,
-                    before_context=snapshot[before_start:start],
-                    match_text=snapshot[start:end],
-                    after_context=snapshot[end:after_end],
-                    replacement_text=rule.dst,
-                )
-            )
-        try:
-            current = compiled.sub(rule.dst, snapshot)
-        except re.error as exc:
-            errors.append(f"Invalid regex in rule {line_number}: {exc}")
-            continue
 
-    return ReplacementApplyResult(
-        text=current,
-        replacement_count=replacement_count,
-        errors=errors,
-        occurrences=tuple(collected),
+def _is_caseless(text: str) -> bool:
+    return all(char.lower() == char and char.upper() == char for char in text)
+
+
+def _apply_rules_to_slots(
+    slots: list[str],
+    groups: list[list[int]],
+    rules: list[ReplacementRule],
+    *,
+    collect_occurrences: bool,
+    occurrence_limit_per_rule: int,
+    context_chars: int,
+) -> _SlotsResult:
+    """Run rules in order over independent text slots, rule by rule.
+
+    Slots never interact, so iterating rules outermost keeps each slot's
+    sequential semantics while letting a literal rule skip a whole group
+    after one substring check on the group's joined text.
+    """
+
+    prepared, errors = _prepare_rules(rules)
+    slots = list(slots)
+    counts = [0] * len(slots)
+    collected: list[ReplacementOccurrence] = []
+    joined: list[str | None] = [None] * len(groups)
+
+    for item in prepared:
+        recorded = 0
+        failed = False
+        for group_index, members in enumerate(groups):
+            if failed:
+                break
+            if not item.rule.regex:
+                text = joined[group_index]
+                if text is None:
+                    text = "\0".join(slots[i] for i in members)
+                    joined[group_index] = text
+                if item.pattern is None:
+                    if item.rule.src not in text:
+                        continue
+                elif item.pattern.search(text) is None:
+                    continue
+            changed = False
+            for slot_index in members:
+                before = slots[slot_index]
+                if collect_occurrences and recorded < occurrence_limit_per_rule:
+                    found = _occurrences(item, before, occurrence_limit_per_rule - recorded, context_chars)
+                    collected.extend(found)
+                    recorded += len(found)
+                try:
+                    after, count = _substitute(item, before)
+                except re.error as exc:
+                    errors.append(f"Invalid regex in rule {item.index + 1}: {exc}")
+                    failed = True
+                    break
+                if count:
+                    slots[slot_index] = after
+                    counts[slot_index] += count
+                    changed = True
+            if changed:
+                joined[group_index] = None
+
+    return _SlotsResult(
+        slots=slots, counts=counts, errors=errors, occurrences=tuple(collected)
     )
+
+
+def _substitute(item: _PreparedRule, text: str) -> tuple[str, int]:
+    if item.pattern is None:
+        count = text.count(item.rule.src)
+        return (text.replace(item.rule.src, item.rule.dst), count) if count else (text, 0)
+    if item.rule.regex:
+        return item.pattern.subn(item.rule.dst, text)
+    dst = item.rule.dst
+    return item.pattern.subn(lambda _match: dst, text)
+
+
+def _occurrences(
+    item: _PreparedRule, text: str, limit: int, context_chars: int
+) -> list[ReplacementOccurrence]:
+    if item.pattern is None:
+        src = item.rule.src
+        spans: list[tuple[int, int]] = []
+        start = text.find(src)
+        while start >= 0 and len(spans) < limit:
+            spans.append((start, start + len(src)))
+            start = text.find(src, start + len(src))
+    else:
+        spans = []
+        for match in item.pattern.finditer(text):
+            if len(spans) >= limit:
+                break
+            spans.append(match.span())
+    return [
+        ReplacementOccurrence(
+            rule_index=item.index,
+            char_offset=start,
+            before_context=text[max(0, start - context_chars):start],
+            match_text=text[start:end],
+            after_context=text[end:end + context_chars],
+            replacement_text=item.rule.dst,
+        )
+        for start, end in spans
+    ]
 
 
 def replace_txt_file(
@@ -236,38 +323,40 @@ def replace_epub_file(
     replacement_count = 0
     errors: list[str] = []
     occurrences: list[ReplacementOccurrence] = []
-    # Per-rule budget across the whole epub so a single chapter can't
-    # exhaust the cap and starve later chapters from showing up.
-    per_rule_used: dict[int, int] = {}
     with zipfile.ZipFile(io.BytesIO(document.archive_bytes)) as archive:
         roots = {}
         for path in dict.fromkeys(segment.doc_path for segment in document.segments):
             raw = read_archive_entry(archive, path)
             roots[path] = parse_ncx_xml(raw) if path.lower().endswith(".ncx") else parse_xhtml_or_html(raw)
 
+    slots: list[str] = []
+    segment_slots: list[list[int]] = []
+    doc_groups: dict[str, list[int]] = {}
     for segment in document.segments:
-        lines = []
+        members: list[int] = []
         for part in segment.parts:
             elem = find_by_path(roots[segment.doc_path], part.path)
             if elem is None:
                 raise ValueError("EPUB replacement cannot resolve the source text slot")
-            lines.append((elem.text if part.slot == "text" else elem.tail) or "")
-        replaced_lines: list[str] = []
-        segment_count = 0
-        for line in lines:
-            result = apply_rules(line, rules, collect_occurrences=collect_occurrences)
-            replaced_lines.append(result.text)
-            segment_count += result.replacement_count
-            errors.extend(result.errors)
-            if collect_occurrences:
-                for occ in result.occurrences:
-                    used = per_rule_used.get(occ.rule_index, 0)
-                    if used >= DEFAULT_OCCURRENCE_LIMIT_PER_RULE:
-                        continue
-                    per_rule_used[occ.rule_index] = used + 1
-                    occurrences.append(occ)
+            members.append(len(slots))
+            slots.append((elem.text if part.slot == "text" else elem.tail) or "")
+        segment_slots.append(members)
+        doc_groups.setdefault(segment.doc_path, []).extend(members)
+
+    result = _apply_rules_to_slots(
+        slots,
+        list(doc_groups.values()),
+        rules,
+        collect_occurrences=collect_occurrences,
+        occurrence_limit_per_rule=DEFAULT_OCCURRENCE_LIMIT_PER_RULE,
+        context_chars=DEFAULT_CONTEXT_CHARS,
+    )
+    errors.extend(result.errors)
+    occurrences.extend(result.occurrences)
+    for segment, members in zip(document.segments, segment_slots, strict=True):
+        segment_count = sum(result.counts[i] for i in members)
         if segment_count > 0:
-            replacements[segment.index] = tuple(replaced_lines)
+            replacements[segment.index] = tuple(result.slots[i] for i in members)
             replacement_count += segment_count
 
     if in_place:

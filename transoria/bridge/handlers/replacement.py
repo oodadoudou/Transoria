@@ -398,12 +398,19 @@ def register_tasks(router: BridgeRouter, *, service: TaskService) -> None:
                 "replace_originals must be a boolean.",
                 field="replace_originals",
             )
+        rule_file = payload.get("rule_file")
+        if rule_file is not None and not isinstance(rule_file, str):
+            raise BridgeError.invalid_argument(
+                "rule_file must be a string.",
+                field="rule_file",
+            )
         return service.start_replacement(
             request_id=request_id,
             rules=rules,
             input_folder=input_folder,
             output_folder=output_folder,
             replace_originals=replace_originals,
+            rule_file=rule_file,
         )
 
     def stop_task(payload: Mapping[str, object]) -> dict[str, object]:

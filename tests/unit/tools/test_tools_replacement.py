@@ -330,3 +330,56 @@ def test_in_place_epub_rewrites_source_only_when_something_matched(tmp_path: Pat
         assert "new text" in archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
     assert untouched.read_bytes() == untouched_bytes
     assert sorted(p.name for p in tmp_path.iterdir()) == ["book.epub", "other.epub"]
+
+
+def test_rules_apply_in_order_each_seeing_the_previous_result() -> None:
+    rules = [
+        ReplacementRule(src="丹宇吓了一跳", dst="丹玗吓了一跳", case_sensitive=True),
+        ReplacementRule(src="丹宇", dst="丹玗", case_sensitive=True),
+        ReplacementRule(src="丹玗吓了一跳。", dst="丹玗吓坏了。", case_sensitive=True),
+        ReplacementRule(src="丹玗点头", dst="丹玗摇头", case_sensitive=True),
+    ]
+
+    result = apply_rules("丹宇吓了一跳。丹宇点头。", rules)
+
+    assert result.text == "丹玗吓坏了。丹玗摇头。"
+    assert result.replacement_count == 4
+
+
+def test_literal_replacement_text_is_never_read_as_a_regex_template() -> None:
+    result = apply_rules("a+b", [ReplacementRule(src="+", dst=r"\1\n\g<0>")])
+
+    assert result.text == r"a\1\n\g<0>b"
+    assert result.errors == []
+
+
+def test_empty_literal_source_is_ignored_instead_of_matching_everywhere() -> None:
+    result = apply_rules("abc", [ReplacementRule(src="", dst="X")])
+
+    assert result.text == "abc"
+    assert result.replacement_count == 0
+
+
+def test_case_insensitive_latin_literal_still_matches_any_case() -> None:
+    result = apply_rules("Alpha ALPHA alpha", [ReplacementRule(src="alpha", dst="β")])
+
+    assert result.text == "β β β"
+
+
+def test_epub_rules_run_in_order_per_text_node_and_report_bad_regex_once(tmp_path: Path) -> None:
+    body = "".join(f"<p>第{i}章 丹宇来了。</p>" for i in range(30))
+    source = _write_minimal_epub(tmp_path / "book.epub", chapter_body=body)
+    rules = [
+        ReplacementRule(src="丹宇", dst="丹玗", case_sensitive=True),
+        ReplacementRule(src="丹玗来了", dst="丹玗走了", case_sensitive=True),
+        ReplacementRule(src="(", dst="x", regex=True),
+    ]
+
+    result = replace_epub_file(source, tmp_path / "out", rules, collect_occurrences=True)
+
+    with zipfile.ZipFile(result.output_path) as archive:
+        text = archive.read("OEBPS/Text/chapter.xhtml").decode("utf-8")
+    assert text.count("丹玗走了") == 30 and "丹宇" not in text
+    assert result.replacement_count == 60
+    assert len(result.errors) == 1
+    assert {occ.rule_index for occ in result.occurrences} == {0, 1}
