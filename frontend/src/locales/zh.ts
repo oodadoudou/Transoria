@@ -427,6 +427,7 @@ export const zh: Messages = {
     sub: "使用导入的 TXT 箭头规则或 Reeden 阅读器 .red 替换规则，批量替换 TXT 和 EPUB 文件。",
     inputFolder: "源文件夹",
     outputFolder: "输出文件夹（留空则保存在原文件旁）",
+    ruleFileAutoImported: "已自动导入此文件夹中的规则文件",
     replaceOriginals: "直接替换原文件",
     replaceOriginalsHelp:
       "开启后直接覆盖源文件夹（含子文件夹）中的原文件，不另存副本；没有匹配的文件不会改动。覆盖后无法撤销。",

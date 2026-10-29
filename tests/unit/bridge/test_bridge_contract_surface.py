@@ -137,6 +137,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     # replacement
     "replacement.import_rules",
     "replacement.validate_rules",
+    "replacement.find_rule_files",
     "replacement.start_task",
     "replacement.stop_task",
     "replacement.pause_task",
@@ -291,7 +292,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 200
+    assert len(actual) == 201
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -466,6 +467,7 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
     "proofreading.cancel_retranslate": {"task_id": "translation-missing"},
     "replacement.import_rules": {"path": "/nonexistent-rule-file"},
     "replacement.validate_rules": {"rules": []},
+    "replacement.find_rule_files": {"folder": "/nonexistent-folder"},
     "replacement.start_task": {"request_id": "rid", "rules": []},
     "replacement.stop_task": {"task_id": "missing"},
     "replacement.pause_task": {"task_id": "missing"},

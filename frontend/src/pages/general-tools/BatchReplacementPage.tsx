@@ -56,6 +56,7 @@ const REPLACE_ORIGINALS_LOCAL_KEY = "transoria.generalTools.batchReplacement.rep
 const RULE_FILE_LOCAL_KEY = "transoria.generalTools.batchReplacement.ruleFile";
 const RULES_LOCAL_KEY = "transoria.generalTools.batchReplacement.rules";
 const RULE_RENDER_BATCH = 300;
+const RULE_FILE_DETECT_DELAY_MS = 400;
 const MESSAGE_LIST_LIMIT = 200;
 const alwaysEnabled = () => true;
 
@@ -187,6 +188,43 @@ export function BatchReplacementPage() {
     setPathsHydrated(true);
   }, [draft, pathsHydrated, setInputFolder, setOutputFolder]);
 
+  // Filled in below the hydration guard; the detection effect only runs once hydrated.
+  const importRulesRef = useRef<(path: string) => Promise<void>>(async () => {});
+  const ruleStateRef = useRef({ ruleFilePath, hasRules: rules.length > 0 });
+  ruleStateRef.current = { ruleFilePath, hasRules: rules.length > 0 };
+  const detectionStartedRef = useRef(false);
+  useEffect(() => {
+    if (!pathsHydrated) return;
+    const folder = inputFolder.trim();
+    const isLaunch = !detectionStartedRef.current;
+    detectionStartedRef.current = true;
+    // On launch keep the restored table; detection only replaces rules when the folder changes.
+    if (!folder || (isLaunch && ruleStateRef.current.hasRules)) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void replacementBridge
+        .findRuleFiles(folder)
+        .then(async ({ paths }) => {
+          if (cancelled || paths.length !== 1) return;
+          const { ruleFilePath: currentPath, hasRules } = ruleStateRef.current;
+          if (hasRules && normalizeRuleFilePath(currentPath) === paths[0]) return;
+          await importRulesRef.current(paths[0]);
+          useToastStore.getState().push({
+            variant: "success",
+            title: messages.batchReplacement.ruleFileAutoImported,
+            detail: paths[0].split(/[\\/]/).pop() ?? paths[0],
+          });
+        })
+        .catch(() => {
+          // Detection is a convenience; manual import still works if the folder can't be scanned.
+        });
+    }, RULE_FILE_DETECT_DELAY_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [inputFolder, pathsHydrated, messages]);
+
   // Celebratory toast on truly clean completion. Replacement is
   // single-pass (no continue/rerun), so the failure dialog isn't
   // applicable here — only the modal-based failure surface and this
@@ -300,6 +338,7 @@ export function BatchReplacementPage() {
       }
     }
   };
+  importRulesRef.current = importRulesFromPath;
 
   const handleChooseRuleFile = async () => {
     setActionError(null);

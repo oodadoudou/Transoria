@@ -816,6 +816,9 @@ export const replacementBridge = {
   }> {
     return call("replacement.validate_rules", { rules });
   },
+  findRuleFiles(folder: string): Promise<{ paths: string[] }> {
+    return call("replacement.find_rule_files", { folder });
+  },
   startTask(
     requestId: string,
     rules: ReplacementRule[],

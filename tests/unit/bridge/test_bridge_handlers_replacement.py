@@ -264,3 +264,30 @@ def test_lifecycle_methods_absent_until_register_tasks(router):
         router.call("replacement.start_task", {"request_id": "rid", "rules": []})
 
     assert caught.value.code == "bridge.not_found"
+
+
+def test_find_rule_files_lists_only_top_level_rule_files(tmp_path):
+    from transoria.bridge.handlers.replacement import find_rule_files
+
+    (tmp_path / "book-Transoria替换.txt").write_text("宋鹤->松鹤\n# note\n\n", encoding="utf-8")
+    (tmp_path / "rules.red").write_bytes(b"RED\x01")
+    (tmp_path / "novel.txt").write_text("第一章\n宋鹤推开门->这一行像规则\n普通句子。\n", encoding="utf-8")
+    (tmp_path / "empty.txt").write_text("# only comments\n\n", encoding="utf-8")
+    long_novel = "宋鹤->松鹤\n" + "普通的一行小说文字。\n" * 20000
+    (tmp_path / "long.txt").write_text(long_novel, encoding="utf-8")
+    nested = tmp_path / "sub"
+    nested.mkdir()
+    (nested / "other-Transoria替换.txt").write_text("a->b\n", encoding="utf-8")
+
+    paths = find_rule_files({"folder": str(tmp_path)})["paths"]
+
+    assert [path.rsplit("/", 1)[-1] for path in paths] == ["book-Transoria替换.txt", "rules.red"]
+
+
+def test_find_rule_files_accepts_large_rule_files(tmp_path):
+    from transoria.bridge.handlers.replacement import find_rule_files
+
+    (tmp_path / "big.txt").write_text("".join(f"句子{i}->新句子{i}\n" for i in range(20000)), encoding="utf-8")
+
+    assert find_rule_files({"folder": str(tmp_path)})["paths"] == [str(tmp_path / "big.txt")]
+    assert find_rule_files({"folder": str(tmp_path / "missing")})["paths"] == []
