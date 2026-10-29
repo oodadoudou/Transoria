@@ -209,11 +209,6 @@ export function BatchReplacementPage() {
           const { ruleFilePath: currentPath, hasRules } = ruleStateRef.current;
           if (hasRules && normalizeRuleFilePath(currentPath) === paths[0]) return;
           await importRulesRef.current(paths[0]);
-          useToastStore.getState().push({
-            variant: "success",
-            title: messages.batchReplacement.ruleFileAutoImported,
-            detail: paths[0].split(/[\\/]/).pop() ?? paths[0],
-          });
         })
         .catch(() => {
           // Detection is a convenience; manual import still works if the folder can't be scanned.
@@ -223,7 +218,7 @@ export function BatchReplacementPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [inputFolder, pathsHydrated, messages]);
+  }, [inputFolder, pathsHydrated]);
 
   // Celebratory toast on truly clean completion. Replacement is
   // single-pass (no continue/rerun), so the failure dialog isn't
