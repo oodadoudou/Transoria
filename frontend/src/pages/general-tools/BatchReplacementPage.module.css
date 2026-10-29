@@ -5,6 +5,57 @@
   align-items: end;
 }
 
+.progressBlock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.progressTrack {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-soft);
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--action);
+  transition: width 200ms ease;
+}
+
+.progressPercent {
+  min-width: 36px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.currentRule {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.currentRuleLabel,
+.currentRuleCount {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.currentRuleText {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dockStatus {
   display: inline-flex;
   align-items: center;

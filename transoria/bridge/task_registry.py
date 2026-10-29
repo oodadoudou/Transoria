@@ -46,6 +46,9 @@ class RunningTask:
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
+    _live_progress: "dict[str, object] | None" = field(
+        default=None, init=False, repr=False
+    )
 
     def set_executor(self, executor: "TaskExecutor") -> None:
         """Store a reference to the executor once the orchestrator creates it.
@@ -99,6 +102,17 @@ class RunningTask:
             self._done = True
             self._error = error
             self._last_heartbeat_monotonic = time.monotonic()
+
+    def set_live_progress(self, progress: "dict[str, object] | None") -> None:
+        """In-memory progress finer than subtasks (e.g. the rule a file is on); never persisted."""
+        with self._lock:
+            self._live_progress = progress
+            self._last_heartbeat_monotonic = time.monotonic()
+
+    @property
+    def live_progress(self) -> "dict[str, object] | None":
+        with self._lock:
+            return dict(self._live_progress) if self._live_progress else None
 
     @property
     def is_done(self) -> bool:

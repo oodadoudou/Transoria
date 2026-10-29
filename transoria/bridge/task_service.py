@@ -164,6 +164,33 @@ _REQUEST_LOG_ERROR_PREVIEW_LIMIT = 2000
 # files; this guards the aggregated report so a 100k-match rule cannot
 # blow up the JSON we ship to the frontend.
 _REPORT_MAX_OCCURRENCES_PER_RULE = 200
+_RULE_PROGRESS_INTERVAL_SECONDS = 0.1
+_RULE_PROGRESS_TEXT_CHARS = 80
+
+
+def _replacement_progress_reporter(
+    running: RunningTask, *, file_index: int, file_total: int
+) -> Callable[[int, int, ReplacementRule], None]:
+    last_update = 0.0
+
+    def report(position: int, total: int, rule: ReplacementRule) -> None:
+        nonlocal last_update
+        now = time.monotonic()
+        if position not in (1, total) and now - last_update < _RULE_PROGRESS_INTERVAL_SECONDS:
+            return
+        last_update = now
+        running.set_live_progress(
+            {
+                "file_index": file_index,
+                "file_total": file_total,
+                "rule_position": position,
+                "rule_total": total,
+                "src": rule.src[:_RULE_PROGRESS_TEXT_CHARS],
+                "dst": rule.dst[:_RULE_PROGRESS_TEXT_CHARS],
+            }
+        )
+
+    return report
 _KIND_TO_TASKKIND: dict[str, TaskKind] = {
     "translation": TaskKind.TRANSLATION,
     "glossary": TaskKind.GLOSSARY,
@@ -4989,7 +5016,8 @@ class TaskService:
         per_rule_total_count: dict[int, int] = {i: 0 for i in range(len(rules))}
         per_file_replacements: list[dict[str, object]] = []
 
-        for subtask in snapshot.subtasks:
+        file_total = len(snapshot.subtasks)
+        for file_index, subtask in enumerate(snapshot.subtasks, start=1):
             running.touch()
             if running.stop_requested:
                 was_stopped = True
@@ -5019,6 +5047,9 @@ class TaskService:
                     list(rules),
                     collect_occurrences=True,
                     in_place=replace_originals,
+                    on_rule=_replacement_progress_reporter(
+                        running, file_index=file_index, file_total=file_total
+                    ),
                 )
                 if not replace_originals or result.replacement_count > 0:
                     outputs.append(result.output_path)
@@ -5114,6 +5145,7 @@ class TaskService:
             },
         )
 
+        running.set_live_progress(None)
         statistics = {
             "kind": "replacement",
             "output_folder": str(snapshot.record.metadata.get("output_dir", "")),
@@ -6512,7 +6544,11 @@ class TaskService:
         # Force-clean here so by the time the UI sees terminal status
         # the registry is already settled.
         self._resolve_live_running(task_id, snapshot.record.status)
-        return {"snapshot": _format_snapshot(snapshot)}
+        formatted = _format_snapshot(snapshot)
+        live = self.registry.get(task_id)
+        if kind == "replacement" and live is not None and not live.is_done:
+            formatted["rule_progress"] = live.live_progress
+        return {"snapshot": formatted}
 
     def list_recent_tasks(
         self, *, kind: str, limit: int | None

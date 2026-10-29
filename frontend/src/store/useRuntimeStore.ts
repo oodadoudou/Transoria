@@ -18,6 +18,7 @@ import { playTaskSound } from "@/utils/taskSounds";
 import type {
   TaskFailure,
   GlossaryReviewRoundProgress,
+  ReplacementRuleProgress,
   TaskHeader,
   TaskSnapshot,
   TaskStatus,
@@ -293,6 +294,7 @@ export type SnapshotShape = {
   status: TaskStatus;
   progress: TaskSnapshot["progress"];
   roundProgress: GlossaryReviewRoundProgress | null;
+  ruleProgress: ReplacementRuleProgress | null;
   usage: TaskSnapshot["usage"];
   lowConfidence: { total: number; sourceResidue: number };
   subtasks: TaskSnapshot["subtasks"];
@@ -320,6 +322,7 @@ export function useRunSnapshot(kind: RunKind): SnapshotShape {
         longest_running_seconds: 0,
       },
       roundProgress: runtime.snapshot?.round_progress ?? null,
+      ruleProgress: runtime.snapshot?.rule_progress ?? null,
       usage: runtime.snapshot?.usage ?? {
         input_tokens: 0,
         output_tokens: 0,

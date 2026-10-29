@@ -504,12 +504,22 @@ export interface GlossaryReviewRoundProgress {
   current_completed_batches: number;
 }
 
+export interface ReplacementRuleProgress {
+  file_index: number;
+  file_total: number;
+  rule_position: number;
+  rule_total: number;
+  src: string;
+  dst: string;
+}
+
 export interface TaskSnapshot {
   header: TaskHeader;
   progress: TaskProgress;
   usage: TaskUsage;
   low_confidence?: TaskLowConfidenceSummary;
   round_progress?: GlossaryReviewRoundProgress | null;
+  rule_progress?: ReplacementRuleProgress | null;
   subtasks: SubtaskMini[];
   active_model_id: string | null;
   active_prompt_id: string | null;

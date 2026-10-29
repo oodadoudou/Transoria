@@ -383,3 +383,38 @@ def test_epub_rules_run_in_order_per_text_node_and_report_bad_regex_once(tmp_pat
     assert result.replacement_count == 60
     assert len(result.errors) == 1
     assert {occ.rule_index for occ in result.occurrences} == {0, 1}
+
+
+def test_rule_progress_reports_each_enabled_rule_in_order() -> None:
+    seen: list[tuple[int, int, str]] = []
+    rules = [
+        ReplacementRule(src="a", dst="b"),
+        ReplacementRule(src="skip", dst="x", enabled=False),
+        ReplacementRule(src="b", dst="c"),
+    ]
+
+    apply_rules("a", rules, on_rule=lambda position, total, rule: seen.append((position, total, rule.src)))
+
+    assert seen == [(1, 2, "a"), (2, 2, "b")]
+
+
+def test_txt_line_mode_matches_whole_text_semantics() -> None:
+    literal = apply_rules(
+        "宋鹤来了\n宋鹤走了\n",
+        [
+            ReplacementRule(src="来了", dst="来\n了", case_sensitive=True),
+            ReplacementRule(src="宋鹤", dst="松鹤", case_sensitive=True),
+            ReplacementRule(src="了", dst="啦", case_sensitive=True),
+        ],
+    )
+    assert literal.text == "松鹤来\n啦\n松鹤走啦\n"
+    assert literal.replacement_count == 5
+
+    spanning = apply_rules(
+        "宋鹤\n来了",
+        [
+            ReplacementRule(src="宋鹤", dst="松鹤", case_sensitive=True),
+            ReplacementRule(src=r"鹤\n来", dst="鹤来", regex=True),
+        ],
+    )
+    assert spanning.text == "松鹤来了"

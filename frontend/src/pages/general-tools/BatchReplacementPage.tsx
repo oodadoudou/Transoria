@@ -56,6 +56,8 @@ const REPLACE_ORIGINALS_LOCAL_KEY = "transoria.generalTools.batchReplacement.rep
 const RULE_FILE_LOCAL_KEY = "transoria.generalTools.batchReplacement.ruleFile";
 const RULES_LOCAL_KEY = "transoria.generalTools.batchReplacement.rules";
 const RULE_RENDER_BATCH = 300;
+// Faster than the default poll so the per-rule bar moves smoothly on multi-second runs.
+const REPLACEMENT_POLL_MS = 500;
 const RULE_FILE_DETECT_DELAY_MS = 400;
 const MESSAGE_LIST_LIMIT = 200;
 const alwaysEnabled = () => true;
@@ -173,7 +175,7 @@ export function BatchReplacementPage() {
   const [reportError, setReportError] = useState<BridgeError | null>(null);
 
   const snapshot = useRunSnapshot("replacement");
-  usePollRunSnapshot("replacement");
+  usePollRunSnapshot("replacement", REPLACEMENT_POLL_MS);
   const setActiveTaskId = useRuntimeStore((state) => state.setActiveTaskId);
   const activeTaskId = useRuntimeStore(
     (state) => state.replacement.activeTaskId,
@@ -426,6 +428,17 @@ export function BatchReplacementPage() {
   // instead of misleadingly showing 100% before all subtasks settle.
   const settled = completed;
   const percent = total > 0 ? Math.floor((settled / total) * 100) : 0;
+  const ruleProgress = isRunning ? snapshot.ruleProgress : null;
+  const overallPercent =
+    snapshot.status === "completed"
+      ? 100
+      : ruleProgress && ruleProgress.file_total > 0 && ruleProgress.rule_total > 0
+        ? Math.floor(
+            ((ruleProgress.file_index - 1 + ruleProgress.rule_position / ruleProgress.rule_total) /
+              ruleProgress.file_total) *
+              100,
+          )
+        : percent;
 
   return (
     <>
@@ -552,6 +565,34 @@ export function BatchReplacementPage() {
               value={NUM.format(failed)}
             />
           </div>
+          <div className={styles.progressBlock}>
+            <div
+              className={styles.progressTrack}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={overallPercent}
+            >
+              <div className={styles.progressFill} style={{ width: `${overallPercent}%` }} />
+            </div>
+            <span className={styles.progressPercent}>{overallPercent}%</span>
+          </div>
+          {ruleProgress ? (
+            <div className={styles.currentRule}>
+              <span className={styles.currentRuleLabel}>
+                {format(messages.batchReplacement.currentRule, {
+                  file: NUM.format(ruleProgress.file_index),
+                  files: NUM.format(ruleProgress.file_total),
+                })}
+              </span>
+              <span className={styles.currentRuleText}>
+                {ruleProgress.src} → {ruleProgress.dst}
+              </span>
+              <span className={styles.currentRuleCount}>
+                {NUM.format(ruleProgress.rule_position)} / {NUM.format(ruleProgress.rule_total)}
+              </span>
+            </div>
+          ) : null}
           {snapshot.failures.length > 0 ? (
             <div className={styles.failures}>
               <Button

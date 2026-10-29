@@ -5,6 +5,7 @@ import io
 import os
 from pathlib import Path
 import re
+from typing import Callable
 import zipfile
 
 from transoria.formats.epub_parser import (
@@ -68,6 +69,8 @@ class FileReplacementResult:
 # even when many rules each match thousands of times. The cap is per
 # rule per *file*; the aggregated report can carry more.
 DEFAULT_OCCURRENCE_LIMIT_PER_RULE = 200
+# Called before each enabled rule runs with (position, enabled_total, rule).
+RuleProgress = Callable[[int, int, "ReplacementRule"], None]
 DEFAULT_CONTEXT_CHARS = 80
 
 
@@ -155,23 +158,49 @@ def apply_rules(
     collect_occurrences: bool = False,
     occurrence_limit_per_rule: int = DEFAULT_OCCURRENCE_LIMIT_PER_RULE,
     context_chars: int = DEFAULT_CONTEXT_CHARS,
+    on_rule: RuleProgress | None = None,
 ) -> ReplacementApplyResult:
     """Apply ``rules`` sequentially to ``text``; each rule sees the previous rule's output."""
 
+    # Literal rules without line breaks never span lines, so per-line slots give identical
+    # results while each replacement only copies its own line instead of the whole file.
+    line_safe = all(
+        not rule.regex and "\n" not in rule.src for rule in rules if rule.enabled
+    )
+    slots = text.split("\n") if line_safe else [text]
     result = _apply_rules_to_slots(
-        [text],
-        [[0]],
+        slots,
+        _line_groups(slots),
         rules,
         collect_occurrences=collect_occurrences,
         occurrence_limit_per_rule=occurrence_limit_per_rule,
         context_chars=context_chars,
+        on_rule=on_rule,
     )
     return ReplacementApplyResult(
-        text=result.slots[0],
-        replacement_count=result.counts[0],
+        text="\n".join(result.slots),
+        replacement_count=sum(result.counts),
         errors=result.errors,
         occurrences=result.occurrences,
     )
+
+
+_LINE_GROUP_CHARS = 32 * 1024
+
+
+def _line_groups(slots: list[str]) -> list[list[int]]:
+    groups: list[list[int]] = []
+    current: list[int] = []
+    size = 0
+    for index, slot in enumerate(slots):
+        current.append(index)
+        size += len(slot) + 1
+        if size >= _LINE_GROUP_CHARS:
+            groups.append(current)
+            current, size = [], 0
+    if current:
+        groups.append(current)
+    return groups
 
 
 @dataclass(frozen=True)
@@ -224,6 +253,7 @@ def _apply_rules_to_slots(
     collect_occurrences: bool,
     occurrence_limit_per_rule: int,
     context_chars: int,
+    on_rule: RuleProgress | None = None,
 ) -> _SlotsResult:
     """Run rules in order over independent text slots, rule by rule.
 
@@ -238,7 +268,9 @@ def _apply_rules_to_slots(
     collected: list[ReplacementOccurrence] = []
     joined: list[str | None] = [None] * len(groups)
 
-    for item in prepared:
+    for position, item in enumerate(prepared, start=1):
+        if on_rule is not None:
+            on_rule(position, len(prepared), item.rule)
         recorded = 0
         failed = False
         for group_index, members in enumerate(groups):
@@ -325,11 +357,12 @@ def replace_txt_file(
     *,
     collect_occurrences: bool = False,
     in_place: bool = False,
+    on_rule: RuleProgress | None = None,
 ) -> FileReplacementResult:
     document = parse_txt_file(source_path)
     original_text = "".join(f"{segment.text}{segment.newline}" for segment in document.segments)
     result = apply_rules(
-        original_text, rules, collect_occurrences=collect_occurrences
+        original_text, rules, collect_occurrences=collect_occurrences, on_rule=on_rule
     )
     if in_place:
         output_path = source_path
@@ -354,6 +387,7 @@ def replace_epub_file(
     *,
     collect_occurrences: bool = False,
     in_place: bool = False,
+    on_rule: RuleProgress | None = None,
 ) -> FileReplacementResult:
     document = parse_epub_file(source_path, buffer_archive=True)
     replacements: dict[int, tuple[str, ...]] = {}
@@ -391,6 +425,7 @@ def replace_epub_file(
         collect_occurrences=collect_occurrences,
         occurrence_limit_per_rule=DEFAULT_OCCURRENCE_LIMIT_PER_RULE,
         context_chars=DEFAULT_CONTEXT_CHARS,
+        on_rule=on_rule,
     )
     errors.extend(result.errors)
     occurrences.extend(result.occurrences)

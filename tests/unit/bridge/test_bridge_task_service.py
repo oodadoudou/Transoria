@@ -4068,3 +4068,31 @@ def test_replacement_never_rewrites_rule_files_in_the_input_tree(tmp_path: Path)
     assert (input_dir / "novel.txt").read_text(encoding="utf-8") == "hi world\n"
     assert (input_dir / "vol2" / "old-rules.txt").read_text(encoding="utf-8") == "hello->hi\n# note\n"
     assert artifacts["output_files"] == [str(input_dir / "novel.txt")]
+
+
+def test_replacement_progress_reporter_throttles_between_first_and_last_rule(monkeypatch):
+    from transoria.bridge import task_service as module
+    from transoria.bridge.task_registry import RunningTask
+    from transoria.tools.replacement import ReplacementRule
+
+    now = [0.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
+    running = RunningTask(task_id="t", kind="replacement", cache=None, created_at="")  # type: ignore[arg-type]
+    report = module._replacement_progress_reporter(running, file_index=2, file_total=3)
+    updates = []
+    original = running.set_live_progress
+    running.set_live_progress = lambda progress: (updates.append(progress), original(progress))  # type: ignore[method-assign]
+
+    for position, at in ((1, 0.0), (2, 0.01), (3, 0.02), (4, 0.03)):
+        now[0] = at
+        report(position, 4, ReplacementRule(src=f"词{position}", dst="新"))
+
+    assert [u["rule_position"] for u in updates] == [1, 4]
+    assert running.live_progress == {
+        "file_index": 2,
+        "file_total": 3,
+        "rule_position": 4,
+        "rule_total": 4,
+        "src": "词4",
+        "dst": "新",
+    }

@@ -440,6 +440,7 @@ export const en: Messages = {
     sub: "Apply imported TXT arrow rules or Reeden reader .red replacement rules to TXT and EPUB files.",
     inputFolder: "Input folder",
     outputFolder: "Output folder (empty = next to each original)",
+    currentRule: "Replacing (file {file} / {files}):",
     replaceOriginals: "Replace original files",
     replaceOriginalsHelp:
       "Overwrites the original files in the input folder (including subfolders) instead of saving copies; files without matches are left untouched. This cannot be undone.",
