@@ -5,9 +5,10 @@ test/
 scripts/
 
 # Documentation policy
-# Only the project-root README.md is meant for GitHub.
+# Only the project-root READMEs are meant for GitHub.
 *.md
 !/README.md
+!/README.zh-CN.md
 docs/
 
 # macOS
