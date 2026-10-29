@@ -65,6 +65,7 @@ from transoria.settings import SettingsStore
 from transoria.tools.replacement import (
     REPLACED_SUFFIX,
     ReplacementRule,
+    is_rule_txt_file,
     replace_epub_file,
     replace_txt_file,
 )
@@ -4876,11 +4877,14 @@ class TaskService:
 
         task_id = _new_task_id("replacement")
         started_at = _utc_now_iso()
-        files = scan_input_directory(input_dir)
-        if rule_file:
-            # A rules TXT inside the input folder would otherwise be rewritten by its own rules.
-            rule_path = Path(rule_file).expanduser().resolve()
-            files = [doc for doc in files if doc.path.resolve() != rule_path]
+        rule_path = Path(rule_file).expanduser().resolve() if rule_file else None
+        # Rule files in the input tree would otherwise be rewritten by the rules they hold.
+        files = [
+            doc
+            for doc in scan_input_directory(input_dir)
+            if doc.path.resolve() != rule_path
+            and not (doc.format is DocumentFormat.TXT and is_rule_txt_file(doc.path))
+        ]
 
         cache = self._cache_for_kind("replacement")
         running = RunningTask(

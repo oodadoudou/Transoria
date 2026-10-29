@@ -20,7 +20,7 @@ from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.bridge.task_service import TaskService
 from transoria.formats.text import decode_text_bytes, parse_txt_file
-from transoria.tools.replacement import ReplacementRule
+from transoria.tools.replacement import ReplacementRule, is_rule_txt_file
 
 
 def _parse_rule_line(
@@ -351,40 +351,6 @@ def _coerce_rules(raw: Sequence[Mapping[str, object]]) -> tuple[ReplacementRule,
     return tuple(coerced)
 
 
-# Novel TXTs fail this check within their first lines; only the sample is decoded for them.
-_RULE_FILE_SAMPLE_BYTES = 64 * 1024
-
-
-def _is_rule_txt(path: Path) -> bool:
-    """A TXT counts as a rule file only when every content line is a valid ``src->dst`` rule."""
-
-    try:
-        with path.open("rb") as handle:
-            sample = handle.read(_RULE_FILE_SAMPLE_BYTES)
-            truncated = bool(handle.read(1))
-        if truncated:
-            sample = sample[: sample.rfind(b"\n") + 1]
-        text, _encoding = decode_text_bytes(sample)
-    except (OSError, UnicodeDecodeError):
-        return False
-    rule_count = 0
-    for index, line in enumerate(text.splitlines(), start=1):
-        rule, warning = _parse_rule_line(line, index)
-        if warning is not None:
-            return False
-        rule_count += rule is not None
-    if not truncated:
-        return rule_count > 0
-    try:
-        document = parse_txt_file(path)
-    except (OSError, UnicodeDecodeError):
-        return False
-    parsed = [_parse_rule_line(segment.text, i) for i, segment in enumerate(document.segments, start=1)]
-    return all(warning is None for _rule, warning in parsed) and any(
-        rule is not None for rule, _warning in parsed
-    )
-
-
 def find_rule_files(payload: Mapping[str, object]) -> dict[str, object]:
     folder = Path(expect_string(payload, "folder")).expanduser()
     if not folder.is_dir():
@@ -396,7 +362,7 @@ def find_rule_files(payload: Mapping[str, object]) -> dict[str, object]:
         and not path.name.startswith(".")
         and (
             path.suffix.casefold() == ".red"
-            or (path.suffix.casefold() == ".txt" and _is_rule_txt(path))
+            or (path.suffix.casefold() == ".txt" and is_rule_txt_file(path))
         )
     ]
     return {"paths": paths}

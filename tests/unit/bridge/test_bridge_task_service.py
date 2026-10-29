@@ -4051,3 +4051,20 @@ def test_replacement_skips_the_rule_file_inside_the_input_folder(tmp_path: Path)
     assert (input_dir / "a.txt").read_text(encoding="utf-8") == "hi\n"
     assert rule_file.read_text(encoding="utf-8") == "hello->hi\n"
     assert artifacts["output_files"] == [str(input_dir / "a.txt")]
+
+
+def test_replacement_never_rewrites_rule_files_in_the_input_tree(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    (input_dir / "vol2").mkdir(parents=True)
+    (input_dir / "novel.txt").write_text("hello world\n", encoding="utf-8")
+    (input_dir / "vol2" / "old-rules.txt").write_text("hello->hi\n# note\n", encoding="utf-8")
+    _seed_replacement_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
+
+    artifacts = _run_replacement(
+        service, input_folder=str(input_dir), output_folder="", replace_originals=True
+    )
+
+    assert (input_dir / "novel.txt").read_text(encoding="utf-8") == "hi world\n"
+    assert (input_dir / "vol2" / "old-rules.txt").read_text(encoding="utf-8") == "hello->hi\n# note\n"
+    assert artifacts["output_files"] == [str(input_dir / "novel.txt")]

@@ -8,6 +8,7 @@ import re
 import zipfile
 
 from transoria.formats.epub_parser import (
+    build_elem_by_path,
     find_by_path,
     parse_epub_file,
     parse_ncx_xml,
@@ -15,7 +16,7 @@ from transoria.formats.epub_parser import (
     read_archive_entry,
 )
 from transoria.formats.epub_writer import write_epub_slots_to_path
-from transoria.formats.text import parse_txt_file
+from transoria.formats.text import decode_text_bytes, parse_txt_file
 
 
 REPLACED_SUFFIX = "-Replaced"
@@ -99,6 +100,42 @@ def load_replacement_rules_txt(path: Path) -> list[ReplacementRule]:
 
         rules.append(ReplacementRule(src=src, dst=dst))
     return rules
+
+
+# Novel TXTs fail this check within their first lines; only the sample is decoded for them.
+_RULE_FILE_SAMPLE_BYTES = 64 * 1024
+
+
+def is_rule_txt_file(path: Path) -> bool:
+    """A TXT counts as a rule file only when every content line is a ``src->dst`` rule."""
+
+    try:
+        with path.open("rb") as handle:
+            sample = handle.read(_RULE_FILE_SAMPLE_BYTES)
+            truncated = bool(handle.read(1))
+        if truncated:
+            sample = sample[: sample.rfind(b"\n") + 1]
+        verdict = _rule_lines_verdict(decode_text_bytes(sample)[0].splitlines())
+        if verdict is not True or not truncated:
+            return verdict is True
+        return _rule_lines_verdict(segment.text for segment in parse_txt_file(path).segments) is True
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+def _rule_lines_verdict(lines) -> bool | None:
+    """True when all content lines are rules, False on any non-rule line, None when there are no rules."""
+
+    found = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or (stripped.startswith("#") and "->" not in stripped):
+            continue
+        src, separator, _dst = stripped.partition("->")
+        if not separator or not src.strip().removesuffix("#").strip():
+            return False
+        found = True
+    return True if found else None
 
 
 def _split_rule_line(line: str) -> tuple[str, str] | None:
@@ -328,6 +365,8 @@ def replace_epub_file(
         for path in dict.fromkeys(segment.doc_path for segment in document.segments):
             raw = read_archive_entry(archive, path)
             roots[path] = parse_ncx_xml(raw) if path.lower().endswith(".ncx") else parse_xhtml_or_html(raw)
+    # One path index per document; walking from the root for every slot is quadratic in chapter length.
+    elems_by_path = {path: build_elem_by_path(root) for path, root in roots.items()}
 
     slots: list[str] = []
     segment_slots: list[list[int]] = []
@@ -335,7 +374,9 @@ def replace_epub_file(
     for segment in document.segments:
         members: list[int] = []
         for part in segment.parts:
-            elem = find_by_path(roots[segment.doc_path], part.path)
+            elem = elems_by_path[segment.doc_path].get(part.path)
+            if elem is None:
+                elem = find_by_path(roots[segment.doc_path], part.path)
             if elem is None:
                 raise ValueError("EPUB replacement cannot resolve the source text slot")
             members.append(len(slots))
