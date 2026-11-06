@@ -58,4 +58,4 @@ uv run --no-sync python app.py           # Windows: python app.py
 
 ### 社区
 
-问题反馈 QQ 群：**1104197845**
+问题反馈 QQ 群：**1131344057**

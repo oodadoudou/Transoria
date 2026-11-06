@@ -58,4 +58,4 @@ uv run --no-sync python app.py           # Windows: python app.py
 
 ### Community
 
-Questions and feedback: QQ group **1104197845**.
+Questions and feedback: QQ group **1131344057**.
