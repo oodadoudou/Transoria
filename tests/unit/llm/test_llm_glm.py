@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Mapping
 
 import pytest
@@ -10,11 +10,19 @@ import pytest
 from transoria.llm import ChatRequest, LlmClient, LlmRequestError, ModelConfig, ProviderFormat
 from transoria.llm.client import LlmFilteredResponseError, LlmTruncatedResponseError, TransportResult
 from transoria.llm.config import ThinkingLevel
-from transoria.llm.glm import glm_requires_thinking, glm_thinking_fields, glm_version
+from transoria.llm.glm import (
+    glm_anthropic_fields,
+    glm_requires_thinking,
+    glm_thinking_fields,
+    glm_version,
+)
 
 ZHIPU = "https://open.bigmodel.cn/api/paas/v4"
 OPENROUTER = "https://openrouter.ai/api/v1"
 DASHSCOPE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+TOGETHER = "https://api.together.xyz/v1"
+FRIENDLI = "https://api.friendli.ai/serverless/v1"
+SELF_HOSTED = "http://127.0.0.1:8000/v1"
 
 
 @dataclass
@@ -234,3 +242,96 @@ def test_glm_finish_reasons_are_not_treated_as_success(finish_reason, error_type
 def test_null_content_is_empty_text() -> None:
     response, _transport = _send(_model("glm-5.3", ThinkingLevel.LOW), _ok(None))
     assert response.content == ""
+
+
+@pytest.mark.parametrize(
+    ("model_id", "level", "expected"),
+    [
+        ("zai-org/GLM-5.3-Flash", ThinkingLevel.MEDIUM, {"reasoning_effort": "high"}),
+        ("zai-org/GLM-5.3", ThinkingLevel.OFF, {"reasoning": {"enabled": False}}),
+        ("zai-org/GLM-5.2", ThinkingLevel.LOW, {"reasoning": {"enabled": True}}),
+        ("zai-org/GLM-5.2", ThinkingLevel.OFF, {"reasoning": {"enabled": False}}),
+    ],
+)
+def test_together_fields(model_id, level, expected) -> None:
+    assert glm_thinking_fields(_model(model_id, level, TOGETHER)) == expected
+
+
+@pytest.mark.parametrize(
+    ("model_id", "level", "expected"),
+    [
+        ("zai-org/GLM-5.3", ThinkingLevel.LOW, {"reasoning_effort": "low"}),
+        ("zai-org/GLM-5.3", ThinkingLevel.OFF, {}),
+        (
+            "zai-org/GLM-5.2",
+            ThinkingLevel.LOW,
+            {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_effort": "high"},
+        ),
+        ("zai-org/GLM-5.2", ThinkingLevel.OFF, {"chat_template_kwargs": {"enable_thinking": False}}),
+        ("zai-org/GLM-5.1", ThinkingLevel.HIGH, {"chat_template_kwargs": {"enable_thinking": True}}),
+    ],
+)
+def test_friendli_fields(model_id, level, expected) -> None:
+    assert glm_thinking_fields(_model(model_id, level, FRIENDLI)) == expected
+
+
+def test_self_hosted_off_also_uses_the_chat_template_switch() -> None:
+    assert glm_thinking_fields(_model("zai-org/GLM-5.1", ThinkingLevel.OFF, SELF_HOSTED)) == {
+        "thinking": {"type": "disabled"},
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    assert "chat_template_kwargs" not in glm_thinking_fields(
+        _model("zai-org/GLM-5.1", ThinkingLevel.LOW, SELF_HOSTED)
+    )
+    assert "chat_template_kwargs" not in glm_thinking_fields(_model("glm-5.2", ThinkingLevel.OFF))
+    assert "chat_template_kwargs" not in glm_thinking_fields(
+        _model("zai-org/GLM-5.3", ThinkingLevel.OFF, SELF_HOSTED)
+    )
+
+
+def test_relay_rejecting_the_chat_template_switch_keeps_off_working() -> None:
+    rejected = TransportResult(
+        400, {"error": {"message": "Unknown parameter: chat_template_kwargs"}}
+    )
+    response, transport = _send(
+        _model("glm-5.1", ThinkingLevel.OFF, "https://relay.example/v1"), rejected, _ok()
+    )
+    assert response.content == "ok"
+    assert "chat_template_kwargs" not in transport.calls[1]
+    assert transport.calls[1]["thinking"] == {"type": "disabled"}
+
+
+def _anthropic_ok() -> TransportResult:
+    return TransportResult(
+        200,
+        {
+            "content": [{"type": "text", "text": "ok"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        },
+    )
+
+
+def test_anthropic_format_sends_a_valid_budget_and_the_mapped_effort() -> None:
+    model = replace(
+        _model("glm-5.3-flash", ThinkingLevel.MEDIUM, "https://api.z.ai/api/anthropic"),
+        provider_format=ProviderFormat.ANTHROPIC,
+    )
+    _response, transport = _send(model, _anthropic_ok())
+    assert transport.calls[0]["thinking"] == {"type": "enabled", "budget_tokens": 1024}
+    assert transport.calls[0]["reasoning_effort"] == "high"
+
+
+def test_anthropic_fields_respect_output_limit_and_host_rules() -> None:
+    model = _model("glm-5.2", ThinkingLevel.LOW, "https://api.z.ai/api/anthropic")
+    assert glm_anthropic_fields(model, 1024)["thinking"] == {"type": "enabled"}
+    assert glm_anthropic_fields(_model("glm-4.7", ThinkingLevel.LOW), 8192) == {
+        "thinking": {"type": "enabled", "budget_tokens": 1024}
+    }
+    assert "reasoning_effort" not in glm_anthropic_fields(
+        _model("glm-5.3", ThinkingLevel.LOW, "https://dashscope.aliyuncs.com/apps/anthropic"), 8192
+    )
+    assert glm_anthropic_fields(_model("glm-5.2", ThinkingLevel.OFF), 8192) == {
+        "thinking": {"type": "disabled"}
+    }
+    assert glm_anthropic_fields(_model("claude-sonnet-4-6", ThinkingLevel.LOW), 8192) is None

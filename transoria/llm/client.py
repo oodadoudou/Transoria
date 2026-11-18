@@ -17,7 +17,11 @@ from typing import Mapping, Protocol
 import httpx
 
 from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
-from transoria.llm.glm import glm_requires_thinking, glm_thinking_fields
+from transoria.llm.glm import (
+    glm_anthropic_fields,
+    glm_requires_thinking,
+    glm_thinking_fields,
+)
 from transoria.llm.io_log import log_error, log_recv, log_send
 from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
@@ -789,6 +793,7 @@ _THINKING_SWITCH_FIELDS: tuple[str, ...] = (
 
 _OPTIONAL_COMPATIBILITY_FIELDS: tuple[str, ...] = (
     *_THINKING_SWITCH_FIELDS,
+    "chat_template_kwargs",
     "reasoning_effort",
     "cache_control",
     "temperature",
@@ -1217,7 +1222,10 @@ class LlmClient:
             payload["temperature"] = request.model.temperature
         if request.model.top_p is not None:
             payload["top_p"] = request.model.top_p
-        if request.model.thinking_enabled:
+        glm_fields = glm_anthropic_fields(request.model, int(payload["max_tokens"]))
+        if glm_fields is not None:
+            payload.update(glm_fields)
+        elif request.model.thinking_enabled:
             payload["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": request.model.effective_thinking_budget(),
