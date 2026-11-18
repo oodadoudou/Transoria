@@ -4096,3 +4096,35 @@ def test_replacement_progress_reporter_throttles_between_first_and_last_rule(mon
         "src": "词4",
         "dst": "新",
     }
+
+
+def test_continued_advanced_route_uses_current_thinking_setting(tmp_path: Path):
+    from transoria.prompts import PromptKind
+    from transoria.llm.config import ThinkingLevel
+    from transoria.prompts import default_preset
+    from transoria.workflows.translation.config import TranslationRouteConfig
+    from transoria.workflows.translation.routing import route_snapshot
+
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "book.txt").write_text("안녕하세요", encoding="utf-8")
+    _seed_translation_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
+    profile_id = service.settings_store.load_all().app.active_translation_model_id
+    frozen = route_snapshot(
+        TranslationRouteConfig(
+            model=service.profile_store.get(profile_id),
+            prompt_preset=default_preset(PromptKind.TRANSLATION),
+        )
+    )
+    assert frozen["model"]["thinking_level"] == "off"
+    service.profile_store.update(
+        profile_id, {"thinking_level": ThinkingLevel.LOW, "model_id": "changed-model"}
+    )
+
+    config, _model, _preset = service._build_translation_config(
+        routing_snapshot={"preset_id": "multi", "routes": [frozen], "group_concurrency": 1}
+    )
+
+    assert config.routes[0].model.thinking_level is ThinkingLevel.LOW
+    assert config.routes[0].model.model_id != "changed-model"

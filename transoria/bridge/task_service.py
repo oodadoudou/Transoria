@@ -4244,7 +4244,12 @@ class TaskService:
                     "retranslate snapshot has no API key configured.",
                     field=field,
                 )
-            return snapshot_model.with_api_keys(tuple(key_profile.api_keys))
+            # A provider can reject the frozen level, so resuming follows the user's fix.
+            return replace(
+                snapshot_model.with_api_keys(tuple(key_profile.api_keys)),
+                thinking_level=key_profile.thinking_level,
+                thinking_budget_tokens=key_profile.thinking_budget_tokens,
+            )
 
         return self._resolve_model_profile(profile_id, field=field)
 

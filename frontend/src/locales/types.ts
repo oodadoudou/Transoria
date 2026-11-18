@@ -1674,6 +1674,7 @@ export interface Messages {
     fileLabel: string;
     affectedLabel: string;
     failureTypes: {
+      thinkingRequired: string;
       outputLimit: string;
       contentFilter: string;
       timeout: string;
@@ -1692,6 +1693,7 @@ export interface Messages {
       configValue: string;
       dominant: string;
       recommendations: {
+        thinkingRequired: string;
         outputLimit: string;
         contentFilter: string;
         rateLimitHighConcurrency: string;

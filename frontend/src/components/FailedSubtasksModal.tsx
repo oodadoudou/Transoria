@@ -28,6 +28,7 @@ interface FailureGroup {
 }
 
 type FailureType =
+  | "thinkingRequired"
   | "outputLimit"
   | "contentFilter"
   | "timeout"
@@ -40,6 +41,7 @@ type FailureType =
   | "unknown";
 
 type FailureRecommendation =
+  | "thinkingRequired"
   | "outputLimit"
   | "contentFilter"
   | "rateLimitHighConcurrency"
@@ -347,6 +349,9 @@ function buildGroups(failures: TaskFailure[]): FailureGroup[] {
 
 function classifyFailure(code: string, message: string): FailureType {
   const haystack = `${code} ${message}`.toLowerCase();
+  if (haystack.includes("thinking_off_unsupported")) {
+    return "thinkingRequired";
+  }
   if (haystack.includes("length_truncated")) {
     return "outputLimit";
   }

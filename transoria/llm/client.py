@@ -17,6 +17,7 @@ from typing import Mapping, Protocol
 import httpx
 
 from transoria.llm.config import ModelConfig, ProviderFormat, ThinkingLevel
+from transoria.llm.glm import glm_requires_thinking, glm_thinking_fields
 from transoria.llm.io_log import log_error, log_recv, log_send
 from transoria.llm.usage import TokenUsage, estimate_tokens_from_text
 from transoria.runtime.key_pool import AllKeysFailedError, KeyPool
@@ -514,6 +515,7 @@ def _body_to_request_log_text(body: Mapping[str, object]) -> str:
 _CONTENT_FILTER_FINISH_REASONS: frozenset[str] = frozenset(
     {
         "content_filter",
+        "sensitive",
         "safety",
         "prohibited_content",
         "blocklist",
@@ -523,7 +525,7 @@ _CONTENT_FILTER_FINISH_REASONS: frozenset[str] = frozenset(
     }
 )
 _LENGTH_FINISH_REASONS: frozenset[str] = frozenset(
-    {"length", "max_tokens"}
+    {"length", "max_tokens", "model_context_window_exceeded"}
 )
 _PROBLEM_FINISH_REASONS: frozenset[str] = (
     _CONTENT_FILTER_FINISH_REASONS | _LENGTH_FINISH_REASONS
@@ -539,6 +541,28 @@ def _finish_reason_error_code(reason: str) -> str:
     if lowered in _CONTENT_FILTER_FINISH_REASONS:
         return "llm.content_filter"
     return "llm.length_truncated"
+
+
+def _zhipu_error_code(body: Mapping[str, object]) -> str:
+    error = body.get("error")
+    return str(error.get("code", "")) if isinstance(error, Mapping) else ""
+
+
+def _http_error_code(body: Mapping[str, object]) -> str:
+    # Zhipu returns safety blocks as HTTP 400 with business code 1301.
+    if _zhipu_error_code(body) == "1301":
+        return "llm.content_filter"
+    return "llm.http_error"
+
+
+def _forced_thinking_model_rejected(
+    model: ModelConfig, body: Mapping[str, object]
+) -> bool:
+    # These rejections rarely name a field; prompt-length and safety errors keep their own cause.
+    return glm_requires_thinking(model.model_id) and _zhipu_error_code(body) not in {
+        "1261",
+        "1301",
+    }
 
 
 def _record_request_response(
@@ -564,6 +588,17 @@ def _record_request_response(
                 usage=response.usage,
             )
         raise LlmDegenerateOutputError(response.content, response.usage)
+    if response.finish_reason and response.finish_reason.lower() == "network_error":
+        detail = f"Provider reported a network error for model {request.model.id!r}."
+        if request_log is not None:
+            request_log.fail(
+                error=f"[llm.transport_error] {detail}",
+                status_code=status_code,
+                response_text=response.content,
+                response_chars=len(response.content),
+                usage=response.usage,
+            )
+        raise LlmRequestError(detail, code="llm.transport_error")
     if response.finish_reason and _is_problem_finish_reason(response.finish_reason):
         detail = (
             f"Provider returned finish_reason={response.finish_reason!r} "
@@ -739,12 +774,22 @@ _PAYLOAD_FIELD_REJECTION_TERMS: tuple[str, ...] = (
     r"extra\s+inputs?\s+are\s+not\s+permitted",
     r"not\s+permitted",
     r"not\s+allowed",
+    r"cannot\s+be\s+disabled",
+    r"不支持",
+    r"不能关闭",
+    r"无法关闭",
+)
+
+_THINKING_SWITCH_FIELDS: tuple[str, ...] = (
+    "thinking",
+    "thinkingConfig",
+    "enable_thinking",
+    "reasoning",
 )
 
 _OPTIONAL_COMPATIBILITY_FIELDS: tuple[str, ...] = (
-    "thinking",
+    *_THINKING_SWITCH_FIELDS,
     "reasoning_effort",
-    "thinkingConfig",
     "cache_control",
     "temperature",
     "topP",
@@ -777,6 +822,13 @@ def _body_rejects_payload_field(
         if param == field_name.lower() and any(
             marker in code
             for marker in ("unknown", "unsupported", "unrecognized", "unexpected")
+        ):
+            return True
+        # Zhipu reports a rejected value as business code 1214 and names the field.
+        if str(error.get("code", "")) == "1214" and re.search(
+            rf"(?<![a-z0-9_]){re.escape(field_name.lower())}(?:\.[a-z0-9_]+)*"
+            r"[`'\"\\]*\s*(?:is\s+invalid|参数非法)",
+            str(error.get("message", "")).lower(),
         ):
             return True
 
@@ -1021,7 +1073,7 @@ class LlmClient:
             "stream_options",
             "stream",
         ):
-            if not model.thinking_enabled and field_name in {"thinking", "thinkingConfig"}:
+            if not model.thinking_enabled and field_name in _THINKING_SWITCH_FIELDS:
                 continue
             if _payload_capability_key(model, field_name, payload) in cached:
                 _drop_payload_field(payload, field_name)
@@ -1107,11 +1159,15 @@ class LlmClient:
                 ProviderFormat.CUSTOM,
             ):
                 payload["stream_options"] = {"include_usage": True}
-        thinking = _thinking_payload(request.model.thinking_level)
-        if thinking is not None:
-            payload["thinking"] = thinking
-        if request.model.thinking_enabled:
-            payload["reasoning_effort"] = request.model.thinking_level.value
+        glm_fields = glm_thinking_fields(request.model)
+        if glm_fields is not None:
+            payload.update(glm_fields)
+        else:
+            thinking = _thinking_payload(request.model.thinking_level)
+            if thinking is not None:
+                payload["thinking"] = thinking
+            if request.model.thinking_enabled:
+                payload["reasoning_effort"] = request.model.thinking_level.value
 
         url = request.model.base_url.rstrip("/") + "/chat/completions"
         custom = request.model.custom_headers_dict()
@@ -1353,10 +1409,13 @@ class LlmClient:
         rejected_keys: set[tuple[str, ...]] = set()
         while True:
             if not request.model.thinking_enabled:
-                rejected_off = result.status_code in {400, 422} and any(
-                    _payload_contains_field(payload, name)
-                    and _body_rejects_payload_field(result.body, name)
-                    for name in ("thinking", "thinkingConfig")
+                rejected_off = result.status_code in {400, 422} and (
+                    _forced_thinking_model_rejected(request.model, result.body)
+                    or any(
+                        _payload_contains_field(payload, name)
+                        and _body_rejects_payload_field(result.body, name)
+                        for name in _THINKING_SWITCH_FIELDS
+                    )
                 )
                 ignored_off = result.status_code < 400 and _response_has_thinking(result.body)
                 if rejected_off or ignored_off:
@@ -1554,7 +1613,7 @@ class LlmClient:
                     )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
-                    code="llm.http_error",
+                    code=_http_error_code(result.body),
                 )
 
             _record_request_response(
@@ -1726,7 +1785,7 @@ class LlmClient:
                     )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
-                    code="llm.http_error",
+                    code=_http_error_code(result.body),
                 )
 
             _record_request_response(
@@ -1757,7 +1816,7 @@ def _parse_openai_response(body: Mapping[str, object]) -> ChatResponse:
         f"Malformed message: {first!r}",
         code="llm.malformed_response",
     )
-    content = message.get("content", "")
+    content = message.get("content")
     usage_block = body.get("usage")
     usage = (
         TokenUsage.from_openai_usage(usage_block)
@@ -1766,7 +1825,7 @@ def _parse_openai_response(body: Mapping[str, object]) -> ChatResponse:
     )
     finish_reason = first.get("finish_reason")
     return ChatResponse(
-        content=str(content),
+        content="" if content is None else str(content),
         usage=usage,
         raw=body,
         finish_reason=str(finish_reason) if finish_reason else None,

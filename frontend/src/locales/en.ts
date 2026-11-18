@@ -1872,6 +1872,7 @@ export const en: Messages = {
     fileLabel: "File",
     affectedLabel: "Affected",
     failureTypes: {
+      thinkingRequired: "Thinking required",
       outputLimit: "Output truncated",
       contentFilter: "Blocked by provider",
       timeout: "Model timeout",
@@ -1892,6 +1893,8 @@ export const en: Messages = {
         "concurrency {concurrency} · RPM {rpm} · timeout {timeout}s · retries {retries}",
       dominant: "Main cause: {type} ({count}/{total})",
       recommendations: {
+        thinkingRequired:
+          "This model cannot turn thinking off. Set its reasoning level to Low, Medium, or High under Models, then continue failed chunks.",
         contentFilter:
           "The provider's content policy blocked this request or reply, and retrying unchanged is usually blocked again. Switch to another model or provider, then continue failed chunks.",
         outputLimit:
