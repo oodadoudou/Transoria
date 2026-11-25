@@ -622,8 +622,6 @@ export const zh: Messages = {
     apply: "保存 EPUB",
     openOutput: "打开输出",
     dialogTitle: "编辑 EPUB 元数据",
-    dialogSub:
-      "默认按书名 metadata 生成 EPUB 文件名；需要不同文件名时取消勾选后单独填写。",
     cancel: "取消",
     ok: "OK",
     compressOutput: "同时输出压缩后的 EPUB",
@@ -1183,7 +1181,6 @@ export const zh: Messages = {
       filterOnlyTruncated: "疑似截断",
       filterOnlyFormatRescue: "格式兜底",
       termAuditTitle: "术语一致性",
-      termAuditSub: "按本次翻译任务的术语表条目聚合。仅本地审计，不调用模型。",
       termAuditGroupCount: "{n} 个术语组",
       termAuditApplied: "已应用 {n}",
       termAuditMissing: "缺失 {n}",

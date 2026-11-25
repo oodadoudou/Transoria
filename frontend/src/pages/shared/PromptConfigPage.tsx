@@ -100,7 +100,7 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
         </Panel>
       ) : null}
 
-      <Panel label={p.active} labelExtra={<span>{p.activeHint}</span>}>
+      <Panel label={p.active} labelHelp={p.activeHint}>
         {activeSummary ? (
           <div className={styles.activeRow}>
             <div className={styles.av} aria-hidden />
@@ -120,9 +120,9 @@ export function PromptConfigPage({ owner }: PromptConfigPageProps) {
 
       <Panel
         label={p.available}
+        labelHelp={p.availableHint}
         labelExtra={
           <div className={styles.headerActions}>
-            <span>{p.availableHint}</span>
             <Button variant="ghost" onClick={handleAdd}>
               {p.actions.add}
             </Button>

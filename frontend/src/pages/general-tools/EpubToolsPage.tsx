@@ -151,7 +151,6 @@ export function EpubToolsPage({ initialTool = null }: EpubToolsPageProps) {
                 }}
               >
                 <span>{item.title}</span>
-                <small>{item.sub}</small>
                 <strong>{text.open}</strong>
               </button>
             ))}

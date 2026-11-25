@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { HelpTip } from './HelpTip';
 import styles from './ToggleSwitch.module.css';
 
 interface ToggleSwitchProps {
@@ -17,26 +17,13 @@ export function ToggleSwitch({
   help,
   trailing,
 }: ToggleSwitchProps) {
-  const [helpOpen, setHelpOpen] = useState(false);
-  const helpId = useId();
 
   return (
     <div className={styles.wrap}>
       <div className={styles.row}>
         <div className={styles.labelWrap}>
           <span className={styles.label}>{label}</span>
-          {help ? (
-            <button
-              type="button"
-              className={styles.help}
-              aria-expanded={helpOpen}
-              aria-controls={helpId}
-              onClick={() => setHelpOpen(!helpOpen)}
-              title={help}
-            >
-              ?
-            </button>
-          ) : null}
+          {help ? <HelpTip>{help}</HelpTip> : null}
         </div>
         <div className={styles.controls}>
           {checked && trailing ? <div className={styles.trailing}>{trailing}</div> : null}
@@ -51,11 +38,6 @@ export function ToggleSwitch({
           </button>
         </div>
       </div>
-      {help && helpOpen ? (
-        <div id={helpId} className={styles.hint}>
-          {help}
-        </div>
-      ) : null}
     </div>
   );
 }

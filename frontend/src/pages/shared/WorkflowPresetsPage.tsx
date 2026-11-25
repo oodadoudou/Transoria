@@ -238,7 +238,7 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
 
       <Panel
         label={labels.currentConfig}
-        labelExtra={<span>{labels.currentHint}</span>}
+        labelHelp={labels.currentHint}
       >
         <div className={styles.activeRow}>
           <div className={styles.av} aria-hidden />
@@ -251,9 +251,9 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
 
       <Panel
         label={labels.available}
+        labelHelp={labels.availableHint}
         labelExtra={
           <div className={styles.headerActions}>
-            <span>{labels.availableHint}</span>
             <Button variant="ghost" onClick={beginCreate}>
               {labels.addAction}
             </Button>

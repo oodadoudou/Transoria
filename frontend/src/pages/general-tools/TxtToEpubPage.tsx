@@ -759,7 +759,7 @@ export function TxtToEpubPage() {
               const display = displayPreset(preset, englishUi);
               return (
                 <option key={preset.id} value={preset.id}>
-                  {display.label} - {display.description}
+                  {display.label}
                 </option>
               );
             })}
@@ -1000,7 +1000,7 @@ export function TxtToEpubPage() {
             );
           })}
           <option value="custom">
-            {text.customCss} - {text.customCssHint}
+            {text.customCss}
           </option>
         </EpubToolSelectField>
         <div className={styles.cssGrid}>

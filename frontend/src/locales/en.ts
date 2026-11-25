@@ -635,8 +635,6 @@ export const en: Messages = {
     apply: "Save EPUB",
     openOutput: "Open output",
     dialogTitle: "Edit EPUB metadata",
-    dialogSub:
-      "By default the EPUB filename follows the title metadata. Uncheck it to use a separate output filename.",
     cancel: "Cancel",
     ok: "OK",
     compressOutput: "Also output a compressed EPUB",
@@ -1216,8 +1214,6 @@ export const en: Messages = {
       filterOnlyTruncated: "Truncated",
       filterOnlyFormatRescue: "Format rescue",
       termAuditTitle: "Term consistency",
-      termAuditSub:
-        "Grouped by glossary entry from this translation task. Local audit only; no model calls.",
       termAuditGroupCount: "{n} term group(s)",
       termAuditApplied: "{n} applied",
       termAuditMissing: "{n} missing",

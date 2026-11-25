@@ -6,9 +6,9 @@
 
 .toolButton {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: 1fr auto;
   gap: 6px;
-  min-height: 132px;
+  min-height: 88px;
   border: 1px solid var(--hairline, #ece8e2);
   border-radius: 8px;
   background: var(--panel, #fffaf3);
@@ -35,12 +35,6 @@
 .toolButton span {
   font-size: 15px;
   font-weight: 750;
-}
-
-.toolButton small {
-  color: var(--muted, #7a7166);
-  font-size: 12.5px;
-  line-height: 1.45;
 }
 
 .toolButton strong {
@@ -218,9 +212,6 @@
   border-bottom-color: var(--hairline);
 }
 
-:global(:root[data-theme='dark']) .toolButton small {
-  color: var(--muted);
-}
 
 :global(:root[data-theme='dark']) .toolButton strong,
 :global(:root[data-theme='dark']) .dialogHeader h2 {

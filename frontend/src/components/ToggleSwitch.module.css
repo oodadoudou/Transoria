@@ -23,33 +23,8 @@
   font-weight: 500;
 }
 
-.help {
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-  display: inline-grid;
-  place-items: center;
-  cursor: pointer;
-  padding: 0;
-  font-family: inherit;
-  line-height: 1;
-}
 
-.help:hover {
-  color: var(--ink);
-  background: var(--panel-soft);
-}
 
-.help[aria-expanded='true'] {
-  background: var(--action);
-  color: var(--action-fg);
-  border-color: var(--action);
-}
 
 .controls {
   display: inline-flex;
@@ -95,12 +70,3 @@
   left: 18px;
 }
 
-.hint {
-  font-size: 11.5px;
-  color: var(--ink-soft);
-  line-height: 1.55;
-  background: var(--panel-soft);
-  padding: 10px 14px;
-  border-radius: var(--radius-inset);
-  max-width: 64ch;
-}

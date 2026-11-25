@@ -76,11 +76,7 @@ export function ModelConfigPage() {
             {seeded.length > 0 ? (
               <Panel
                 label={m.sections.preset.title}
-                labelExtra={
-                  <div className={styles.presetActions}>
-                    <span>{m.sections.preset.sub}</span>
-                  </div>
-                }
+                labelHelp={m.sections.preset.sub}
               >
                 <div className={styles.chipGrid}>
                   {seeded.map((profile) => (
@@ -102,9 +98,9 @@ export function ModelConfigPage() {
 
             <Panel
               label={cfg.title}
+              labelHelp={cfg.sub}
               labelExtra={
                 <div className={styles.presetActions}>
-                  <span>{cfg.sub}</span>
                   <Button
                     variant="ghost"
                     onClick={() => setModalState({ mode: "create" })}

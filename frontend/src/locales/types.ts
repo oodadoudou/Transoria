@@ -744,7 +744,6 @@ export interface Messages {
       filterOnlyTruncated: string;
       filterOnlyFormatRescue: string;
       termAuditTitle: string;
-      termAuditSub: string;
       termAuditGroupCount: string;
       termAuditApplied: string;
       termAuditMissing: string;
@@ -1257,7 +1256,6 @@ export interface Messages {
     apply: string;
     openOutput: string;
     dialogTitle: string;
-    dialogSub: string;
     cancel: string;
     ok: string;
     compressOutput: string;

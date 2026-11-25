@@ -364,7 +364,6 @@ export function EpubMetadataPage({ onEditContent }: { onEditContent?: (path: str
             <div className={styles.dialogHeader}>
               <div>
                 <h2 id="epub-metadata-dialog-title">{text.dialogTitle}</h2>
-                <p>{text.dialogSub}</p>
               </div>
               <button
                 type="button"

@@ -217,13 +217,6 @@
   flex-wrap: wrap;
 }
 
-.presetActions span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .actionRow {
   display: flex;
   gap: 8px;

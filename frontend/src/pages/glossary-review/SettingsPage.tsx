@@ -8,6 +8,7 @@ import {
 import { format, useMessages } from "@/locales";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
+import { HelpTip } from "@/components/HelpTip";
 import { NumberField } from "@/components/NumberField";
 import { Segmented } from "@/components/Segmented";
 import { LanguageSelect } from "@/components/LanguageSelect";
@@ -294,7 +295,7 @@ function FileSelect({
     : "";
   return (
     <div className={styles.fileField}>
-      <div className={styles.rowLabel}>{label}</div>
+      <div className={styles.rowLabel}>{label}<HelpTip>{help}</HelpTip></div>
       <select
         className={styles.selectInput}
         value={normalizedValue}
@@ -308,7 +309,6 @@ function FileSelect({
           </option>
         ))}
       </select>
-      <div className={styles.rowHint}>{help}</div>
     </div>
   );
 }
@@ -342,7 +342,7 @@ function ReferencePicker({
   };
   return (
     <div className={styles.fileField}>
-      <div className={styles.rowLabel}>{label}</div>
+      <div className={styles.rowLabel}>{label}<HelpTip>{help}</HelpTip></div>
       {options.length === 0 ? (
         <div className={styles.referenceEmpty}>{empty}</div>
       ) : (
@@ -360,7 +360,6 @@ function ReferencePicker({
           ))}
         </div>
       )}
-      <div className={styles.rowHint}>{help}</div>
     </div>
   );
 }

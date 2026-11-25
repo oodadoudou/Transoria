@@ -1,4 +1,5 @@
-import { type CSSProperties, useId, useState } from "react";
+import { type CSSProperties, useState } from "react";
+import { HelpTip } from "./HelpTip";
 import styles from "./NumberField.module.css";
 
 const NUM = new Intl.NumberFormat("en");
@@ -33,8 +34,6 @@ export function NumberField({
   max,
   inputWidth = "96px",
 }: NumberFieldProps) {
-  const [helpOpen, setHelpOpen] = useState(false);
-  const helpId = useId();
   // Local "draft" so the user can clear the field, type a partial
   // value, or pause mid-edit without the controlled-component cycle
   // snapping the visible text back to the last committed number on
@@ -72,18 +71,7 @@ export function NumberField({
       <div className={styles.row}>
         <div className={styles.labelWrap}>
           <span className={styles.label}>{label}</span>
-          {help ? (
-            <button
-              type="button"
-              className={styles.help}
-              aria-expanded={helpOpen}
-              aria-controls={helpId}
-              onClick={() => setHelpOpen(!helpOpen)}
-              title={help}
-            >
-              ?
-            </button>
-          ) : null}
+          {help ? <HelpTip>{help}</HelpTip> : null}
         </div>
         <div className={styles.inputWrap}>
           <input
@@ -100,11 +88,6 @@ export function NumberField({
           {unit ? <span className={styles.unit}>{unit}</span> : null}
         </div>
       </div>
-      {help && helpOpen ? (
-        <div id={helpId} className={styles.hint}>
-          {help}
-        </div>
-      ) : null}
     </div>
   );
 }

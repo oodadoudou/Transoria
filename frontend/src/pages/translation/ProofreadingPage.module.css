@@ -342,17 +342,12 @@
   line-height: 1.35;
 }
 
-.termAuditSub,
 .termAuditCount,
 .termAuditMeta,
 .termAuditSegments {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
-}
-
-.termAuditSub {
-  display: block;
 }
 
 .termAuditCount {

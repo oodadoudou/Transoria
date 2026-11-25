@@ -171,12 +171,6 @@
   font-size: 22px;
 }
 
-.dialogHeader p {
-  margin: 6px 0 0;
-  color: var(--muted, #7a7166);
-  font-size: 13px;
-}
-
 .closeButton {
   width: 32px;
   height: 32px;

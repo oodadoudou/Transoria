@@ -2513,9 +2513,6 @@ export function ProofreadingPage() {
                 <span className={styles.termAuditTitle}>
                   {m.termAuditTitle}
                 </span>
-                {termAuditOpen ? (
-                  <span className={styles.termAuditSub}>{m.termAuditSub}</span>
-                ) : null}
               </span>
             </span>
             <span className={styles.termAuditHeaderActions}>
