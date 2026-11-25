@@ -242,8 +242,11 @@ def text_report(session: ContentSession, dictionary_path: str = "", ignored: lis
 HAN = regex.compile(r"\p{Han}")
 TYPOGRAPHY = [
     ("halfwidth_punctuation", regex.compile(r"\p{Han}[,;:!?]|[,;:!?]\p{Han}")),
-    ("ellipsis", regex.compile(r"\p{Han}\.{3}|\.{3}\p{Han}")),
+    ("ellipsis", regex.compile(r"\p{Han}\.{3}|\.{3}\p{Han}|。{2,}|(?<!…)…(?!…)")),
+    ("dash", regex.compile(r"(?<!—)—(?!—)|—{3,}|-{2,}|－+|―+")),
+    ("quote_style", regex.compile(r"\p{Han}[\"']|[\"']\p{Han}")),
 ]
+MIXED_QUOTES = (regex.compile(r"[“”]"), regex.compile(r"[「」『』]"))
 # ー and ・ are common in Chinese text, so they do not count as kana residue.
 RESIDUE = regex.compile(r"[\p{Hangul}\p{Hiragana}\u30A1-\u30FA]+")
 
@@ -253,6 +256,8 @@ def _typography(value: str, foreign: bool) -> list[tuple[str, str]]:
     if not han:
         return []
     found = [(kind, value[max(match.start() - 8, 0):match.end() + 8]) for kind, pattern in TYPOGRAPHY for match in pattern.finditer(value)]
+    if all(pattern.search(value) for pattern in MIXED_QUOTES):
+        found.append(("quote_style", value[:80]))
     residue = RESIDUE.findall(value)
     # Japanese prose mixes kana and kanji freely; only flag stray script inside Han-dominant text.
     if residue and not foreign and sum(map(len, residue)) * 3 <= han:
@@ -621,14 +626,14 @@ def run_tool(session: ContentSession, name: str, options: dict[str, object]) -> 
         **({"rules": options.get("rules"), "paths": options.get("paths")} if name in {"replace_sequence", "transform_css", "transform_html"} else {}),
         **({"conversion": options.get("conversion")} if name == "chinese_script" else {}),
     }, sort_keys=True).encode()).hexdigest()
-    if name in {"cleanup_css", "images", "fonts", "replace_sequence", "transform_css", "transform_html", "chinese_script", "clean_spans", "remove_bilingual"} and apply and options.get("fingerprint") != fingerprint:
+    if name in {"cleanup_css", "images", "fonts", "replace_sequence", "transform_css", "transform_html", "chinese_script", "clean_spans", "remove_bilingual", "swap_bilingual"} and apply and options.get("fingerprint") != fingerprint:
         raise ValueError("The draft changed; preview this operation again before applying it.")
     if name == "issues":
         return issues(session)
-    if name in {"chinese_script", "clean_spans", "remove_bilingual"}:
+    if name in {"chinese_script", "clean_spans", "remove_bilingual", "swap_bilingual"}:
         if name == "chinese_script":
             return {**epub_cleanup.convert_script(session, str(options.get("conversion", "")), apply), "fingerprint": fingerprint}
-        tool = epub_cleanup.clean_spans if name == "clean_spans" else epub_cleanup.remove_bilingual
+        tool = {"clean_spans": epub_cleanup.clean_spans, "remove_bilingual": epub_cleanup.remove_bilingual, "swap_bilingual": epub_cleanup.swap_bilingual}[name]
         return {**tool(session, apply), "fingerprint": fingerprint}
     if name == "replace_sequence":
         return {**replace_sequence(session, options.get("rules"), apply), "fingerprint": fingerprint}

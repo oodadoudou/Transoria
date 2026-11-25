@@ -149,12 +149,55 @@ def _drop(node: etree._Element) -> None:
     parent.remove(node)
 
 
+def _is_clone(node: etree._Element | None) -> bool:
+    return (node is not None and isinstance(node.tag, str)
+            and re.sub(r"\s+", "", node.get("style", "")).endswith("opacity:0.50;"))
+
+
+def _clones(root: etree._Element) -> list[etree._Element]:
+    return [node for node in root.iter() if _is_clone(node) and _in_body(node)]
+
+
+def _partner(clone: etree._Element, after: bool) -> etree._Element | None:
+    node = clone.getnext() if after else clone.getprevious()
+    return node if node is not None and not _is_clone(node) and node.tag == clone.tag else None
+
+
 def remove_bilingual(session: ContentSession, apply: bool) -> dict[str, object]:
     def mutate(root: etree._Element) -> int:
-        clones = [node for node in root.iter() if isinstance(node.tag, str) and _in_body(node)
-                  and re.sub(r"\s+", "", node.get("style", "")).endswith("opacity:0.50;")]
+        clones = _clones(root)
         for node in clones:
             _drop(node)
         return len(clones)
+
+    return _rewrite(session, mutate, apply, DOCUMENT_TYPES)
+
+
+def swap_bilingual(session: ContentSession, apply: bool) -> dict[str, object]:
+    def mutate(root: etree._Element) -> int:
+        clones = _clones(root)
+        if not clones:
+            return 0
+        # Originals with a translation on only one side reveal the layout; the rest sit between pairs.
+        sides = [(_partner(clone, True) is not None, _partner(clone, False) is not None) for clone in clones]
+        votes_before = sum(1 for following, preceding in sides if following and not preceding)
+        votes_after = sum(1 for following, preceding in sides if preceding and not following)
+        if votes_before == votes_after:
+            raise ValueError("Cannot tell whether originals come before or after their translations.")
+        before = votes_before > votes_after
+        count = 0
+        for clone in clones:
+            partner = _partner(clone, before)
+            if partner is None:
+                continue
+            parent = clone.getparent()
+            partner_index, clone_index = parent.index(partner), parent.index(clone)
+            # lxml moves an element together with its tail, so the separating whitespace follows each block.
+            if before:
+                parent.insert(clone_index, partner)
+            else:
+                parent.insert(partner_index, clone)
+            count += 1
+        return count
 
     return _rewrite(session, mutate, apply, DOCUMENT_TYPES)

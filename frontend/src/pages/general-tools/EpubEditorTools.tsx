@@ -34,9 +34,9 @@ export function EpubEditorTools({ session, commit, update, select, close }: {
   const [conversion, setConversion] = useState<keyof typeof t.conversions>("s2t");
   const transformKind = tool === "transform_css" ? "css" : "html";
   const transforming = tool === "transform_css" || tool === "transform_html";
-  const choices: Array<[string, string]> = [["issues", t.issues], ["diff", t.compare], ["text_report", t.textReport], ["cleanup_css", t.cleanCss], ["chinese_script", t.chineseScript], ["clean_spans", t.cleanSpans], ["remove_bilingual", t.removeBilingual], ["images", t.images], ["fonts", t.fonts], ["set_cover", t.coverMetadata], ["embed_font", t.embedFont], ["upgrade", t.upgrade], ["epubcheck", t.epubcheck]];
+  const choices: Array<[string, string]> = [["issues", t.issues], ["diff", t.compare], ["text_report", t.textReport], ["cleanup_css", t.cleanCss], ["chinese_script", t.chineseScript], ["clean_spans", t.cleanSpans], ["remove_bilingual", t.removeBilingual], ["swap_bilingual", t.swapBilingual], ["images", t.images], ["fonts", t.fonts], ["set_cover", t.coverMetadata], ["embed_font", t.embedFont], ["upgrade", t.upgrade], ["epubcheck", t.epubcheck]];
   choices.push(["transform_css", t.transformLabels.css], ["transform_html", t.transformLabels.html]);
-  const reversible = ["cleanup_css", "chinese_script", "clean_spans", "remove_bilingual", "images", "fonts", "transform_css", "transform_html"].includes(tool);
+  const reversible = ["cleanup_css", "chinese_script", "clean_spans", "remove_bilingual", "swap_bilingual", "images", "fonts", "transform_css", "transform_html"].includes(tool);
   const mutation = ["set_cover", "embed_font", "upgrade"].includes(tool);
   const run = async (action: () => Promise<void>) => {
     if (busy) return;

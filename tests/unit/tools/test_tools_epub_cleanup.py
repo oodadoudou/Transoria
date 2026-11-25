@@ -84,3 +84,29 @@ def test_text_report_flags_chinese_typography(tmp_path: Path):
     assert kinds.count("halfwidth_punctuation") == 2
     assert kinds.count("ellipsis") == 1
     assert kinds.count("script_residue") == 1
+
+
+def test_text_report_flags_dashes_ellipses_and_quote_styles(tmp_path: Path):
+    body = ("<p>他停了一下—然后走了。</p><p>他停了一下——然后走了。</p><p>等等…好吗。。。</p>"
+            "<p>他说\"走吧\"。</p><p>“走吧，”他说，「好」。</p><p>他说：“走吧……”</p>")
+    session, _ = _open(tmp_path, body)
+    kinds = [row["kind"] for row in run_tool(session, "text_report", {})["rows"]]
+    assert kinds.count("dash") == 1
+    assert kinds.count("ellipsis") == 2
+    assert kinds.count("quote_style") == 3
+
+
+def test_swap_bilingual_toggles_original_position(tmp_path: Path):
+    body = ('<h1 style="opacity:0.50;">원제</h1>\n<h1>标题</h1>\n<img src="x.png"/>\n'
+            '<p style="opacity:0.50;">원문1</p>\n<p>译文1</p>\n<p style="opacity:0.50;">원문2</p>\n<p>译文2</p>')
+    session, chapter = _open(tmp_path, body)
+    original = session._bytes(chapter).decode()
+    preview = _preview_and_apply(session, "swap_bilingual")
+    assert preview["count"] == 3
+    text = session._bytes(chapter).decode()
+    order = [text.index(word) for word in ("标题", "원제", "译文1", "원문1", "译文2", "원문2")]
+    assert order == sorted(order)
+    again = run_tool(session, "swap_bilingual", {})
+    run_tool(session, "swap_bilingual", {"apply": True, "fingerprint": again["fingerprint"]})
+    restored = session._bytes(chapter).decode()
+    assert restored[restored.index("<html"):] == original[original.index("<html"):]
