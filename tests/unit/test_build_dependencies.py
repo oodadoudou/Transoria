@@ -27,6 +27,7 @@ RUNTIME_MODULES = {
     "fonttools": "fontTools.subset",
     "spylls": "spylls.hunspell",
     "chardet": "chardet",
+    "opencc-python-reimplemented": "opencc",
 }
 
 

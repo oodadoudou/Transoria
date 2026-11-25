@@ -55,6 +55,7 @@ REQUIRED_RUNTIME_IMPORTS = (
     "brotli",
     "zopfli.zlib",
     "spylls.hunspell",
+    "opencc",
     "webview",
 )
 
@@ -147,6 +148,8 @@ def main() -> None:
         "webview",
         "--collect-data",
         "openpyxl",
+        "--collect-data",
+        "opencc",
         # Windows backend chain: pywebview -> winforms -> pythonnet ->
         # Python.Runtime.dll. ``edgechromium`` is a renderer module
         # *inside* winforms, not a standalone backend; passing

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -1044,6 +1044,7 @@ dependencies = [
     { name = "httpx" },
     { name = "json-repair" },
     { name = "lxml" },
+    { name = "opencc-python-reimplemented" },
     { name = "openpyxl" },
     { name = "pillow" },
     { name = "regex" },
@@ -1056,7 +1057,6 @@ build = [
     { name = "pyinstaller" },
 ]
 dev = [
-    { name = "opencc-python-reimplemented" },
     { name = "pytest" },
 ]
 gui = [
@@ -1072,7 +1072,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "json-repair", specifier = ">=0.30" },
     { name = "lxml", specifier = ">=5.0" },
-    { name = "opencc-python-reimplemented", marker = "extra == 'dev'", specifier = ">=0.1.7" },
+    { name = "opencc-python-reimplemented", specifier = ">=0.1.7" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pyinstaller", marker = "extra == 'build'", specifier = ">=6.0" },

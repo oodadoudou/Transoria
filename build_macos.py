@@ -73,6 +73,7 @@ REQUIRED_RUNTIME_IMPORTS = (
     "brotli",
     "zopfli.zlib",
     "spylls.hunspell",
+    "opencc",
     "webview",
 )
 
@@ -149,6 +150,8 @@ def main() -> None:
         "webview",
         "--collect-data",
         "openpyxl",
+        "--collect-data",
+        "opencc",
     ]
     for package in SUBMODULE_PACKAGES:
         cmd.extend(["--collect-submodules", package])

@@ -31,11 +31,12 @@ export function EpubEditorTools({ session, commit, update, select, close }: {
   const [cssRules, setCssRules] = useState<TransformRule[]>(() => [initialRule("css")]);
   const [htmlRules, setHtmlRules] = useState<TransformRule[]>(() => [initialRule("html")]);
   const [transformPath, setTransformPath] = useState("");
+  const [conversion, setConversion] = useState<keyof typeof t.conversions>("s2t");
   const transformKind = tool === "transform_css" ? "css" : "html";
   const transforming = tool === "transform_css" || tool === "transform_html";
-  const choices: Array<[string, string]> = [["issues", t.issues], ["diff", t.compare], ["text_report", t.textReport], ["cleanup_css", t.cleanCss], ["images", t.images], ["fonts", t.fonts], ["set_cover", t.coverMetadata], ["embed_font", t.embedFont], ["upgrade", t.upgrade], ["epubcheck", t.epubcheck]];
+  const choices: Array<[string, string]> = [["issues", t.issues], ["diff", t.compare], ["text_report", t.textReport], ["cleanup_css", t.cleanCss], ["chinese_script", t.chineseScript], ["clean_spans", t.cleanSpans], ["remove_bilingual", t.removeBilingual], ["images", t.images], ["fonts", t.fonts], ["set_cover", t.coverMetadata], ["embed_font", t.embedFont], ["upgrade", t.upgrade], ["epubcheck", t.epubcheck]];
   choices.push(["transform_css", t.transformLabels.css], ["transform_html", t.transformLabels.html]);
-  const reversible = ["cleanup_css", "images", "fonts", "transform_css", "transform_html"].includes(tool);
+  const reversible = ["cleanup_css", "chinese_script", "clean_spans", "remove_bilingual", "images", "fonts", "transform_css", "transform_html"].includes(tool);
   const mutation = ["set_cover", "embed_font", "upgrade"].includes(tool);
   const run = async (action: () => Promise<void>) => {
     if (busy) return;
@@ -43,7 +44,7 @@ export function EpubEditorTools({ session, commit, update, select, close }: {
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
-  const options = () => ({ dictionary_path: localPath, ignored: ignored.split("\n").filter(Boolean), quality, max_dimension: dimension, path: resource, family, style_path: stylesheet, checkpoint, jar_path: localPath,
+  const options = () => ({ dictionary_path: localPath, ignored: ignored.split("\n").filter(Boolean), quality, max_dimension: dimension, path: resource, family, style_path: stylesheet, checkpoint, jar_path: localPath, conversion,
     ...(transforming ? { rules: transformKind === "css" ? cssRules : htmlRules, paths: session.files.filter((file) => (!transformPath || transformPath === file.path) && (file.media_type === "application/xhtml+xml" || file.media_type === "text/html" || (transformKind === "css" && file.media_type === "text/css"))).map((file) => file.path) } : {}),
   });
   const execute = async (apply = false) => run(async () => {
@@ -67,6 +68,7 @@ export function EpubEditorTools({ session, commit, update, select, close }: {
     {tool === "diff" ? <div className={styles.toolControls}><select aria-label={t.compare} value={checkpoint} onChange={(event) => { setCheckpoint(event.target.value); setReport(null); }}><option value="">{t.sourceBook}</option>{session.checkpoints.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" disabled={busy || !checkpoint} onClick={() => void run(async () => { if (!window.confirm(t.confirmTool)) return; await commit(); const next = await epubContentBridge.restoreCheckpoint(session.session_id, checkpoint); await update(next, true); setReport(null); })}>{t.restoreCheckpoint}</button><input aria-label={t.checkpointName} placeholder={t.checkpointName} value={name} onChange={(event) => setName(event.target.value)} /><button type="button" disabled={busy || !name.trim()} onClick={() => void run(async () => { await commit(); await update(await epubContentBridge.namedCheckpoint(session.session_id, name.trim())); setName(""); })}>{t.newCheckpoint}</button></div> : null}
     {tool === "text_report" || tool === "epubcheck" ? <label>{tool === "text_report" ? t.dictionary : t.checkJar}<div className={styles.resourcePick}><input value={localPath} onChange={(event) => { setLocalPath(event.target.value); setProposal(null); }} /><button type="button" title={t.chooseFile} disabled={busy} onClick={() => void pick()}><FolderOpen size={16} /></button></div></label> : null}
     {tool === "text_report" ? <label>{t.ignoredWords}<textarea rows={2} value={ignored} onChange={(event) => setIgnored(event.target.value)} /></label> : null}
+    {tool === "chinese_script" ? <select aria-label={t.chineseScript} disabled={busy} value={conversion} onChange={(event) => { setConversion(event.target.value as keyof typeof t.conversions); setProposal(null); setReport(null); }}>{(Object.keys(t.conversions) as Array<keyof typeof t.conversions>).map((key) => <option key={key} value={key}>{t.conversions[key]}</option>)}</select> : null}
     {tool === "images" ? <div className={styles.toolControls}><label>{t.quality}<input type="number" min={10} max={100} value={quality} onChange={(event) => { setQuality(Number(event.target.value)); setProposal(null); }} /></label><label>{t.maxDimension}<input type="number" min={0} max={10000} value={dimension} onChange={(event) => { setDimension(Number(event.target.value)); setProposal(null); }} /></label></div> : null}
     {transforming ? <>
       <select aria-label={t.transformLabels.scope} disabled={busy} value={transformPath} onChange={(event) => { setTransformPath(event.target.value); setProposal(null); setReport(null); }}><option value="">{t.transformLabels.all}</option>{session.files.filter((file) => file.media_type === "application/xhtml+xml" || file.media_type === "text/html" || (transformKind === "css" && file.media_type === "text/css")).map((file) => <option key={file.path} value={file.path}>{file.path}</option>)}</select>

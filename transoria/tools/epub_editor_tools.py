@@ -32,6 +32,7 @@ from transoria.tools.epub_content import (
     _decode, _document_ids, _editor_text, _encode, _serialize, _write_nav, _write_ncx, _xml,
 )
 from transoria.formats.epub_paths import resolve_epub_href
+from transoria.tools import epub_cleanup
 
 
 def staged_entries(session: ContentSession) -> dict[str, bytes]:
@@ -215,6 +216,7 @@ def text_report(session: ContentSession, dictionary_path: str = "", ignored: lis
                 continue
             if any(etree.QName(parent).localname in {"head", "style", "script"} for parent in node.iterancestors() if isinstance(parent.tag, str)):
                 continue
+            foreign = epub_cleanup._language(node).startswith(("ja", "ko"))
             for value in [node.text or "", node.tail or ""]:
                 for word in regex.findall(r"[\p{Latin}\p{Hangul}]+(?:['’][\p{Latin}]+)?", value):
                     words[word.casefold()] += 1
@@ -231,9 +233,31 @@ def text_report(session: ContentSession, dictionary_path: str = "", ignored: lis
                 for kind, pattern in [("repeated_word", r"\b(\w+)\s+\1\b"), ("spacing", r"[ \t]{2,}"), ("punctuation", r"[!！?？]{3,}")]:
                     for match in regex.finditer(pattern, value, regex.I):
                         rows.append({"path": path, "line": node.sourceline or 1, "kind": kind, "message": match.group()[:80]})
+                rows.extend({"path": path, "line": node.sourceline or 1, "kind": kind, "message": message} for kind, message in _typography(value, foreign))
                 if len(rows) >= 5000:
                     return {"rows": rows[:5000], "truncated": True, "dictionary_loaded": dictionary is not None or hunspell is not None}
     return {"rows": rows, "words": [{"word": word, "count": count} for word, count in words.most_common(5000)], "dictionary_loaded": dictionary is not None or hunspell is not None}
+
+
+HAN = regex.compile(r"\p{Han}")
+TYPOGRAPHY = [
+    ("halfwidth_punctuation", regex.compile(r"\p{Han}[,;:!?]|[,;:!?]\p{Han}")),
+    ("ellipsis", regex.compile(r"\p{Han}\.{3}|\.{3}\p{Han}")),
+]
+# ー and ・ are common in Chinese text, so they do not count as kana residue.
+RESIDUE = regex.compile(r"[\p{Hangul}\p{Hiragana}\u30A1-\u30FA]+")
+
+
+def _typography(value: str, foreign: bool) -> list[tuple[str, str]]:
+    han = len(HAN.findall(value))
+    if not han:
+        return []
+    found = [(kind, value[max(match.start() - 8, 0):match.end() + 8]) for kind, pattern in TYPOGRAPHY for match in pattern.finditer(value)]
+    residue = RESIDUE.findall(value)
+    # Japanese prose mixes kana and kanji freely; only flag stray script inside Han-dominant text.
+    if residue and not foreign and sum(map(len, residue)) * 3 <= han:
+        found.extend(("script_residue", word[:80]) for word in residue)
+    return found
 
 
 def cleanup_css(session: ContentSession, apply: bool = False) -> dict[str, object]:
@@ -595,11 +619,17 @@ def run_tool(session: ContentSession, name: str, options: dict[str, object]) -> 
         "files": session.files, "nav": session.nav_path, "ncx": session.ncx_path,
         "removed": sorted(session.removed),
         **({"rules": options.get("rules"), "paths": options.get("paths")} if name in {"replace_sequence", "transform_css", "transform_html"} else {}),
+        **({"conversion": options.get("conversion")} if name == "chinese_script" else {}),
     }, sort_keys=True).encode()).hexdigest()
-    if name in {"cleanup_css", "images", "fonts", "replace_sequence", "transform_css", "transform_html"} and apply and options.get("fingerprint") != fingerprint:
+    if name in {"cleanup_css", "images", "fonts", "replace_sequence", "transform_css", "transform_html", "chinese_script", "clean_spans", "remove_bilingual"} and apply and options.get("fingerprint") != fingerprint:
         raise ValueError("The draft changed; preview this operation again before applying it.")
     if name == "issues":
         return issues(session)
+    if name in {"chinese_script", "clean_spans", "remove_bilingual"}:
+        if name == "chinese_script":
+            return {**epub_cleanup.convert_script(session, str(options.get("conversion", "")), apply), "fingerprint": fingerprint}
+        tool = epub_cleanup.clean_spans if name == "clean_spans" else epub_cleanup.remove_bilingual
+        return {**tool(session, apply), "fingerprint": fingerprint}
     if name == "replace_sequence":
         return {**replace_sequence(session, options.get("rules"), apply), "fingerprint": fingerprint}
     if name in {"transform_css", "transform_html"}:
