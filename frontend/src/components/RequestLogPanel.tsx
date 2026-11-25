@@ -267,7 +267,6 @@ export function RequestLogPanel({
             <div className={styles.header}>
               <div className={styles.heading}>
                 <h2>{copy.title}</h2>
-                <p>{copy.subtitle}</p>
               </div>
               <div className={styles.actions}>
                 <button

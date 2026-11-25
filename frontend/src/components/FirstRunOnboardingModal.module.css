@@ -33,13 +33,6 @@
   font-weight: 650;
 }
 
-.subtitle {
-  margin: 8px 0 0;
-  color: var(--muted, #7a7166);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
 .errorBanner {
   margin: 12px 22px 0;
   padding: 10px 12px;

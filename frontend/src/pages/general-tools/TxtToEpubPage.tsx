@@ -649,7 +649,6 @@ export function TxtToEpubPage() {
               onChange={(event) =>
                 setDraft((prev) => ({ ...prev, title: event.target.value }))
               }
-              placeholder={text.titlePlaceholder}
             />
           </label>
           <label className={styles.field}>
@@ -659,7 +658,6 @@ export function TxtToEpubPage() {
               onChange={(event) =>
                 setDraft((prev) => ({ ...prev, author: event.target.value }))
               }
-              placeholder={text.optionalPlaceholder}
             />
           </label>
           <label className={styles.field}>
@@ -668,7 +666,6 @@ export function TxtToEpubPage() {
               <input
                 value={coverPath}
                 onChange={(event) => setCoverPath(event.target.value)}
-                placeholder={text.coverPlaceholder}
               />
               <Button variant="ghost" onClick={handleChooseCover}>
                 {text.chooseCover}
@@ -771,27 +768,28 @@ export function TxtToEpubPage() {
           <div className={styles.ruleGrid}>
             {SIMPLE_RULE_LEVELS.map((level) => (
               <label key={level} className={styles.field}>
-                <span>{text.levelRule.replace("{level}", String(level))}</span>
+                <span>
+                  {text.levelRule.replace("{level}", String(level))}
+                  <HelpTip>{text.levelRuleHelp.replace("{level}", `{${level}}`)}</HelpTip>
+                </span>
                 <input
                   value={draft.customRules.find((rule) => rule.level === level)?.pattern ?? ""}
                   onChange={(event) => patchRule(level, event.target.value)}
-                  placeholder={text.levelRulePlaceholder.replace(
-                    "{level}",
-                    `{${level}}`,
-                  )}
                 />
               </label>
             ))}
           </div>
         ) : (
           <label className={styles.field}>
-            <span>{text.advancedRegex}</span>
+            <span>
+              {text.advancedRegex}
+              <HelpTip>{text.advancedRegexHelp}</HelpTip>
+            </span>
             <input
               value={draft.advancedPattern}
               onChange={(event) =>
                 setDraft((prev) => ({ ...prev, advancedPattern: event.target.value }))
               }
-              placeholder={text.advancedRegexPlaceholder}
             />
           </label>
         )}

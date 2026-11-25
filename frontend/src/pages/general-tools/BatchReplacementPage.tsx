@@ -464,6 +464,7 @@ export function BatchReplacementPage() {
                 variant="output"
                 onChange={setOutputFolder}
                 historyKey="general_tools:batch_replacement:output_folder"
+                help={messages.batchReplacement.outputFolderHelp}
               />
             )}
           </div>

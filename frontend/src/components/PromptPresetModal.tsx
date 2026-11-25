@@ -292,13 +292,11 @@ export function PromptPresetModal({
             label={m.nameLabel}
             value={draft.name}
             onChange={readOnly ? undefined : (v) => update("name", v)}
-            placeholder={m.namePlaceholder}
           />
           <TextField
             label={m.descriptionLabel}
             value={draft.description}
             onChange={readOnly ? undefined : (v) => update("description", v)}
-            placeholder={m.descriptionPlaceholder}
           />
           {readOnly ? null : (
             <ToggleSwitch

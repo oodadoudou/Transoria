@@ -11,7 +11,7 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   background: var(--panel-soft, #f3f2ec);
   border: 1px solid var(--hairline, rgba(17, 17, 20, 0.09));
   font-variant-numeric: tabular-nums;

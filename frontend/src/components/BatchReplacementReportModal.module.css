@@ -130,7 +130,7 @@
   font-size: 12px;
   font-weight: 600;
   padding: 6px 12px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--control-radius);
   cursor: pointer;
   color: var(--ink);
 }
@@ -228,7 +228,7 @@
   color: var(--muted);
   background: var(--panel-soft);
   padding: 2px 6px;
-  border-radius: 999px;
+  border-radius: 6px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -283,7 +283,7 @@
   flex-shrink: 0;
   margin-left: auto;
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   background: var(--panel);
   color: var(--muted);
   cursor: pointer;

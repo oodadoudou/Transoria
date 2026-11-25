@@ -45,7 +45,6 @@ export interface Messages {
   };
   requestLog: {
     title: string;
-    subtitle: string;
     toggle: string;
     refresh: string;
     close: string;
@@ -141,7 +140,6 @@ export interface Messages {
   };
   firstRun: {
     title: string;
-    subtitle: string;
     providerLabel: string;
     loadingProviders: string;
     noProviders: string;
@@ -204,7 +202,6 @@ export interface Messages {
     titleAdd: string;
     titleEdit: string;
     step1Title: string;
-    step1Sub: string;
     step2Title: string;
     customTemplateName: string;
     pickerBack: string;
@@ -247,9 +244,7 @@ export interface Messages {
     closeAction: string;
     systemReadOnlyNotice: string;
     nameLabel: string;
-    namePlaceholder: string;
     descriptionLabel: string;
-    descriptionPlaceholder: string;
     enabledLabel: string;
     systemTab: string;
     saveAction: string;
@@ -607,9 +602,8 @@ export interface Messages {
       addRule: string;
       empty: string;
       patternLabel: string;
-      patternPlaceholder: string;
+      patternHelp: string;
       noteLabel: string;
-      notePlaceholder: string;
       enabledLabel: string;
       deleteAction: string;
       columns: { pattern: string; note: string; status: string };
@@ -1065,6 +1059,7 @@ export interface Messages {
     sub: string;
     inputFolder: string;
     outputFolder: string;
+    outputFolderHelp: string;
     currentRule: string;
     replaceOriginals: string;
     replaceOriginalsHelp: string;
@@ -1250,7 +1245,6 @@ export interface Messages {
     titleLabel: string;
     authorLabel: string;
     descriptionLabel: string;
-    descriptionPlaceholder: string;
     noDescription: string;
     coverFile: string;
     chooseEpub: string;
@@ -1266,7 +1260,6 @@ export interface Messages {
     dialogSub: string;
     cancel: string;
     ok: string;
-    coverPlaceholder: string;
     compressOutput: string;
     generatedOutput: string;
     overwriteTitle: string;
@@ -1359,22 +1352,19 @@ export interface Messages {
     chooseTxt: string;
     outputDir: string;
     titleLabel: string;
-    titlePlaceholder: string;
     syncFilenameWithTitle: string;
     outputFilename: string;
     authorLabel: string;
-    optionalPlaceholder: string;
     cover: string;
-    coverPlaceholder: string;
     chooseCover: string;
     chapterRecognition: string;
     modePreset: string;
     modeSimple: string;
     modeAdvanced: string;
     levelRule: string;
-    levelRulePlaceholder: string;
+    levelRuleHelp: string;
     advancedRegex: string;
-    advancedRegexPlaceholder: string;
+    advancedRegexHelp: string;
     scanToc: string;
     scanSummary: string;
     scanHint: string;
@@ -1482,7 +1472,6 @@ export interface Messages {
     formTitleEdit: string;
     defaultName: string;
     nameLabel: string;
-    namePlaceholder: string;
     modelLabel: string;
     promptLabel: string;
     sourceLanguageLabel: string;
@@ -1615,7 +1604,6 @@ export interface Messages {
   };
   glossaryExport: {
     title: string;
-    hint: string;
     formatJson: string;
     formatJsonHint: string;
     formatXlsx: string;
@@ -1624,7 +1612,6 @@ export interface Messages {
   };
   ruleExport: {
     title: string;
-    hint: string;
     formatJson: string;
     formatJsonHint: string;
     formatXlsx: string;
@@ -1688,7 +1675,6 @@ export interface Messages {
     };
     diagnosis: {
       title: string;
-      subtitle: string;
       configLabel: string;
       configValue: string;
       dominant: string;

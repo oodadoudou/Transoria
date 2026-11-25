@@ -1,6 +1,6 @@
 .launcher {
   border: 1px solid var(--hairline);
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   background: var(--panel);
   width: max-content;
   max-width: 100%;
@@ -64,13 +64,6 @@
   font-size: 14px;
   font-weight: 700;
   color: var(--ink);
-}
-
-.heading p {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--muted);
 }
 
 .actions {
@@ -217,7 +210,7 @@
   display: inline-flex;
   align-items: center;
   min-height: 22px;
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 0 9px;
   font-weight: 700;
   border: 1px solid var(--hairline-strong);
@@ -320,7 +313,7 @@
 
 .copyButton {
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   background: var(--panel);
   color: var(--muted);
   cursor: pointer;
@@ -415,7 +408,7 @@
 .cacheStatus {
   display: inline-flex;
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 2px 7px;
   font-size: 10.5px;
   font-weight: 700;

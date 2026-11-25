@@ -34,7 +34,6 @@ export function RuleExportModal({ onPick, onClose }: RuleExportModalProps) {
           </button>
         </div>
         <div className={styles.body}>
-          <p className={styles.hint}>{labels.hint}</p>
           <div className={styles.choices}>
             <button
               type="button"

@@ -215,10 +215,7 @@ export function FirstRunOnboardingModal({
     <ModalOverlay className={styles.overlay} role="dialog" aria-modal="true">
       <div className={styles.modal}>
         <header className={styles.header}>
-          <div>
-            <h2 className={styles.title}>{m.title}</h2>
-            <p className={styles.subtitle}>{m.subtitle}</p>
-          </div>
+          <h2 className={styles.title}>{m.title}</h2>
         </header>
 
         {error ? (

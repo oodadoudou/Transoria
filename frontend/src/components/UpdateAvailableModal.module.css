@@ -42,7 +42,7 @@
   color: var(--accent, #b56242);
   background: rgba(181, 98, 66, 0.08);
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: 6px;
   letter-spacing: 0.02em;
 }
 

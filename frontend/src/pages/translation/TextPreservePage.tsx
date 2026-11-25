@@ -306,7 +306,7 @@ function RuleEditor({
         label={labels.patternLabel}
         value={rule.pattern}
         onChange={(v) => onChange({ pattern: v })}
-        placeholder={labels.patternPlaceholder}
+        help={labels.patternHelp}
         mono
       />
       <TextField
@@ -314,7 +314,6 @@ function RuleEditor({
         label={labels.noteLabel}
         value={rule.note}
         onChange={(v) => onChange({ note: v })}
-        placeholder={labels.notePlaceholder}
       />
       <ToggleSwitch
         label={labels.enabledLabel}

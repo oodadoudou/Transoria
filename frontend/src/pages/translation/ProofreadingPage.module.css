@@ -199,7 +199,7 @@
   font-size: 12px;
   height: 26px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   border: 1px solid var(--hairline-strong);
   background: var(--panel);
   color: var(--muted);
@@ -423,7 +423,7 @@
 
 .termAuditSegment {
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--panel);
   color: var(--ink);
   cursor: pointer;
@@ -567,7 +567,7 @@
   align-items: center;
   max-width: 100%;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: 6px;
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;

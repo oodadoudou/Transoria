@@ -132,13 +132,8 @@ export function FailedSubtasksModal({
             <>
               {diagnosis ? (
                 <div className={styles.diagnosisCard}>
-                  <div>
-                    <div className={styles.diagnosisTitle}>
-                      {messages.diagnosis.title}
-                    </div>
-                    <div className={styles.diagnosisSubtitle}>
-                      {messages.diagnosis.subtitle}
-                    </div>
+                  <div className={styles.diagnosisTitle}>
+                    {messages.diagnosis.title}
                   </div>
                   {runtimeConfig ? (
                     <div className={styles.configLine}>

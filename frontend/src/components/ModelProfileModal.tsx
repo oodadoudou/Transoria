@@ -577,7 +577,6 @@ function TemplatePickerStep({ templates, onPick }: TemplatePickerStepProps) {
   return (
     <div className={styles.step}>
       <p className={styles.stepTitle}>{m.step1Title}</p>
-      <p className={styles.stepSub}>{m.step1Sub}</p>
       <div className={styles.templateGrid}>
         {templates.map((template) => (
           <button

@@ -1,3 +1,4 @@
+import { HelpTip } from "@/components/HelpTip";
 import { useEffect, useState } from "react";
 import { ModalOverlay } from "@/components/ModalOverlay";
 import { format, useI18n, useMessages, type Locale } from "@/locales";
@@ -364,6 +365,7 @@ function CachePanel() {
   return (
     <Panel
       label={labels.cacheLabel}
+      labelHelp={labels.cacheHint}
       labelExtra={
         <Button
           variant="ghost"
@@ -377,9 +379,8 @@ function CachePanel() {
     >
       <div className={styles.row}>
         <div className={styles.rowText}>
-          <div className={styles.rowHint}>{labels.cacheHint}</div>
           {summary?.cache_root ? (
-            <div className={styles.rowHint} style={{ marginTop: 8 }}>
+            <div className={styles.rowHint}>
               <code style={{ fontSize: "11.5px", wordBreak: "break-all" }}>
                 {summary.cache_root}
               </code>
@@ -615,8 +616,10 @@ function SettingRow({ label, hint, children }: SettingRowProps) {
   return (
     <div className={styles.row}>
       <div className={styles.rowText}>
-        <div className={styles.rowLabel}>{label}</div>
-        {hint ? <div className={styles.rowHint}>{hint}</div> : null}
+        <div className={styles.rowLabel}>
+          {label}
+          {typeof hint === "string" ? <HelpTip>{hint}</HelpTip> : hint}
+        </div>
       </div>
       <div className={styles.rowControl}>{children}</div>
     </div>

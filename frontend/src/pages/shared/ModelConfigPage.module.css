@@ -22,7 +22,7 @@
   align-items: center;
   gap: 8px;
   padding: 9px 16px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   border: 0;
   font-family: inherit;
@@ -62,7 +62,7 @@
   font-weight: 600;
   color: var(--muted);
   padding: 4px 10px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--control-radius);
   cursor: pointer;
   transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
 }
@@ -171,7 +171,7 @@
 .chipBadge {
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.18);
   color: inherit;
 }
@@ -245,7 +245,7 @@
   background: var(--ink, #1a1a1a);
   color: var(--canvas);
   padding: 8px 18px;
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   font: inherit;
   font-weight: 600;
   font-size: 12.5px;
@@ -268,7 +268,7 @@
   border: 1px solid var(--hairline-strong, #d8d2c7);
   background: var(--panel);
   padding: 8px 18px;
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   font: inherit;
   font-size: 12.5px;
   cursor: pointer;
@@ -420,7 +420,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--action);
   color: var(--action-fg);
 }

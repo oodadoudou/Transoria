@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { HelpTip } from "./HelpTip";
 import styles from "./Field.module.css";
 
 interface FieldProps {
@@ -14,10 +15,10 @@ export function Field({ label, help, hint, className, children }: FieldProps) {
     <label className={`${styles.field} ${className ?? ""}`.trim()}>
       <span className={styles.label}>
         {label}
-        {help}
+        {typeof help === "string" ? <HelpTip>{help}</HelpTip> : help}
+        {typeof hint === "string" ? <HelpTip>{hint}</HelpTip> : hint}
       </span>
       {children}
-      {hint ? <span className={styles.hint}>{hint}</span> : null}
     </label>
   );
 }

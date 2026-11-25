@@ -172,7 +172,7 @@
   max-width: 100%;
   padding: 7px 12px;
   border: 1px solid #f0c84d;
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   color: #b85414;
   background: rgba(255, 249, 224, 0.52);
   font-size: 13px;

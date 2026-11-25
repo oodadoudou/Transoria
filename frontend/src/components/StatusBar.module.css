@@ -54,7 +54,7 @@
 .pillMini {
   background: var(--action);
   color: var(--action-fg);
-  border-radius: var(--radius-pill);
+  border-radius: 6px;
   padding: 3px 10px;
   font-size: 11.5px;
   font-weight: 500;

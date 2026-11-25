@@ -83,13 +83,6 @@
   color: var(--ink, #2c2620);
 }
 
-.stepSub {
-  margin: 0 0 16px;
-  font-size: 12.5px;
-  color: var(--muted, #7a7166);
-  line-height: 1.55;
-}
-
 .templateGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

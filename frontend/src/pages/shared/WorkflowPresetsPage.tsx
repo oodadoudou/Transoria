@@ -484,7 +484,6 @@ function WorkflowPresetModal({
           <TextField
             label={labels.nameLabel}
             value={form.name}
-            placeholder={labels.namePlaceholder}
             onChange={(name) => setForm((current) => ({ ...current, name }))}
           />
           {owner === "translation" ? (

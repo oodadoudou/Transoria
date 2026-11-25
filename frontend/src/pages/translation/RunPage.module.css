@@ -17,7 +17,7 @@
   margin-top: 10px;
   padding: 7px 11px;
   border: 1px solid var(--hairline-strong);
-  border-radius: 999px;
+  border-radius: var(--control-radius);
   background: var(--panel-soft);
   color: var(--ink);
   cursor: pointer;

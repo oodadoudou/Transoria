@@ -402,7 +402,6 @@ export function EpubMetadataPage({ onEditContent }: { onEditContent?: (path: str
                           setCoverPreviewUrl(info?.cover_preview_data_url ?? "");
                         }
                       }}
-                      placeholder={text.coverPlaceholder}
                     />
                     <Button variant="ghost" onClick={handleChooseCover}>
                       {text.chooseCover}
@@ -433,7 +432,6 @@ export function EpubMetadataPage({ onEditContent }: { onEditContent?: (path: str
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     rows={8}
-                    placeholder={text.descriptionPlaceholder}
                   />
                 </label>
                 <label className={styles.field}>

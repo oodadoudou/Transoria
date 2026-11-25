@@ -49,8 +49,6 @@ export const en: Messages = {
   },
   requestLog: {
     title: "Request log",
-    subtitle:
-      "Shows this task's provider requests, timing, token usage, and model responses.",
     toggle: "Show request log",
     refresh: "Refresh",
     close: "Close",
@@ -150,8 +148,6 @@ export const en: Messages = {
   },
   firstRun: {
     title: "Set up your first provider",
-    subtitle:
-      "Choose a provider, paste an API key, and Transoria will use this profile for translation, glossary extraction, and glossary review.",
     providerLabel: "Provider",
     loadingProviders: "Loading…",
     noProviders: "No provider templates available.",
@@ -223,8 +219,6 @@ export const en: Messages = {
     titleAdd: "Add API profile",
     titleEdit: "Edit API profile",
     step1Title: "Pick a provider",
-    step1Sub:
-      "Templates prefill the form with the provider's recommended runtime values. Pick Custom to fill everything yourself.",
     step2Title: "Configure profile",
     customTemplateName: "Custom",
     pickerBack: "← Back",
@@ -271,10 +265,7 @@ export const en: Messages = {
     systemReadOnlyNotice:
       "This is a built-in system preset and cannot be edited. Use it as-is, or duplicate to make your own.",
     nameLabel: "Name",
-    namePlaceholder: "e.g. Translation preset",
     descriptionLabel: "Description",
-    descriptionPlaceholder:
-      "Short note for the picker — what this preset is for",
     enabledLabel: "Enabled",
     systemTab: "System prompt",
     saveAction: "Save",
@@ -439,7 +430,8 @@ export const en: Messages = {
     title: "Batch Replacement",
     sub: "Apply imported TXT arrow rules or Reeden reader .red replacement rules to TXT and EPUB files.",
     inputFolder: "Input folder",
-    outputFolder: "Output folder (empty = next to each original)",
+    outputFolder: "Output folder",
+    outputFolderHelp: "When empty, results are saved next to each original.",
     currentRule: "Replacing (file {file} / {files}):",
     replaceOriginals: "Replace original files",
     replaceOriginalsHelp:
@@ -587,7 +579,7 @@ export const en: Messages = {
     filePlaceholder: "Choose or paste an .epub file path",
     chooseFile: "Choose EPUB",
     recursive: "Scan subfolders",
-    outputFolder: "Output folder (optional)",
+    outputFolder: "Output folder",
     outputHint:
       "If blank, TXT files are written beside the source EPUB. Existing names get a numeric suffix.",
     scan: "Scan preview",
@@ -631,7 +623,6 @@ export const en: Messages = {
     titleLabel: "Title",
     authorLabel: "Author",
     descriptionLabel: "Book description",
-    descriptionPlaceholder: "Leave empty to remove the existing description",
     noDescription: "No description",
     coverFile: "Cover image",
     chooseEpub: "Choose EPUB",
@@ -648,7 +639,6 @@ export const en: Messages = {
       "By default the EPUB filename follows the title metadata. Uncheck it to use a separate output filename.",
     cancel: "Cancel",
     ok: "OK",
-    coverPlaceholder: "Leave empty to keep the source EPUB cover",
     compressOutput: "Also output a compressed EPUB",
     generatedOutput: "Will output as",
     overwriteTitle: "Output file matches the input file",
@@ -741,22 +731,19 @@ export const en: Messages = {
     chooseTxt: "Choose TXT",
     outputDir: "Output folder",
     titleLabel: "Title",
-    titlePlaceholder: "Blank uses the TXT filename",
     syncFilenameWithTitle: "Keep output filename in sync with title metadata",
     outputFilename: "Output filename",
     authorLabel: "Author",
-    optionalPlaceholder: "Optional",
     cover: "Cover",
-    coverPlaceholder: "Optional: jpg / png / webp",
     chooseCover: "Choose cover",
     chapterRecognition: "Chapter recognition",
     modePreset: "Presets",
     modeSimple: "Simple regex",
     modeAdvanced: "Advanced regex",
     levelRule: "Level {level} heading regex",
-    levelRulePlaceholder: "Example: ^#{level}\\s*(?P<title>.+)$",
+    levelRuleHelp: "Example: ^#{level}\\s*(?P<title>.+)$",
     advancedRegex: "Advanced regex",
-    advancedRegexPlaceholder: "Example: ^Chapter\\s+\\d+\\s*(?P<title>.*)$",
+    advancedRegexHelp: "Example: ^Chapter\\s+\\d+\\s*(?P<title>.*)$",
     scanToc: "Scan TOC",
     scanSummary: "{candidates} candidates · {selected} enabled · {lines} lines",
     scanHint: "After scanning, edit titles, levels, and TOC inclusion.",
@@ -1065,9 +1052,8 @@ export const en: Messages = {
       empty:
         "No preserve rules — translation reaches the model with no protection.",
       patternLabel: "Pattern (regex)",
-      patternPlaceholder: "e.g. \\{\\{[^}]+\\}\\}",
+      patternHelp: "e.g. \\{\\{[^}]+\\}\\}",
       noteLabel: "Note",
-      notePlaceholder: "What this pattern is for",
       enabledLabel: "Enabled",
       deleteAction: "Delete",
       columns: { pattern: "Pattern", note: "Note", status: "Status" },
@@ -1670,7 +1656,6 @@ export const en: Messages = {
     formTitleEdit: "Edit preset",
     defaultName: "New preset",
     nameLabel: "Preset name",
-    namePlaceholder: "Example: Common translation setup",
     modelLabel: "Model",
     promptLabel: "Prompt",
     sourceLanguageLabel: "Source language",
@@ -1811,7 +1796,6 @@ export const en: Messages = {
   },
   glossaryExport: {
     title: "Export glossary",
-    hint: "Choose an export format.",
     formatJson: "JSON",
     formatJsonHint: "Full field fidelity, ideal for re-import.",
     formatXlsx: "XLSX",
@@ -1820,7 +1804,6 @@ export const en: Messages = {
   },
   ruleExport: {
     title: "Export rules",
-    hint: "Choose an export format.",
     formatJson: "JSON",
     formatJsonHint: "Full field fidelity, ideal for re-import.",
     formatXlsx: "XLSX",
@@ -1886,8 +1869,6 @@ export const en: Messages = {
     },
     diagnosis: {
       title: "Failure attribution",
-      subtitle:
-        "Generated from failure records and the current model rate settings; no settings are changed automatically.",
       configLabel: "Current config",
       configValue:
         "concurrency {concurrency} · RPM {rpm} · timeout {timeout}s · retries {retries}",

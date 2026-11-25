@@ -38,7 +38,6 @@ export function GlossaryExportModal({
           </button>
         </div>
         <div className={styles.body}>
-          <p className={styles.hint}>{labels.hint}</p>
           <div className={styles.choices}>
             <button
               type="button"
