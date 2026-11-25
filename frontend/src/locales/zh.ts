@@ -667,7 +667,7 @@ export const zh: Messages = {
     fileOptions: "文件操作", tocEntryActions: "目录项操作",
     newChapter: "新建章节", chapterText: "初始正文", splitChapter: "拆分章节", splitBefore: "从此处开始新章节", insertImage: "插入图片", imageResource: "书内图片", imageDescription: "图片描述",
     chooseTocTarget: "选择目录目标", chapterStart: "章节开头", chooseAnchor: "选择锚点",
-    generateTocPage: "生成书内目录页", tocPageTitle: "目录", tocLevel: "目录层级", tocPatternHelp: "留空则按章节标题生成；填写正则后按一级、二级、三级匹配正文标题。第一个捕获组可用作目录名称。", tocFromFilesHelp: "为每个章节文件创建一级目录；优先使用章标题，否则使用页面标题或文件名。", tocPatternPlaceholder: "例如 ^第(.+)章", fromHeadings: "标题 / 正则", fromFiles: "章节文件",
+    generateTocPage: "生成书内目录页", tocPageTitle: "目录", tocLevel: "目录层级", tocPatternHelp: "留空则按章节标题生成；填写正则后按一级、二级、三级匹配正文标题。第一个捕获组可用作目录名称。", tocFromFilesHelp: "为每个章节文件创建一级目录；优先使用章标题，否则使用页面标题或文件名。", fromHeadings: "标题 / 正则", fromFiles: "章节文件",
     previewToc: "预览提取结果", addSibling: "在下方添加同级", addChild: "添加子目录", newTocEntry: "新目录项",
     chooseFile: "选择文件", confirmTarget: "使用此目标",
     previewReplace: "预览替换", replacePreviewTitle: "替换预览", filesChanged: "个文件", selectionExpired: "选区已变化，请重新选中后搜索。",
@@ -1675,7 +1675,6 @@ export const zh: Messages = {
     apiKeys: "API 密钥",
     apiKeysHelp:
       "每行一个密钥。客户端在瞬时鉴权或限流错误时会在多个密钥间轮换。",
-    apiKeysPlaceholder: "sk-…\nsk-…",
     modelId: "模型标识",
     modelIdHelp:
       "API 期望的精确模型 ID(如 `gpt-4o-mini`、`deepseek-v3-2-251201`)。请参照所选服务商文档。",
@@ -1716,7 +1715,6 @@ export const zh: Messages = {
     customHeaders: "自定义请求头",
     customHeadersHelp:
       "JSON 对象,会合并进出站 HTTP 请求头。请谨慎设置 —— 不当数值可能让请求失败。",
-    customHeadersPlaceholder: '{"Authorization": "Bearer xxx"}',
     apiFormatLabel: "API 格式",
     apiFormat: { openai: "OpenAI", anthropic: "Anthropic", google: "Google" },
   },

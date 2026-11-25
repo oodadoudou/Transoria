@@ -143,7 +143,6 @@ export function AppSettingsModule({ page: _page }: AppSettingsModuleProps) {
                 label=""
                 value={draft.proxy_url}
                 onChange={(v) => moduleSettings.update("proxy_url", v)}
-                placeholder="http://127.0.0.1:7890"
                 mono
               />
             </SettingRow>

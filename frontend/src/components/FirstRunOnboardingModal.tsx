@@ -305,7 +305,6 @@ export function FirstRunOnboardingModal({
                   className={styles.input}
                   type="text"
                   value={customBaseUrl}
-                  placeholder="https://api.example.com/v1"
                   spellCheck={false}
                   onChange={(event) => setCustomBaseUrl(event.target.value)}
                 />
@@ -316,7 +315,6 @@ export function FirstRunOnboardingModal({
                   className={styles.input}
                   type="text"
                   value={customModelId}
-                  placeholder="model-id"
                   spellCheck={false}
                   onChange={(event) => setCustomModelId(event.target.value)}
                 />

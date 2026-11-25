@@ -1301,7 +1301,7 @@ export interface Messages {
     overwrite: string; confirmOverwrite: string; outputPath: string; saved: string; savedCacheWarning: string; undo: string;
     redo: string; applyToc: string; addEntry: string; addSibling: string; addChild: string; newTocEntry: string; generateToc: string; confirmGenerateToc: string; generatedToc: string; approximateToc: string; removeEntry: string; target: string;
     label: string; indent: string; outdent: string; up: string; down: string; loading: string;
-    tocLevel: string; tocPatternHelp: string; tocFromFilesHelp: string; tocPatternPlaceholder: string; previewToc: string; fromHeadings: string; fromFiles: string; tocXPathHelp: string;
+    tocLevel: string; tocPatternHelp: string; tocFromFilesHelp: string; previewToc: string; fromHeadings: string; fromFiles: string; tocXPathHelp: string;
     noBook: string; noPreview: string; error: string; cancel: string; editor: string; replaceDraft: string;
     discardClose: string; closeTitle: string;
     validate: string; validationOk: string; validationWarning: string; sessionExpired: string; reopen: string;
@@ -1531,7 +1531,6 @@ export interface Messages {
     baseUrlHelp: string;
     apiKeys: string;
     apiKeysHelp: string;
-    apiKeysPlaceholder: string;
     modelId: string;
     modelIdHelp: string;
     limits: string;
@@ -1562,7 +1561,6 @@ export interface Messages {
     frequencyPenaltyHelp: string;
     customHeaders: string;
     customHeadersHelp: string;
-    customHeadersPlaceholder: string;
     apiFormatLabel: string;
     apiFormat: { openai: string; anthropic: string; google: string };
   };

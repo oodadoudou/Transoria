@@ -19,6 +19,7 @@ import {
 } from "@/bridge";
 import { useToastStore } from "@/store/useToastStore";
 import { Button } from "./Button";
+import { HelpTip } from "./HelpTip";
 import { TextField } from "./TextField";
 import { NumberField } from "./NumberField";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -732,7 +733,6 @@ function FormStep({
           label={model.apiKeys}
           value={draft.api_keys}
           onChange={(v) => update("api_keys", v)}
-          placeholder={model.apiKeysPlaceholder}
           multiline
           rows={3}
           mono
@@ -868,12 +868,10 @@ function FormStep({
       </details>
 
       <details className={styles.details}>
-        <summary>{model.customHeaders}</summary>
+        <summary>{model.customHeaders} <HelpTip>{model.customHeadersHelp}</HelpTip></summary>
         <CustomHeadersEditor
           value={draft.custom_headers}
           onChange={(v) => update("custom_headers", v)}
-          placeholder={model.customHeadersPlaceholder}
-          help={model.customHeadersHelp}
         />
       </details>
     </div>
@@ -942,15 +940,11 @@ function OptionalNumberRow({
 interface CustomHeadersEditorProps {
   value: Array<[string, string]>;
   onChange: (next: Array<[string, string]>) => void;
-  placeholder: string;
-  help: string;
 }
 
 function CustomHeadersEditor({
   value,
   onChange,
-  placeholder,
-  help,
 }: CustomHeadersEditorProps) {
   const propJson =
     value.length > 0 ? JSON.stringify(Object.fromEntries(value)) : "";
@@ -1001,12 +995,10 @@ function CustomHeadersEditor({
 
   return (
     <div className={styles.customHeadersBlock}>
-      <div className={styles.customHeadersHelp}>{help}</div>
       <textarea
         className={styles.customHeadersInput}
         value={text}
         onChange={(e) => apply(e.target.value)}
-        placeholder={placeholder}
         rows={3}
         spellCheck={false}
       />

@@ -344,12 +344,6 @@
   padding: 10px 0;
 }
 
-.customHeadersHelp {
-  font-size: 11.5px;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
 .customHeadersInput {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 12px;

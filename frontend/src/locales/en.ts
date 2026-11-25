@@ -681,7 +681,7 @@ export const en: Messages = {
     fileOptions: "File actions", tocEntryActions: "Contents entry actions",
     newChapter: "New chapter", chapterText: "Initial text", splitChapter: "Split chapter", splitBefore: "Start new chapter here", insertImage: "Insert image", imageResource: "Book image", imageDescription: "Image description",
     chooseTocTarget: "Choose TOC target", chapterStart: "Chapter start", chooseAnchor: "Choose anchor",
-    generateTocPage: "Create in-book contents page", tocPageTitle: "Contents", tocLevel: "Contents level", tocPatternHelp: "Leave blank to use headings. Otherwise match chapter text at levels 1–3 with regex; the first capture group becomes the title.", tocFromFilesHelp: "Create one top-level entry per chapter file. Use its heading, page title, or filename.", tocPatternPlaceholder: "For example ^Chapter (.+)", fromHeadings: "Headings / regex", fromFiles: "Chapter files",
+    generateTocPage: "Create in-book contents page", tocPageTitle: "Contents", tocLevel: "Contents level", tocPatternHelp: "Leave blank to use headings. Otherwise match chapter text at levels 1–3 with regex; the first capture group becomes the title.", tocFromFilesHelp: "Create one top-level entry per chapter file. Use its heading, page title, or filename.", fromHeadings: "Headings / regex", fromFiles: "Chapter files",
     addSibling: "Add sibling below", addChild: "Add child entry", newTocEntry: "New entry",
     previewToc: "Preview extracted entries",
     chooseFile: "Choose file", confirmTarget: "Use target",
@@ -1732,7 +1732,6 @@ export const en: Messages = {
     apiKeys: "API keys",
     apiKeysHelp:
       "One key per line. The client rotates between keys on transient auth/rate failures.",
-    apiKeysPlaceholder: "sk-…\nsk-…",
     modelId: "Model identifier",
     modelIdHelp:
       "The exact model ID the API expects (e.g. `gpt-4o-mini`, `deepseek-v3-2-251201`). Check the provider's documentation for valid values.",
@@ -1777,7 +1776,6 @@ export const en: Messages = {
     customHeaders: "Custom request headers",
     customHeadersHelp:
       "JSON object merged into outgoing HTTP headers. Set with caution — incorrect values can break requests.",
-    customHeadersPlaceholder: '{"Authorization": "Bearer xxx"}',
     apiFormatLabel: "API format",
     apiFormat: { openai: "OpenAI", anthropic: "Anthropic", google: "Google" },
   },
