@@ -289,6 +289,30 @@ _SAKURA_HINTS: Mapping[str, FieldHint] = {
     ),
 }
 
+def _cloud_hints(rate_source: str, params_source: str) -> Mapping[str, FieldHint]:
+    return {
+        "timeout_seconds": FieldHint(description_key="modelHints.timeout", recommended_value="600 s"),
+        "concurrency_limit": FieldHint(description_key="modelHints.concurrency", recommended_value="Auto (0)"),
+        "rpm_limit": FieldHint(description_key="modelHints.rpm", recommended_value="60 RPM", source_url=rate_source),
+        "tpm_limit": FieldHint(description_key="modelHints.tpm", recommended_value="0 (disabled)"),
+        "max_output_tokens": FieldHint(description_key="modelHints.maxOutputTokens", recommended_value="8192", source_url=params_source),
+        "temperature": FieldHint(description_key="modelHints.temperature", recommended_value="0.3", source_url=params_source),
+    }
+
+
+_OPENROUTER_HINTS = _cloud_hints(
+    "https://openrouter.ai/docs/api-reference/limits",
+    "https://openrouter.ai/docs/api-reference/parameters",
+)
+_ZHIPU_HINTS = _cloud_hints(
+    "https://docs.bigmodel.cn/cn/guide/start/concept-param",
+    "https://docs.bigmodel.cn/api-reference/%E6%A8%A1%E5%9E%8B-api/%E5%AF%B9%E8%AF%9D%E8%A1%A5%E5%85%A8",
+)
+_DASHSCOPE_HINTS = _cloud_hints(
+    "https://help.aliyun.com/zh/model-studio/rate-limit",
+    "https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope",
+)
+
 # Custom template: hints carry the generic description but leave
 # recommended_value/source_url empty so the frontend renders only the
 # description row (no "Recommended:" / "Source:" lines).
@@ -391,6 +415,54 @@ _TEMPLATES: tuple[ProviderTemplate, ...] = (
             temperature=0.3,
         ),
         field_hints=_VOLCENGINE_HINTS,
+    ),
+    ProviderTemplate(
+        id="openrouter",
+        display_name="OpenRouter",
+        provider_format=ProviderFormat.OPENAI,
+        default_base_url="https://openrouter.ai/api/v1",
+        hint_models=("deepseek/deepseek-chat", "google/gemini-2.5-flash", "anthropic/claude-sonnet-4.5"),
+        supports_fetch_model_list=True,
+        recommended_defaults=RecommendedDefaults(
+            timeout_seconds=600.0,
+            concurrency_limit=0,
+            rpm_limit=60,
+            max_output_tokens=8192,
+            temperature=0.3,
+        ),
+        field_hints=_OPENROUTER_HINTS,
+    ),
+    ProviderTemplate(
+        id="zhipu",
+        display_name="Zhipu GLM",
+        provider_format=ProviderFormat.OPENAI,
+        default_base_url="https://open.bigmodel.cn/api/paas/v4",
+        hint_models=("glm-5.3", "glm-5.3-flash", "glm-latest"),
+        supports_fetch_model_list=True,
+        recommended_defaults=RecommendedDefaults(
+            timeout_seconds=600.0,
+            concurrency_limit=0,
+            rpm_limit=60,
+            max_output_tokens=8192,
+            temperature=0.3,
+        ),
+        field_hints=_ZHIPU_HINTS,
+    ),
+    ProviderTemplate(
+        id="dashscope",
+        display_name="Alibaba DashScope",
+        provider_format=ProviderFormat.OPENAI,
+        default_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        hint_models=("qwen-plus", "qwen-max", "qwen-flash"),
+        supports_fetch_model_list=True,
+        recommended_defaults=RecommendedDefaults(
+            timeout_seconds=600.0,
+            concurrency_limit=0,
+            rpm_limit=60,
+            max_output_tokens=8192,
+            temperature=0.3,
+        ),
+        field_hints=_DASHSCOPE_HINTS,
     ),
     ProviderTemplate(
         id="sakura",

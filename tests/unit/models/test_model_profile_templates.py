@@ -56,7 +56,7 @@ def test_cloud_provider_templates_cite_a_source_url():
     rate-limit docs; their templates cite at least one. Local
     providers (Sakura) and Custom are exempt."""
 
-    cloud_ids = {"openai", "anthropic", "google", "deepseek", "volcengine-ark"}
+    cloud_ids = {"openai", "anthropic", "google", "deepseek", "volcengine-ark", "openrouter", "zhipu", "dashscope"}
     for template in list_templates():
         if template.id not in cloud_ids:
             continue

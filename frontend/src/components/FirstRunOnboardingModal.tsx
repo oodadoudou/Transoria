@@ -22,6 +22,9 @@ const ONBOARDING_TEMPLATE_ORDER = [
   "anthropic",
   "google",
   "openai",
+  "openrouter",
+  "zhipu",
+  "dashscope",
   "custom",
 ];
 
