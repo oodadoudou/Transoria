@@ -118,3 +118,20 @@ def test_glossary_match_many_keeps_semantic_entry_variants() -> None:
 
 def test_empty_glossary_returns_empty_match() -> None:
     assert Glossary.empty().match("anything") == ()
+
+
+def test_glossary_match_injects_only_longest_non_overlapping_terms() -> None:
+    glossary = Glossary(
+        entries=(
+            GlossaryEntry(src="택승", dst="泽承"),
+            GlossaryEntry(src="택승이", dst="泽承"),
+            GlossaryEntry(src="택승아", dst="泽承啊"),
+            GlossaryEntry(src="김택승 씨", dst="金泽承先生"),
+            GlossaryEntry(src="파리", dst="巴黎"),
+        )
+    )
+
+    assert [e.src for e in glossary.match("김택승 씨는 이파리를 봤다.")] == ["김택승 씨"]
+    assert [e.src for e in glossary.match("택승아, 파리에 가자.")] == ["택승아", "파리"]
+    assert [e.src for e in glossary.match("택승이 웃었다.")] == ["택승이"]
+    assert [e.src for e in glossary.match("그때 택승은 웃었다.")] == ["택승"]

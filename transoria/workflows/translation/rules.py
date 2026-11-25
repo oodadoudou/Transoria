@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
@@ -54,13 +55,11 @@ class ReplacementRule:
 class Glossary:
     """A frozen, ordered collection of glossary entries.
 
-    ``match`` returns entries whose ``src`` appears anywhere in the given
-    source text. Plain entries are matched by substring (case-sensitive or
-    case-insensitive). Regex entries use Python's ``re.search``. Disabled
-    entries are skipped. Results are sorted by descending ``src`` length so
-    longer terms appear first — this is what the prompt expects in order to
-    discourage the model from translating sub-fragments differently than the
-    parent term.
+    ``match`` scans entries longest first and masks each match, so a term
+    inside a longer matched term is not injected again. Plain entries match by
+    substring (case-sensitive or case-insensitive); Hangul terms of one or two
+    syllables only match at the start of a word. Regex entries use Python's
+    ``re``. Disabled entries are skipped. Results keep the longest-first order.
     """
 
     entries: tuple[GlossaryEntry, ...] = field(default_factory=tuple)
@@ -73,12 +72,19 @@ class Glossary:
         if not source_text or not self.entries:
             return ()
         matched: list[GlossaryEntry] = []
-        for entry in self.entries:
+        masked = pending = source_text
+        length = None
+        for entry in sorted(self.entries, key=lambda entry: len(entry.src), reverse=True):
             if not entry.enabled or not entry.src:
                 continue
-            if _entry_matches(entry, source_text):
-                matched.append(entry)
-        matched.sort(key=lambda entry: len(entry.src), reverse=True)
+            # Only strictly longer terms mask, so same-length variants still match.
+            if len(entry.src) != length:
+                masked, length = pending, len(entry.src)
+            pattern = _entry_pattern(entry.src, entry.regex, entry.case_sensitive)
+            if pattern is None or pattern.search(masked) is None:
+                continue
+            matched.append(entry)
+            pending = pattern.sub(lambda found: _MASK * len(found.group(0)), pending)
         return tuple(matched)
 
     def match_many(self, source_texts: Iterable[str]) -> tuple[GlossaryEntry, ...]:
@@ -151,16 +157,22 @@ def _coerce_bool(value: object) -> bool:
     return bool(value)
 
 
-def _entry_matches(entry: GlossaryEntry, source_text: str) -> bool:
-    if entry.regex:
-        flags = 0 if entry.case_sensitive else re.IGNORECASE
+_MASK = "\u0001"
+_SHORT_HANGUL = re.compile(r"[\uAC00-\uD7A3]{1,2}")
+# A masked longer term counts as a word, so a particle right after it is not a match.
+_HANGUL_BEFORE = r"(?<![\u0001\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3])"
+
+
+@lru_cache(maxsize=4096)
+def _entry_pattern(src: str, regex: bool, case_sensitive: bool) -> re.Pattern[str] | None:
+    flags = 0 if case_sensitive else re.IGNORECASE
+    if regex:
         try:
-            return re.search(entry.src, source_text, flags=flags) is not None
+            return re.compile(src, flags)
         except re.error:
-            return False
-    if entry.case_sensitive:
-        return entry.src in source_text
-    return entry.src.lower() in source_text.lower()
+            return None
+    prefix = _HANGUL_BEFORE if _SHORT_HANGUL.fullmatch(src) else ""
+    return re.compile(prefix + re.escape(src), flags)
 
 
 __all__ = [
