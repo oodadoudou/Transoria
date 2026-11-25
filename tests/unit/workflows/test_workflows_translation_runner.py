@@ -760,7 +760,7 @@ def test_runner_retries_only_missing_rows_after_degenerate_tail_with_context() -
     assert payload["translations"] == {"0:0": "译文 0", "0:1": "译文 1"}
     first_prompt = transport.requests[0]["payload"]["messages"][-1]["content"]
     retry_prompt = transport.requests[1]["payload"]["messages"][-1]["content"]
-    assert "previous context" not in first_prompt
+    assert "previous context" in first_prompt
     assert "previous context" in retry_prompt
     assert "source 0" not in retry_prompt
     assert "source 1" in retry_prompt
@@ -2336,9 +2336,9 @@ def test_explicit_partial_decoder_rejects_inexact_dense_object_keys() -> None:
         '"42":"译文 42","43":"译文 43","44":"译文 44"}'
     )
 
-    assert _decode_explicit_partial_rows(missing, expected) == {}
-    assert _decode_explicit_partial_rows(extra, expected) == {}
-    assert _decode_explicit_partial_rows(duplicate, expected) == {}
+    assert _decode_explicit_partial_rows(missing, expected, has_context=False) == {}
+    assert _decode_explicit_partial_rows(extra, expected, has_context=False) == {}
+    assert _decode_explicit_partial_rows(duplicate, expected, has_context=False) == {}
 
 
 def test_explicit_partial_decoder_accepts_one_surplus_closing_brace() -> None:
@@ -2349,12 +2349,12 @@ def test_explicit_partial_decoder_accepts_one_surplus_closing_brace() -> None:
         indent=2,
     )
 
-    assert _decode_explicit_partial_rows(complete + "}\n", expected) == {
+    assert _decode_explicit_partial_rows(complete + "}\n", expected, has_context=False) == {
         index: f"译文 {index}" for index in expected
     }
-    assert _decode_explicit_partial_rows(complete + "}}", expected) == {}
-    assert _decode_explicit_partial_rows(complete + "} explanation", expected) == {}
-    assert _decode_explicit_partial_rows(complete + "}", expected | {43}) == {}
+    assert _decode_explicit_partial_rows(complete + "}}", expected, has_context=False) == {}
+    assert _decode_explicit_partial_rows(complete + "} explanation", expected, has_context=False) == {}
+    assert _decode_explicit_partial_rows(complete + "}", expected | {43}, has_context=False) == {}
 
 
 def test_mass_source_residue_retry_accepts_complete_object_with_extra_brace() -> None:
@@ -3424,8 +3424,8 @@ def test_runner_retries_mixed_keys_instead_of_positionally_guessing() -> None:
     assert len(transport.requests) == 2
 
 
-def test_runner_omits_context_from_batch_prompt() -> None:
-    """Context stored in the subtask cache must not be sent to the model."""
+def test_runner_sends_context_in_batch_prompt_and_decodes_by_key() -> None:
+    """A translated context line must not shift the requested rows."""
 
     context = ("previous sentence one.", "previous sentence two.")
     sources = (
@@ -3439,6 +3439,8 @@ def test_runner_omits_context_from_batch_prompt() -> None:
             TransportResult(
                 200,
                 _ok_body(
+                    '{"-1":"前一句。"}\n'
+                    '前二句。\n'
                     '{"0":"甲。"}\n'
                     '{"1":"乙。"}\n'
                     '{"2":"丙。"}\n'
@@ -3467,9 +3469,36 @@ def test_runner_omits_context_from_batch_prompt() -> None:
         "0:3": "丁。",
     }
     first_prompt = transport.requests[0]["payload"]["messages"][-1]["content"]
-    assert "[Context" not in first_prompt
-    assert "previous sentence one." not in first_prompt
+    assert "[Context" in first_prompt and "previous sentence two." in first_prompt
     assert len(transport.requests) == 1
+
+
+def test_runner_retries_first_request_when_context_shifts_keys() -> None:
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body('{"0":"上文。"}\n{"1":"甲。"}\n{"2":"乙。"}\n')),
+            TransportResult(200, _ok_body('{"0":"甲。"}\n{"1":"乙。"}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_fast_retry_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.ENGLISH,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+
+    result = asyncio.run(
+        runner.run(
+            _make_subtask_with_context(
+                context=("previous sentence",), sources=("line alpha", "line beta")
+            )
+        )
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"] == {"0:0": "甲。", "0:1": "乙。"}
+    assert len(transport.requests) == 2
 
 
 def test_runner_rejects_extra_context_line_instead_of_shifted_keys() -> None:

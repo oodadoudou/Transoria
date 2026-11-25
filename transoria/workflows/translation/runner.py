@@ -497,12 +497,15 @@ def _looks_truncated_jsonl_response(raw_content: str) -> bool:
 def _decode_explicit_partial_rows(
     raw_content: str,
     expected_indices: set[int],
+    *,
+    has_context: bool,
 ) -> dict[int, str]:
     """Keep only unambiguous complete JSONL rows from a partial response.
 
     Positional recovery is intentionally disabled here. Only an explicit,
     in-range index proves which source segment a surviving row translates.
-    Duplicate indices are discarded so conflicting output is retried. A
+    Duplicate indices are discarded so conflicting output is retried. With
+    context, a key past the requested range rejects the whole response. A
     complete multi-key object is accepted only when its keys exactly match the
     requested set.
     """
@@ -524,6 +527,9 @@ def _decode_explicit_partial_rows(
             index = int(str(raw_index).strip())
         except (TypeError, ValueError):
             continue
+        # A key past the requested range means the model numbered a context line and shifted every row.
+        if has_context and index > max(expected_indices, default=index):
+            return {}
         if (
             index not in expected_indices
             or not isinstance(raw_text, str)
@@ -857,10 +863,6 @@ class TranslationSubtaskRunner:
             metadata,
             subtask.id,
             subtask_attempt=subtask.attempt_count,
-            include_context_on_first_call=(
-                subtask.attempt_count > 1
-                or bool(subtask.request_payload.get("parent_subtask_id"))
-            ),
         )
 
     async def _attempt(
@@ -870,7 +872,6 @@ class TranslationSubtaskRunner:
         subtask_id: str = "",
         *,
         subtask_attempt: int = 1,
-        include_context_on_first_call: bool = False,
     ) -> SubtaskResult:
         system_prompt = _augment_system_prompt(
             build_prompt(
@@ -910,13 +911,7 @@ class TranslationSubtaskRunner:
                 pending_meta = tuple(
                     metadata_by_index[i] for i in sorted(pending_indices)
                 )
-                sub_chunk = _build_subchunk_from_pending(
-                    chunk,
-                    pending_meta,
-                    include_context=(
-                        include_context_on_first_call or bool(debug_attempts)
-                    ),
-                )
+                sub_chunk = _build_subchunk_from_pending(chunk, pending_meta)
                 user_prompt = self._compose_user_prompt(
                     self._apply_roster(assemble_user_prompt(sub_chunk)),
                     format_retry=len(debug_attempts) > 0,
@@ -1025,6 +1020,7 @@ class TranslationSubtaskRunner:
                     translations = _decode_explicit_partial_rows(
                         raw_content,
                         expected_indices,
+                        has_context=bool(sub_chunk.context_lines),
                     )
                     missing = frozenset(
                         expected_indices - translations.keys()
@@ -1147,7 +1143,6 @@ class TranslationSubtaskRunner:
                 rescue_chunk = _build_subchunk_from_pending(
                     chunk,
                     tuple(mass_source_residue_meta),
-                    include_context=True,
                 )
                 rescue_user_prompt = self._compose_user_prompt(
                     self._apply_roster(assemble_user_prompt(rescue_chunk)),
@@ -1240,6 +1235,7 @@ class TranslationSubtaskRunner:
                     rescued_translations = _decode_explicit_partial_rows(
                         rescue_raw,
                         {meta.chunk_index for meta in mass_source_residue_meta},
+                        has_context=bool(rescue_chunk.context_lines),
                     )
                 else:
                     rescued_translations, _missing = self._decode_partial(
@@ -1302,7 +1298,6 @@ class TranslationSubtaskRunner:
                     micro_chunk = _build_subchunk_from_pending(
                         chunk,
                         micro_meta,
-                        include_context=True,
                     )
                     micro_user_prompt = self._compose_user_prompt(
                         self._apply_roster(assemble_user_prompt(micro_chunk)),
@@ -1406,6 +1401,7 @@ class TranslationSubtaskRunner:
                         micro_translations = _decode_explicit_partial_rows(
                             micro_raw,
                             {meta.chunk_index for meta in micro_meta},
+                            has_context=bool(micro_chunk.context_lines),
                         )
                     else:
                         micro_translations, _missing = self._decode_partial(
@@ -1572,7 +1568,7 @@ class TranslationSubtaskRunner:
                     )
                     if solo_requires_explicit_decode or solo_chunk.context_lines:
                         retry_text = _decode_explicit_partial_rows(
-                            solo_raw, {0}
+                            solo_raw, {0}, has_context=bool(solo_chunk.context_lines)
                         ).get(0)
                     else:
                         decoded = decode_translation_jsonl(solo_raw)
@@ -2469,8 +2465,6 @@ def _split_low_confidence_micro_batches(
 def _build_subchunk_from_pending(
     original: TranslationChunk,
     pending: Sequence[_SegmentPayload],
-    *,
-    include_context: bool = True,
 ) -> TranslationChunk:
     pending_indices = {m.chunk_index for m in pending}
     pending_segments = tuple(
@@ -2478,7 +2472,7 @@ def _build_subchunk_from_pending(
     )
     return TranslationChunk(
         segments=pending_segments,
-        context_lines=original.context_lines if include_context else (),
+        context_lines=original.context_lines,
         glossary_entries=_match_retry_glossary(
             original,
             (seg.prompt_text for seg in pending_segments),
