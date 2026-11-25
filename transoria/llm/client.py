@@ -12,6 +12,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field, replace
+from urllib.parse import urlsplit
 from typing import Mapping, Protocol
 
 import httpx
@@ -480,6 +481,11 @@ def _thinking_payload(level: ThinkingLevel) -> dict[str, object] | None:
     if level is ThinkingLevel.OFF:
         return {"type": "disabled"}
     return {"type": "enabled"}
+
+
+def _on_openrouter(model: ModelConfig) -> bool:
+    host = (urlsplit(model.base_url).hostname or "").lower()
+    return host == "openrouter.ai" or host.endswith(".openrouter.ai")
 
 
 # Anthropic's ``/v1/messages`` requires a non-zero ``max_tokens``; sending
@@ -1167,6 +1173,13 @@ class LlmClient:
         glm_fields = glm_thinking_fields(request.model)
         if glm_fields is not None:
             payload.update(glm_fields)
+        elif _on_openrouter(request.model):
+            # OpenRouter ignores ``thinking``; ``reasoning`` is its switch for every hosted model.
+            payload["reasoning"] = (
+                {"effort": request.model.thinking_level.value}
+                if request.model.thinking_enabled
+                else {"enabled": False}
+            )
         else:
             thinking = _thinking_payload(request.model.thinking_level)
             if thinking is not None:

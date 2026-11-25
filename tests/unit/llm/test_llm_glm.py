@@ -335,3 +335,18 @@ def test_anthropic_fields_respect_output_limit_and_host_rules() -> None:
         "thinking": {"type": "disabled"}
     }
     assert glm_anthropic_fields(_model("claude-sonnet-4-6", ThinkingLevel.LOW), 8192) is None
+
+
+@pytest.mark.parametrize(
+    ("level", "expected"),
+    [
+        (ThinkingLevel.OFF, {"enabled": False}),
+        (ThinkingLevel.LOW, {"effort": "low"}),
+        (ThinkingLevel.HIGH, {"effort": "high"}),
+    ],
+)
+def test_openrouter_non_glm_models_use_reasoning_object(level, expected) -> None:
+    _response, transport = _send(_model("deepseek/deepseek-v3.2", level, OPENROUTER), _ok())
+    payload = transport.calls[0]
+    assert payload["reasoning"] == expected
+    assert "thinking" not in payload and "reasoning_effort" not in payload

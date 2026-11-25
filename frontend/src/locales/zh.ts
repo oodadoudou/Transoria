@@ -1792,6 +1792,7 @@ export const zh: Messages = {
     affectedLabel: "受影响",
     failureTypes: {
       thinkingRequired: "模型必须开启思考",
+      thinkingIgnored: "关闭思考无效",
       outputLimit: "输出被截断",
       contentFilter: "内容被拦截",
       timeout: "模型超时",
@@ -1812,6 +1813,8 @@ export const zh: Messages = {
       recommendations: {
         thinkingRequired:
           "此模型不能关闭思考。请在「模型」中把推理强度改为 Low、Medium 或 High，然后继续失败分块。",
+        thinkingIgnored:
+          "推理强度设为 Off，模型仍返回了思考内容，任务已在第一次出现时停止。请把推理强度改为 Low、Medium 或 High，或换用能关闭思考的模型或服务商，然后继续任务。",
         contentFilter:
           "服务商的内容安全策略拦截了这段请求或回复，原样重试通常仍会被拦截。请换用其他模型或服务商后继续失败分块。",
         outputLimit:

@@ -36,6 +36,10 @@ class SubtaskResult:
     route_profile_id: str = ""
 
 
+# Model-setting errors repeat on every subtask, so the first one stops the task.
+_TASK_STOPPING_ERROR_CODES = frozenset({"llm.thinking_off_ignored", "llm.thinking_off_unsupported"})
+
+
 class SubtaskFailedWithResult(RuntimeError):
     """Raised when a runner must fail while preserving a partial result."""
 
@@ -110,6 +114,7 @@ class TaskExecutor:
     )
     _active_runners: int = field(default=0, init=False, repr=False)
     _pause_observed: bool = field(default=False, init=False, repr=False)
+    _stopping_error: str = field(default="", init=False, repr=False)
     _next_launch_at: float = field(default=0.0, init=False, repr=False)
     _launch_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _run_returned: bool = field(default=False, init=False, repr=False)
@@ -211,6 +216,7 @@ class TaskExecutor:
         self._pause_gate.set()  # gate open by default
         self._active_runners = 0
         self._pause_observed = False
+        self._stopping_error = ""
         self._next_launch_at = 0.0
         self._launch_lock = asyncio.Lock()
         self._update_record_status(task_id, TaskStatus.RUNNING)
@@ -485,6 +491,9 @@ class TaskExecutor:
                 )
                 self.cache.save_subtask(failed)
                 self._fire_progress(task_id, failed.id)
+                if code in _TASK_STOPPING_ERROR_CODES and not self._stopping_error:
+                    self._stopping_error = failed.last_error
+                    self.request_stop()
                 return
 
             completed = replace(
@@ -555,7 +564,9 @@ class TaskExecutor:
                 snapshot = self.cache.load(task_id)
         progress = snapshot.progress()
         # Stop wins over pause if both fired.
-        if stopped:
+        if self._stopping_error:
+            final = TaskStatus.FAILED
+        elif stopped:
             final = TaskStatus.STOPPED
         elif paused:
             final = TaskStatus.PAUSED
@@ -567,12 +578,15 @@ class TaskExecutor:
             # Mixed terminal/non-terminal — keep current status.
             return snapshot
         now = self.clock()
+        metadata = runtime_metadata_for_status(snapshot.record, final, now)
+        if self._stopping_error:
+            metadata["last_error"] = self._stopping_error
         self.cache.save_task(
             replace(
                 snapshot.record,
                 status=final,
                 updated_at=now,
-                metadata=runtime_metadata_for_status(snapshot.record, final, now),
+                metadata=metadata,
             )
         )
         return self.cache.load(task_id)

@@ -653,3 +653,30 @@ def test_attempt_count_increments_per_run(tmp_path: Path) -> None:
 
     after_rerun = cache.load_subtasks("t1")[0]
     assert after_rerun.attempt_count == 2
+
+
+def test_thinking_off_error_stops_task_at_first_occurrence(tmp_path: Path) -> None:
+    from transoria.llm import LlmRequestError
+
+    cache = TaskCache(root=tmp_path)
+    _seed(cache, "t1", count=6)
+    runner = _FakeRunner(
+        raise_exception=lambda subtask: LlmRequestError(
+            "still returned reasoning", code="llm.thinking_off_ignored"
+        )
+    )
+    executor = TaskExecutor(cache=cache, runner=runner, concurrency_limit=1, rpm_limit=0)
+
+    snapshot = asyncio.run(executor.run("t1"))
+
+    assert runner.started == ["s0"]
+    assert snapshot.record.status is TaskStatus.FAILED
+    assert "llm.thinking_off_ignored" in str(snapshot.record.metadata["last_error"])
+    by_id = {s.id: s for s in snapshot.subtasks}
+    assert by_id["s0"].status is SubtaskStatus.FAILED
+    assert all(by_id[f"s{i}"].status is SubtaskStatus.PENDING for i in range(1, 6))
+
+    resumed = asyncio.run(
+        TaskExecutor(cache=cache, runner=_FakeRunner(), concurrency_limit=1, rpm_limit=0).run("t1")
+    )
+    assert sum(s.status is SubtaskStatus.COMPLETED for s in resumed.subtasks) == 5

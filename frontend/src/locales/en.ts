@@ -1854,6 +1854,7 @@ export const en: Messages = {
     affectedLabel: "Affected",
     failureTypes: {
       thinkingRequired: "Thinking required",
+      thinkingIgnored: "Thinking off ignored",
       outputLimit: "Output truncated",
       contentFilter: "Blocked by provider",
       timeout: "Model timeout",
@@ -1874,6 +1875,8 @@ export const en: Messages = {
       recommendations: {
         thinkingRequired:
           "This model cannot turn thinking off. Set its reasoning level to Low, Medium, or High under Models, then continue failed chunks.",
+        thinkingIgnored:
+          "The model returned reasoning although its reasoning level is Off, so the task stopped at the first occurrence. Set the level to Low, Medium, or High, or switch to a model or provider that can turn thinking off, then continue the task.",
         contentFilter:
           "The provider's content policy blocked this request or reply, and retrying unchanged is usually blocked again. Switch to another model or provider, then continue failed chunks.",
         outputLimit:

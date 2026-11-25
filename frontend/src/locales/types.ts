@@ -1660,6 +1660,7 @@ export interface Messages {
     affectedLabel: string;
     failureTypes: {
       thinkingRequired: string;
+      thinkingIgnored: string;
       outputLimit: string;
       contentFilter: string;
       timeout: string;
@@ -1678,6 +1679,7 @@ export interface Messages {
       dominant: string;
       recommendations: {
         thinkingRequired: string;
+        thinkingIgnored: string;
         outputLimit: string;
         contentFilter: string;
         rateLimitHighConcurrency: string;
