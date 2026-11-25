@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } fro
 import { BridgeError, glossaryReviewBridge, type GlossaryReviewFinalRow, type GlossaryReviewFinalSheet, type TaskHeader } from "@/bridge";
 import { format, useMessages } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
+import { useToastStore } from "@/store/useToastStore";
 import { Panel } from "@/components/Panel";
 import { Button } from "@/components/Button";
 import { GuidedEmptyState } from "@/components/GuidedEmptyState";
@@ -327,10 +328,11 @@ export function ReviewPage() {
         return;
       }
       setImportDecision(null);
-      setFeedback({
-        kind: "success",
-        text: format(runLabels.importFinalSuccess, { n: result.count }),
+      useToastStore.getState().push({
+        variant: "success",
+        title: format(runLabels.importFinalSuccess, { n: result.count }),
       });
+      navigate({ module: "translation", page: "glossary" });
     } catch (error) {
       setFeedback({
         kind: "error",

@@ -78,6 +78,7 @@ export function RunPage() {
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
   const [hasReviewableArtifacts, setHasReviewableArtifacts] = useState(false);
+  const [reviewPrefill, setReviewPrefill] = useState<{ xlsx: string; references: string[] } | null>(null);
   const [sendingToReview, setSendingToReview] = useState(false);
 
   // Same as translation: fire even when every chunk failed so the
@@ -123,15 +124,25 @@ export function RunPage() {
     }
     let cancelled = false;
     setHasReviewableArtifacts(false);
+    setReviewPrefill(null);
     glossaryBridge
       .readArtifacts(activeTaskId)
       .then((artifacts) => {
         if (cancelled) return;
+        const novels = artifacts.per_novel_artifacts.filter((item) => item.xlsx_path);
         setHasReviewableArtifacts(
-          Boolean(artifacts.combined_artifact?.xlsx_path) ||
-            artifacts.per_novel_artifacts.some((item) =>
-              Boolean(item.xlsx_path),
-            ),
+          Boolean(artifacts.combined_artifact?.xlsx_path) || novels.length > 0,
+        );
+        // Several novels without a combined table still need the user to pick one.
+        const single = artifacts.combined_artifact?.xlsx_path
+          ? artifacts.combined_artifact
+          : novels.length === 1
+            ? novels[0]
+            : null;
+        setReviewPrefill(
+          single
+            ? { xlsx: single.xlsx_path, references: single.references_path ? [single.references_path] : [] }
+            : null,
         );
       })
       .catch(() => {
@@ -276,10 +287,10 @@ export function RunPage() {
         "novel_background",
         glossaryNovelBackground,
       );
-      glossaryReviewSettings.update("selected_xlsx_path", "");
-      glossaryReviewSettings.update("selected_reference_paths", []);
+      glossaryReviewSettings.update("selected_xlsx_path", reviewPrefill?.xlsx ?? "");
+      glossaryReviewSettings.update("selected_reference_paths", reviewPrefill?.references ?? []);
       await glossaryReviewSettings.saveNow();
-      navigate({ module: "glossary-review", page: "settings" });
+      navigate({ module: "glossary-review", page: reviewPrefill ? "run" : "settings" });
     } finally {
       setSendingToReview(false);
     }
