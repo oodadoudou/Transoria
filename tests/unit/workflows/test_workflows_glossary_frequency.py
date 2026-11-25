@@ -109,3 +109,22 @@ def test_frequency_uses_unmasked_text_for_references() -> None:
     # The reference for 신 should still be the original line (with 신해범 visible).
     if "신" in by_src and by_src["신"].references:
         assert by_src["신"].references[0] == "신해범 walked. Then 신 alone."
+
+
+def test_short_hangul_terms_only_count_at_word_start() -> None:
+    candidates = (Candidate(src="서", dst="署"), Candidate(src="신해범", dst="申海范"))
+    segments = (
+        "경찰서에 갔다.",
+        "서가 웃었다.",
+        "\"서, 왔어?\"",
+        "그는 말했다.",
+        "신해범서 왔다.",
+    )
+
+    records = count_frequencies_and_references(
+        candidates, segments, reference_example_limit=10, min_frequency=1
+    )
+
+    by_src = {record.src: record for record in records}
+    assert by_src["서"].frequency == 2
+    assert by_src["서"].references == (segments[1], segments[2])

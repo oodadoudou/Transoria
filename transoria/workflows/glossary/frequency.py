@@ -15,7 +15,9 @@ Search":
 4. Count frequency = number of segments containing at least one occurrence
    of the term (we use reference-line count, not raw occurrences — it
    matches the masking step's intent and is more robust against filler
-   tokens that appear many times per line).
+   tokens that appear many times per line). Hangul terms of one or two
+   syllables only count where they start a word, so ``서`` does not count
+   every ``경찰서``.
 5. Mask already matched longer terms in scanned text so child terms
    contained in a parent term don't double-count the parent's occurrences.
 6. Remove entries below the configured ``min_frequency``.
@@ -36,6 +38,17 @@ from transoria.workflows.glossary.candidate import Candidate, GlossaryRecord
 # ``__GMASK_0__``) silently re-introduces matches: a candidate "A" would
 # find the "A" inside "GMASK" and inflate its frequency.
 _MASK_CHARACTER = "\u0001"
+_SHORT_HANGUL = re.compile(r"[\uAC00-\uD7A3]{1,2}")
+# A masked longer term counts as a word, so a particle right after it is not a match.
+_HANGUL_BEFORE = r"(?<![\u0001\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3])"
+
+
+def _pattern(candidate: Candidate) -> re.Pattern[str] | None:
+    if candidate.regex:
+        return re.compile(candidate.src)
+    if _SHORT_HANGUL.fullmatch(candidate.src):
+        return re.compile(_HANGUL_BEFORE + re.escape(candidate.src))
+    return None
 
 
 def count_frequencies_and_references(
@@ -61,11 +74,11 @@ def count_frequencies_and_references(
             continue
         match_count = 0
         references: list[str] = []
-        if candidate.regex:
-            try:
-                pattern = re.compile(candidate.src)
-            except re.error:
-                continue
+        try:
+            pattern = _pattern(candidate)
+        except re.error:
+            continue
+        if pattern is not None:
             for segment_index, segment in enumerate(masked):
                 if not pattern.search(segment):
                     continue
