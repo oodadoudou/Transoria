@@ -1125,9 +1125,9 @@ export const zh: Messages = {
       statusSourceResidue: "原文残留",
       statusSourceResidueHint:
         "译文中保留了源语言字符（韩文/日文等），建议人工修正。",
-      statusGlossaryNotApplied: "术语未应用",
+      statusGlossaryNotApplied: "术语异写",
       statusGlossaryNotAppliedHint:
-        "原文段落命中了术语表条目，但译文中没有出现该条目的规范译名。",
+        "原文命中了术语表条目，译文却用了该术语的另一种写法。",
       statusTermInconsistency: "术语不一致",
       statusTermInconsistencyHint:
         "同一术语形态在部分命中段落中应用了规范译名，另一些命中段落没有应用。",
@@ -1154,7 +1154,7 @@ export const zh: Messages = {
         total: "共 {n} 条",
         lowConfidence: "{n} 低置信",
         sourceResidue: "{n} 原文残留",
-        glossaryNotApplied: "{n} 术语未应用",
+        glossaryNotApplied: "{n} 术语异写",
         termInconsistency: "{n} 术语不一致",
         possibleDuplicate: "{n} 疑似重复",
         modelAnomaly: "{n} 模型异常",
@@ -1175,7 +1175,7 @@ export const zh: Messages = {
       filterPlaceholder: "搜索序号 / 原文 / 译文…",
       filterOnlyLowConfidence: "低置信",
       filterOnlySourceResidue: "原文残留",
-      filterOnlyGlossaryNotApplied: "术语未应用",
+      filterOnlyGlossaryNotApplied: "术语异写",
       filterOnlyTermInconsistency: "术语不一致",
       filterOnlyPossibleDuplicate: "疑似重复",
       filterOnlyModelAnomaly: "模型异常",

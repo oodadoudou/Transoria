@@ -575,7 +575,11 @@ def test_load_snapshot_tags_glossary_not_applied(router_and_service):
         task_id="translation-pf-glossary-missing",
         input_dir=tmp_path / "in",
         output_dir=tmp_path / "out",
-        file_segments=[("0:0", "신해범이 돌아왔다.", "海范回来了。")],
+        file_segments=[
+            ("0:0", "신해범이 돌아왔다.", "申海帆回来了。"),
+            ("0:1", "신해범이 웃었다.", "他笑了。"),
+            ("0:2", "신해범이 앉았다.", "신해범坐下了。"),
+        ],
         metadata_overrides={
             "glossary": [
                 {
@@ -593,9 +597,13 @@ def test_load_snapshot_tags_glossary_not_applied(router_and_service):
         {"task_id": "translation-pf-glossary-missing"},
     )
 
-    item = response["items"][0]
+    items = {item["segment_id"]: item for item in response["items"]}
+    item = items["0:0"]
     assert "glossary_not_applied" in item["tags"]
     assert "glossary_term_target_missing" in item["reasons"]
+    assert "glossary_not_applied" not in items["0:1"].get("tags", [])
+    assert items["0:1"]["glossary_terms"][0]["applied"] is False
+    assert "glossary_not_applied" in items["0:2"]["tags"]
     assert item["glossary_terms"] == [
         {
             "src": "신해범",
@@ -643,7 +651,7 @@ def test_load_snapshot_does_not_infer_term_inconsistency_from_missing_canonical_
     assert items["0:0"]["glossary_terms"][0]["applied"] is True
     assert items["0:0"]["glossary_terms"][0]["inconsistent"] is False
     assert "term_inconsistency" not in items["0:1"].get("tags", [])
-    assert "glossary_not_applied" in items["0:1"]["tags"]
+    assert "glossary_not_applied" not in items["0:1"].get("tags", [])
     assert "glossary_term_translation_inconsistent" not in items["0:1"].get(
         "reasons", []
     )

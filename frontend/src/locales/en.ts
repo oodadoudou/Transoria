@@ -1146,9 +1146,9 @@ export const en: Messages = {
       statusSourceResidue: "Source residue",
       statusSourceResidueHint:
         "Translation kept source-language characters (Korean / Japanese / etc.) — manual review recommended.",
-      statusGlossaryNotApplied: "Glossary missing",
+      statusGlossaryNotApplied: "Term variant",
       statusGlossaryNotAppliedHint:
-        "The source segment contains a glossary term, but the configured target term is not present in the translation.",
+        "The source contains a glossary term, but the translation uses another rendering of it.",
       statusTermInconsistency: "Term inconsistency",
       statusTermInconsistencyHint:
         "This glossary term is applied in some matching segments but missing in others.",
@@ -1186,7 +1186,7 @@ export const en: Messages = {
         total: "{n} items",
         lowConfidence: "{n} low-confidence",
         sourceResidue: "{n} source-residue",
-        glossaryNotApplied: "{n} glossary missing",
+        glossaryNotApplied: "{n} term variants",
         termInconsistency: "{n} term inconsistencies",
         possibleDuplicate: "{n} possible duplicates",
         modelAnomaly: "{n} model anomalies",
@@ -1208,7 +1208,7 @@ export const en: Messages = {
       filterPlaceholder: "Search ID / source / target…",
       filterOnlyLowConfidence: "Low confidence",
       filterOnlySourceResidue: "Source residue",
-      filterOnlyGlossaryNotApplied: "Glossary missing",
+      filterOnlyGlossaryNotApplied: "Term variant",
       filterOnlyTermInconsistency: "Term inconsistency",
       filterOnlyPossibleDuplicate: "Possible duplicate",
       filterOnlyModelAnomaly: "Model anomaly",

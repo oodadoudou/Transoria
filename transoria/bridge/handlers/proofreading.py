@@ -34,7 +34,7 @@ from transoria.domain import Language, SubtaskStatus, TaskKind, TaskStatus
 from transoria.runtime.cache import TaskNotFoundError
 from transoria.workflows.translation import evaluate_segment_confidence
 from transoria.workflows.translation.confidence import ConfidenceVerdict
-from transoria.workflows.translation.glossary_report import target_term_present
+from transoria.workflows.translation.glossary_report import target_term_present, term_variant
 from transoria.workflows.translation.rules import Glossary, GlossaryEntry
 from transoria.workflows.translation.segment_state import (
     authoritative_failed_payload,
@@ -411,7 +411,7 @@ def _tag_term_glossary_risks(
             )
             if audit_record is None:
                 continue
-            if not applied:
+            if not applied and term_variant(entry, translated_text):
                 _mark_item_risk(
                     item,
                     _GLOSSARY_NOT_APPLIED_TAG,

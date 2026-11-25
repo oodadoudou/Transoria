@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from transoria.domain import SubtaskStatus
 from transoria.runtime.subtask import Subtask
 from transoria.workflows.translation.glossary_report import (
     build_glossary_application_report,
+    term_variant,
     write_glossary_application_report,
 )
+from transoria.workflows.translation.rules import GlossaryEntry
 
 
 def _completed_subtask() -> Subtask:
@@ -27,7 +31,7 @@ def _completed_subtask() -> Subtask:
                 },
                 {
                     "src": "왕자",
-                    "dst": "王子",
+                    "dst": "王太子",
                     "enabled": True,
                 },
                 {
@@ -56,7 +60,7 @@ def test_glossary_report_is_local_reference_not_translation_gate(tmp_path):
     report = build_glossary_application_report(
         [_completed_subtask()],
         {
-            "0:1": "魔物看见了王子。",
+            "0:1": "魔兽看见了王世子。",
             "0:2": "没有任何术语。",
         },
     )
@@ -72,7 +76,8 @@ def test_glossary_report_is_local_reference_not_translation_gate(tmp_path):
     payload = json.loads(paths.json_path.read_text(encoding="utf-8"))
 
     assert "不会额外调用模型，也不会修改译文" in markdown
-    assert "未逐字出现（参考）" in markdown
+    assert "疑似另一种写法（参考）" in markdown
+    assert "译文写作 `王世子`" in markdown
     assert "建议复核" not in markdown
     assert "不代表翻译错误" in markdown
     assert payload["total_matches"] == 2
@@ -96,3 +101,18 @@ def test_glossary_report_ignores_unfinished_subtasks():
     )
 
     assert report.total_matches == 2
+
+
+@pytest.mark.parametrize(
+    ("dst", "translation", "expected"),
+    [
+        ("申海范", "申海帆回来了。", "申海帆"),
+        ("申海范", "海范回来了。", ""),
+        ("申海范", "对海范说。", ""),
+        ("申海范", "他回来了。", ""),
+        ("申海范", "신해범回来了。", "신해범"),
+        ("魔兽", "魔物来了。", ""),
+    ],
+)
+def test_term_variant_only_reports_another_rendering(dst, translation, expected):
+    assert term_variant(GlossaryEntry(src="신해범", dst=dst), translation) == expected

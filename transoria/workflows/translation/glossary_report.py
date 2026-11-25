@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ class GlossaryApplicationRecord:
     dst: str
     info: str
     target_term_present: bool
+    variant: str
     source_text: str
     translated_text: str
 
@@ -53,8 +55,8 @@ def build_glossary_application_report(
     This report narrows them back down per segment by re-running local
     glossary matching against each segment's prompt/original text, then checks
     whether the configured target term appears verbatim in the final
-    translated text. A missing verbatim target is only a review suggestion:
-    models may correctly adapt glossary terms to fit the target language.
+    translated text. Only a different rendering of the term is a review
+    suggestion: pronouns and short forms are normal adaptations.
     """
 
     records_by_key: dict[tuple[str, str, str, str], GlossaryApplicationRecord] = {}
@@ -90,12 +92,14 @@ def build_glossary_application_report(
             translated_text = translations_by_segment[segment_id]
             for entry in matched:
                 key = (segment_id, entry.src, entry.dst, entry.info)
+                present = target_term_present(entry, translated_text)
                 records_by_key[key] = GlossaryApplicationRecord(
                     segment_id=segment_id,
                     src=entry.src,
                     dst=entry.dst,
                     info=entry.info,
-                    target_term_present=target_term_present(entry, translated_text),
+                    target_term_present=present,
+                    variant="" if present else term_variant(entry, translated_text),
                     source_text=source_text,
                     translated_text=translated_text,
                 )
@@ -106,14 +110,14 @@ def build_glossary_application_report(
     target_term_present_count = sum(
         1 for record in records if record.target_term_present
     )
-    review_suggested = len(records) - target_term_present_count
+    review_suggested = sum(1 for record in records if record.variant)
     return GlossaryApplicationReport(
         total_matches=len(records),
         target_term_present_matches=target_term_present_count,
         review_suggested_matches=review_suggested,
         segments_with_matches=len({record.segment_id for record in records}),
         segments_with_review_suggestions=len(
-            {record.segment_id for record in records if not record.target_term_present}
+            {record.segment_id for record in records if record.variant}
         ),
         records=records,
     )
@@ -169,29 +173,53 @@ def target_term_present(entry: GlossaryEntry, translated_text: str) -> bool:
     return expected.casefold() in translated_text.casefold()
 
 
+_HAN = re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
+
+
+def term_variant(entry: GlossaryEntry, translated_text: str) -> str:
+    """Return another rendering of the term found in the translation, or ""."""
+
+    fold = (lambda text: text) if entry.case_sensitive else str.casefold
+    text = fold(translated_text)
+    if not entry.regex and entry.src.strip() and fold(entry.src.strip()) in text:
+        return entry.src.strip()
+    expected = fold(entry.dst.strip())
+    size = len(expected)
+    # Two-character terms share one character with too many ordinary words.
+    if size < 3:
+        return ""
+    for start in range(len(text) - size + 1):
+        window = text[start:start + size]
+        # The first character must match: "对海范" is a short form after a word, not a variant.
+        if window[0] != expected[0]:
+            continue
+        diffs = [index for index in range(1, size) if window[index] != expected[index]]
+        if len(diffs) == 1 and _HAN.match(window[diffs[0]]) and _HAN.match(expected[diffs[0]]):
+            return translated_text[start:start + size]
+    return ""
+
+
 def _render_markdown(report: GlossaryApplicationReport) -> str:
     lines = [
         "# 术语参考报告",
         "",
         "本报告只基于已完成任务缓存、本地术语匹配和最终译文生成；不会额外调用模型，也不会修改译文。",
-        "目标译名未逐字出现只作为人工查看参考，不代表翻译错误；模型可能已根据目标语言自然调整了表达。",
+        "疑似另一种写法只作为人工查看参考，不代表翻译错误；代词和简称不会被标记。",
         "",
         f"- 术语匹配总数：{report.total_matches}",
         f"- 译文逐字包含目标译名：{report.target_term_present_matches}",
-        f"- 译文未逐字包含目标译名（参考）：{report.review_suggested_matches}",
+        f"- 疑似另一种写法（参考）：{report.review_suggested_matches}",
         f"- 涉及段落：{report.segments_with_matches}",
-        f"- 含未逐字出现记录的段落：{report.segments_with_review_suggestions}",
+        f"- 含疑似另一种写法的段落：{report.segments_with_review_suggestions}",
         "",
     ]
-    review_suggested = [
-        record for record in report.records if not record.target_term_present
-    ]
+    review_suggested = [record for record in report.records if record.variant]
     if review_suggested:
-        lines.extend(["## 未逐字出现（参考）", ""])
+        lines.extend(["## 疑似另一种写法（参考）", ""])
         for record in review_suggested:
             lines.extend(_record_lines(record))
     else:
-        lines.extend(["## 未逐字出现（参考）", "", "无。", ""])
+        lines.extend(["## 疑似另一种写法（参考）", "", "无。", ""])
     target_term_present = [
         record for record in report.records if record.target_term_present
     ]
@@ -204,8 +232,9 @@ def _render_markdown(report: GlossaryApplicationReport) -> str:
 
 def _record_lines(record: GlossaryApplicationRecord) -> list[str]:
     info = f"（{record.info}）" if record.info else ""
+    variant = f" 译文写作 `{record.variant}`" if record.variant else ""
     return [
-        f"- `{record.segment_id}` `{record.src}` -> `{record.dst}`{info}",
+        f"- `{record.segment_id}` `{record.src}` -> `{record.dst}`{info}{variant}",
         f"  - 原文：{_preview(record.source_text)}",
         f"  - 译文：{_preview(record.translated_text)}",
         "",
@@ -227,5 +256,6 @@ __all__ = [
     "GlossaryApplicationReportPaths",
     "build_glossary_application_report",
     "target_term_present",
+    "term_variant",
     "write_glossary_application_report",
 ]
