@@ -2359,6 +2359,7 @@ def test_explicit_partial_decoder_accepts_multi_row_lines_and_closing_quote_slip
     trailing = '{"0":"“甲。”"}}\n{"1":"“乙……”"}</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>'
     assert _decode_explicit_partial_rows(trailing, {0, 1}, has_context=True) == {0: "“甲。”", 1: "“乙……”"}
     assert _decode_explicit_partial_rows('{"0":""没有吗？""}', {0}, has_context=True) == {}
+    assert _decode_explicit_partial_rows('{"0":"前半句"}后半句。', {0}, has_context=True) == {}
 
 
 def test_explicit_partial_decoder_accepts_one_surplus_closing_brace() -> None:

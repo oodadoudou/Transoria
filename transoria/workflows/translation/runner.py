@@ -494,13 +494,16 @@ def _looks_truncated_jsonl_response(raw_content: str) -> bool:
     return not lines[-1].endswith("}")
 
 
+_TRAILING_NOISE = re.compile(r"[\]},]*(?:<.*)?")
+
+
 def _keyed_rows(line: str) -> list[tuple[int, object]] | None:
     """Parse one response line into explicitly keyed rows, or None.
 
     A line may hold several rows in one object. A line that closes its object
     but not its last string (``...”}``) gets the missing quote back; a line cut
-    off before ``}`` stays incomplete. Text after a complete object (a stray
-    ``}`` or leaked tool-call markup) is ignored.
+    off before ``}`` stays incomplete. A stray ``}`` or leaked tool-call
+    markup after a complete object is ignored.
     """
 
     if not line.startswith("{"):
@@ -511,9 +514,12 @@ def _keyed_rows(line: str) -> list[tuple[int, object]] | None:
     decoder = json.JSONDecoder(object_pairs_hook=lambda items: items)
     for attempt in attempts:
         try:
-            pairs, _end = decoder.raw_decode(attempt)
+            pairs, end = decoder.raw_decode(attempt)
         except json.JSONDecodeError:
             continue
+        # Only stray closers or markup may follow; trailing prose could be the rest of a row.
+        if not _TRAILING_NOISE.fullmatch(attempt[end:].strip()):
+            return None
         if not isinstance(pairs, list) or not pairs:
             return None
         rows: list[tuple[int, object]] = []
