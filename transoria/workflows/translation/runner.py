@@ -499,15 +499,19 @@ def _keyed_rows(line: str) -> list[tuple[int, object]] | None:
 
     A line may hold several rows in one object. A line that closes its object
     but not its last string (``...”}``) gets the missing quote back; a line cut
-    off before ``}`` stays incomplete.
+    off before ``}`` stays incomplete. Text after a complete object (a stray
+    ``}`` or leaked tool-call markup) is ignored.
     """
 
+    if not line.startswith("{"):
+        return None
     attempts = [line]
     if line.endswith("}") and not line.endswith('"}'):
         attempts.append(line[:-1] + '"}')
+    decoder = json.JSONDecoder(object_pairs_hook=lambda items: items)
     for attempt in attempts:
         try:
-            pairs = json.loads(attempt, object_pairs_hook=lambda items: items)
+            pairs, _end = decoder.raw_decode(attempt)
         except json.JSONDecodeError:
             continue
         if not isinstance(pairs, list) or not pairs:
