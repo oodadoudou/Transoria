@@ -228,6 +228,25 @@ def test_build_chunks_context_window_respects_cjk_punctuation() -> None:
     assert chunks[3].context_lines == ("上一段。", "中段……", "「他说道」")
 
 
+def test_build_chunks_context_window_accepts_closing_quotes_and_brackets() -> None:
+    items = (
+        _prep("0:0", "제1화"),
+        _prep("0:1", "“가자.”"),
+        _prep("0:2", "‘정말?’"),
+        _prep("0:3", "(그는 웃었다.)"),
+        _prep("0:4", "본문 첫 줄."),
+    )
+
+    chunks = build_chunks(
+        items,
+        chunk_size=1,
+        context_line_count=5,
+        glossary=Glossary.empty(),
+    )
+
+    assert chunks[4].context_lines == ("“가자.”", "‘정말?’", "(그는 웃었다.)")
+
+
 def test_build_chunks_attaches_only_matched_glossary_entries() -> None:
     items = (_prep("0:0", "신해범 entered"), _prep("0:1", "regular line"))
     glossary = Glossary(

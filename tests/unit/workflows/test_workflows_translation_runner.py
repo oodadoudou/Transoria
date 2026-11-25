@@ -2327,7 +2327,7 @@ def test_runner_retry_attempt_accepts_exact_dense_object_response() -> None:
     assert len(transport.requests) == 1
 
 
-def test_explicit_partial_decoder_rejects_inexact_dense_object_keys() -> None:
+def test_explicit_partial_decoder_keeps_keyed_rows_and_rejects_bad_dense_objects() -> None:
     expected = {40, 41, 42, 43, 44}
     missing = json.dumps({str(index): f"译文 {index}" for index in range(40, 44)})
     extra = json.dumps({str(index): f"译文 {index}" for index in range(40, 46)})
@@ -2336,9 +2336,26 @@ def test_explicit_partial_decoder_rejects_inexact_dense_object_keys() -> None:
         '"42":"译文 42","43":"译文 43","44":"译文 44"}'
     )
 
-    assert _decode_explicit_partial_rows(missing, expected, has_context=False) == {}
+    assert _decode_explicit_partial_rows(missing, expected, has_context=False) == {
+        index: f"译文 {index}" for index in range(40, 44)
+    }
     assert _decode_explicit_partial_rows(extra, expected, has_context=False) == {}
     assert _decode_explicit_partial_rows(duplicate, expected, has_context=False) == {}
+
+
+def test_explicit_partial_decoder_accepts_multi_row_lines_and_closing_quote_slip() -> None:
+    expected = set(range(6))
+    raw = (
+        '{"0":"甲。","1":"乙。","2":"丙。"}\n'
+        '{"3":"丁。"}\n'
+        '{"4":"“戊。”"}\n'
+        '{"5":"“己！”}'
+    )
+
+    assert _decode_explicit_partial_rows(raw, expected, has_context=True) == {
+        0: "甲。", 1: "乙。", 2: "丙。", 3: "丁。", 4: "“戊。”", 5: "“己！”",
+    }
+    assert _decode_explicit_partial_rows('{"0":"甲。"}\n{"1":"被截断', {0, 1}, has_context=True) == {0: "甲。"}
 
 
 def test_explicit_partial_decoder_accepts_one_surplus_closing_brace() -> None:

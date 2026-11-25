@@ -494,6 +494,36 @@ def _looks_truncated_jsonl_response(raw_content: str) -> bool:
     return not lines[-1].endswith("}")
 
 
+def _keyed_rows(line: str) -> list[tuple[int, object]] | None:
+    """Parse one response line into explicitly keyed rows, or None.
+
+    A line may hold several rows in one object. A line that closes its object
+    but not its last string (``...”}``) gets the missing quote back; a line cut
+    off before ``}`` stays incomplete.
+    """
+
+    attempts = [line]
+    if line.endswith("}") and not line.endswith('"}'):
+        attempts.append(line[:-1] + '"}')
+    for attempt in attempts:
+        try:
+            pairs = json.loads(attempt, object_pairs_hook=lambda items: items)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(pairs, list) or not pairs:
+            return None
+        rows: list[tuple[int, object]] = []
+        for raw_index, raw_text in pairs:
+            try:
+                rows.append((int(str(raw_index).strip()), raw_text))
+            except (TypeError, ValueError):
+                return None
+        if len({index for index, _ in rows}) != len(rows):
+            return None
+        return rows
+    return None
+
+
 def _decode_explicit_partial_rows(
     raw_content: str,
     expected_indices: set[int],
@@ -503,7 +533,8 @@ def _decode_explicit_partial_rows(
     """Keep only unambiguous complete JSONL rows from a partial response.
 
     Positional recovery is intentionally disabled here. Only an explicit,
-    in-range index proves which source segment a surviving row translates.
+    in-range index proves which source segment a surviving row translates;
+    a line may carry several such rows.
     Duplicate indices are discarded so conflicting output is retried. With
     context, a key past the requested range rejects the whole response. A
     complete multi-key object is accepted only when its keys exactly match the
@@ -516,30 +547,25 @@ def _decode_explicit_partial_rows(
         line = raw_line.strip().rstrip(",")
         if not line or line.startswith("```"):
             continue
-        try:
-            parsed = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(parsed, dict) or len(parsed) != 1:
-            continue
-        raw_index, raw_text = next(iter(parsed.items()))
-        try:
-            index = int(str(raw_index).strip())
-        except (TypeError, ValueError):
+        rows = _keyed_rows(line)
+        if not rows:
             continue
         # A key past the requested range means the model numbered a context line and shifted every row.
-        if has_context and index > max(expected_indices, default=index):
+        if has_context and any(index > max(expected_indices, default=index) for index, _ in rows):
             return {}
-        if (
-            index not in expected_indices
-            or not isinstance(raw_text, str)
-            or not raw_text.strip()
-        ):
+        if len(rows) > 1 and any(index not in expected_indices for index, _ in rows):
             continue
-        if index in candidates:
-            duplicate_indices.add(index)
-            continue
-        candidates[index] = raw_text
+        for index, raw_text in rows:
+            if (
+                index not in expected_indices
+                or not isinstance(raw_text, str)
+                or not raw_text.strip()
+            ):
+                continue
+            if index in candidates:
+                duplicate_indices.add(index)
+                continue
+            candidates[index] = raw_text
     for index in duplicate_indices:
         candidates.pop(index, None)
     if candidates:
