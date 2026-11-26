@@ -133,6 +133,7 @@ const MODEL_ANOMALY_TAGS = new Set([
 const STRUCTURAL_REVIEW_TAGS = new Set([
   "length_ratio_anomaly",
   "punctuation_anomaly",
+  "line_break_drift",
 ]);
 
 interface TermAuditGroup {

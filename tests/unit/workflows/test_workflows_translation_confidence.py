@@ -1283,3 +1283,38 @@ def test_evaluate_does_not_flag_japanese_punctuation_chars_in_chinese() -> None:
         assert not any(
             "Japanese kana residue" in r for r in verdict.reasons
         ), (translated, verdict.reasons)
+
+
+@pytest.mark.parametrize(
+    ("text", "decorative"),
+    [
+        ("Ƹ̵̡Ӝ̵̨̄Ʒ", True),
+        ("◇ A ◇", True),
+        ("SM.", False),
+        ("PM 09:43", False),
+        ("It's not your fault.", False),
+        ("ㅇㅇ", False),
+        ("ㅇ", False),
+        ("***", False),
+    ],
+)
+def test_decorative_lines_hold_no_words(text, decorative) -> None:
+    from transoria.workflows.prefilter import is_decorative_line
+
+    assert is_decorative_line(
+        text, source_language=Language.KOREAN, target_language=Language.CHINESE_SIMPLIFIED
+    ) is decorative
+
+
+def test_decorative_line_kept_unchanged_is_confident_and_added_line_breaks_are_not() -> None:
+    kwargs = dict(
+        min_length_ratio=0.2,
+        max_length_ratio=4.0,
+        max_punctuation_delta=12,
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+    )
+    assert not evaluate_segment_confidence("Ƹ̵̡Ӝ̵̨̄Ʒ", "Ƹ̵̡Ӝ̵̨̄Ʒ", **kwargs).is_low_confidence
+    assert evaluate_segment_confidence("ㅇㅇ", "ㅇㅇ", **kwargs).is_low_confidence
+    leaked = evaluate_segment_confidence("그는 웃었다.", "他笑了。\n她也笑了。", **kwargs)
+    assert leaked.is_low_confidence and "line_break_drift" in leaked.tags

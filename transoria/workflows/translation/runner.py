@@ -55,6 +55,7 @@ from transoria.workflows.translation.chunker import (
 )
 from transoria.workflows.translation.confidence import (
     ConfidenceVerdict,
+    adds_line_breaks,
     evaluate_segment_confidence,
 )
 from transoria.workflows.translation.preprocessor import (
@@ -1675,7 +1676,7 @@ class TranslationSubtaskRunner:
                         target_language=self.target_language,
                     )
                 )
-                if echoes_source or (
+                if echoes_source or adds_line_breaks(meta.original_text, last_text) or (
                     not _has_target_language_candidate(
                         last_text,
                         self.target_language,
@@ -2398,6 +2399,8 @@ def _should_replace_low_confidence_candidate(
     source_language: Language,
     target_language: Language,
 ) -> bool:
+    if adds_line_breaks(meta.original_text, retry_text):
+        return False
     return _low_confidence_candidate_rank(
         meta,
         retry_text,

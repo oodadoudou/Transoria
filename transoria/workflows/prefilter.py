@@ -135,6 +135,34 @@ def should_translate_for_language(
     return not is_translation_skippable(stripped)
 
 
+def is_decorative_line(
+    text: str, *, source_language: Language | None, target_language: Language | None
+) -> bool:
+    """True for symbol lines such as scene breaks that hold letters but no words.
+
+    A word is two adjacent letters of one script, combining marks aside; any
+    source- or target-language script also counts as text.
+    """
+
+    stripped = text.strip()
+    if not stripped or is_translation_skippable(stripped):
+        return False
+    for language in (source_language, target_language):
+        pattern = _LANGUAGE_SCRIPT_RE.get(language) if language is not None else None
+        if pattern is not None and pattern.search(stripped):
+            return False
+    previous_script = ""
+    for char in stripped:
+        category = unicodedata.category(char)
+        if category.startswith("M"):
+            continue
+        script = unicodedata.name(char, "").split(" ", 1)[0] if category.startswith("L") else ""
+        if script and script == previous_script:
+            return False
+        previous_script = script
+    return True
+
+
 def contains_source_language_script(text: str, source_language: Language) -> bool:
     """True when text carries a script signal for the configured source language."""
 
@@ -149,6 +177,7 @@ def contains_source_language_script(text: str, source_language: Language) -> boo
 
 __all__ = [
     "contains_source_language_script",
+    "is_decorative_line",
     "is_fixed_identifier_line",
     "is_translation_skippable",
     "should_translate_for_language",

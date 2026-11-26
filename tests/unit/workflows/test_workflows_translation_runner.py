@@ -3543,3 +3543,56 @@ def test_runner_rejects_extra_context_line_instead_of_shifted_keys() -> None:
     )
     assert translations == {}
     assert missing == frozenset({0, 1})
+
+
+def test_runner_keeps_decorative_scene_break_without_quality_retry() -> None:
+    sources = ("그는 웃었다.", "Ƹ̵̡Ӝ̵̨̄Ʒ", "식당을 나왔다.")
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body('{"0":"他笑了。"}\n{"1":"Ƹ̵̡Ӝ̵̨̄Ʒ"}\n{"2":"走出了餐厅。"}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask_with_context(context=("앞 문장이다.",), sources=sources))
+    )
+
+    payload = json.loads(result.response_content)
+    assert payload["translations"]["0:1"] == "Ƹ̵̡Ӝ̵̨̄Ʒ"
+    assert payload["low_confidence"] == []
+    assert len(transport.requests) == 1
+
+
+def test_runner_never_accepts_a_retry_that_pastes_in_context() -> None:
+    sources = ("오늘도 같이 갑니다 정말 긴 문장이다.",)
+    transport = FakeTransport(
+        responses=[
+            TransportResult(200, _ok_body('{"0":"오늘도 같이 갑니다 정말 긴 문장이다."}\n')),
+            TransportResult(200, _ok_body('{"0":"前文第一句翻译。\\n前文第二句翻译。\\n前文第三句翻译。"}\n')),
+        ]
+    )
+    runner = TranslationSubtaskRunner(
+        client=LlmClient(transport=transport),
+        model=_model(),
+        prompt_preset=default_preset(PromptKind.TRANSLATION),
+        source_language=Language.KOREAN,
+        target_language=Language.CHINESE_SIMPLIFIED,
+        enable_confidence_check=True,
+        low_confidence_max_retries=1,
+    )
+
+    result = asyncio.run(
+        runner.run(_make_subtask_with_context(context=("前文第一句。", "前文第二句。"), sources=sources))
+    )
+
+    payload = json.loads(result.response_content)
+    assert "\n" not in payload["translations"]["0:0"]
+    assert payload["translations"]["0:0"] == sources[0]

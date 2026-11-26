@@ -23,7 +23,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from transoria.domain import LATIN_SOURCE_LANGUAGES, Language
-from transoria.workflows.prefilter import is_fixed_identifier_line
+from transoria.workflows.prefilter import is_decorative_line, is_fixed_identifier_line
 
 
 _PUNCTUATION_CHARS = (
@@ -52,6 +52,7 @@ TAG_FUNCTION_WORD_RESIDUE = "function_word_residue"
 TAG_TARGET_LANGUAGE_WEAK = "target_language_weak"
 TAG_MODEL_CHATTER = "model_chatter"
 TAG_VERBATIM_ECHO = "verbatim_echo"
+TAG_LINE_BREAK_DRIFT = "line_break_drift"
 TAG_LENGTH_RATIO_ANOMALY = "length_ratio_anomaly"
 TAG_PUNCTUATION_ANOMALY = "punctuation_anomaly"
 TAG_TRUNCATED = "truncated"
@@ -92,6 +93,13 @@ def evaluate_segment_confidence(
         source_text, translated_text
     ):
         return ConfidenceVerdict(is_low_confidence=False)
+    if translated_text.strip() == source_text.strip() and is_decorative_line(
+        source_text, source_language=source_language, target_language=target_language
+    ):
+        return ConfidenceVerdict(is_low_confidence=False)
+    if adds_line_breaks(source_text, translated_text):
+        reasons.append("translation adds line breaks the source does not have")
+        tags.append(TAG_LINE_BREAK_DRIFT)
     preserved_title_or_identifier = _looks_like_preserved_title_or_identifier(
         source_text,
         translated_text,
@@ -175,6 +183,12 @@ def evaluate_segment_confidence(
         reasons=tuple(reasons),
         tags=tuple(dict.fromkeys(tags)),
     )
+
+
+def adds_line_breaks(source_text: str, translated_text: str) -> bool:
+    """A row that gains line breaks carries text from other lines, usually the context."""
+
+    return translated_text.strip().count("\n") > source_text.strip().count("\n")
 
 
 def _count_punctuation(text: str) -> int:
@@ -941,4 +955,4 @@ def _same_fixed_identifier(source_text: str, translated_text: str) -> bool:
     return compact_source == compact_translated
 
 
-__all__ = ["ConfidenceVerdict", "evaluate_segment_confidence"]
+__all__ = ["ConfidenceVerdict", "adds_line_breaks", "evaluate_segment_confidence"]
