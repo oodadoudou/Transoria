@@ -95,3 +95,27 @@ def test_import_rules_still_accepts_utf8_with_bom(
     assert [(entry["src"], entry["dst"]) for entry in response["entries"]] == [
         ("미아", "米亚"),
     ]
+
+
+def test_folder_background_reads_novel_notes_but_not_glossary_outputs(
+    router: BridgeRouter, tmp_path: Path
+) -> None:
+    folder = tmp_path / "book"
+    folder.mkdir()
+    (folder / "b-notes.md").write_text("第二部分\n", encoding="utf-8")
+    (folder / "A-info.md").write_text("작품 소개", encoding="utf-8")
+    (folder / "Novel-Glossary-references.md").write_text("原文: x", encoding="utf-8")
+    (folder / "Novel-Glossary-decode-issues.md").write_text("reason: y", encoding="utf-8")
+    (folder / "Novel.txt").write_text("본문", encoding="utf-8")
+
+    result = router.call("glossary.read_folder_background", {"folder": str(folder)})
+
+    assert result["text"] == "작품 소개\n\n第二部分"
+    assert result["files"] == [str(folder / "A-info.md"), str(folder / "b-notes.md")]
+
+
+def test_folder_background_is_empty_for_a_missing_folder(
+    router: BridgeRouter, tmp_path: Path
+) -> None:
+    result = router.call("glossary.read_folder_background", {"folder": str(tmp_path / "gone")})
+    assert result == {"text": "", "files": []}

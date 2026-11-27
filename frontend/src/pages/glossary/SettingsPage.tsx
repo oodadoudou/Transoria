@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { glossaryBridge } from "@/bridge";
 import { useMessages } from "@/locales";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import type { Language } from "@/bridge";
@@ -17,6 +19,8 @@ import styles from "./SettingsPage.module.css";
 
 type Toggle = "on" | "off";
 
+const BACKGROUND_READ_DELAY_MS = 500;
+
 export function SettingsPage() {
   const messages = useMessages();
   const { settings } = messages.glossary;
@@ -25,10 +29,40 @@ export function SettingsPage() {
   const reviewSettings = useModuleSettings("glossary_review");
   const draft = moduleSettings.draft;
   const review = reviewSettings.draft;
+  const [sameFolderChoice, setSameFolderChoice] = useState<boolean | null>(null);
+  const latestFolder = useRef("");
+  const backgroundTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (backgroundTimer.current !== null) window.clearTimeout(backgroundTimer.current);
+    },
+    [],
+  );
+
+  // Only a folder the user just switched to refills the background; typed paths settle first.
+  const changeInputFolder = (path: string) => {
+    moduleSettings.update("input_folder", path);
+    latestFolder.current = path.trim();
+    if (backgroundTimer.current !== null) window.clearTimeout(backgroundTimer.current);
+    if (!latestFolder.current) return;
+    backgroundTimer.current = window.setTimeout(() => {
+      const folder = latestFolder.current;
+      glossaryBridge
+        .readFolderBackground(folder)
+        .then(({ text }) => {
+          if (text && folder === latestFolder.current) moduleSettings.update("novel_background", text);
+        })
+        .catch(() => undefined);
+    }, BACKGROUND_READ_DELAY_MS);
+  };
 
   if (!draft) {
     return <Panel title={settings.title} subtitle={settings.sub} />;
   }
+
+  const outputFolder = draft.output_folder.trim();
+  const sameFolder =
+    sameFolderChoice ?? (!outputFolder || outputFolder === draft.input_folder.trim());
 
   return (
     <>
@@ -38,17 +72,31 @@ export function SettingsPage() {
             label={settings.inputFolder}
             value={draft.input_folder}
             variant="input"
-            onChange={(path) => moduleSettings.update("input_folder", path)}
+            onChange={changeInputFolder}
             historyKey="glossary:input_folder"
           />
-          <FolderPickerRow
-            label={settings.outputFolder}
-            value={draft.output_folder}
-            variant="output"
-            onChange={(path) => moduleSettings.update("output_folder", path)}
-            historyKey="glossary:output_folder"
-          />
+          {sameFolder ? null : (
+            <FolderPickerRow
+              label={settings.outputFolder}
+              value={draft.output_folder}
+              variant="output"
+              onChange={(path) => moduleSettings.update("output_folder", path)}
+              historyKey="glossary:output_folder"
+            />
+          )}
         </div>
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={sameFolder}
+            onChange={(event) => {
+              setSameFolderChoice(event.target.checked);
+              // A blank output folder means "write next to the input" on the backend.
+              if (event.target.checked) moduleSettings.update("output_folder", "");
+            }}
+          />
+          <span>{settings.sameAsInput}</span>
+        </label>
       </Panel>
 
       <Panel>

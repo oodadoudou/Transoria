@@ -825,6 +825,7 @@ export interface Messages {
       sub: string;
       inputFolder: string;
       outputFolder: string;
+      sameAsInput: string;
       sourceLanguage: string;
       targetLanguage: string;
       combineFolderGlossary: string;

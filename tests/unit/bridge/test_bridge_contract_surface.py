@@ -101,6 +101,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "glossary.import_rules",
     "glossary.export_rules",
     "glossary.list_presets",
+    "glossary.read_folder_background",
     # glossary review
     "glossary_review.start_task",
     "glossary_review.pause_task",
@@ -291,9 +292,10 @@ def test_backend_registers_full_contract(router):
     # 3 added 2026-06-18 (LLM request logs for LLM workflows) +
     # 6 added 2026-06-28 (workflow presets) +
     # 1 added 2026-07-05 (model_profiles.duplicate) +
-    # 1 added 2026-07-21 (epub_repair.preview).
+    # 1 added 2026-07-21 (epub_repair.preview) +
+    # 2 added 2026-11-27 (proofreading.add_glossary_term, glossary.read_folder_background).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 202
+    assert len(actual) == 203
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -403,6 +405,7 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
         "entries": [],
     },
     "glossary.list_presets": {},
+    "glossary.read_folder_background": {"folder": "/nonexistent-folder"},
     "glossary_review.start_task": {"request_id": "rid"},
     "glossary_review.pause_task": {"task_id": "missing"},
     "glossary_review.stop_task": {"task_id": "missing"},

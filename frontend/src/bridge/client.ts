@@ -638,6 +638,9 @@ export const glossaryBridge = {
   }> {
     return call("glossary.list_presets", {});
   },
+  readFolderBackground(folder: string): Promise<{ text: string; files: string[] }> {
+    return call("glossary.read_folder_background", { folder });
+  },
 };
 
 export const glossaryReviewBridge = {

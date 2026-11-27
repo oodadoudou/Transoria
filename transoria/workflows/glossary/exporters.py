@@ -190,6 +190,12 @@ def purge_glossary_artifacts(
                     continue
 
 
+def is_glossary_text_artifact(path: Path) -> bool:
+    return path.name.endswith(
+        (GLOSSARY_FILENAME_REFERENCES_SUFFIX, GLOSSARY_FILENAME_DECODE_ISSUES_SUFFIX)
+    )
+
+
 def is_legacy_glossary_text(path: Path) -> bool:
     return path.name.endswith(LEGACY_GLOSSARY_TEXT_SUFFIXES)
 
@@ -226,6 +232,7 @@ __all__ = [
     "GLOSSARY_FILENAME_REFERENCES",
     "GLOSSARY_FILENAME_XLSX",
     "LEGACY_GLOSSARY_TEXT_SUFFIXES",
+    "is_glossary_text_artifact",
     "is_legacy_glossary_text",
     "purge_glossary_artifacts",
     "XLSX_COLUMNS",

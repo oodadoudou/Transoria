@@ -1305,6 +1305,7 @@ export const en: Messages = {
       sub: "Choose where files come from and where to write the three artifacts. Pacing and chunk shape live on the Run page.",
       inputFolder: "Input folder",
       outputFolder: "Output folder",
+      sameAsInput: "Output to the input folder",
       sourceLanguage: "Source language",
       targetLanguage: "Target language",
       combineFolderGlossary: "Combined folder glossary",

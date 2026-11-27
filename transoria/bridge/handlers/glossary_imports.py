@@ -15,6 +15,7 @@ from transoria.bridge.errors import BridgeError
 from transoria.bridge.handlers._utils import expect_string
 from transoria.bridge.router import BridgeRouter
 from transoria.formats.text import decode_text_bytes
+from transoria.workflows.glossary.exporters import is_glossary_text_artifact
 
 
 def _entry_from_record(raw: object) -> dict[str, object] | None:
@@ -264,10 +265,39 @@ def list_presets_factory(cache_root: Path):
     return list_presets
 
 
+def read_folder_background(payload: Mapping[str, object]) -> dict[str, object]:
+    """Collect the novel notes a user keeps as Markdown beside the source files."""
+
+    folder = Path(expect_string(payload, "folder")).expanduser()
+    if not folder.is_dir():
+        return {"text": "", "files": []}
+    paths = sorted(
+        (
+            path
+            for path in folder.iterdir()
+            if path.is_file()
+            and path.suffix.lower() == ".md"
+            and not path.name.startswith((".", "~$"))
+            and not is_glossary_text_artifact(path)
+        ),
+        key=lambda path: path.name.casefold(),
+    )
+    texts: list[str] = []
+    for path in paths:
+        try:
+            text, _ = decode_text_bytes(path.read_bytes())
+        except OSError:
+            continue
+        if text.strip():
+            texts.append(text.strip())
+    return {"text": "\n\n".join(texts), "files": [str(path) for path in paths]}
+
+
 def register(router: BridgeRouter, *, cache_root: Path) -> None:
     router.register("glossary.import_rules", import_rules)
     router.register("glossary.export_rules", export_rules)
     router.register("glossary.list_presets", list_presets_factory(cache_root))
+    router.register("glossary.read_folder_background", read_folder_background)
 
 
 __all__ = ["register", "import_rules", "export_rules", "list_presets_factory"]

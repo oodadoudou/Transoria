@@ -1268,6 +1268,7 @@ export const zh: Messages = {
       sub: "配置源/输出文件夹与语言对。运行时参数(分块、节流等)在「运行」页。",
       inputFolder: "输入文件夹",
       outputFolder: "输出文件夹",
+      sameAsInput: "输出到输入文件夹",
       sourceLanguage: "源语言",
       targetLanguage: "目标语言",
       combineFolderGlossary: "合并整个文件夹的术语表",
