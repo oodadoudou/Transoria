@@ -40,6 +40,8 @@ class SubtaskResult:
 _TASK_STOPPING_ERROR_CODES = frozenset({"llm.thinking_off_ignored", "llm.thinking_off_unsupported"})
 # Rate limits and spent quota recover later, so the task pauses and its chunks stay pending.
 _TASK_PAUSING_ERROR_CODES = frozenset({"llm.rate_limited"})
+# One 429 is often a burst; pause only once the provider keeps refusing.
+RATE_LIMIT_PAUSE_THRESHOLD = 20
 
 
 class SubtaskFailedWithResult(RuntimeError):
@@ -118,6 +120,7 @@ class TaskExecutor:
     _pause_observed: bool = field(default=False, init=False, repr=False)
     _stopping_error: str = field(default="", init=False, repr=False)
     _pause_reason: str = field(default="", init=False, repr=False)
+    _rate_limited_failures: int = field(default=0, init=False, repr=False)
     _next_launch_at: float = field(default=0.0, init=False, repr=False)
     _launch_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _run_returned: bool = field(default=False, init=False, repr=False)
@@ -221,6 +224,7 @@ class TaskExecutor:
         self._pause_observed = False
         self._stopping_error = ""
         self._pause_reason = ""
+        self._rate_limited_failures = 0
         self._next_launch_at = 0.0
         self._launch_lock = asyncio.Lock()
         self._update_record_status(task_id, TaskStatus.RUNNING)
@@ -462,22 +466,6 @@ class TaskExecutor:
                 code = getattr(exc, "code", None)
                 if isinstance(code, str) and code:
                     code_prefix = f"[{code}] "
-                if code in _TASK_PAUSING_ERROR_CODES:
-                    reason = f"{code_prefix}{type(exc).__name__}: {exc}"
-                    self.cache.save_subtask(
-                        replace(
-                            running,
-                            status=SubtaskStatus.PENDING,
-                            last_error=reason,
-                            last_error_at=self.clock(),
-                            started_at="",
-                        )
-                    )
-                    self._fire_progress(task_id, running.id)
-                    if not self._pause_reason:
-                        self._pause_reason = reason
-                        self.request_pause()
-                    return
                 failed = replace(
                     running,
                     status=SubtaskStatus.FAILED,
@@ -515,6 +503,14 @@ class TaskExecutor:
                 if code in _TASK_STOPPING_ERROR_CODES and not self._stopping_error:
                     self._stopping_error = failed.last_error
                     self.request_stop()
+                if code in _TASK_PAUSING_ERROR_CODES:
+                    self._rate_limited_failures += 1
+                    if (
+                        self._rate_limited_failures >= RATE_LIMIT_PAUSE_THRESHOLD
+                        and not self._pause_reason
+                    ):
+                        self._pause_reason = failed.last_error
+                        self.request_pause()
                 return
 
             completed = replace(
@@ -568,7 +564,7 @@ class TaskExecutor:
     ) -> dict[str, object]:
         if status is TaskStatus.PAUSED and self._pause_reason:
             metadata["pause_reason"] = self._pause_reason
-        elif status is not TaskStatus.PAUSED:
+        else:
             metadata.pop("pause_reason", None)
         return metadata
 

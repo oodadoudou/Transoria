@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -103,7 +103,7 @@ class _FakeRunner:
 
     delay_per_subtask: float = 0.0
     fail_ids: tuple[str, ...] = ()
-    raise_exception: Callable[[Subtask], Exception] | None = None
+    raise_exception: Callable[[Subtask], Exception | None] | None = None
     hang_event: asyncio.Event | None = None
     started: list[str] = field(default_factory=list)
     completed: list[str] = field(default_factory=list)
@@ -119,8 +119,9 @@ class _FakeRunner:
                 await self.hang_event.wait()
             elif self.delay_per_subtask:
                 await asyncio.sleep(self.delay_per_subtask)
-            if self.raise_exception is not None:
-                raise self.raise_exception(subtask)
+            error = self.raise_exception(subtask) if self.raise_exception is not None else None
+            if error is not None:
+                raise error
             if subtask.id in self.fail_ids:
                 raise RuntimeError(f"forced failure for {subtask.id}")
             self.completed.append(subtask.id)
@@ -682,11 +683,12 @@ def test_thinking_off_error_stops_task_at_first_occurrence(tmp_path: Path) -> No
     assert sum(s.status is SubtaskStatus.COMPLETED for s in resumed.subtasks) == 5
 
 
-def test_rate_limit_pauses_task_and_keeps_chunks_pending(tmp_path: Path) -> None:
+def test_rate_limit_pauses_task_after_enough_chunks_fail(tmp_path: Path) -> None:
     from transoria.llm import LlmRequestError
+    from transoria.runtime.executor import RATE_LIMIT_PAUSE_THRESHOLD
 
     cache = TaskCache(root=tmp_path)
-    _seed(cache, "t1", count=5)
+    _seed(cache, "t1", count=RATE_LIMIT_PAUSE_THRESHOLD + 3)
     runner = _FakeRunner(
         raise_exception=lambda subtask: LlmRequestError("HTTP 429 from provider", code="llm.rate_limited")
     )
@@ -694,13 +696,74 @@ def test_rate_limit_pauses_task_and_keeps_chunks_pending(tmp_path: Path) -> None
 
     snapshot = asyncio.run(executor.run("t1"))
 
-    assert runner.started == ["s0"]
+    statuses = [s.status for s in snapshot.subtasks]
     assert snapshot.record.status is TaskStatus.PAUSED
     assert "llm.rate_limited" in str(snapshot.record.metadata["pause_reason"])
-    assert all(s.status is SubtaskStatus.PENDING for s in snapshot.subtasks)
+    assert statuses.count(SubtaskStatus.FAILED) == RATE_LIMIT_PAUSE_THRESHOLD
+    assert statuses.count(SubtaskStatus.PENDING) == 3
 
     resumed = asyncio.run(
         TaskExecutor(cache=cache, runner=_FakeRunner(), concurrency_limit=1, rpm_limit=0).run("t1")
     )
-    assert resumed.record.status is TaskStatus.COMPLETED
+    assert resumed.record.status is not TaskStatus.PAUSED
     assert "pause_reason" not in resumed.record.metadata
+
+
+def test_a_few_rate_limited_chunks_fail_without_pausing(tmp_path: Path) -> None:
+    from transoria.llm import LlmRequestError
+
+    cache = TaskCache(root=tmp_path)
+    _seed(cache, "t1", count=6)
+    runner = _FakeRunner(
+        raise_exception=lambda subtask: (
+            LlmRequestError("HTTP 429 from provider", code="llm.rate_limited")
+            if subtask.id in {"s1", "s3"}
+            else None
+        )
+    )
+
+    snapshot = asyncio.run(
+        TaskExecutor(cache=cache, runner=runner, concurrency_limit=1, rpm_limit=0).run("t1")
+    )
+
+    by_id = {s.id: s.status for s in snapshot.subtasks}
+    assert snapshot.record.status is not TaskStatus.PAUSED
+    assert "pause_reason" not in snapshot.record.metadata
+    assert by_id["s1"] is SubtaskStatus.FAILED and by_id["s3"] is SubtaskStatus.FAILED
+    assert by_id["s5"] is SubtaskStatus.COMPLETED
+
+
+def test_manual_pause_after_a_rate_limit_drops_the_stale_reason(tmp_path: Path) -> None:
+    from transoria.llm import LlmRequestError
+    from transoria.runtime.executor import RATE_LIMIT_PAUSE_THRESHOLD
+
+    cache = TaskCache(root=tmp_path)
+    _seed(cache, "t1", count=RATE_LIMIT_PAUSE_THRESHOLD + 2)
+    limited = _FakeRunner(
+        raise_exception=lambda subtask: LlmRequestError("HTTP 429 from provider", code="llm.rate_limited")
+    )
+    asyncio.run(TaskExecutor(cache=cache, runner=limited, concurrency_limit=1, rpm_limit=0).run("t1"))
+    record = cache.load_record("t1")
+    assert "pause_reason" in record.metadata
+    cache.save_task(replace(record, status=TaskStatus.RUNNING))
+
+    hang_event = asyncio.Event()
+    runner = _FakeRunner(hang_event=hang_event)
+    executor = TaskExecutor(cache=cache, runner=runner, concurrency_limit=1, rpm_limit=0)
+
+    async def scenario() -> TaskSnapshot:
+        async def pause_once_started() -> None:
+            while not runner.started:
+                await asyncio.sleep(0)
+            executor.request_pause()
+            hang_event.set()
+
+        watcher = asyncio.create_task(pause_once_started())
+        snapshot = await executor.run("t1")
+        await watcher
+        return snapshot
+
+    snapshot = asyncio.run(scenario())
+
+    assert snapshot.record.status is TaskStatus.PAUSED
+    assert "pause_reason" not in snapshot.record.metadata
