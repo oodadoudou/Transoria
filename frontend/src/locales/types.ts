@@ -896,10 +896,10 @@ export interface Messages {
     settings: {
       inputFolder: string;
       glossaryFile: string;
-      glossaryFilePlaceholder: string;
       referenceFiles: string;
-      referenceFilesHelp: string;
       noGlossaryFile: string;
+      noSelection: string;
+      fileCount: string;
       inputScanError: string;
       outputFilename: string;
       outputFilenameHelp: string;

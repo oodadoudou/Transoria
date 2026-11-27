@@ -1387,13 +1387,12 @@ export const en: Messages = {
   },
   glossaryReview: {
     settings: {
-      inputFolder: "Input folder",
-      glossaryFile: "Glossary XLSX",
-      glossaryFilePlaceholder: "Choose a glossary",
+      inputFolder: "Folder",
+      glossaryFile: "Glossary",
       referenceFiles: "Reference text",
-      referenceFilesHelp:
-        "Multiple files can be selected. The selected files are merged as novel context for the model.",
-      noGlossaryFile: "No glossary XLSX in this folder",
+      noGlossaryFile: "No XLSX found",
+      noSelection: "None",
+      fileCount: "{count} files",
       inputScanError: "Failed to scan input folder: {reason}",
       outputFilename: "Final filename",
       outputFilenameHelp:

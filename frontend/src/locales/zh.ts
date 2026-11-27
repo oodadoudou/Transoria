@@ -1349,12 +1349,12 @@ export const zh: Messages = {
   },
   glossaryReview: {
     settings: {
-      inputFolder: "输入文件夹",
-      glossaryFile: "术语表 XLSX",
-      glossaryFilePlaceholder: "请选择术语表",
+      inputFolder: "文件夹",
+      glossaryFile: "术语表",
       referenceFiles: "参考文本",
-      referenceFilesHelp: "可多选。模型会把选中的文本合并为小说参考上下文。",
-      noGlossaryFile: "文件夹里没有术语表 XLSX",
+      noGlossaryFile: "未找到 XLSX",
+      noSelection: "未选择",
+      fileCount: "{count} 个文件",
       inputScanError: "扫描输入文件夹失败：{reason}",
       outputFilename: "最终文件名",
       outputFilenameHelp:

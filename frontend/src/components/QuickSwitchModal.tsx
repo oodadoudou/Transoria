@@ -19,6 +19,8 @@ interface QuickSwitchModalProps {
   onClose: () => void;
   onManage?: () => void;
   allowReselect?: boolean;
+  /** Multi-select: rows toggle in place and the modal stays open. */
+  selectedIds?: string[];
 }
 
 export function QuickSwitchModal({
@@ -30,12 +32,19 @@ export function QuickSwitchModal({
   onClose,
   onManage,
   allowReselect = false,
+  selectedIds,
 }: QuickSwitchModalProps) {
   const messages = useMessages();
   const labels = messages.quickSwitch;
   useEscapeKey(onClose);
 
+  const isActive = (id: string) => (selectedIds ? selectedIds.includes(id) : id === activeId);
+
   const handlePick = (id: string) => {
+    if (selectedIds) {
+      void onSelect(id);
+      return;
+    }
     if (id === activeId && !allowReselect) {
       onClose();
       return;
@@ -71,7 +80,7 @@ export function QuickSwitchModal({
                 <button
                   key={item.id}
                   type="button"
-                  className={`${styles.row} ${item.id === activeId ? styles.rowActive : ""}`.trim()}
+                  className={`${styles.row} ${isActive(item.id) ? styles.rowActive : ""}`.trim()}
                   onClick={() => handlePick(item.id)}
                 >
                   <span className={styles.rowText}>
@@ -87,8 +96,8 @@ export function QuickSwitchModal({
                       </span>
                     ) : null}
                   </span>
-                  {item.id === activeId ? (
-                    <span className={styles.rowBadge}>{labels.activeBadge}</span>
+                  {isActive(item.id) ? (
+                    <span className={styles.rowBadge}>{selectedIds ? "✓" : labels.activeBadge}</span>
                   ) : null}
                 </button>
               ))}

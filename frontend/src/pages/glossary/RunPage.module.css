@@ -90,3 +90,10 @@
   display: flex;
   margin: 0 0 12px;
 }
+
+.inputError {
+  margin-top: 10px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+}

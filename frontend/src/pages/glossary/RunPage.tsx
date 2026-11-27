@@ -19,7 +19,7 @@ import { Segmented } from "@/components/Segmented";
 import { RunErrorBanner } from "@/components/RunErrorBanner";
 import { RunControls } from "@/components/RunControls";
 import { RequestLogPanel } from "@/components/RequestLogPanel";
-import { RunConfigBar } from "@/components/RunConfigBar";
+import { RunConfigBar, type RunConfigBarItem } from "@/components/RunConfigBar";
 import { QuickSwitchModal, type QuickSwitchItem } from "@/components/QuickSwitchModal";
 import { ReviewInputs } from "../glossary-review/ReviewInputs";
 import { ReviewProgress } from "../glossary-review/ReviewProgress";
@@ -131,6 +131,18 @@ export function RunPage() {
     ? workflowSlice.presets.find((preset) => preset.id === workflowSlice.matchedId)
     : undefined;
 
+  const presetItem: RunConfigBarItem = {
+    id: "preset",
+    label: messages.runConfig.preset,
+    primary:
+      workflowSlice.presets.length === 0
+        ? messages.runConfig.noPreset
+        : activePreset?.name ?? messages.runConfig.customPreset,
+    secondary: `${messages.language.options[sourceLanguage]} → ${messages.language.options[targetLanguage]}`,
+    actionLabel: messages.runConfig.switchAction,
+    onClick: () => setPresetSwitchOpen(true),
+  };
+
   const presetItems: QuickSwitchItem[] = workflowSlice.presets.map((preset) => ({
     id: preset.id,
     name: preset.name,
@@ -174,25 +186,13 @@ export function RunPage() {
       <RunErrorBanner kind="glossary" />
       <RunErrorBanner kind="glossary_review" />
 
-      {source === "existing" ? <ReviewInputs /> : null}
-
-      <Panel label={run.activeConfig}>
-        <RunConfigBar
-          items={[
-            {
-              id: "preset",
-              label: messages.runConfig.preset,
-              primary:
-                workflowSlice.presets.length === 0
-                  ? messages.runConfig.noPreset
-                  : activePreset?.name ?? messages.runConfig.customPreset,
-              secondary: `${messages.language.options[sourceLanguage]} → ${messages.language.options[targetLanguage]}`,
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setPresetSwitchOpen(true),
-            },
-          ]}
-        />
-      </Panel>
+      {source === "existing" ? (
+        <ReviewInputs label={run.activeConfig} presetItem={presetItem} />
+      ) : (
+        <Panel label={run.activeConfig}>
+          <RunConfigBar items={[presetItem]} />
+        </Panel>
+      )}
 
       {presetSwitchOpen ? (
         <QuickSwitchModal
