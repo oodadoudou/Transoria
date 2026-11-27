@@ -33,6 +33,9 @@ interface FormState {
   fallback_route: PresetRoute | null;
   group_concurrency: number;
   retry_failed: boolean;
+  review_enabled: boolean;
+  review_model_profile_id: string;
+  review_prompt_preset_id: string;
 }
 
 function defaultPromptId(kind: PromptKind, locale: string): string {
@@ -60,6 +63,7 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
   const models = useModelProfiles();
   const prompts = usePromptPresets(owner);
   const promptSlice = prompts[owner];
+  const reviewPromptSlice = usePromptPresets("glossary_review").glossary_review;
   const workflow = useWorkflowPresets(owner);
   const workflowSlice = workflow[owner];
   const appSettings = useModuleSettings("app");
@@ -92,8 +96,25 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
   const activeTargetLanguage =
     (moduleSettings.draft?.target_language as Language | undefined) ?? "zh";
 
+  const reviewFallbackPromptId = defaultPromptId("glossary_review", locale);
+  const visibleReviewPrompts = reviewPromptSlice.presets.filter(
+    (preset) => !preset.is_system || preset.id === reviewFallbackPromptId,
+  );
+  const activeReview = {
+    review_enabled: owner === "glossary" && (moduleSettings.draft as { review_after_extraction?: boolean } | null)?.review_after_extraction !== false,
+    review_model_profile_id: appSettings.draft?.active_glossary_review_model_id ?? "",
+    review_prompt_preset_id:
+      appSettings.draft?.active_glossary_review_prompt_id ??
+      (visibleReviewPrompts.some((preset) => preset.id === reviewFallbackPromptId)
+        ? reviewFallbackPromptId
+        : visibleReviewPrompts[0]?.id ?? ""),
+  };
   const modelById = (id: string) =>
     models.profiles.find((profile) => profile.id === id);
+  const reviewSummary = (review: { enabled: boolean; model_profile_id: string; prompt_preset_id: string }) =>
+    review.enabled
+      ? `${labels.reviewLabel}: ${modelById(review.model_profile_id)?.display_name ?? labels.missingSelection}`
+      : labels.noReview;
   const promptById = (id: string) =>
     promptSlice.presets.find((preset) => preset.id === id);
 
@@ -109,6 +130,7 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
     fallback_route: null,
     group_concurrency: 2,
     retry_failed: false,
+    ...activeReview,
   });
 
   const presetToForm = (preset: WorkflowPreset): FormState => ({
@@ -134,6 +156,13 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
       : null,
     group_concurrency: preset.group_concurrency || 2,
     retry_failed: preset.retry_failed,
+    ...(preset.review
+      ? {
+          review_enabled: preset.review.enabled,
+          review_model_profile_id: preset.review.model_profile_id || activeReview.review_model_profile_id,
+          review_prompt_preset_id: preset.review.prompt_preset_id || activeReview.review_prompt_preset_id,
+        }
+      : activeReview),
   });
 
   const activePreset = workflowSlice.matchedId
@@ -149,6 +178,15 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
     activePreset?.advanced
       ? `${labels.groupConcurrency}: ${activePreset.group_concurrency}`
       : activePrompt?.name ?? labels.missingSelection,
+    ...(owner === "glossary"
+      ? [
+          reviewSummary({
+            enabled: activeReview.review_enabled,
+            model_profile_id: activeReview.review_model_profile_id,
+            prompt_preset_id: activeReview.review_prompt_preset_id,
+          }),
+        ]
+      : []),
   ].join(" · ");
 
   const beginCreate = () => {
@@ -184,6 +222,16 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
       group_concurrency:
         owner === "translation" && form.advanced ? form.group_concurrency : 0,
       retry_failed: owner === "translation" && form.advanced && form.retry_failed,
+      review:
+        owner === "glossary"
+          ? form.review_enabled
+            ? {
+                enabled: true,
+                model_profile_id: form.review_model_profile_id,
+                prompt_preset_id: form.review_prompt_preset_id,
+              }
+            : { enabled: false, model_profile_id: "", prompt_preset_id: "" }
+          : null,
     };
     let saved: WorkflowPreset | null;
     if (form.id) {
@@ -281,6 +329,7 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
                 preset.advanced
                   ? `${labels.groupConcurrency}: ${preset.group_concurrency}`
                   : prompt?.name ?? preset.prompt_preset_id,
+                ...(preset.review ? [reviewSummary(preset.review)] : []),
               ].join(" · ");
               return (
                 <div
@@ -353,6 +402,10 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
             id: preset.id,
             label: preset.name,
           }))}
+          reviewPromptOptions={visibleReviewPrompts.map((preset) => ({
+            id: preset.id,
+            label: preset.name,
+          }))}
           onSave={(form) => void save(form)}
           onCancel={() => setModal(null)}
         />
@@ -394,6 +447,7 @@ interface WorkflowPresetModalProps {
   seed: FormState;
   modelOptions: Option[];
   promptOptions: Option[];
+  reviewPromptOptions: Option[];
   onSave: (form: FormState) => void;
   onCancel: () => void;
 }
@@ -404,6 +458,7 @@ function WorkflowPresetModal({
   seed,
   modelOptions,
   promptOptions,
+  reviewPromptOptions,
   onSave,
   onCancel,
 }: WorkflowPresetModalProps) {
@@ -430,7 +485,10 @@ function WorkflowPresetModal({
             form.fallback_route.rpm_limit !== null &&
             form.fallback_route.rpm_limit >= 0))
       : form.model_profile_id.trim().length > 0 &&
-        form.prompt_preset_id.trim().length > 0);
+        form.prompt_preset_id.trim().length > 0) &&
+    (owner !== "glossary" ||
+      !form.review_enabled ||
+      (form.review_model_profile_id.length > 0 && form.review_prompt_preset_id.length > 0));
   const routeModelIds = form.routes.map(
     (route) => modelOptions.find((model) => model.id === route.model_profile_id)?.modelId,
   );
@@ -722,7 +780,7 @@ function WorkflowPresetModal({
           ) : (
             <>
               <SelectField
-                label={labels.modelLabel}
+                label={owner === "glossary" ? messages.glossary.run.extractModel : labels.modelLabel}
                 value={form.model_profile_id}
                 options={modelOptions}
                 emptyLabel={labels.missingSelection}
@@ -731,7 +789,7 @@ function WorkflowPresetModal({
                 }
               />
               <SelectField
-                label={labels.promptLabel}
+                label={owner === "glossary" ? messages.glossary.run.extractPrompt : labels.promptLabel}
                 value={form.prompt_preset_id}
                 options={promptOptions}
                 emptyLabel={labels.missingSelection}
@@ -741,6 +799,42 @@ function WorkflowPresetModal({
               />
             </>
           )}
+          {owner === "glossary" ? (
+            <>
+              <label className={styles.toggleRow}>
+                <span>{labels.reviewAfterExtraction}</span>
+                <input
+                  type="checkbox"
+                  checked={form.review_enabled}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, review_enabled: event.target.checked }))
+                  }
+                />
+              </label>
+              {form.review_enabled ? (
+                <>
+                  <SelectField
+                    label={labels.reviewModelLabel}
+                    value={form.review_model_profile_id}
+                    options={modelOptions}
+                    emptyLabel={labels.missingSelection}
+                    onChange={(review_model_profile_id) =>
+                      setForm((current) => ({ ...current, review_model_profile_id }))
+                    }
+                  />
+                  <SelectField
+                    label={labels.reviewPromptLabel}
+                    value={form.review_prompt_preset_id}
+                    options={reviewPromptOptions}
+                    emptyLabel={labels.missingSelection}
+                    onChange={(review_prompt_preset_id) =>
+                      setForm((current) => ({ ...current, review_prompt_preset_id }))
+                    }
+                  />
+                </>
+              ) : null}
+            </>
+          ) : null}
           <div className={styles.languageGrid}>
             <div className={styles.field}>
               <label className={styles.fieldLabel}>

@@ -192,6 +192,7 @@ export interface GlossarySettings {
   novel_background: string;
   timeout_seconds: number;
   request_retry_attempts: number;
+  review_after_extraction: boolean;
 }
 
 export interface GlossaryReviewSettings {
@@ -360,6 +361,13 @@ export interface WorkflowPreset {
   fallback_route: PresetRoute | null;
   group_concurrency: number;
   retry_failed: boolean;
+  review: PresetReview | null;
+}
+
+export interface PresetReview {
+  enabled: boolean;
+  model_profile_id: string;
+  prompt_preset_id: string;
 }
 
 export interface PresetRoute {

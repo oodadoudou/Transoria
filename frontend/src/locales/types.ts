@@ -8,7 +8,6 @@ export interface Messages {
     model: string;
     translation: string;
     glossary: string;
-    glossaryReview: string;
     generalTools: string;
     appSettings: string;
     githubLink: string;
@@ -413,14 +412,8 @@ export interface Messages {
       presets: string;
     };
     glossary: {
-      run: string;
-      settings: string;
-      prompt: string;
-      presets: string;
-    };
-    glossaryReview: {
-      run: string;
       review: string;
+      run: string;
       settings: string;
       prompt: string;
       presets: string;
@@ -819,6 +812,7 @@ export interface Messages {
     crumb: string;
     settings: {
       title: string;
+      reviewSection: string;
       sub: string;
       inputFolder: string;
       outputFolder: string;
@@ -850,15 +844,24 @@ export interface Messages {
     run: {
       title: string;
       sub: string;
-      progress: string;
       startupNotice: string;
       failedSubtasks: string;
       runtimeTuning: string;
       activeConfig: string;
-      activeModel: string;
-      activePrompt: string;
-      switch: string;
-      sendToReview: string;
+      sourceLabel: string;
+      sourceExtract: string;
+      sourceExisting: string;
+      reviewInputs: string;
+      stageSwitch: string;
+      extractStage: string;
+      reviewStage: string;
+      reviewAfterExtraction: string;
+      startReview: string;
+      extractModel: string;
+      extractPrompt: string;
+      reviewModel: string;
+      reviewPrompt: string;
+      noReview: string;
       stats: {
         completed: string;
         failed: string;
@@ -887,10 +890,7 @@ export interface Messages {
     };
   };
   glossaryReview: {
-    crumb: string;
     settings: {
-      title: string;
-      sub: string;
       inputFolder: string;
       glossaryFile: string;
       glossaryFileHelp: string;
@@ -909,8 +909,6 @@ export interface Messages {
       inputScanError: string;
       outputFilename: string;
       outputFilenameHelp: string;
-      novelBackground: string;
-      novelBackgroundHelp: string;
       reviewRounds: string;
       reviewRoundsHelp: string;
       batchSize: string;
@@ -919,20 +917,9 @@ export interface Messages {
       retryAttemptsHelp: string;
       timeoutSeconds: string;
       timeoutSecondsHelp: string;
-      openOutputOnComplete: string;
-      openOutputOnCompleteHint: string;
-      on: string;
-      off: string;
     };
     run: {
-      title: string;
-      sub: string;
-      progress: string;
       startupNotice: string;
-      activeConfig: string;
-      activeModel: string;
-      activePrompt: string;
-      switch: string;
       viewReport: string;
       reportUnavailable: string;
       importFinalToTranslation: string;
@@ -1484,6 +1471,11 @@ export interface Messages {
     badgeCustom: string;
     customConfig: string;
     missingSelection: string;
+    reviewLabel: string;
+    noReview: string;
+    reviewAfterExtraction: string;
+    reviewModelLabel: string;
+    reviewPromptLabel: string;
     advanced: string;
     normalRoutes: string;
     routeCount: string;

@@ -8,8 +8,7 @@ export const en: Messages = {
     workspace: "Workspace",
     model: "Models",
     translation: "Translation",
-    glossary: "Glossary Extraction",
-    glossaryReview: "Glossary Review",
+    glossary: "Glossary",
     generalTools: "General Tools",
     appSettings: "App Settings",
     githubLink: "Enjoy your book",
@@ -841,14 +840,8 @@ export const en: Messages = {
       presets: "Presets",
     },
     glossary: {
+      review: "Review results",
       run: "Run",
-      settings: "Settings",
-      prompt: "Prompt",
-      presets: "Presets",
-    },
-    glossaryReview: {
-      run: "Run",
-      review: "Term Review",
       settings: "Settings",
       prompt: "Prompt",
       presets: "Presets",
@@ -1295,9 +1288,10 @@ export const en: Messages = {
     },
   },
   glossary: {
-    crumb: "Glossary Extraction",
+    crumb: "Glossary",
     settings: {
       title: "Glossary Settings",
+      reviewSection: "Review",
       sub: "Choose where files come from and where to write the three artifacts. Pacing and chunk shape live on the Run page.",
       inputFolder: "Input folder",
       outputFolder: "Output folder",
@@ -1314,7 +1308,7 @@ export const en: Messages = {
         "Fold full-width Latin/digits/katakana to half-width (NFKC) and strip leading/trailing punctuation from extracted terms. Reduces near-duplicate entries; on by default.",
       novelBackground: "Novel background",
       novelBackgroundHelp:
-        "Optional. Add worldbuilding, character relationships, and naming preferences for the AI to use while extracting terms. Empty means an empty context field is sent.",
+        "Optional. Add worldbuilding, character relationships, and naming preferences for the AI to use while extracting and reviewing terms. Empty means an empty context field is sent.",
       openOutputOnComplete: "Open output folder on completion",
       openOutputOnCompleteHint:
         "Open the output folder automatically after extraction so the XLSX/JSON/TXT artifacts are easy to find.",
@@ -1337,18 +1331,27 @@ export const en: Messages = {
       off: "Off",
     },
     run: {
-      title: "Run Glossary Extraction",
+      title: "Glossary",
       sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references TXT alongside the source folder.",
-      progress: "Progress",
       startupNotice:
         "Parsing input files and preparing glossary chunks. Large or complex EPUB files may take a few dozen seconds.",
       failedSubtasks: "Failed subtasks",
       runtimeTuning: "Runtime tuning",
       activeConfig: "Active configuration",
-      activeModel: "Model",
-      activePrompt: "Prompt",
-      switch: "Switch",
-      sendToReview: "Send to review",
+      sourceLabel: "Source",
+      sourceExtract: "Extract from novels",
+      sourceExisting: "Existing glossary",
+      reviewInputs: "Glossary files",
+      stageSwitch: "Stage",
+      extractStage: "Extraction",
+      reviewStage: "Review",
+      reviewAfterExtraction: "Review after extraction",
+      startReview: "Start review",
+      extractModel: "Extraction model",
+      extractPrompt: "Extraction prompt",
+      reviewModel: "Review model",
+      reviewPrompt: "Review prompt",
+      noReview: "No review",
       stats: {
         completed: "Completed",
         failed: "Failed",
@@ -1380,10 +1383,7 @@ export const en: Messages = {
     },
   },
   glossaryReview: {
-    crumb: "Glossary Review",
     settings: {
-      title: "Glossary Review Settings",
-      sub: "Choose the folder containing one glossary XLSX and reference TXT files. The reviewed XLSX is written back into the same folder.",
       inputFolder: "Input folder",
       glossaryFile: "Glossary XLSX",
       glossaryFileHelp:
@@ -1408,9 +1408,6 @@ export const en: Messages = {
       outputFilename: "Final filename",
       outputFilenameHelp:
         "Default: glossary-review-final.xlsx. Only .xlsx is supported; missing suffix is appended automatically.",
-      novelBackground: "Novel background",
-      novelBackgroundHelp:
-        "Optional world, naming, or genre context that helps the model judge glossary entries.",
       reviewRounds: "Review rounds",
       reviewRoundsHelp:
         "Each extra round reviews the glossary after prior changes. Default 1.",
@@ -1423,22 +1420,10 @@ export const en: Messages = {
       timeoutSeconds: "Timeout threshold (s)",
       timeoutSecondsHelp:
         "Maximum seconds to wait for a model response before the call is treated as failed.",
-      openOutputOnComplete: "Open output folder on completion",
-      openOutputOnCompleteHint:
-        "Open the input/output folder in the system file browser after a successful run.",
-      on: "On",
-      off: "Off",
     },
     run: {
-      title: "Run Glossary Review",
-      sub: "Review an XLSX glossary, report only changed rows, and write the final XLSX. For better AI review, configure the novel background in Settings.",
-      progress: "Progress",
       startupNotice:
         "Reading the glossary and reference text, then preparing review batches. Large files may take a few dozen seconds.",
-      activeConfig: "Active configuration",
-      activeModel: "Model",
-      activePrompt: "Prompt",
-      switch: "Switch",
       viewReport: "View change report",
       reportUnavailable: "No report available",
       importFinalToTranslation: "Import to translation glossary",
@@ -1506,7 +1491,7 @@ export const en: Messages = {
       restoreFailed: "Restore failed: {reason}",
     },
     review: {
-      title: "Term Review",
+      title: "Review results",
       sub: "Edit the final XLSX produced by glossary review. Saves overwrite the file so it can be imported into translation directly.",
       noTasks: "No glossary review tasks available.",
       taskPicker: "Select task",
@@ -1519,7 +1504,7 @@ export const en: Messages = {
         noTasksTitle: "No completed glossary review yet",
         noTasksBody:
           "Run glossary review after selecting an extraction output folder. Completed reviews appear here for final manual edits.",
-        noTasksAction: "Open review settings",
+        noTasksAction: "Open glossary run",
         noRowsTitle: "No editable terms in this final file",
         noRowsBody:
           "The final XLSX has no rows matching this view. Clear search, or rerun review with a glossary that contains importable terms.",
@@ -1666,6 +1651,11 @@ export const en: Messages = {
     badgeCustom: "Custom",
     customConfig: "Current configuration does not match a preset",
     missingSelection: "Select a model and prompt first.",
+    reviewLabel: "Review",
+    noReview: "No review",
+    reviewAfterExtraction: "Review after extraction",
+    reviewModelLabel: "Review model",
+    reviewPromptLabel: "Review prompt",
     advanced: "Advanced configuration",
     normalRoutes: "Translation routes",
     routeCount: "routes",

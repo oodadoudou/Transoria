@@ -637,8 +637,12 @@ export const glossaryBridge = {
 export const glossaryReviewBridge = {
   startTask(
     requestId: string,
+    sourceTaskId?: string,
   ): Promise<{ task_id: string; started_at: string }> {
-    return call("glossary_review.start_task", { request_id: requestId });
+    return call("glossary_review.start_task", {
+      request_id: requestId,
+      ...(sourceTaskId ? { source_task_id: sourceTaskId } : {}),
+    });
   },
   pauseTask(taskId: string): Promise<{ snapshot: TaskSnapshot }> {
     return call("glossary_review.pause_task", { task_id: taskId });

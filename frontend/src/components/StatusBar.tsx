@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { format, useMessages } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
-import { useRunSnapshot, type RunKind } from "@/store/useRuntimeStore";
+import { useRunSnapshot } from "@/store/useRuntimeStore";
+import { useGlossaryStageKind } from "@/store/glossaryStage";
 import styles from "./StatusBar.module.css";
 
 const TOKEN_FORMATTER = new Intl.NumberFormat("en", {
@@ -12,15 +13,12 @@ const TOKEN_FORMATTER = new Intl.NumberFormat("en", {
 
 const FULL_FORMATTER = new Intl.NumberFormat("en");
 
-function routeToRunKind(module: string): RunKind {
-  if (module === "glossary-review") return "glossary_review";
-  return module === "glossary" ? "glossary" : "translation";
-}
 
 export function StatusBar() {
   const messages = useMessages();
   const route = useTaskStore((state) => state.route);
-  const snapshot = useRunSnapshot(routeToRunKind(route.module));
+  const glossaryStage = useGlossaryStageKind();
+  const snapshot = useRunSnapshot(route.module === "glossary" ? glossaryStage : "translation");
 
   const status = snapshot.status;
   const dotKind = statusDotKind(status);

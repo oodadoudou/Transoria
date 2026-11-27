@@ -4,7 +4,6 @@ export type ModuleId =
   | "model"
   | "translation"
   | "glossary"
-  | "glossary-review"
   | "general-tools"
   | "app-settings";
 
@@ -19,14 +18,7 @@ export type TranslationPage =
   | "prompt"
   | "presets";
 
-export type GlossaryPage = "run" | "settings" | "prompt" | "presets";
-
-export type GlossaryReviewPage =
-  | "run"
-  | "review"
-  | "settings"
-  | "prompt"
-  | "presets";
+export type GlossaryPage = "run" | "review" | "settings" | "prompt" | "presets";
 
 export type GeneralToolsPage =
   | "batchReplacement"
@@ -59,15 +51,13 @@ export type Route =
   | { module: "model"; page: ModelPage }
   | { module: "translation"; page: TranslationPage }
   | { module: "glossary"; page: GlossaryPage }
-  | { module: "glossary-review"; page: GlossaryReviewPage }
   | { module: "general-tools"; page: GeneralToolsPage }
   | { module: "app-settings"; page: AppSettingsPage };
 
 export function isRunPage(route: Route): boolean {
   return (
     (route.module === "translation" && route.page === "run") ||
-    (route.module === "glossary" && route.page === "run") ||
-    (route.module === "glossary-review" && route.page === "run")
+    (route.module === "glossary" && route.page === "run")
   );
 }
 
@@ -79,8 +69,6 @@ export function defaultPageFor(module: ModuleId): Route {
       return { module: "translation", page: "run" };
     case "glossary":
       return { module: "glossary", page: "run" };
-    case "glossary-review":
-      return { module: "glossary-review", page: "run" };
     case "general-tools":
       return { module: "general-tools", page: "epubTools" };
     case "app-settings":
@@ -136,23 +124,13 @@ function coerceRoute(value: unknown): Route {
         };
       }
       return { module: "translation", page: "run" };
+    // The review module merged into glossary; a saved review route lands on the same page there.
     case "glossary":
-      if (["run", "settings", "prompt", "presets"].includes(String(candidate.page))) {
+    case "glossary-review":
+      if (["run", "review", "settings", "prompt", "presets"].includes(String(candidate.page))) {
         return { module: "glossary", page: candidate.page as GlossaryPage };
       }
       return { module: "glossary", page: "run" };
-    case "glossary-review":
-      if (
-        ["run", "review", "settings", "prompt", "presets"].includes(
-          String(candidate.page),
-        )
-      ) {
-        return {
-          module: "glossary-review",
-          page: candidate.page as GlossaryReviewPage,
-        };
-      }
-      return { module: "glossary-review", page: "run" };
     case "general-tools":
       if (GENERAL_TOOLS_PAGES.includes(candidate.page as GeneralToolsPage)) {
         return {

@@ -85,3 +85,8 @@
   justify-content: flex-start;
   margin: 4px 0 2px;
 }
+
+.stageSwitch {
+  display: flex;
+  margin: 0 0 12px;
+}

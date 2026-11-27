@@ -6,6 +6,7 @@ import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
 import type { PromptKind } from "@/bridge";
 import styles from "./Inspector.module.css";
+import { useGlossaryStageKind } from "@/store/glossaryStage";
 
 const NUM = new Intl.NumberFormat("en");
 
@@ -22,15 +23,12 @@ function formatTokens(value: number): string {
   return NUM.format(value);
 }
 
-function moduleToRunKind(module: string): PromptKind {
-  if (module === "glossary-review") return "glossary_review";
-  return module === "glossary" ? "glossary" : "translation";
-}
 
 export function Inspector() {
   const messages = useMessages();
   const route = useTaskStore((state) => state.route);
-  const kind = moduleToRunKind(route.module);
+  const glossaryStage = useGlossaryStageKind();
+  const kind: PromptKind = route.module === "glossary" ? glossaryStage : "translation";
   const snapshot = useRunSnapshot(kind);
   const profilesStore = useModelProfiles();
   const promptPresets = usePromptPresets(kind);

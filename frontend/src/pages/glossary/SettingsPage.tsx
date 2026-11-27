@@ -20,8 +20,11 @@ type Toggle = "on" | "off";
 export function SettingsPage() {
   const messages = useMessages();
   const { settings } = messages.glossary;
+  const reviewLabels = messages.glossaryReview.settings;
   const moduleSettings = useModuleSettings("glossary");
+  const reviewSettings = useModuleSettings("glossary_review");
   const draft = moduleSettings.draft;
+  const review = reviewSettings.draft;
 
   if (!draft) {
     return <Panel title={settings.title} subtitle={settings.sub} />;
@@ -134,9 +137,10 @@ export function SettingsPage() {
                 { id: "off", label: settings.off },
               ]}
               value={draft.auto_open_output_folder ? "on" : "off"}
-              onChange={(v) =>
-                moduleSettings.update("auto_open_output_folder", v === "on")
-              }
+              onChange={(v) => {
+                moduleSettings.update("auto_open_output_folder", v === "on");
+                reviewSettings.update("auto_open_output_folder", v === "on");
+              }}
             />
           </SettingsField>
           <SettingsField
@@ -212,14 +216,70 @@ export function SettingsPage() {
         </SettingsFieldStack>
       </Panel>
 
+      {review ? (
+        <Panel label={settings.reviewSection}>
+          <SettingsFieldStack>
+            <SettingsFieldFrame>
+              <TextField
+                label={reviewLabels.outputFilename}
+                value={review.output_filename}
+                onChange={(value) => reviewSettings.update("output_filename", value)}
+                help={reviewLabels.outputFilenameHelp}
+              />
+            </SettingsFieldFrame>
+            <SettingsFieldFrame>
+              <NumberField
+                label={reviewLabels.reviewRounds}
+                value={review.review_rounds}
+                onChange={(v) => reviewSettings.update("review_rounds", v)}
+                help={reviewLabels.reviewRoundsHelp}
+                min={1}
+                max={10}
+              />
+            </SettingsFieldFrame>
+            <SettingsFieldFrame>
+              <NumberField
+                label={reviewLabels.batchSize}
+                value={review.batch_size}
+                onChange={(v) => reviewSettings.update("batch_size", v)}
+                help={reviewLabels.batchSizeHelp}
+                min={1}
+                max={200}
+              />
+            </SettingsFieldFrame>
+            <SettingsFieldFrame>
+              <NumberField
+                label={reviewLabels.timeoutSeconds}
+                value={review.timeout_seconds}
+                onChange={(v) => reviewSettings.update("timeout_seconds", v)}
+                help={reviewLabels.timeoutSecondsHelp}
+                min={5}
+              />
+            </SettingsFieldFrame>
+            <SettingsFieldFrame>
+              <NumberField
+                label={reviewLabels.retryAttempts}
+                value={review.retry_attempts}
+                onChange={(v) => reviewSettings.update("retry_attempts", v)}
+                help={reviewLabels.retryAttemptsHelp}
+                min={0}
+                max={20}
+              />
+            </SettingsFieldFrame>
+          </SettingsFieldStack>
+        </Panel>
+      ) : null}
+
       <SettingsToolbar
         saveState={moduleSettings.saveState}
         lastError={moduleSettings.lastError}
         onSave={() => {
           void moduleSettings.saveNow({ explicit: true });
+          void reviewSettings.saveNow({ explicit: true });
         }}
         onReset={() => {
           void moduleSettings.reset();
+          void reviewSettings.reset();
         }}
       />
     </>

@@ -1,138 +1,83 @@
 import { useEffect, useState } from "react";
-import { BridgeError, glossaryBridge } from "@/bridge";
-import { useMessages, useI18n } from "@/locales";
+import { BridgeError, glossaryBridge, glossaryReviewBridge, type PromptKind } from "@/bridge";
+import { useI18n, useMessages } from "@/locales";
 import { useTaskStore } from "@/store/useTaskStore";
-import {
-  hasDismissedCompletionWithFailures,
-  hasShownCleanCompletionToast,
-  markCleanCompletionToastShown,
-  markCompletionWithFailuresDismissed,
-  useRunSnapshot,
-  usePollRunSnapshot,
-  useRuntimeStore,
-} from "@/store/useRuntimeStore";
-import { useToastStore } from "@/store/useToastStore";
-import {
-  useModelProfiles,
-  useModelProfilesStore,
-} from "@/store/useModelProfilesStore";
+import { usePollRunSnapshot, useRunSnapshot, useRuntimeStore } from "@/store/useRuntimeStore";
+import { useModelProfiles, useModelProfilesStore } from "@/store/useModelProfilesStore";
 import { usePromptPresets, usePromptPresetsStore } from "@/store/usePromptPresetsStore";
 import { applyRunSelection } from "@/store/runSelection";
 import { useModuleSettings } from "@/store/useSettingsStore";
+import { useWorkflowPresets, useWorkflowPresetsStore } from "@/store/useWorkflowPresetsStore";
 import {
-  useWorkflowPresets,
-  useWorkflowPresetsStore,
-} from "@/store/useWorkflowPresetsStore";
+  useGlossarySource,
+  useGlossaryStageKind,
+  useReviewLinkedToExtraction,
+  type GlossarySource,
+} from "@/store/glossaryStage";
 import { Panel } from "@/components/Panel";
 import { Button } from "@/components/Button";
-import { ProgressRing } from "@/components/ProgressRing";
-import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
-import { LiveRequestCounter } from "@/components/LiveRequestCounter";
+import { Segmented } from "@/components/Segmented";
+import { ToggleSwitch } from "@/components/ToggleSwitch";
 import { RunErrorBanner } from "@/components/RunErrorBanner";
-import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
-import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailuresDialog";
 import { RunControls } from "@/components/RunControls";
 import { RequestLogPanel } from "@/components/RequestLogPanel";
-import { RunConfigBar } from "@/components/RunConfigBar";
-import {
-  QuickSwitchModal,
-  type QuickSwitchItem,
-} from "@/components/QuickSwitchModal";
+import { RunConfigBar, type RunConfigBarItem } from "@/components/RunConfigBar";
+import { QuickSwitchModal, type QuickSwitchItem } from "@/components/QuickSwitchModal";
+import { ReviewInputs } from "../glossary-review/ReviewInputs";
+import { ReviewProgress } from "../glossary-review/ReviewProgress";
+import { ExtractionProgress } from "./ExtractionProgress";
 import styles from "./RunPage.module.css";
 
-const NUM = new Intl.NumberFormat("en");
+type Switcher = "preset" | "model" | "prompt" | "reviewModel" | "reviewPrompt";
 
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+const REVIEW_IN_FLIGHT = new Set(["pending", "running", "pausing", "paused", "stopping"]);
 
 export function RunPage() {
   const messages = useMessages();
   const { run } = messages.glossary;
-  const failedModalMessages = messages.failedSubtasksModal;
   const navigate = useTaskStore((state) => state.navigate);
+  const locale = useI18n((state) => state.locale);
   const profiles = useModelProfiles();
-  const prompts = usePromptPresets("glossary");
+  const extractPrompts = usePromptPresets("glossary").glossary;
+  const reviewPrompts = usePromptPresets("glossary_review").glossary_review;
   const workflow = useWorkflowPresets("glossary");
   const workflowSlice = workflow.glossary;
-  const promptSlice = prompts.glossary;
   const appSettings = useModuleSettings("app");
   const glossarySettings = useModuleSettings("glossary");
-  const glossaryReviewSettings = useModuleSettings("glossary_review");
+  const reviewSettings = useModuleSettings("glossary_review");
   const snapshot = useRunSnapshot("glossary");
   const reviewSnapshot = useRunSnapshot("glossary_review");
   const activeTaskId = useRuntimeStore((state) => state.glossary.activeTaskId);
+  const reviewTaskId = useRuntimeStore((state) => state.glossary_review.activeTaskId);
+  const source = useGlossarySource((state) => state.source);
+  const setSource = useGlossarySource((state) => state.setSource);
+  const stageKind = useGlossaryStageKind();
+  const linked = useReviewLinkedToExtraction();
   usePollRunSnapshot("glossary");
   usePollRunSnapshot("glossary_review");
 
-  // Refresh active-task state on mount so re-entering the page after
-  // navigating away picks up the live backend status (poll only ticks
-  // every 2s, and snapshot in store can be stale right after remount).
+  // Re-entering the page picks up live backend status before the next poll tick.
   useEffect(() => {
     void useRuntimeStore.getState().refreshActiveTask("glossary");
     void useRuntimeStore.getState().refreshActiveTask("glossary_review");
   }, []);
 
-  const [failedModalOpen, setFailedModalOpen] = useState(false);
-  const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
-  const [hasReviewableArtifacts, setHasReviewableArtifacts] = useState(false);
+  const [switchOpen, setSwitchOpen] = useState<Switcher | null>(null);
   const [reviewPrefill, setReviewPrefill] = useState<{ xlsx: string; references: string[] } | null>(null);
-  const [sendingToReview, setSendingToReview] = useState(false);
-
-  // Same as translation: fire even when every chunk failed so the
-  // user is told that Continue can retry remaining chunks.
-  useEffect(() => {
-    if (!activeTaskId) return;
-    if (snapshot.status !== "completed" && snapshot.status !== "failed") {
-      return;
-    }
-    if (snapshot.progress.failed <= 0) return;
-    if (hasDismissedCompletionWithFailures(activeTaskId)) return;
-    setCompletionPromptOpen(true);
-  }, [
-    activeTaskId,
-    snapshot.status,
-    snapshot.progress.failed,
-    snapshot.progress.completed,
-  ]);
+  const [hasReviewableArtifacts, setHasReviewableArtifacts] = useState(false);
+  const [startingReview, setStartingReview] = useState(false);
 
   useEffect(() => {
-    if (!activeTaskId) return;
-    if (snapshot.status !== "completed") return;
-    if (snapshot.progress.failed > 0) return;
-    if (snapshot.progress.completed <= 0) return;
-    if (hasShownCleanCompletionToast(activeTaskId)) return;
-    markCleanCompletionToastShown(activeTaskId);
-    useToastStore.getState().push({
-      variant: "success",
-      title: messages.runCompleted.title,
-    });
-  }, [
-    activeTaskId,
-    snapshot.status,
-    snapshot.progress.failed,
-    snapshot.progress.completed,
-    messages.runCompleted.title,
-  ]);
-
-  useEffect(() => {
-    if (!activeTaskId || snapshot.status !== "completed") {
-      setHasReviewableArtifacts(false);
-      return;
-    }
-    let cancelled = false;
     setHasReviewableArtifacts(false);
     setReviewPrefill(null);
+    if (!activeTaskId || snapshot.status !== "completed") return;
+    let cancelled = false;
     glossaryBridge
       .readArtifacts(activeTaskId)
       .then((artifacts) => {
         if (cancelled) return;
         const novels = artifacts.per_novel_artifacts.filter((item) => item.xlsx_path);
-        setHasReviewableArtifacts(
-          Boolean(artifacts.combined_artifact?.xlsx_path) || novels.length > 0,
-        );
+        setHasReviewableArtifacts(Boolean(artifacts.combined_artifact?.xlsx_path) || novels.length > 0);
         // Several novels without a combined table still need the user to pick one.
         const single = artifacts.combined_artifact?.xlsx_path
           ? artifacts.combined_artifact
@@ -153,192 +98,192 @@ export function RunPage() {
     };
   }, [activeTaskId, snapshot.status]);
 
-  const handleAcceptCompletion = () => {
-    if (activeTaskId) markCompletionWithFailuresDismissed(activeTaskId);
-    setCompletionPromptOpen(false);
+  const reviewEnabled = glossarySettings.draft?.review_after_extraction ?? true;
+  const reviewInFlight = !reviewSnapshot.isIdle && REVIEW_IN_FLIGHT.has(reviewSnapshot.status);
+  const showReviewStage = source === "existing" || (reviewEnabled && linked);
+  const showStartReview =
+    source === "extract" &&
+    reviewEnabled &&
+    snapshot.status === "completed" &&
+    hasReviewableArtifacts &&
+    !linked &&
+    !reviewInFlight;
+
+  const reportError = (kind: PromptKind) => (error: BridgeError | null) =>
+    useRuntimeStore.getState().setLastError(kind === "glossary_review" ? "glossary_review" : "glossary", error);
+
+  const handleStartReview = async () => {
+    if (!activeTaskId) return;
+    setStartingReview(true);
+    try {
+      reviewSettings.update("input_folder", glossarySettings.draft?.output_folder.trim() ?? "");
+      reviewSettings.update("selected_xlsx_path", reviewPrefill?.xlsx ?? "");
+      reviewSettings.update("selected_reference_paths", reviewPrefill?.references ?? []);
+      await reviewSettings.saveNow();
+      if (!reviewPrefill) {
+        setSource("existing");
+        return;
+      }
+      await glossaryReviewBridge.startTask(`start-${Date.now().toString(36)}`, activeTaskId);
+      await useRuntimeStore.getState().refreshActiveTask("glossary_review");
+    } catch (error) {
+      reportError("glossary_review")(BridgeError.isBridgeError(error) ? error : null);
+    } finally {
+      setStartingReview(false);
+    }
   };
 
-  const activeModelId = appSettings.draft?.active_glossary_model_id ?? null;
-  const activeModel = activeModelId
-    ? profiles.profiles.find((p) => p.id === activeModelId)
-    : undefined;
-  const locale = useI18n((state) => state.locale);
-  const localeDefaultPromptId = `default-glossary-${locale}`;
-  const displayedPromptId =
-    promptSlice.activeId ??
-    (promptSlice.presets.some((p) => p.id === localeDefaultPromptId)
-      ? localeDefaultPromptId
-      : null);
-  const activePrompt = displayedPromptId
-    ? promptSlice.presets.find((p) => p.id === displayedPromptId)
-    : undefined;
-
-  const [switchOpen, setSwitchOpen] = useState<"preset" | "model" | "prompt" | null>(null);
-
-  const modelItems: QuickSwitchItem[] = profiles.profiles
-    .filter((p) => p.api_key_status !== "missing")
-    .map((p) => ({
-      id: p.id,
-      name: p.display_name,
-      description: p.model_id,
-    }));
-  const promptItems: QuickSwitchItem[] = promptSlice.presets
-    .filter(
-      (preset) => !preset.is_system || preset.id === localeDefaultPromptId,
-    )
-    .map((preset) => ({
-      id: preset.id,
-      name: preset.name,
-      description: preset.description,
-    }));
+  const modelName = (id: string | null | undefined) => {
+    const profile = id ? profiles.profiles.find((item) => item.id === id) : undefined;
+    return { primary: profile?.display_name ?? messages.runConfig.missingModel, secondary: profile?.model_id ?? "" };
+  };
+  const shownPrompt = (kind: PromptKind) => {
+    const slice = kind === "glossary" ? extractPrompts : reviewPrompts;
+    const fallback = `default-${kind === "glossary" ? "glossary" : "glossary-review"}-${locale}`;
+    const id = slice.activeId ?? (slice.presets.some((item) => item.id === fallback) ? fallback : null);
+    return { id, preset: id ? slice.presets.find((item) => item.id === id) : undefined, fallback };
+  };
+  const extractPrompt = shownPrompt("glossary");
+  const reviewPrompt = shownPrompt("glossary_review");
+  const extractModelId = appSettings.draft?.active_glossary_model_id ?? null;
+  const reviewModelId = appSettings.draft?.active_glossary_review_model_id ?? null;
+  const sourceLanguage = glossarySettings.draft?.source_language ?? "kr";
+  const targetLanguage = glossarySettings.draft?.target_language ?? "zh";
   const activePreset = workflowSlice.matchedId
     ? workflowSlice.presets.find((preset) => preset.id === workflowSlice.matchedId)
     : undefined;
-  const sourceLanguage = glossarySettings.draft?.source_language ?? "kr";
-  const targetLanguage = glossarySettings.draft?.target_language ?? "zh";
-  const presetItems: QuickSwitchItem[] = workflowSlice.presets.map((preset) => {
-    const model = profiles.profiles.find((item) => item.id === preset.model_profile_id);
-    const prompt = promptSlice.presets.find((item) => item.id === preset.prompt_preset_id);
-    return {
-      id: preset.id,
-      name: preset.name,
-      description: [
-        `${messages.language.options[preset.source_language]} → ${
-          messages.language.options[preset.target_language]
-        }`,
-        model?.display_name ?? preset.model_profile_id,
-        prompt?.name ?? preset.prompt_preset_id,
-      ].join(" · "),
-    };
-  });
 
-  const reportSelectionError = (error: BridgeError | null) => {
-    useRuntimeStore.getState().setLastError("glossary", error);
+  const modelItems: QuickSwitchItem[] = profiles.profiles
+    .filter((profile) => profile.api_key_status !== "missing")
+    .map((profile) => ({ id: profile.id, name: profile.display_name, description: profile.model_id }));
+  const promptItems = (kind: PromptKind): QuickSwitchItem[] => {
+    const slice = kind === "glossary" ? extractPrompts : reviewPrompts;
+    const fallback = shownPrompt(kind).fallback;
+    return slice.presets
+      .filter((preset) => !preset.is_system || preset.id === fallback)
+      .map((preset) => ({ id: preset.id, name: preset.name, description: preset.description }));
   };
-  const handleSelectModel = async (id: string) => {
+  const presetItems: QuickSwitchItem[] = workflowSlice.presets.map((preset) => ({
+    id: preset.id,
+    name: preset.name,
+    description: [
+      `${messages.language.options[preset.source_language]} → ${messages.language.options[preset.target_language]}`,
+      profiles.profiles.find((item) => item.id === preset.model_profile_id)?.display_name ?? preset.model_profile_id,
+      preset.review === null || preset.review.enabled
+        ? profiles.profiles.find((item) => item.id === preset.review?.model_profile_id)?.display_name ?? ""
+        : run.noReview,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  }));
+
+  const selectModel = (kind: PromptKind) => async (id: string) => {
     await applyRunSelection(
-      () => useModelProfilesStore.getState().selectActive("glossary", id),
+      () => useModelProfilesStore.getState().selectActive(kind, id),
       () => useModelProfilesStore.getState().mutationError,
-      reportSelectionError,
+      reportError(kind),
     );
     await useWorkflowPresetsStore.getState().refresh("glossary");
   };
-  const handleSelectPrompt = async (id: string) => {
+  const selectPrompt = (kind: PromptKind) => async (id: string) => {
     await applyRunSelection(
-      () => prompts.selectActive("glossary", id),
+      () => usePromptPresetsStore.getState().selectActive(kind, id),
       () => usePromptPresetsStore.getState().mutationError,
-      reportSelectionError,
+      reportError(kind),
     );
     await useWorkflowPresetsStore.getState().refresh("glossary");
   };
-  const handleSelectPreset = async (id: string) => {
+  const selectPreset = async (id: string) => {
     await applyRunSelection(
       () => workflow.applyPreset("glossary", id),
       () => useWorkflowPresetsStore.getState().mutationError,
-      reportSelectionError,
+      reportError("glossary"),
     );
   };
 
-  const total = snapshot.progress.total;
-  const completed = snapshot.progress.completed;
-  const failed = snapshot.progress.failed;
-  const remaining = snapshot.progress.pending + snapshot.progress.running;
-  // Floor (not round) so a near-finished run like 400/402 renders 99%,
-  // not a misleading 100%, until every subtask actually completes.
-  // SKIPPED split parents are diagnostics; progress tracks the real
-  // work units that remain after split children are created.
-  const settled = completed;
-  const percent =
-    total > 0
-      ? Math.floor((settled / total) * 100)
-      : snapshot.status === "completed"
-        ? 100
-        : 0;
-  const ratePerMinute = Math.round(snapshot.progress.rate_per_second * 60);
-  const elapsedSeconds = Math.floor(snapshot.progress.elapsed_seconds);
-  const showFailures =
-    snapshot.failures.length > 0 &&
-    snapshot.status !== "running" &&
-    snapshot.status !== "pending";
-  const showStartupNotice =
-    Boolean(activeTaskId) &&
-    (snapshot.status === "pending" || snapshot.status === "running") &&
-    snapshot.progress.total === 0;
-  const glossaryOutputFolder = glossarySettings.draft?.output_folder.trim() ?? "";
-  const glossaryNovelBackground =
-    glossarySettings.draft?.novel_background ?? "";
-  const reviewBusy =
-    !reviewSnapshot.isIdle &&
-    (reviewSnapshot.status === "pending" ||
-      reviewSnapshot.status === "running" ||
-      reviewSnapshot.status === "stopping" ||
-      reviewSnapshot.status === "paused");
-  const showSendToReview =
-    snapshot.status === "completed" &&
-    hasReviewableArtifacts &&
-    glossaryOutputFolder.length > 0;
-
-  const handleSendToReview = async () => {
-    if (!glossaryOutputFolder || !hasReviewableArtifacts || reviewBusy) return;
-    setSendingToReview(true);
-    try {
-      glossaryReviewSettings.update("input_folder", glossaryOutputFolder);
-      glossaryReviewSettings.update(
-        "novel_background",
-        glossaryNovelBackground,
-      );
-      glossaryReviewSettings.update("selected_xlsx_path", reviewPrefill?.xlsx ?? "");
-      glossaryReviewSettings.update("selected_reference_paths", reviewPrefill?.references ?? []);
-      await glossaryReviewSettings.saveNow();
-      navigate({ module: "glossary-review", page: reviewPrefill ? "run" : "settings" });
-    } finally {
-      setSendingToReview(false);
-    }
-  };
+  const reviewItems: RunConfigBarItem[] = [
+    {
+      id: "reviewModel",
+      label: run.reviewModel,
+      ...modelName(reviewModelId),
+      actionLabel: messages.runConfig.switchAction,
+      onClick: () => setSwitchOpen("reviewModel"),
+    },
+    {
+      id: "reviewPrompt",
+      label: run.reviewPrompt,
+      primary: reviewPrompt.preset?.name ?? messages.runConfig.missingPrompt,
+      secondary: reviewPrompt.preset?.description ?? "",
+      actionLabel: messages.runConfig.switchAction,
+      onClick: () => setSwitchOpen("reviewPrompt"),
+    },
+  ];
+  const configItems: RunConfigBarItem[] =
+    source === "existing"
+      ? reviewItems
+      : [
+          {
+            id: "preset",
+            label: messages.runConfig.preset,
+            primary:
+              workflowSlice.presets.length === 0
+                ? messages.runConfig.noPreset
+                : activePreset?.name ?? messages.runConfig.customPreset,
+            secondary: `${messages.language.options[sourceLanguage]} → ${messages.language.options[targetLanguage]}`,
+            actionLabel: messages.runConfig.switchAction,
+            onClick: () => setSwitchOpen("preset"),
+          },
+          {
+            id: "model",
+            label: run.extractModel,
+            ...modelName(extractModelId),
+            actionLabel: messages.runConfig.switchAction,
+            onClick: () => setSwitchOpen("model"),
+          },
+          {
+            id: "prompt",
+            label: run.extractPrompt,
+            primary: extractPrompt.preset?.name ?? messages.runConfig.missingPrompt,
+            secondary: extractPrompt.preset?.description ?? "",
+            actionLabel: messages.runConfig.switchAction,
+            onClick: () => setSwitchOpen("prompt"),
+          },
+          ...(reviewEnabled ? reviewItems : []),
+        ];
 
   return (
     <>
       <Panel title={run.title} subtitle={run.sub} />
 
       <RunErrorBanner kind="glossary" />
+      <RunErrorBanner kind="glossary_review" />
+
+      <div className={styles.stageSwitch}>
+        <Segmented<GlossarySource>
+          ariaLabel={run.sourceLabel}
+          options={[
+            { id: "extract", label: run.sourceExtract },
+            { id: "existing", label: run.sourceExisting },
+          ]}
+          value={source}
+          onChange={setSource}
+        />
+      </div>
+
+      {source === "existing" ? <ReviewInputs label={run.reviewInputs} /> : null}
 
       <Panel label={run.activeConfig}>
-        <RunConfigBar
-          items={[
-            {
-              id: "preset",
-              label: messages.runConfig.preset,
-              primary:
-                workflowSlice.presets.length === 0
-                  ? messages.runConfig.noPreset
-                  : activePreset?.name ?? messages.runConfig.customPreset,
-              secondary:
-                workflowSlice.presets.length === 0
-                  ? messages.runConfig.noPresetHint
-                  : `${messages.language.options[sourceLanguage]} → ${
-                      messages.language.options[targetLanguage]
-                    }`,
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setSwitchOpen("preset"),
-            },
-            {
-              id: "model",
-              label: messages.runConfig.model,
-              primary: activeModel?.display_name ?? messages.runConfig.missingModel,
-              secondary: activeModel?.model_id ?? "",
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setSwitchOpen("model"),
-            },
-            {
-              id: "prompt",
-              label: messages.runConfig.prompt,
-              primary: activePrompt?.name ?? messages.runConfig.missingPrompt,
-              secondary: activePrompt?.description ?? "",
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setSwitchOpen("prompt"),
-            },
-          ]}
-        />
+        <RunConfigBar items={configItems} />
+        {source === "extract" && glossarySettings.draft ? (
+          <ToggleSwitch
+            label={run.reviewAfterExtraction}
+            checked={reviewEnabled}
+            onChange={(checked) => {
+              glossarySettings.update("review_after_extraction", checked);
+              void glossarySettings.saveNow().then(() => useWorkflowPresetsStore.getState().refresh("glossary"));
+            }}
+          />
+        ) : null}
       </Panel>
 
       {switchOpen === "preset" ? (
@@ -347,155 +292,54 @@ export function RunPage() {
           items={presetItems}
           activeId={workflowSlice.matchedId}
           emptyMessage={messages.quickSwitch.emptyPreset}
-          onSelect={handleSelectPreset}
+          onSelect={selectPreset}
           onClose={() => setSwitchOpen(null)}
           onManage={() => navigate({ module: "glossary", page: "presets" })}
         />
       ) : null}
-
-      {switchOpen === "model" ? (
+      {switchOpen === "model" || switchOpen === "reviewModel" ? (
         <QuickSwitchModal
           title={messages.quickSwitch.titleModel}
           items={modelItems}
-          activeId={activeModelId}
+          activeId={switchOpen === "model" ? extractModelId : reviewModelId}
           emptyMessage={messages.quickSwitch.emptyModel}
-          onSelect={handleSelectModel}
+          onSelect={selectModel(switchOpen === "model" ? "glossary" : "glossary_review")}
           onClose={() => setSwitchOpen(null)}
           onManage={() => navigate({ module: "model", page: "general" })}
         />
       ) : null}
-
-      {switchOpen === "prompt" ? (
+      {switchOpen === "prompt" || switchOpen === "reviewPrompt" ? (
         <QuickSwitchModal
           title={messages.quickSwitch.titlePrompt}
-          items={promptItems}
-          activeId={displayedPromptId}
+          items={promptItems(switchOpen === "prompt" ? "glossary" : "glossary_review")}
+          activeId={switchOpen === "prompt" ? extractPrompt.id : reviewPrompt.id}
           emptyMessage={messages.quickSwitch.emptyPrompt}
-          onSelect={handleSelectPrompt}
+          onSelect={selectPrompt(switchOpen === "prompt" ? "glossary" : "glossary_review")}
           onClose={() => setSwitchOpen(null)}
           onManage={() => navigate({ module: "glossary", page: "prompt" })}
         />
       ) : null}
 
-      {showFailures ? (
-        <div className={styles.failuresPillRow}>
-          <Button
-            variant="ghost"
-            onClick={() => setFailedModalOpen(true)}
-          >
-            {`${failedModalMessages.triggerPrefix}${snapshot.failures.length}${failedModalMessages.triggerSuffix}`}
-          </Button>
-          {snapshot.status === "failed" ||
-          snapshot.status === "stopped" ||
-          snapshot.status === "paused" ||
-          (snapshot.status === "completed" && snapshot.progress.failed > 0) ? (
-            <span className={styles.failuresHint}>
-              {failedModalMessages.continueHint}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
+      {source === "extract" ? <ExtractionProgress label={run.extractStage} /> : null}
 
-      {failedModalOpen ? (
-        <FailedSubtasksModal
-          failures={snapshot.failures}
-          runtimeConfig={
-            activeModel && glossarySettings.draft
-              ? {
-                  concurrencyLimit: activeModel.concurrency_limit,
-                  rpmLimit: activeModel.rpm_limit,
-                  timeoutSeconds: activeModel.timeout_seconds,
-                  retryAttempts: glossarySettings.draft.request_retry_attempts,
-                }
-              : undefined
-          }
-          onClose={() => setFailedModalOpen(false)}
-        />
-      ) : null}
-
-      {completionPromptOpen ? (
-        <CompletionWithFailuresDialog
-          failedCount={snapshot.progress.failed}
-          onAccept={handleAcceptCompletion}
-        />
-      ) : null}
-
-      <Panel label={run.progress}>
-        <div className={styles.progressCard}>
-          <ProgressRing percent={percent} completed={settled} total={total} />
-          <div className={styles.statGrid}>
-            <Stat label={run.stats.completed} value={NUM.format(completed)} />
-            <Stat label={run.stats.failed} value={NUM.format(failed)} />
-            <Stat label={run.stats.remaining} value={NUM.format(remaining)} />
-            <Stat
-              label={run.stats.elapsed}
-              value={snapshot.isIdle ? "—" : formatDuration(elapsedSeconds)}
-            />
-            <Stat
-              label={run.stats.avgSpeed}
-              value={NUM.format(ratePerMinute)}
-              delta="/min"
-            />
-          </div>
-        </div>
-        {showStartupNotice ? (
-          <p className={styles.startupNotice}>{run.startupNotice}</p>
-        ) : null}
-        {snapshot.subtasks.length > 0 ? (
-          <>
-            <LiveRequestCounter
-              progress={snapshot.progress}
-              label={run.liveCounter.progressLabel}
-              inflightLabel={run.liveCounter.inflightLabel}
-              longestLabel={run.liveCounter.longestLabel}
-            />
-            <ChunkStatusGrid
-              subtasks={snapshot.subtasks}
-              itemLabel={run.liveCounter.chunksLabel}
-              statusLabels={messages.status}
-            />
-          </>
-        ) : null}
-      </Panel>
-
-      {showSendToReview ? (
+      {showStartReview ? (
         <div className={styles.followupActions}>
-          <Button
-            type="button"
-            onClick={() => void handleSendToReview()}
-            disabled={reviewBusy || sendingToReview}
-          >
-            {run.sendToReview}
+          <Button type="button" onClick={() => void handleStartReview()} disabled={startingReview}>
+            {run.startReview}
           </Button>
         </div>
       ) : null}
 
-      <RunControls kind="glossary">
+      {showReviewStage ? <ReviewProgress label={run.reviewStage} /> : null}
+
+      <RunControls key={stageKind} kind={stageKind}>
         <RequestLogPanel
-          kind="glossary"
-          taskId={activeTaskId}
-          taskStatus={snapshot.status}
+          kind={stageKind}
+          taskId={stageKind === "glossary" ? activeTaskId : reviewTaskId}
+          taskStatus={stageKind === "glossary" ? snapshot.status : reviewSnapshot.status}
           launcherVariant="bare"
         />
       </RunControls>
     </>
-  );
-}
-
-interface StatProps {
-  label: string;
-  value: string;
-  delta?: string;
-}
-
-function Stat({ label, value, delta }: StatProps) {
-  return (
-    <div className={styles.stat}>
-      <div className={styles.statLabel}>{label}</div>
-      <b className="tnum">
-        {value}
-        {delta ? <span className={styles.delta}>{delta}</span> : null}
-      </b>
-    </div>
   );
 }

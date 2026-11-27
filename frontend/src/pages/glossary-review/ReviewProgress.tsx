@@ -1,6 +1,6 @@
 import { ModalOverlay } from "@/components/ModalOverlay";
 import { useEffect, useMemo, useState } from "react";
-import { format, useMessages, useI18n } from "@/locales";
+import { format, useMessages } from "@/locales";
 import {
   BridgeError,
   glossaryReviewBridge,
@@ -14,38 +14,21 @@ import {
   markCleanCompletionToastShown,
   markCompletionWithFailuresDismissed,
   useRunSnapshot,
-  usePollRunSnapshot,
   useRuntimeStore,
 } from "@/store/useRuntimeStore";
 import { useToastStore } from "@/store/useToastStore";
-import {
-  useModelProfiles,
-  useModelProfilesStore,
-} from "@/store/useModelProfilesStore";
-import { usePromptPresets, usePromptPresetsStore } from "@/store/usePromptPresetsStore";
-import { applyRunSelection } from "@/store/runSelection";
+import { useModelProfiles } from "@/store/useModelProfilesStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
-import {
-  useWorkflowPresets,
-  useWorkflowPresetsStore,
-} from "@/store/useWorkflowPresetsStore";
 import { Panel } from "@/components/Panel";
 import { Button } from "@/components/Button";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { ProgressRing } from "@/components/ProgressRing";
 import { ChunkStatusGrid } from "@/components/ChunkStatusGrid";
 import { LiveRequestCounter } from "@/components/LiveRequestCounter";
-import { RunErrorBanner } from "@/components/RunErrorBanner";
 import { FailedSubtasksModal } from "@/components/FailedSubtasksModal";
 import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailuresDialog";
-import { RunControls } from "@/components/RunControls";
-import { RequestLogPanel } from "@/components/RequestLogPanel";
-import { RunConfigBar } from "@/components/RunConfigBar";
-import {
-  QuickSwitchModal,
-  type QuickSwitchItem,
-} from "@/components/QuickSwitchModal";
 import styles from "../glossary/RunPage.module.css";
+import { formatDuration, NUM, Stat } from "../glossary/RunStats";
 import reportStyles from "./ReportModal.module.css";
 import { ImportFinalGlossaryConfirmModal } from "./ImportFinalGlossaryConfirmModal";
 import {
@@ -53,35 +36,18 @@ import {
   type ImportFinalGlossaryMode,
 } from "./importFinalGlossary";
 
-const NUM = new Intl.NumberFormat("en");
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-export function RunPage() {
+export function ReviewProgress({ label }: { label: string }) {
   const messages = useMessages();
   const { run } = messages.glossaryReview;
   const failedModalMessages = messages.failedSubtasksModal;
   const navigate = useTaskStore((state) => state.navigate);
   const profiles = useModelProfiles();
-  const prompts = usePromptPresets("glossary_review");
-  const workflow = useWorkflowPresets("glossary_review");
-  const workflowSlice = workflow.glossary_review;
-  const promptSlice = prompts.glossary_review;
   const appSettings = useModuleSettings("app");
   const glossaryReviewSettings = useModuleSettings("glossary_review");
   const snapshot = useRunSnapshot("glossary_review");
   const activeTaskId = useRuntimeStore(
     (state) => state.glossary_review.activeTaskId,
   );
-  usePollRunSnapshot("glossary_review");
-
-  useEffect(() => {
-    void useRuntimeStore.getState().refreshActiveTask("glossary_review");
-  }, []);
 
   const [failedModalOpen, setFailedModalOpen] = useState(false);
   const [completionPromptOpen, setCompletionPromptOpen] = useState(false);
@@ -125,81 +91,6 @@ export function RunPage() {
   const activeModel = activeModelId
     ? profiles.profiles.find((p) => p.id === activeModelId)
     : undefined;
-  const locale = useI18n((state) => state.locale);
-  const localeDefaultPromptId = `default-glossary-review-${locale}`;
-  const displayedPromptId =
-    promptSlice.activeId ??
-    (promptSlice.presets.some((p) => p.id === localeDefaultPromptId)
-      ? localeDefaultPromptId
-      : null);
-  const activePrompt = displayedPromptId
-    ? promptSlice.presets.find((p) => p.id === displayedPromptId)
-    : undefined;
-
-  const [switchOpen, setSwitchOpen] = useState<"preset" | "model" | "prompt" | null>(null);
-
-  const modelItems: QuickSwitchItem[] = profiles.profiles
-    .filter((p) => p.api_key_status !== "missing")
-    .map((p) => ({
-      id: p.id,
-      name: p.display_name,
-      description: p.model_id,
-    }));
-  const promptItems: QuickSwitchItem[] = promptSlice.presets
-    .filter((preset) => !preset.is_system || preset.id === localeDefaultPromptId)
-    .map((preset) => ({
-      id: preset.id,
-      name: preset.name,
-      description: preset.description,
-    }));
-  const activePreset = workflowSlice.matchedId
-    ? workflowSlice.presets.find((preset) => preset.id === workflowSlice.matchedId)
-    : undefined;
-  const sourceLanguage = glossaryReviewSettings.draft?.source_language ?? "kr";
-  const targetLanguage = glossaryReviewSettings.draft?.target_language ?? "zh";
-  const presetItems: QuickSwitchItem[] = workflowSlice.presets.map((preset) => {
-    const model = profiles.profiles.find((item) => item.id === preset.model_profile_id);
-    const prompt = promptSlice.presets.find((item) => item.id === preset.prompt_preset_id);
-    return {
-      id: preset.id,
-      name: preset.name,
-      description: [
-        `${messages.language.options[preset.source_language]} → ${
-          messages.language.options[preset.target_language]
-        }`,
-        model?.display_name ?? preset.model_profile_id,
-        prompt?.name ?? preset.prompt_preset_id,
-      ].join(" · "),
-    };
-  });
-
-  const reportSelectionError = (error: BridgeError | null) => {
-    useRuntimeStore.getState().setLastError("glossary_review", error);
-  };
-  const handleSelectModel = async (id: string) => {
-    await applyRunSelection(
-      () => useModelProfilesStore.getState().selectActive("glossary_review", id),
-      () => useModelProfilesStore.getState().mutationError,
-      reportSelectionError,
-    );
-    await useWorkflowPresetsStore.getState().refresh("glossary_review");
-  };
-  const handleSelectPrompt = async (id: string) => {
-    await applyRunSelection(
-      () => prompts.selectActive("glossary_review", id),
-      () => usePromptPresetsStore.getState().mutationError,
-      reportSelectionError,
-    );
-    await useWorkflowPresetsStore.getState().refresh("glossary_review");
-  };
-  const handleSelectPreset = async (id: string) => {
-    await applyRunSelection(
-      () => workflow.applyPreset("glossary_review", id),
-      () => useWorkflowPresetsStore.getState().mutationError,
-      reportSelectionError,
-    );
-  };
-
   const handleAcceptCompletion = () => {
     if (activeTaskId) markCompletionWithFailuresDismissed(activeTaskId);
     setCompletionPromptOpen(false);
@@ -351,89 +242,6 @@ export function RunPage() {
 
   return (
     <>
-      <Panel title={run.title} subtitle={run.sub} />
-
-      <RunErrorBanner kind="glossary_review" />
-
-      <Panel label={run.activeConfig}>
-        <RunConfigBar
-          items={[
-            {
-              id: "preset",
-              label: messages.runConfig.preset,
-              primary:
-                workflowSlice.presets.length === 0
-                  ? messages.runConfig.noPreset
-                  : activePreset?.name ?? messages.runConfig.customPreset,
-              secondary:
-                workflowSlice.presets.length === 0
-                  ? messages.runConfig.noPresetHint
-                  : `${messages.language.options[sourceLanguage]} → ${
-                      messages.language.options[targetLanguage]
-                    }`,
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setSwitchOpen("preset"),
-            },
-            {
-              id: "model",
-              label: messages.runConfig.model,
-              primary: activeModel?.display_name ?? messages.runConfig.missingModel,
-              secondary: activeModel?.model_id ?? "",
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setSwitchOpen("model"),
-            },
-            {
-              id: "prompt",
-              label: messages.runConfig.prompt,
-              primary: activePrompt?.name ?? messages.runConfig.missingPrompt,
-              secondary: activePrompt?.description ?? "",
-              actionLabel: messages.runConfig.switchAction,
-              onClick: () => setSwitchOpen("prompt"),
-            },
-          ]}
-        />
-      </Panel>
-
-      {switchOpen === "preset" ? (
-        <QuickSwitchModal
-          title={messages.quickSwitch.titlePreset}
-          items={presetItems}
-          activeId={workflowSlice.matchedId}
-          emptyMessage={messages.quickSwitch.emptyPreset}
-          onSelect={handleSelectPreset}
-          onClose={() => setSwitchOpen(null)}
-          onManage={() =>
-            navigate({ module: "glossary-review", page: "presets" })
-          }
-        />
-      ) : null}
-
-      {switchOpen === "model" ? (
-        <QuickSwitchModal
-          title={messages.quickSwitch.titleModel}
-          items={modelItems}
-          activeId={activeModelId}
-          emptyMessage={messages.quickSwitch.emptyModel}
-          onSelect={handleSelectModel}
-          onClose={() => setSwitchOpen(null)}
-          onManage={() => navigate({ module: "model", page: "general" })}
-        />
-      ) : null}
-
-      {switchOpen === "prompt" ? (
-        <QuickSwitchModal
-          title={messages.quickSwitch.titlePrompt}
-          items={promptItems}
-          activeId={displayedPromptId}
-          emptyMessage={messages.quickSwitch.emptyPrompt}
-          onSelect={handleSelectPrompt}
-          onClose={() => setSwitchOpen(null)}
-          onManage={() =>
-            navigate({ module: "glossary-review", page: "prompt" })
-          }
-        />
-      ) : null}
-
       {showFailures ? (
         <div className={styles.failuresPillRow}>
           <Button
@@ -472,7 +280,7 @@ export function RunPage() {
         />
       ) : null}
 
-      <Panel label={run.progress}>
+      <Panel label={label}>
         <div className={styles.progressCard}>
           <ProgressRing
             percent={percent}
@@ -545,14 +353,6 @@ export function RunPage() {
         </div>
       ) : null}
 
-      <RunControls kind="glossary_review">
-        <RequestLogPanel
-          kind="glossary_review"
-          taskId={activeTaskId}
-          taskStatus={snapshot.status}
-          launcherVariant="bare"
-        />
-      </RunControls>
 
       {reportOpen && report ? (
         <ReportModal
@@ -584,24 +384,6 @@ export function RunPage() {
         />
       ) : null}
     </>
-  );
-}
-
-interface StatProps {
-  label: string;
-  value: string;
-  delta?: string;
-}
-
-function Stat({ label, value, delta }: StatProps) {
-  return (
-    <div className={styles.stat}>
-      <div className={styles.statLabel}>{label}</div>
-      <b className="tnum">
-        {value}
-        {delta ? <span className={styles.delta}>{delta}</span> : null}
-      </b>
-    </div>
   );
 }
 

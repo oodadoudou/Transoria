@@ -8,8 +8,7 @@ export const zh: Messages = {
     workspace: "工作区",
     model: "模型",
     translation: "翻译",
-    glossary: "术语提取",
-    glossaryReview: "术语审查",
+    glossary: "术语表",
     generalTools: "通用工具",
     appSettings: "应用设置",
     githubLink: "请给这个 D 一颗",
@@ -820,14 +819,8 @@ export const zh: Messages = {
       presets: "预设",
     },
     glossary: {
+      review: "审查结果",
       run: "运行",
-      settings: "设置",
-      prompt: "提示词",
-      presets: "预设",
-    },
-    glossaryReview: {
-      run: "运行",
-      review: "术语校对",
       settings: "设置",
       prompt: "提示词",
       presets: "预设",
@@ -1258,9 +1251,10 @@ export const zh: Messages = {
     },
   },
   glossary: {
-    crumb: "术语提取",
+    crumb: "术语表",
     settings: {
-      title: "术语提取设置",
+      title: "术语表设置",
+      reviewSection: "审查",
       sub: "配置源/输出文件夹与语言对。运行时参数(分块、节流等)在「运行」页。",
       inputFolder: "输入文件夹",
       outputFolder: "输出文件夹",
@@ -1277,7 +1271,7 @@ export const zh: Messages = {
         "对提取出的术语做 NFKC 折叠(全角拉丁字母/数字/片假名→半角),并剥离首尾标点。可减少近似重复条目;默认开启。",
       novelBackground: "小说背景",
       novelBackgroundHelp:
-        "可选。填写世界观、角色关系、专有名词偏好等信息，AI 提取术语时会作为参考；不填则传空字段。",
+        "可选。填写世界观、角色关系、专有名词偏好等信息，提取和审查术语时都会作为参考；不填则传空字段。",
       openOutputOnComplete: "任务完成时打开输出文件夹",
       openOutputOnCompleteHint:
         "提取完成后自动打开输出目录，方便直接查看 XLSX/JSON/TXT 结果。",
@@ -1300,18 +1294,27 @@ export const zh: Messages = {
       off: "关",
     },
     run: {
-      title: "执行术语提取",
+      title: "术语表",
       sub: "启动、监控并停止术语提取任务。输出 XLSX、JSON 与参考 TXT 三件套,放在源文件夹同级。",
-      progress: "进度",
       startupNotice:
         "正在解析输入文件并准备术语提取分块。EPUB 较大或结构复杂时，这一步可能需要等待几十秒。",
       failedSubtasks: "失败分块",
       runtimeTuning: "运行参数",
       activeConfig: "当前配置",
-      activeModel: "模型",
-      activePrompt: "Prompt",
-      switch: "切换",
-      sendToReview: "送审",
+      sourceLabel: "来源",
+      sourceExtract: "从小说提取",
+      sourceExisting: "已有术语表",
+      reviewInputs: "术语表文件",
+      stageSwitch: "阶段",
+      extractStage: "提取",
+      reviewStage: "审查",
+      reviewAfterExtraction: "提取后审查",
+      startReview: "开始审查",
+      extractModel: "提取模型",
+      extractPrompt: "提取提示词",
+      reviewModel: "审查模型",
+      reviewPrompt: "审查提示词",
+      noReview: "不审查",
       stats: {
         completed: "已完成",
         failed: "失败",
@@ -1342,10 +1345,7 @@ export const zh: Messages = {
     },
   },
   glossaryReview: {
-    crumb: "术语审查",
     settings: {
-      title: "术语审查设置",
-      sub: "选择包含术语表 XLSX 与参考 TXT 的文件夹。审查后的 XLSX 会写回同一文件夹。",
       inputFolder: "输入文件夹",
       glossaryFile: "术语表 XLSX",
       glossaryFileHelp: "当文件夹内有多个 XLSX 时，请选择要审查的原始术语表。",
@@ -1367,9 +1367,6 @@ export const zh: Messages = {
       outputFilename: "最终文件名",
       outputFilenameHelp:
         "默认 glossary-review-final.xlsx。只支持 .xlsx；不写后缀时会自动补上。",
-      novelBackground: "小说背景",
-      novelBackgroundHelp:
-        "可选。补充世界观、人名规则或题材信息，帮助模型判断术语是否合理。",
       reviewRounds: "审查轮数",
       reviewRoundsHelp: "多轮会基于上一轮修改后的术语表继续审查。默认 1。",
       batchSize: "每批术语数",
@@ -1380,22 +1377,10 @@ export const zh: Messages = {
       timeoutSeconds: "超时时间阈值 (秒)",
       timeoutSecondsHelp:
         "发起请求时等待模型回复的最长时间（秒），超时仍未收到回复则判该次调用失败。",
-      openOutputOnComplete: "任务完成时打开输出文件夹",
-      openOutputOnCompleteHint:
-        "运行成功结束后，自动在系统文件浏览器中打开输入/输出文件夹。",
-      on: "开",
-      off: "关",
     },
     run: {
-      title: "执行术语审查",
-      sub: "审查 XLSX 术语表，只把有改动的条目写入报告，并输出最终 XLSX。为了让 AI 更好地校对，建议在设置页配置小说背景。",
-      progress: "进度",
       startupNotice:
         "正在读取术语表和参考文本，并准备审查批次。文件较大时，这一步可能需要等待几十秒。",
-      activeConfig: "当前配置",
-      activeModel: "模型",
-      activePrompt: "Prompt",
-      switch: "切换",
       viewReport: "查看改动报告",
       reportUnavailable: "暂无可用报告",
       importFinalToTranslation: "导入到翻译术语表",
@@ -1459,7 +1444,7 @@ export const zh: Messages = {
       restoreFailed: "撤回失败：{reason}",
     },
     review: {
-      title: "术语校对",
+      title: "审查结果",
       sub: "直接编辑术语审查生成的最终 XLSX，保存后覆盖原文件，可直接导入翻译术语表。",
       noTasks: "暂无可校对的术语审查任务。",
       emptyState: {
@@ -1467,7 +1452,7 @@ export const zh: Messages = {
         noTasksTitle: "还没有完成的术语审查任务",
         noTasksBody:
           "先选择术语提取输出目录并运行术语审查。完成后的任务会出现在这里，用于最终人工编辑。",
-        noTasksAction: "打开审查设置",
+        noTasksAction: "打开术语表运行页",
         noRowsTitle: "最终文件里没有可编辑术语",
         noRowsBody:
           "当前最终 XLSX 在这个视图下没有行。可以清空搜索，或用包含可导入术语的表重新审查。",
@@ -1613,6 +1598,11 @@ export const zh: Messages = {
     badgeCustom: "自定义",
     customConfig: "当前配置未匹配任何预设",
     missingSelection: "请先选择模型和 Prompt。",
+    reviewLabel: "审查",
+    noReview: "不审查",
+    reviewAfterExtraction: "提取后审查",
+    reviewModelLabel: "审查模型",
+    reviewPromptLabel: "审查提示词",
     advanced: "高级配置",
     normalRoutes: "翻译线路",
     routeCount: "条线路",

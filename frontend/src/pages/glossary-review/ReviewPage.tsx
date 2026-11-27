@@ -396,7 +396,7 @@ export function ReviewPage() {
           body={labels.emptyState.noTasksBody}
           actionLabel={labels.emptyState.noTasksAction}
           onAction={() =>
-            navigate({ module: "glossary-review", page: "settings" })
+            navigate({ module: "glossary", page: "run" })
           }
         />
       </Panel>

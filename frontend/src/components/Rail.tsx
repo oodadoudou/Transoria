@@ -37,7 +37,6 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
 } {
   const t = messages.pages.translation;
   const g = messages.pages.glossary;
-  const gr = messages.pages.glossaryReview;
   const gt = messages.pages.generalTools;
 
   return {
@@ -74,20 +73,10 @@ function buildTree(messages: ReturnType<typeof useMessages>): {
         label: messages.rail.glossary,
         children: [
           { page: "run", label: g.run },
+          { page: "review", label: g.review },
           { page: "presets", label: g.presets },
           { page: "prompt", label: g.prompt },
           { page: "settings", label: g.settings },
-        ],
-      },
-      {
-        id: "glossary-review",
-        label: messages.rail.glossaryReview,
-        children: [
-          { page: "run", label: gr.run },
-          { page: "review", label: gr.review },
-          { page: "presets", label: gr.presets },
-          { page: "prompt", label: gr.prompt },
-          { page: "settings", label: gr.settings },
         ],
       },
       {
@@ -139,7 +128,6 @@ function isModuleId(value: unknown): value is ModuleId {
     value === "model" ||
     value === "translation" ||
     value === "glossary" ||
-    value === "glossary-review" ||
     value === "general-tools" ||
     value === "app-settings"
   );
