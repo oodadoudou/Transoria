@@ -4,19 +4,3 @@
   gap: 12px;
   margin-top: 16px;
 }
-
-.checkboxRow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  color: var(--ink);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.checkboxRow input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--action);
-}

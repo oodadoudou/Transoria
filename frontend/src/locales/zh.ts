@@ -1319,6 +1319,7 @@ export const zh: Messages = {
       extractStage: "提取",
       reviewStage: "审查",
       startReview: "开始审查",
+      autoReview: "自动审查",
       extractModel: "提取模型",
       extractPrompt: "提取提示词",
       noReview: "手动审查",

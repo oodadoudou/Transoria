@@ -1,0 +1,9 @@
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}

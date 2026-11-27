@@ -865,6 +865,7 @@ export interface Messages {
       extractStage: string;
       reviewStage: string;
       startReview: string;
+      autoReview: string;
       extractModel: string;
       extractPrompt: string;
       noReview: string;

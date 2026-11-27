@@ -460,3 +460,23 @@ def test_glossary_preset_may_leave_a_stage_empty(env):
     assert settings.app.active_glossary_model_id is None
     assert settings.app.active_glossary_review_model_id == "model-1"
     assert router.call("workflow_presets.list", {"kind": "glossary"})["matched_id"] == "review-only"
+
+
+def test_toggling_auto_review_keeps_the_glossary_preset_matched(env):
+    from transoria.prompts import PromptKind, default_preset
+
+    router, settings_store = env
+    review_prompt = default_preset(PromptKind.GLOSSARY_REVIEW).id
+    router.call("workflow_presets.create", {"kind": "glossary", "preset": {
+        "id": "book", "name": "Book",
+        "model_profile_id": "model-1",
+        "prompt_preset_id": default_preset(PromptKind.GLOSSARY).id,
+        "source_language": Language.KOREAN.value,
+        "target_language": Language.CHINESE_SIMPLIFIED.value,
+        "review": {"enabled": True, "model_profile_id": "model-1", "prompt_preset_id": review_prompt},
+    }})
+    router.call("workflow_presets.apply", {"kind": "glossary", "id": "book"})
+
+    settings_store.save_partial("glossary", {"review_after_extraction": False})
+
+    assert router.call("workflow_presets.list", {"kind": "glossary"})["matched_id"] == "book"

@@ -1356,6 +1356,7 @@ export const en: Messages = {
       extractStage: "Extraction",
       reviewStage: "Review",
       startReview: "Start review",
+      autoReview: "Auto review",
       extractModel: "Extraction model",
       extractPrompt: "Extraction prompt",
       noReview: "Manual review",

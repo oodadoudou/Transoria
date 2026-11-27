@@ -10,6 +10,7 @@ import { LanguageSelect } from "@/components/LanguageSelect";
 import { SettingsToolbar } from "@/components/SettingsToolbar";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
 import { TextField } from "@/components/TextField";
+import { CheckboxRow } from "@/components/CheckboxRow";
 import {
   SettingsField,
   SettingsFieldFrame,
@@ -85,18 +86,15 @@ export function SettingsPage() {
             />
           )}
         </div>
-        <label className={styles.checkboxRow}>
-          <input
-            type="checkbox"
-            checked={sameFolder}
-            onChange={(event) => {
-              setSameFolderChoice(event.target.checked);
-              // A blank output folder means "write next to the input" on the backend.
-              if (event.target.checked) moduleSettings.update("output_folder", "");
-            }}
-          />
-          <span>{settings.sameAsInput}</span>
-        </label>
+        <CheckboxRow
+          label={settings.sameAsInput}
+          checked={sameFolder}
+          onChange={(checked) => {
+            setSameFolderChoice(checked);
+            // A blank output folder means "write next to the input" on the backend.
+            if (checked) moduleSettings.update("output_folder", "");
+          }}
+        />
       </Panel>
 
       <Panel>

@@ -16,6 +16,7 @@ import {
 import { Panel } from "@/components/Panel";
 import { Button } from "@/components/Button";
 import { Segmented } from "@/components/Segmented";
+import { CheckboxRow } from "@/components/CheckboxRow";
 import { RunErrorBanner } from "@/components/RunErrorBanner";
 import { RunControls } from "@/components/RunControls";
 import { RequestLogPanel } from "@/components/RequestLogPanel";
@@ -218,6 +219,17 @@ export function RunPage() {
       ) : (
         <Panel label={run.activeConfig}>
           <RunConfigBar items={[presetItem]} />
+          <CheckboxRow
+            label={run.autoReview}
+            checked={reviewEnabled}
+            disabled={!glossarySettings.draft}
+            onChange={(checked) => {
+              glossarySettings.update("review_after_extraction", checked);
+              void glossarySettings
+                .saveNow()
+                .then(() => useWorkflowPresetsStore.getState().refresh("glossary"));
+            }}
+          />
         </Panel>
       )}
 

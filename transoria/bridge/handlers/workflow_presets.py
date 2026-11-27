@@ -249,9 +249,9 @@ def _coerce_review(
 def _review_matches(settings: AllSettings, review: PresetReview | None) -> bool:
     if review is None:
         return True
+    # The run page toggles auto review on its own, so that switch alone never breaks the match.
     return (
-        settings.glossary.review_after_extraction == review.enabled
-        and (settings.app.active_glossary_review_model_id or "") == review.model_profile_id
+        (settings.app.active_glossary_review_model_id or "") == review.model_profile_id
         and (settings.app.active_glossary_review_prompt_id or "") == review.prompt_preset_id
     )
 
