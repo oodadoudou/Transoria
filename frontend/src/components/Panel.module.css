@@ -35,9 +35,14 @@
 
 .titleRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 0 0 8px;
+}
+
+.titleExtra {
+  margin-left: auto;
 }
 
 .title {

@@ -1352,12 +1352,9 @@ export const en: Messages = {
       stageSwitch: "Stage",
       extractStage: "Extraction",
       reviewStage: "Review",
-      reviewAfterExtraction: "Review after extraction",
       startReview: "Start review",
       extractModel: "Extraction model",
       extractPrompt: "Extraction prompt",
-      reviewModel: "Review model",
-      reviewPrompt: "Review prompt",
       noReview: "No review",
       stats: {
         completed: "Completed",

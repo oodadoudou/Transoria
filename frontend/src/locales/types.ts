@@ -862,12 +862,9 @@ export interface Messages {
       stageSwitch: string;
       extractStage: string;
       reviewStage: string;
-      reviewAfterExtraction: string;
       startReview: string;
       extractModel: string;
       extractPrompt: string;
-      reviewModel: string;
-      reviewPrompt: string;
       noReview: string;
       stats: {
         completed: string;

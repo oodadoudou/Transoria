@@ -1315,12 +1315,9 @@ export const zh: Messages = {
       stageSwitch: "阶段",
       extractStage: "提取",
       reviewStage: "审查",
-      reviewAfterExtraction: "提取后审查",
       startReview: "开始审查",
       extractModel: "提取模型",
       extractPrompt: "提取提示词",
-      reviewModel: "审查模型",
-      reviewPrompt: "审查提示词",
       noReview: "不审查",
       stats: {
         completed: "已完成",

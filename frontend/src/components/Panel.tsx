@@ -9,6 +9,7 @@ interface PanelProps extends HTMLAttributes<HTMLElement> {
   subtitleSingleLine?: boolean;
   labelExtra?: ReactNode;
   labelHelp?: string;
+  titleExtra?: ReactNode;
   children?: ReactNode;
 }
 
@@ -19,6 +20,7 @@ export function Panel({
   subtitleSingleLine = false,
   labelExtra,
   labelHelp,
+  titleExtra,
   children,
   className,
   ...rest
@@ -46,6 +48,7 @@ export function Panel({
         <div className={styles.titleRow}>
           <div className={styles.title}>{title}</div>
           {subtitle ? <HelpTip>{subtitle}</HelpTip> : null}
+          {titleExtra ? <div className={styles.titleExtra}>{titleExtra}</div> : null}
         </div>
       ) : null}
       {!title && subtitle ? <div className={styles.subtitle}>{subtitle}</div> : null}
