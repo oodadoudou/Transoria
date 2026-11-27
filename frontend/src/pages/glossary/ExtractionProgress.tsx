@@ -123,7 +123,7 @@ export function ExtractionProgress({ label }: { label: string }) {
         />
       ) : null}
 
-      <Panel label={label}>
+      <Panel label={label} labelExtra={activeTaskId}>
         <div className={styles.progressCard}>
           <ProgressRing percent={percent} completed={completed} total={total} />
           <div className={styles.statGrid}>

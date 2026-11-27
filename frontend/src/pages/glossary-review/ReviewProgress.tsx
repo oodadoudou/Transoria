@@ -280,7 +280,7 @@ export function ReviewProgress({ label }: { label: string }) {
         />
       ) : null}
 
-      <Panel label={label}>
+      <Panel label={label} labelExtra={activeTaskId}>
         <div className={styles.progressCard}>
           <ProgressRing
             percent={percent}
