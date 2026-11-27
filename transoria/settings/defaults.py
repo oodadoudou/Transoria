@@ -107,6 +107,7 @@ class GlossarySettings:
     novel_background: str = ""
     timeout_seconds: int = 600
     request_retry_attempts: int = 3
+    review_after_extraction: bool = True
 
 
 @dataclass(frozen=True)

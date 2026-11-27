@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
 import threading
@@ -62,6 +63,7 @@ from transoria.runtime.task_timing import (
     runtime_metadata_for_status,
 )
 from transoria.settings import SettingsStore
+from transoria.settings.migrations import merge_glossary_stages
 from transoria.tools.replacement import (
     REPLACED_SUFFIX,
     ReplacementRule,
@@ -156,6 +158,7 @@ _EPUB_COMPRESS_REPORT_FILENAME = "epub-compress-report.json"
 _EPUB_MERGE_REPORT_FILENAME = "epub-merge-report.json"
 _EPUB_CONVERT_REPORT_FILENAME = "epub-convert-report.json"
 _TXT_TO_EPUB_REPORT_FILENAME = "txt-to-epub-report.json"
+logger = logging.getLogger(__name__)
 _DEBUG_LOG_FILENAME_SAFE = re.compile(r"[^A-Za-z0-9._-]")
 _REQUEST_LOG_RESPONSE_PREVIEW_LIMIT = 20000
 _REQUEST_LOG_ERROR_PREVIEW_LIMIT = 2000
@@ -2094,6 +2097,7 @@ class TaskService:
         self._selection_switch_pending: dict[
             str, TranslationConfig | GlossaryConfig | GlossaryReviewConfig
         ] = {}
+        self._migrate_glossary_stage_settings()
         self._retranslate_jobs: dict[str, RetranslateJob] = {}
         self._retranslate_lock = threading.Lock()
         self._retranslate_disk_lock = threading.Lock()
@@ -2222,6 +2226,30 @@ class TaskService:
     # regardless of the user's current output_folder setting. Required
     # for "open app → resume last task" and the upcoming proofreading
     # feature, both of which need cache that outlives a clean run.
+
+    def _migrate_glossary_stage_settings(self) -> None:
+        path = self.settings_store.path
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+        except (OSError, ValueError):
+            return
+        if not isinstance(raw, Mapping):
+            return
+        try:
+            records = [
+                record
+                for record in self.cache.list_tasks()
+                if record.kind in (TaskKind.GLOSSARY, TaskKind.GLOSSARY_REVIEW)
+            ]
+            migrated = merge_glossary_stages(
+                self.settings_store.load_all(),
+                raw,
+                max(records, key=lambda record: record.created_at).kind.value if records else None,
+            )
+            if migrated is not None:
+                self.settings_store.save_all(migrated)
+        except (OSError, ValueError) as exc:
+            logger.warning("Glossary settings upgrade skipped: %s", exc)
 
     def _cache_for_kind(self, kind: str) -> TaskCache:  # noqa: ARG002
         return self.cache
@@ -4674,9 +4702,13 @@ class TaskService:
         def _touch_progress(_event: object) -> None:
             running.touch()
 
+        finalized: list[dict[str, object]] = []
+        completed = False
+
         def _finalize(result: GlossaryExtractionResult) -> None:
             payload = _glossary_result_payload(result, config=config)
             self._write_result(task_id, payload)
+            finalized.append(payload)
 
         try:
             orchestrator = GlossaryOrchestrator(
@@ -4688,15 +4720,48 @@ class TaskService:
                 on_result_finalized=_finalize,
             )
             await orchestrator.run(config)
+            completed = cache.load_record(task_id).status is TaskStatus.COMPLETED
             self._maybe_cleanup_cache("glossary", task_id)
         finally:
             await client.aclose()
+        if completed and finalized:
+            self._chain_glossary_review(task_id, finalized[-1])
+
+    def _chain_glossary_review(self, task_id: str, payload: Mapping[str, object]) -> None:
+        """Hand a finished extraction to review when the shared settings ask for it."""
+
+        if not self.settings_store.load_all().glossary.review_after_extraction:
+            return
+        combined = payload.get("combined_artifact")
+        novels = [
+            item
+            for item in payload.get("per_novel_artifacts") or []
+            if isinstance(item, Mapping) and item.get("xlsx_path")
+        ]
+        single = combined if isinstance(combined, Mapping) else novels[0] if len(novels) == 1 else None
+        references = str(single.get("references_path") or "") if single else ""
+        self.settings_store.save_partial(
+            "glossary_review",
+            {
+                "input_folder": str(payload.get("output_folder", "")),
+                "selected_xlsx_path": str(single.get("xlsx_path", "")) if single else "",
+                "selected_reference_paths": [references] if references else [],
+            },
+        )
+        # Several novels without a combined table: the user picks which one to review.
+        if single is None:
+            return
+        try:
+            self.start_glossary_review(f"{task_id}-review", source_task_id=task_id)
+        except BridgeError as exc:
+            logger.warning("Glossary review did not start after %s: %s", task_id, exc)
 
     def _build_glossary_review_config(
         self,
     ) -> tuple[GlossaryReviewConfig, ModelConfig, PromptPreset]:
         settings = self.settings_store.load_all()
         review = settings.glossary_review
+        shared = settings.glossary
         app = settings.app
 
         input_dir = _require_directory(review.input_folder, field="input_folder")
@@ -4713,10 +4778,10 @@ class TaskService:
         )
         model = replace(model, timeout_seconds=float(review.timeout_seconds))
         source_lang = _coerce_language(
-            review.source_language, field="source_language"
+            shared.source_language, field="source_language"
         )
         target_lang = _coerce_language(
-            review.target_language, field="target_language"
+            shared.target_language, field="target_language"
         )
         preset = self._resolve_prompt_preset(
             app.active_glossary_review_prompt_id,
@@ -4733,7 +4798,7 @@ class TaskService:
             source_language=source_lang,
             target_language=target_lang,
             output_filename=output_filename,
-            novel_background=review.novel_background,
+            novel_background=shared.novel_background,
             review_rounds=max(1, int(review.review_rounds)),
             batch_size=max(1, int(review.batch_size)),
             retry_attempts=max(0, int(review.retry_attempts)),
@@ -4765,12 +4830,17 @@ class TaskService:
             ],
         }
 
-    def start_glossary_review(self, request_id: str) -> dict[str, object]:
+    def start_glossary_review(
+        self, request_id: str, *, source_task_id: str = ""
+    ) -> dict[str, object]:
         with self._start_locks["glossary_review"]:
-            return self._start_glossary_review_locked(request_id)
+            return self._start_glossary_review_locked(request_id, source_task_id)
 
-    def _start_glossary_review_locked(self, request_id: str) -> dict[str, object]:
+    def _start_glossary_review_locked(
+        self, request_id: str, source_task_id: str = ""
+    ) -> dict[str, object]:
         config, model, preset = self._build_glossary_review_config()
+        config = replace(config, source_task_id=source_task_id)
 
         self._purge_kind_for_start(
             kind="glossary_review", task_kind=TaskKind.GLOSSARY_REVIEW
@@ -4797,6 +4867,7 @@ class TaskService:
                 "prompt_preset_id": preset.id,
                 "timeout_seconds": float(model.timeout_seconds),
                 "request_id": request_id,
+                **({"source_task_id": source_task_id} if source_task_id else {}),
             },
         )
 

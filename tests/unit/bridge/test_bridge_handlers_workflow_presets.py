@@ -390,3 +390,41 @@ def test_advanced_preset_rejects_negative_route_rpm(env):
             },
         )
     assert caught.value.code == "bridge.invalid_argument"
+
+
+def test_glossary_preset_carries_review_stage(env):
+    from transoria.prompts import PromptKind, default_preset
+
+    router, settings_store = env
+    extract_prompt = default_preset(PromptKind.GLOSSARY).id
+    review_prompt = default_preset(PromptKind.GLOSSARY_REVIEW).id
+    base = {
+        "model_profile_id": "model-1",
+        "prompt_preset_id": extract_prompt,
+        "source_language": Language.KOREAN.value,
+        "target_language": Language.CHINESE_SIMPLIFIED.value,
+    }
+    router.call("workflow_presets.create", {"kind": "glossary", "preset": {
+        **base, "id": "with-review", "name": "Review",
+        "review": {"enabled": True, "model_profile_id": "model-1", "prompt_preset_id": review_prompt},
+    }})
+    router.call("workflow_presets.create", {"kind": "glossary", "preset": {
+        **base, "id": "no-review", "name": "Extract only", "review": {"enabled": False},
+    }})
+
+    router.call("workflow_presets.apply", {"kind": "glossary", "id": "with-review"})
+    settings = settings_store.load_all()
+    assert settings.glossary.review_after_extraction is True
+    assert settings.app.active_glossary_review_model_id == "model-1"
+    assert settings.app.active_glossary_review_prompt_id == review_prompt
+    assert router.call("workflow_presets.list", {"kind": "glossary"})["matched_id"] == "with-review"
+
+    router.call("workflow_presets.apply", {"kind": "glossary", "id": "no-review"})
+    assert settings_store.load_all().glossary.review_after_extraction is False
+    assert router.call("workflow_presets.list", {"kind": "glossary"})["matched_id"] == "no-review"
+
+    with pytest.raises(BridgeError):
+        router.call("workflow_presets.create", {"kind": "glossary", "preset": {
+            **base, "id": "bad", "name": "Bad",
+            "review": {"enabled": True, "model_profile_id": "missing", "prompt_preset_id": review_prompt},
+        }})

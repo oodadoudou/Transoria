@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Sequence
 
 from transoria.bridge.errors import BridgeError
 from transoria.settings import SettingsStore
@@ -15,6 +15,8 @@ def save_selection(
     app_patch: Mapping[str, object],
     module_patch: Mapping[str, object] | None,
     notify: Callable[[str], None] | None,
+    *,
+    notify_kinds: Sequence[str] = (),
 ) -> AllSettings:
     current = store.load_all()
     updated = current.with_module("app", merge_module(current.app, app_patch))
@@ -25,7 +27,8 @@ def save_selection(
     store.save_all(updated)
     try:
         if notify:
-            notify(kind)
+            for name in notify_kinds or (kind,):
+                notify(name)
     except BridgeError:
         store.save_partial("app", {key: getattr(current.app, key) for key in app_patch})
         if module_patch:

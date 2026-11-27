@@ -124,6 +124,9 @@ def _build_handlers(
 
     def start_task(payload: Mapping[str, object]) -> dict[str, object]:
         request_id = _expect_request_id(payload)
+        source_task_id = payload.get("source_task_id")
+        if kind == "glossary_review" and isinstance(source_task_id, str) and source_task_id:
+            return service.start_glossary_review(request_id, source_task_id=source_task_id)
         return starter(request_id)
 
     def stop_task(payload: Mapping[str, object]) -> dict[str, object]:

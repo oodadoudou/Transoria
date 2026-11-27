@@ -32,6 +32,23 @@ class PresetRoute:
 
 
 @dataclass(frozen=True)
+class PresetReview:
+    """The review stage a glossary preset turns on or off after extraction."""
+
+    enabled: bool
+    model_profile_id: str = ""
+    prompt_preset_id: str = ""
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> "PresetReview":
+        return cls(
+            enabled=bool(data.get("enabled", True)),
+            model_profile_id=str(data.get("model_profile_id", "")),
+            prompt_preset_id=str(data.get("prompt_preset_id", "")),
+        )
+
+
+@dataclass(frozen=True)
 class WorkflowPreset:
     id: str
     name: str
@@ -46,6 +63,7 @@ class WorkflowPreset:
     fallback_route: PresetRoute | None = None
     group_concurrency: int = 0
     retry_failed: bool = False
+    review: PresetReview | None = None
 
     def to_dict(self) -> dict[str, object]:
         data = asdict(self)
@@ -68,6 +86,7 @@ class WorkflowPreset:
             else ()
         )
         raw_fallback = data.get("fallback_route")
+        raw_review = data.get("review")
         return cls(
             id=str(data["id"]),
             name=str(data["name"]),
@@ -86,6 +105,11 @@ class WorkflowPreset:
             ),
             group_concurrency=int(data.get("group_concurrency", 0)),
             retry_failed=bool(data.get("retry_failed", False)),
+            review=(
+                PresetReview.from_dict(raw_review)
+                if kind is PromptKind.GLOSSARY and isinstance(raw_review, Mapping)
+                else None
+            ),
         )
 
 
@@ -155,4 +179,4 @@ class WorkflowPresetStore:
         return True
 
 
-__all__ = ["PresetRoute", "WorkflowPreset", "WorkflowPresetStore"]
+__all__ = ["PresetReview", "PresetRoute", "WorkflowPreset", "WorkflowPresetStore"]

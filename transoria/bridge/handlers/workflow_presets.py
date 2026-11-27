@@ -13,8 +13,8 @@ from transoria.bridge.router import BridgeRouter
 from transoria.domain import Language
 from transoria.model_profiles import ModelProfileStore
 from transoria.prompts import PromptKind, PromptPresetStore
-from transoria.settings import SettingsStore
-from transoria.workflow_presets import PresetRoute, WorkflowPreset, WorkflowPresetStore
+from transoria.settings import AllSettings, SettingsStore
+from transoria.workflow_presets import PresetReview, PresetRoute, WorkflowPreset, WorkflowPresetStore
 
 ACTIVE_MODEL_FIELD_BY_KIND = {
     PromptKind.TRANSLATION: "active_translation_model_id",
@@ -31,7 +31,8 @@ ACTIVE_PROMPT_FIELD_BY_KIND = {
 SETTINGS_MODULE_BY_KIND = {
     PromptKind.TRANSLATION: "translation",
     PromptKind.GLOSSARY: "glossary",
-    PromptKind.GLOSSARY_REVIEW: "glossary_review",
+    # Review reads the shared glossary languages, so its presets write them there.
+    PromptKind.GLOSSARY_REVIEW: "glossary",
 }
 
 
@@ -198,6 +199,7 @@ def _coerce_preset(
         source_language=source_language,
         target_language=target_language,
     )
+    review = _coerce_review(cache_root, profile_store, kind, body.get("review"))
     return WorkflowPreset(
         id=preset_id,
         name=name,
@@ -212,6 +214,44 @@ def _coerce_preset(
         fallback_route=fallback_route,
         group_concurrency=group_concurrency,
         retry_failed=retry_failed,
+        review=review,
+    )
+
+
+def _coerce_review(
+    cache_root: Path, profile_store: ModelProfileStore, kind: PromptKind, raw: object
+) -> PresetReview | None:
+    if kind is not PromptKind.GLOSSARY or raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise BridgeError.invalid_argument("review must be an object.", field="review")
+    review = PresetReview.from_dict(raw)
+    if not review.enabled:
+        return review
+    if profile_store.get(review.model_profile_id) is None:
+        raise BridgeError.not_found(
+            f"model profile {review.model_profile_id!r} does not exist.",
+            details={"field": "review.model_profile_id", "id": review.model_profile_id},
+        )
+    if not any(
+        prompt.id == review.prompt_preset_id
+        for prompt in _prompt_store_for(cache_root, PromptKind.GLOSSARY_REVIEW).load()
+    ):
+        raise BridgeError.not_found(
+            f"prompt preset {review.prompt_preset_id!r} does not exist.",
+            details={"field": "review.prompt_preset_id", "id": review.prompt_preset_id},
+        )
+    return review
+
+
+def _review_matches(settings: AllSettings, review: PresetReview | None) -> bool:
+    if review is None:
+        return True
+    if settings.glossary.review_after_extraction != review.enabled:
+        return False
+    return not review.enabled or (
+        settings.app.active_glossary_review_model_id == review.model_profile_id
+        and settings.app.active_glossary_review_prompt_id == review.prompt_preset_id
     )
 
 
@@ -275,6 +315,7 @@ def _matched_id(
             and preset.prompt_preset_id == prompt_id
             and preset.source_language == source_language
             and preset.target_language == target_language
+            and _review_matches(settings, preset.review)
         ):
             return preset.id
     return None
@@ -396,15 +437,25 @@ def _build_handlers(
             app_patch["active_translation_workflow_preset_id"] = (
                 preset.id if preset.advanced else None
             )
+        module_patch: dict[str, object] = {
+            "source_language": preset.source_language,
+            "target_language": preset.target_language,
+        }
+        if preset.review is not None:
+            module_patch["review_after_extraction"] = preset.review.enabled
+            if preset.review.enabled:
+                app_patch["active_glossary_review_model_id"] = preset.review.model_profile_id
+                app_patch["active_glossary_review_prompt_id"] = preset.review.prompt_preset_id
         updated = save_selection(
             settings_store,
             SETTINGS_MODULE_BY_KIND[kind],
             app_patch,
-            {
-                "source_language": preset.source_language,
-                "target_language": preset.target_language,
-            },
+            module_patch,
             on_selection_changed,
+            # Both glossary stages read the shared languages, so either running task may need to switch.
+            notify_kinds=(kind.value, *({"glossary", "glossary_review"} - {kind.value}))
+            if kind is not PromptKind.TRANSLATION
+            else (),
         )
         module_name = SETTINGS_MODULE_BY_KIND[kind]
         return {

@@ -30,6 +30,8 @@ class GlossaryReviewConfig:
     prompt_preset: PromptPreset
     stream: bool = True
     debug_log_dir: Path | None = None
+    # The extraction task this review continues, when it was started automatically.
+    source_task_id: str = ""
 
 
 __all__ = ["DEFAULT_OUTPUT_FILENAME", "GlossaryReviewConfig"]

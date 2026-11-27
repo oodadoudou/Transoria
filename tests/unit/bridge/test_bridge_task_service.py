@@ -4128,3 +4128,73 @@ def test_continued_advanced_route_uses_current_thinking_setting(tmp_path: Path):
 
     assert config.routes[0].model.thinking_level is ThinkingLevel.LOW
     assert config.routes[0].model.model_id != "changed-model"
+
+
+def test_settings_upgrade_merges_review_language_and_background_once(tmp_path: Path):
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    (cache_root / "settings.json").write_text(
+        json.dumps({
+            "glossary": {"source_language": "en", "target_language": "zh", "novel_background": ""},
+            "glossary_review": {"source_language": "kr", "target_language": "zh", "novel_background": "背景", "input_folder": "/books"},
+        }),
+        encoding="utf-8",
+    )
+    service = _service(tmp_path, transport=EchoTranslationTransport(), cache_root=cache_root)
+    settings = service.settings_store.load_all()
+    assert settings.glossary.source_language == "kr"
+    assert settings.glossary.novel_background == "背景"
+    assert settings.glossary_review.novel_background == "背景"
+    service.settings_store.save_partial("glossary", {"source_language": "ja"})
+    again = _service(tmp_path, transport=EchoTranslationTransport(), cache_root=cache_root)
+    assert again.settings_store.load_all().glossary.source_language == "ja"
+
+
+def test_review_uses_shared_glossary_languages_and_background(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    folder = tmp_path / "terms"
+    folder.mkdir()
+    _seed_glossary_review_settings(service, input_dir=folder)
+    service.settings_store.save_partial("glossary_review", {"source_language": "en", "novel_background": "旧"})
+    service.settings_store.save_partial("glossary", {"source_language": "ja", "novel_background": "共用背景"})
+    config, _, _ = service._build_glossary_review_config()
+    assert config.source_language is Language.JAPANESE
+    assert config.novel_background == "共用背景"
+
+
+def _run_extraction_then_wait(service: TaskService, tmp_path: Path) -> str:
+    input_dir = tmp_path / "in"
+    output_dir = tmp_path / "out"
+    input_dir.mkdir()
+    (input_dir / "sample.txt").write_text("강감찬은 위대했다", encoding="utf-8")
+    _seed_glossary_settings(service, input_dir=input_dir, output_dir=output_dir)
+    _seed_glossary_review_settings(service, input_dir=tmp_path)
+    task_id = service.start_glossary(request_id="req-1")["task_id"]
+    _wait_until(
+        lambda: service.read_snapshot(kind="glossary", task_id=task_id)["snapshot"]["header"]["status"]
+        in {"completed", "failed"},
+    )
+    return task_id
+
+
+def test_finished_extraction_starts_review_on_its_own_output(tmp_path: Path):
+    transport = CandidateEmittingTransport(candidates=(("강감찬", "姜邯赞", "Male Name"),))
+    service = _service(tmp_path, transport=transport)
+    task_id = _run_extraction_then_wait(service, tmp_path)
+
+    _wait_until(lambda: service.list_recent_tasks(kind="glossary_review", limit=1)["tasks"])
+    review_id = service.list_recent_tasks(kind="glossary_review", limit=1)["tasks"][0]["id"]
+    record = service.cache.load_record(review_id)
+    assert record.metadata["source_task_id"] == task_id
+    review = service.settings_store.load_all().glossary_review
+    assert review.input_folder == str(tmp_path / "out")
+    assert review.selected_xlsx_path.endswith(".xlsx")
+
+
+def test_extraction_without_review_does_not_start_review(tmp_path: Path):
+    transport = CandidateEmittingTransport(candidates=(("강감찬", "姜邯赞", "Male Name"),))
+    service = _service(tmp_path, transport=transport)
+    service.settings_store.save_partial("glossary", {"review_after_extraction": False})
+    _run_extraction_then_wait(service, tmp_path)
+    time.sleep(0.2)
+    assert service.list_recent_tasks(kind="glossary_review", limit=1)["tasks"] == []

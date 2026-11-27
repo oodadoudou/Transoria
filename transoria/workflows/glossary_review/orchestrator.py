@@ -389,6 +389,7 @@ class GlossaryReviewOrchestrator:
                 "review_round_completed_batches": 0,
                 "model_id": config.model.id,
                 "prompt_preset_id": config.prompt_preset.id,
+                **({"source_task_id": config.source_task_id} if config.source_task_id else {}),
             },
         )
         subtasks = self._build_round_subtasks(
