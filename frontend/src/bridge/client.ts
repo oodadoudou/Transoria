@@ -485,6 +485,12 @@ export const proofreadingBridge = {
   loadSnapshot(taskId: string): Promise<ProofreadingSnapshot> {
     return call("proofreading.load_snapshot", { task_id: taskId });
   },
+  addGlossaryTerm(
+    taskId: string,
+    term: { src: string; dst: string; info: string },
+  ): Promise<{ segment_ids: string[] }> {
+    return call("proofreading.add_glossary_term", { task_id: taskId, ...term });
+  },
   updateSegment(
     taskId: string,
     segmentId: string,

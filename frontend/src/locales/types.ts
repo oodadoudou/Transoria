@@ -771,6 +771,11 @@ export interface Messages {
       retranslatePromptPickerTitle: string;
       switchModelPrompt: string;
       retranslateAction: string;
+      addGlossaryTerm: string;
+      addGlossaryTermSave: string;
+      addGlossaryTermCancel: string;
+      addGlossaryTermDone: string;
+      addGlossaryTermFailed: string;
       retranslateSelectedAction: string;
       retranslateFilteredAction: string;
       retranslatePauseAction: string;

@@ -1576,3 +1576,37 @@ def test_regenerate_outputs_rejects_missing_metadata(router_and_service):
             {"task_id": "translation-pf-nometa"},
         )
     assert caught.value.code == "bridge.invalid_argument"
+
+
+def test_add_glossary_term_updates_task_glossary_and_finds_segments(router_and_service):
+    router, service, tmp_path = router_and_service
+    _seed_translation_task(
+        service,
+        task_id="translation-pf-add-term",
+        input_dir=tmp_path / "in",
+        output_dir=tmp_path / "out",
+        file_segments=[
+            ("0:0", "망치가 웃었다.", "망치笑了。"),
+            ("0:1", "그는 떠났다.", "他离开了。"),
+            ("0:2", "망치는 돌아왔다.", "망치回来了。"),
+        ],
+        metadata_overrides={"glossary": [{"src": "신해범", "dst": "申海范", "enabled": True}]},
+    )
+
+    response = router.call(
+        "proofreading.add_glossary_term",
+        {"task_id": "translation-pf-add-term", "src": "망치", "dst": "望治", "info": "昵称"},
+    )
+    assert sorted(response["segment_ids"]) == ["0:0", "0:2"]
+    router.call(
+        "proofreading.add_glossary_term",
+        {"task_id": "translation-pf-add-term", "src": "망치", "dst": "芒治"},
+    )
+
+    glossary = service.cache.load_record("translation-pf-add-term").metadata["glossary"]
+    assert [item["src"] for item in glossary] == ["신해범", "망치"]
+    assert glossary[1]["dst"] == "芒治"
+    items = {item["segment_id"]: item for item in router.call(
+        "proofreading.load_snapshot", {"task_id": "translation-pf-add-term"}
+    )["items"]}
+    assert any(term["dst"] == "芒治" for term in items["0:0"]["glossary_terms"])

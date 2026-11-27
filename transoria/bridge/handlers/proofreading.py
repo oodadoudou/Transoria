@@ -933,6 +933,41 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
             "items": items,
         }
 
+    def add_glossary_term(payload: Mapping[str, object]) -> dict[str, object]:
+        """Add a term to this task's glossary so retranslation uses it; return the segments it covers."""
+
+        task_id = expect_string(payload, "task_id")
+        src = expect_string(payload, "src").strip()
+        dst = expect_string(payload, "dst").strip()
+        info = str(payload.get("info") or "").strip()
+        snapshot = require_proofreadable_translation_task(task_id)
+        records = [
+            dict(item)
+            for item in snapshot.record.metadata.get("glossary") or []
+            if isinstance(item, Mapping)
+        ]
+        existing = next((item for item in records if str(item.get("src", "")).strip() == src), None)
+        if existing is None:
+            records.append(
+                {"src": src, "dst": dst, "info": info, "regex": False, "case_sensitive": False, "enabled": True}
+            )
+        else:
+            existing.update({"dst": dst, "info": info, "enabled": True})
+        service.cache.save_task(
+            replace(snapshot.record, metadata={**snapshot.record.metadata, "glossary": records})
+        )
+        term = Glossary(entries=(GlossaryEntry(src=src, dst=dst, info=info),))
+        segment_ids: list[str] = []
+        for subtask in snapshot.subtasks:
+            for segment in (subtask.request_payload or {}).get("segments", []):
+                if not isinstance(segment, Mapping):
+                    continue
+                segment_id = str(segment.get("segment_id", ""))
+                text = str(segment.get("original_text") or segment.get("prompt_text") or "")
+                if segment_id and segment_id not in segment_ids and term.match(text):
+                    segment_ids.append(segment_id)
+        return {"segment_ids": segment_ids}
+
     def update_segment(payload: Mapping[str, object]) -> dict[str, object]:
         task_id = expect_string(payload, "task_id")
         segment_id = expect_string(payload, "segment_id")
@@ -1275,6 +1310,7 @@ def _build_handlers(service: TaskService) -> dict[str, object]:
         "proofreading.list_tasks": list_tasks,
         "proofreading.load_snapshot": load_snapshot,
         "proofreading.update_segment": update_segment,
+        "proofreading.add_glossary_term": add_glossary_term,
         "proofreading.regenerate_outputs": regenerate_outputs,
         "proofreading.retranslate_segment": retranslate_segment,
         "proofreading.retranslate_status": retranslate_status,

@@ -26,6 +26,7 @@ import { useVirtualWindow } from "@/hooks/useVirtualWindow";
 import { useModelProfiles } from "@/store/useModelProfilesStore";
 import { usePromptPresets } from "@/store/usePromptPresetsStore";
 import { useModuleSettings } from "@/store/useSettingsStore";
+import { AddGlossaryTermModal, type GlossaryTermDraft } from "@/components/AddGlossaryTermModal";
 import { useWorkflowPresets } from "@/store/useWorkflowPresetsStore";
 import {
   EMPTY_PROOFREADING_RETRANSLATE_SESSION,
@@ -454,6 +455,10 @@ export function ProofreadingPage() {
     null,
   );
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [addTermDraft, setAddTermDraft] = useState<GlossaryTermDraft | null>(null);
+  const [addingTerm, setAddingTerm] = useState(false);
+  const srcTextRef = useRef<HTMLTextAreaElement>(null);
+  const dstTextRef = useRef<HTMLTextAreaElement>(null);
   const retranslateSession = useProofreadingRetranslateStore((state) =>
     activeTaskId
       ? (state.sessions[activeTaskId] ??
@@ -525,6 +530,7 @@ export function ProofreadingPage() {
     useState<RetranslateUndo | null>(null);
   const [undoingRetranslate, setUndoingRetranslate] = useState(false);
   const appSettings = useModuleSettings("app");
+  const translationSettings = useModuleSettings("translation");
   const profiles = useModelProfiles();
   const promptPresets = usePromptPresets("translation");
   const translationPromptSlice = promptPresets.translation;
@@ -1195,6 +1201,46 @@ export function ProofreadingPage() {
       });
     } finally {
       setRegenerating(null);
+    }
+  };
+
+  const selectedText = (element: HTMLTextAreaElement | null) =>
+    element ? element.value.slice(element.selectionStart, element.selectionEnd).trim() : "";
+
+  const openAddTerm = () => {
+    setAddTermDraft({ src: selectedText(srcTextRef.current), dst: selectedText(dstTextRef.current), info: "" });
+  };
+
+  const handleAddTerm = async (term: GlossaryTermDraft) => {
+    if (!activeTaskId) return;
+    setAddingTerm(true);
+    try {
+      const { segment_ids } = await proofreadingBridge.addGlossaryTerm(activeTaskId, term);
+      const entries = translationSettings.draft?.translation_glossary;
+      if (entries) {
+        const index = entries.findIndex((entry) => entry.src.trim() === term.src);
+        translationSettings.update(
+          "translation_glossary",
+          index >= 0
+            ? entries.map((entry, position) =>
+                position === index ? { ...entry, dst: term.dst, info: term.info, enabled: true } : entry,
+              )
+            : [...entries, { ...term, regex: false, case_sensitive: false, enabled: true }],
+        );
+      }
+      await reloadProofreadingSnapshot();
+      setSelectedSegmentIds(new Set(segment_ids));
+      setAddTermDraft(null);
+      setFeedback({ kind: "success", text: format(m.addGlossaryTermDone, { n: segment_ids.length }) });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text: format(m.addGlossaryTermFailed, {
+          reason: BridgeError.isBridgeError(err) ? `${err.code}: ${err.message}` : String(err),
+        }),
+      });
+    } finally {
+      setAddingTerm(false);
     }
   };
 
@@ -2826,6 +2872,7 @@ export function ProofreadingPage() {
               <div>
                 <div className={styles.label}>{m.editorSrcLabel}</div>
                 <textarea
+                  ref={srcTextRef}
                   className={styles.editorSrc}
                   value={selectedItem.src}
                   readOnly
@@ -2835,6 +2882,7 @@ export function ProofreadingPage() {
               <div>
                 <div className={styles.label}>{m.editorDstLabel}</div>
                 <textarea
+                  ref={dstTextRef}
                   className={styles.editorTextarea}
                   value={draftDst}
                   onChange={(e) => setDraftDst(e.target.value)}
@@ -2849,6 +2897,9 @@ export function ProofreadingPage() {
                   ) : null}
                 </span>
                 <span className={styles.editorButtons}>
+                  <Button variant="ghost" onClick={openAddTerm}>
+                    {m.addGlossaryTerm}
+                  </Button>
                   <Button
                     variant="ghost"
                     onClick={() => void handleRetranslate()}
@@ -2972,6 +3023,14 @@ export function ProofreadingPage() {
         >
           {feedback.text}
         </div>
+      ) : null}
+      {addTermDraft ? (
+        <AddGlossaryTermModal
+          initial={addTermDraft}
+          busy={addingTerm}
+          onSave={(term) => void handleAddTerm(term)}
+          onCancel={() => setAddTermDraft(null)}
+        />
       ) : null}
     </Panel>
   );
