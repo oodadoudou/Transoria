@@ -500,7 +500,7 @@ function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
                   <th>{labels.columns.suggestedDst}</th>
                   <th>{labels.columns.originalInfo}</th>
                   <th>{labels.columns.suggestedInfo}</th>
-                  <th>{labels.columns.reason}</th>
+                  <th className={reportStyles.reasonCell}>{labels.columns.reason}</th>
                   <th>{labels.columns.actions}</th>
                 </tr>
               </thead>
@@ -518,7 +518,7 @@ function ReportModal({ report, onClose, onRestoreDelete }: ReportModalProps) {
                       <td>{row.suggested_dst}</td>
                       <td>{row.original_info}</td>
                       <td>{row.suggested_info}</td>
-                      <td>{row.reason}</td>
+                      <td className={reportStyles.reasonCell}>{row.reason}</td>
                       <td>
                         {row.action === "delete" ? (
                           <button

@@ -7148,25 +7148,11 @@ class TaskService:
         return TaskSnapshot(record=healed, subtasks=snapshot.subtasks)
 
     def _glossary_review_artifacts_exist(self, record: TaskRecord) -> bool:
+        # The cache report is written after the final XLSX, so it proves the run finished even
+        # when the user later moves or deletes the output folder.
         if record.kind is not TaskKind.GLOSSARY_REVIEW:
             return False
-        report_path = self.cache.task_dir(record.id) / REPORT_FILENAME
-        output_path: Path | None = None
-        result = self._read_result(record.id)
-        if result is not None:
-            raw_output = result.get("output_path")
-            if isinstance(raw_output, str) and raw_output:
-                output_path = Path(raw_output)
-        if output_path is None:
-            try:
-                output_filename = normalize_output_filename(
-                    str(record.metadata.get("output_filename", ""))
-                )
-            except ValueError:
-                return False
-            output_dir = Path(str(record.metadata.get("output_dir", "")))
-            output_path = output_dir / output_filename
-        return report_path.exists() and output_path.exists()
+        return (self.cache.task_dir(record.id) / REPORT_FILENAME).exists()
 
     def _on_task_failure(self, task_id: str, exc: BaseException) -> None:
         cache = self._cache_for_task(task_id)

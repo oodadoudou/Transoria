@@ -8,6 +8,7 @@ the file-backed cache. They do not hit the network.
 from __future__ import annotations
 
 import json
+from transoria.workflows.glossary_review.exporters import REPORT_FILENAME
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -3179,6 +3180,33 @@ def test_glossary_review_completed_without_artifacts_self_heals_to_stopped(
         service.read_glossary_review_report(task_id=task_id)
     assert caught.value.code == "bridge.conflict"
     assert caught.value.payload.details["status"] == "stopped"
+
+
+def test_glossary_review_stays_completed_after_its_output_is_moved(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    task_id = "glossary-review-moved-output"
+    created_at = "2026-05-01T00:00:00+00:00"
+    service.cache.write_seed(
+        TaskRecord(
+            id=task_id,
+            kind=TaskKind.GLOSSARY_REVIEW,
+            status=TaskStatus.COMPLETED,
+            created_at=created_at,
+            updated_at=created_at,
+            metadata={
+                "input_dir": str(tmp_path / "gone"),
+                "output_dir": str(tmp_path / "gone"),
+                "output_filename": "glossary-review-final.xlsx",
+            },
+        ),
+        (),
+    )
+    (service.cache.task_dir(task_id) / REPORT_FILENAME).write_text(
+        json.dumps({"changes": []}), encoding="utf-8"
+    )
+
+    assert service.list_recent_tasks(kind="glossary_review", limit=None)["tasks"][0]["status"] == "completed"
+    service.read_glossary_review_report(task_id=task_id)
 
 
 def test_list_recent_tasks_filters_by_kind(tmp_path: Path):

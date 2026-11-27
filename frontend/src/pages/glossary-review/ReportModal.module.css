@@ -80,6 +80,13 @@
   vertical-align: top;
   cursor: text;
   user-select: text;
+  white-space: nowrap;
+}
+
+/* Short columns stay on one line; only the reason column wraps. */
+.table .reasonCell {
+  width: 100%;
+  min-width: 200px;
   white-space: pre-wrap;
   word-break: break-word;
 }
