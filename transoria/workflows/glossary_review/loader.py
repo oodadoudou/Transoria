@@ -180,7 +180,7 @@ def _resolve_glossary_xlsx(
         selected = _validate_child_file(
             input_dir,
             selected_path,
-            suffix=".xlsx",
+            suffixes=(".xlsx",),
             field="selected_xlsx_path",
         )
         if _is_ignored_xlsx(selected, output_filename=output_filename):
@@ -196,11 +196,16 @@ def _resolve_glossary_xlsx(
     return candidates[0]
 
 
+REFERENCE_TEXT_SUFFIXES: tuple[str, ...] = (".md", ".txt")
+
+
 def _discover_reference_texts(input_dir: Path) -> tuple[Path, ...]:
     return tuple(
         path
         for path in sorted(input_dir.iterdir(), key=lambda p: p.name.casefold())
-        if path.is_file() and path.suffix.lower() == ".txt" and not path.name.startswith("~$")
+        if path.is_file()
+        and path.suffix.lower() in REFERENCE_TEXT_SUFFIXES
+        and not path.name.startswith("~$")
     )
 
 
@@ -213,7 +218,7 @@ def _resolve_reference_texts(
         _validate_child_file(
             input_dir,
             path,
-            suffix=".txt",
+            suffixes=REFERENCE_TEXT_SUFFIXES,
             field="selected_reference_paths",
         )
         for path in selected_paths
@@ -221,7 +226,7 @@ def _resolve_reference_texts(
 
 
 def _validate_child_file(
-    input_dir: Path, path: Path, *, suffix: str, field: str
+    input_dir: Path, path: Path, *, suffixes: tuple[str, ...], field: str
 ) -> Path:
     candidate = path.expanduser()
     if not candidate.is_absolute():
@@ -233,8 +238,10 @@ def _validate_child_file(
         raise GlossaryReviewInputError(f"{field} cannot be resolved") from exc
     if resolved.parent != resolved_input:
         raise GlossaryReviewInputError(f"{field} must be inside the input folder")
-    if not resolved.is_file() or resolved.suffix.lower() != suffix:
-        raise GlossaryReviewInputError(f"{field} points to an invalid {suffix} file")
+    if not resolved.is_file() or resolved.suffix.lower() not in suffixes:
+        raise GlossaryReviewInputError(
+            f"{field} points to an invalid {'/'.join(suffixes)} file"
+        )
     if resolved.name.startswith("~$"):
         raise GlossaryReviewInputError(f"{field} points to a temporary file")
     return resolved

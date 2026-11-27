@@ -275,7 +275,7 @@ def test_combined_folder_glossary_emits_folder_named_artifact_set(tmp_path: Path
 
     folder_xlsx = output_dir / f"{input_dir.resolve().name}-Glossary.xlsx"
     folder_json = output_dir / f"{input_dir.resolve().name}-Glossary.json"
-    folder_refs = output_dir / f"{input_dir.resolve().name}-Glossary-references.txt"
+    folder_refs = output_dir / f"{input_dir.resolve().name}-Glossary-references.md"
     assert folder_xlsx.exists()
     assert folder_json.exists()
     assert folder_refs.exists()

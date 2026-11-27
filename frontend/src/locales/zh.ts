@@ -1269,7 +1269,7 @@ export const zh: Messages = {
       targetLanguage: "目标语言",
       combineFolderGlossary: "合并整个文件夹的术语表",
       combineFolderGlossaryHint:
-        "开启后只输出一份覆盖整个输入文件夹的 `<folder>-Glossary.{xlsx,json,txt}`，不再为每个文件单独生成术语表。",
+        "开启后只输出一份覆盖整个输入文件夹的 `<folder>-Glossary.{xlsx,json,md}`，不再为每个文件单独生成术语表。",
       allowSrcEqDst: "保留 src == dst 的条目",
       allowSrcEqDstHint:
         "若候选条目的原文与译文写法相同,默认会被丢弃。两种语言写法相同的人名/术语场景下可开启。",
@@ -1284,7 +1284,7 @@ export const zh: Messages = {
         "提取完成后自动打开输出目录，方便直接查看 XLSX/JSON/TXT 结果。",
       referenceExamplesPerTerm: "每个术语的参考示例数",
       referenceExamplesPerTermHelp:
-        "每条术语在 -references.txt 里附带几条原文出处，便于复盘上下文。值越大文件越长，对术语本身没影响。默认 20。",
+        "每条术语在 -references.md 里附带几条原文出处，便于复盘上下文。值越大文件越长，对术语本身没影响。默认 20。",
       minimumFrequency: "最低出现频率",
       minimumFrequencyHelp:
         "候选术语在源文中出现少于此次数会被丢弃。设为 2 可过滤掉只出现一次的人名/术语；默认 1（保留全部）。",
@@ -1302,7 +1302,7 @@ export const zh: Messages = {
     },
     run: {
       title: "术语表",
-      sub: "启动、监控并停止术语提取任务。输出 XLSX、JSON 与参考 TXT 三件套,放在源文件夹同级。",
+      sub: "启动、监控并停止术语提取任务。输出 XLSX、JSON 与参考 Markdown 三件套,放在源文件夹同级。",
       startupNotice:
         "正在解析输入文件并准备术语提取分块。EPUB 较大或结构复杂时，这一步可能需要等待几十秒。",
       failedSubtasks: "失败分块",
@@ -1357,17 +1357,17 @@ export const zh: Messages = {
       glossaryFile: "术语表 XLSX",
       glossaryFileHelp: "当文件夹内有多个 XLSX 时，请选择要审查的原始术语表。",
       glossaryFilePlaceholder: "请选择术语表",
-      referenceFiles: "参考 TXT",
-      referenceFilesHelp: "可多选。模型会把选中的 TXT 合并为小说参考上下文。",
-      referenceFilesEmpty: "当前文件夹没有可用 TXT 参考文件。",
+      referenceFiles: "参考文本",
+      referenceFilesHelp: "可多选。模型会把选中的文本合并为小说参考上下文。",
+      referenceFilesEmpty: "当前文件夹没有可用的参考文本。",
       emptyState: {
         label: "审查输入",
         noFolderTitle: "选择术语提取的输出文件夹",
         noFolderBody:
-          "请选择术语提取生成的目录。Transoria 会自动发现术语 XLSX 和参考 TXT。",
+          "请选择术语提取生成的目录。Transoria 会自动发现术语 XLSX 和参考文本。",
         noCandidatesTitle: "没有找到可送审候选",
         noCandidatesBody:
-          "当前文件夹没有术语 XLSX 或参考 TXT。可以从已完成的术语提取一键送审，或手动选择它的输出目录。",
+          "当前文件夹没有术语 XLSX 或参考文本。可以从已完成的术语提取一键送审，或手动选择它的输出目录。",
       },
       inputScanLoading: "正在扫描输入文件夹…",
       inputScanError: "扫描输入文件夹失败：{reason}",

@@ -101,3 +101,19 @@ def test_normalize_output_filename() -> None:
         normalize_output_filename("../bad.xlsx")
     with pytest.raises(GlossaryReviewInputError):
         normalize_output_filename("bad.csv")
+
+
+def test_load_review_input_reads_markdown_references(tmp_path: Path) -> None:
+    _write_xlsx(tmp_path / "Novel-Glossary.xlsx", [["src", "dst"], ["a", "甲"]])
+    references = tmp_path / "Novel-Glossary-references.md"
+    references.write_text("原文: a\na appears here", encoding="utf-8")
+
+    discovered = load_review_input(tmp_path, output_filename="final.xlsx")
+    selected = load_review_input(
+        tmp_path,
+        output_filename="final.xlsx",
+        selected_reference_paths=(references,),
+    )
+
+    assert discovered.reference_files == (references,)
+    assert selected.reference_text == "原文: a\na appears here"

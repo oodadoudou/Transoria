@@ -52,6 +52,7 @@ from transoria.workflows.glossary.combine import combine_glossary_records
 from transoria.workflows.glossary.config import GlossaryConfig
 from transoria.workflows.glossary.exporters import (
     glossary_basename,
+    is_legacy_glossary_text,
     purge_glossary_artifacts,
     write_glossary_artifacts,
     write_glossary_decode_issues,
@@ -499,7 +500,11 @@ def _scan_and_parse(input_dir: Path) -> dict[Path, tuple[str, ...]]:
     output filenames, and the statistics file are reproducible across runs.
     """
 
-    discovered = scan_input_directory(input_dir)
+    discovered = [
+        document_file
+        for document_file in scan_input_directory(input_dir)
+        if not is_legacy_glossary_text(document_file.path)
+    ]
     result: dict[Path, tuple[str, ...]] = {}
     for document_file in discovered:
         if document_file.format.value == "txt":

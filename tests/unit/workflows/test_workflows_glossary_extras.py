@@ -27,7 +27,7 @@ def test_decode_issues_file_writes_one_block_per_issue(tmp_path: Path) -> None:
     path = write_glossary_decode_issues(issues, tmp_path, basename="Sample")
 
     assert path is not None
-    assert path.name == "Sample-Glossary-decode-issues.txt"
+    assert path.name == "Sample-Glossary-decode-issues.md"
     body = path.read_text(encoding="utf-8")
     assert "garbage that cannot parse" in body
     assert "missing or empty 'src'" in body

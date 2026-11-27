@@ -1,14 +1,14 @@
-"""Three-artifact glossary writers (XLSX, JSON, references TXT).
+"""Three-artifact glossary writers (XLSX, JSON, references Markdown).
 
 All three files share the hyphen-separated naming convention required by
 ``docs/glossary-extraction-module-design.md``:
 
 - ``<NovelName>-Glossary.xlsx``
 - ``<NovelName>-Glossary.json``
-- ``<NovelName>-Glossary-references.txt``
+- ``<NovelName>-Glossary-references.md``
 
 The XLSX columns are ``src``, ``dst``, ``info``, ``regex``, ``frequency``;
-the JSON content matches column-for-column; and the references TXT uses the
+the JSON content matches column-for-column; and the references file uses the
 Chinese-labeled block format described in the design doc.
 """
 
@@ -25,8 +25,14 @@ from transoria.workflows.glossary.candidate import GlossaryRecord
 
 GLOSSARY_FILENAME_XLSX_SUFFIX = "-Glossary.xlsx"
 GLOSSARY_FILENAME_JSON_SUFFIX = "-Glossary.json"
-GLOSSARY_FILENAME_REFERENCES_SUFFIX = "-Glossary-references.txt"
-GLOSSARY_FILENAME_DECODE_ISSUES_SUFFIX = "-Glossary-decode-issues.txt"
+# Markdown, not TXT: the novel scanner reads every .txt, so a TXT artifact written next to the
+# source would be extracted (or translated) as a novel on the next run.
+GLOSSARY_FILENAME_REFERENCES_SUFFIX = "-Glossary-references.md"
+GLOSSARY_FILENAME_DECODE_ISSUES_SUFFIX = "-Glossary-decode-issues.md"
+LEGACY_GLOSSARY_TEXT_SUFFIXES: tuple[str, ...] = (
+    "-Glossary-references.txt",
+    "-Glossary-decode-issues.txt",
+)
 
 # Re-exported for tests/external callers that want to assert filename layout.
 GLOSSARY_FILENAME_XLSX = GLOSSARY_FILENAME_XLSX_SUFFIX
@@ -142,6 +148,11 @@ def write_glossary_artifacts(
     references_path = write_glossary_references_text(
         records, output_dir, basename=resolved
     )
+    for suffix in LEGACY_GLOSSARY_TEXT_SUFFIXES:
+        try:
+            (output_dir / f"{resolved}{suffix}").unlink(missing_ok=True)
+        except OSError:
+            continue
     return xlsx_path, json_path, references_path
 
 
@@ -164,6 +175,7 @@ def purge_glossary_artifacts(
         GLOSSARY_FILENAME_JSON_SUFFIX,
         GLOSSARY_FILENAME_REFERENCES_SUFFIX,
         GLOSSARY_FILENAME_DECODE_ISSUES_SUFFIX,
+        *LEGACY_GLOSSARY_TEXT_SUFFIXES,
     )
     basenames: list[str] = [glossary_basename(p) for p in source_paths]
     if combined_basename is not None:
@@ -176,6 +188,10 @@ def purge_glossary_artifacts(
                     target.unlink()
                 except OSError:
                     continue
+
+
+def is_legacy_glossary_text(path: Path) -> bool:
+    return path.name.endswith(LEGACY_GLOSSARY_TEXT_SUFFIXES)
 
 
 def write_glossary_decode_issues(
@@ -209,6 +225,8 @@ __all__ = [
     "GLOSSARY_FILENAME_JSON",
     "GLOSSARY_FILENAME_REFERENCES",
     "GLOSSARY_FILENAME_XLSX",
+    "LEGACY_GLOSSARY_TEXT_SUFFIXES",
+    "is_legacy_glossary_text",
     "purge_glossary_artifacts",
     "XLSX_COLUMNS",
     "glossary_basename",

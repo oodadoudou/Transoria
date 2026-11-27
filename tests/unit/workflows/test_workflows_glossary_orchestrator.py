@@ -120,6 +120,28 @@ def test_default_glossary_runner_uses_config_request_retry_attempts(tmp_path: Pa
     assert runner.transport_retry_attempts == 4  # type: ignore[attr-defined]
 
 
+def test_rerun_into_the_input_folder_reads_only_the_novel(tmp_path: Path) -> None:
+    folder = tmp_path / "book"
+    folder.mkdir()
+    (folder / "Novel.txt").write_text("신해범 entered the room.\n공이 followed.\n", encoding="utf-8")
+    legacy_references = folder / "Novel-Glossary-references.txt"
+    legacy_references.write_text("원문: 신해범\n신해범 entered the room.\n", encoding="utf-8")
+
+    for _ in range(2):
+        orchestrator = _new_orchestrator(CandidateEmittingTransport(), tmp_path / "cache")
+        result = asyncio.run(orchestrator.run(_config(folder, folder)))
+        assert result.final_status is TaskStatus.COMPLETED
+        assert result.statistics.processed_files == (str(folder / "Novel.txt"),)
+
+    assert not legacy_references.exists()
+    assert {path.name for path in folder.iterdir()} == {
+        "Novel" + GLOSSARY_FILENAME_JSON,
+        "Novel" + GLOSSARY_FILENAME_REFERENCES,
+        "Novel" + GLOSSARY_FILENAME_XLSX,
+        "Novel.txt",
+    }
+
+
 def test_orchestrator_extracts_glossary_end_to_end_for_txt(tmp_path: Path) -> None:
     input_dir = tmp_path / "in"
     output_dir = tmp_path / "out"
@@ -417,7 +439,7 @@ def test_orchestrator_writes_decode_issues_even_when_no_candidates(
 
     assert result.statistics.candidate_count == 0
     assert result.statistics.decode_issue_count > 0
-    decode_files = list(output_dir.glob("*-decode-issues.txt"))
+    decode_files = list(output_dir.glob("*-decode-issues.md"))
     assert len(decode_files) == 1
     body = decode_files[0].read_text(encoding="utf-8")
     assert "reason:" in body

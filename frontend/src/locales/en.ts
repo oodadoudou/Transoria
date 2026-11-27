@@ -1306,7 +1306,7 @@ export const en: Messages = {
       targetLanguage: "Target language",
       combineFolderGlossary: "Combined folder glossary",
       combineFolderGlossaryHint:
-        "When enabled, emit only one `<folder>-Glossary.{xlsx,json,txt}` set for the whole input folder instead of per-file artifacts.",
+        "When enabled, emit only one `<folder>-Glossary.{xlsx,json,md}` set for the whole input folder instead of per-file artifacts.",
       allowSrcEqDst: "Allow src == dst entries",
       allowSrcEqDstHint:
         "Keep candidates whose source and target spelling are identical. Useful when names are spelled the same in both languages; off by default.",
@@ -1321,7 +1321,7 @@ export const en: Messages = {
         "Open the output folder automatically after extraction so the XLSX/JSON/TXT artifacts are easy to find.",
       referenceExamplesPerTerm: "Reference examples per term",
       referenceExamplesPerTermHelp:
-        "How many source-line snippets to attach per term in the -references.txt artifact. Larger values produce longer files; the term entries themselves are unaffected. Default 20.",
+        "How many source-line snippets to attach per term in the -references.md artifact. Larger values produce longer files; the term entries themselves are unaffected. Default 20.",
       minimumFrequency: "Minimum frequency",
       minimumFrequencyHelp:
         "Candidates seen fewer than this many times in the source are dropped. Set to 2 to filter one-off names/terms; default 1 keeps everything.",
@@ -1339,7 +1339,7 @@ export const en: Messages = {
     },
     run: {
       title: "Glossary",
-      sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references TXT alongside the source folder.",
+      sub: "Start, monitor, and stop the extraction job. Outputs are emitted as XLSX, JSON, and a references Markdown file alongside the source folder.",
       startupNotice:
         "Parsing input files and preparing glossary chunks. Large or complex EPUB files may take a few dozen seconds.",
       failedSubtasks: "Failed subtasks",
@@ -1396,19 +1396,19 @@ export const en: Messages = {
       glossaryFileHelp:
         "When the folder contains multiple XLSX files, choose the source glossary to review.",
       glossaryFilePlaceholder: "Choose a glossary",
-      referenceFiles: "Reference TXT",
+      referenceFiles: "Reference text",
       referenceFilesHelp:
-        "Multiple files can be selected. The selected TXT files are merged as novel context for the model.",
+        "Multiple files can be selected. The selected files are merged as novel context for the model.",
       referenceFilesEmpty:
-        "No TXT reference files are available in this folder.",
+        "No reference text files are available in this folder.",
       emptyState: {
         label: "Review input",
         noFolderTitle: "Choose the extraction output folder",
         noFolderBody:
-          "Pick the folder produced by glossary extraction. Transoria will auto-detect the glossary XLSX and reference TXT files.",
+          "Pick the folder produced by glossary extraction. Transoria will auto-detect the glossary XLSX and reference text files.",
         noCandidatesTitle: "No review candidates found",
         noCandidatesBody:
-          "This folder does not contain a glossary XLSX or reference TXT files. Send a completed extraction to review, or choose its output folder manually.",
+          "This folder does not contain a glossary XLSX or reference text files. Send a completed extraction to review, or choose its output folder manually.",
       },
       inputScanLoading: "Scanning input folder...",
       inputScanError: "Failed to scan input folder: {reason}",
