@@ -128,6 +128,7 @@ EXPECTED_METHODS: tuple[str, ...] = (
     "proofreading.list_tasks",
     "proofreading.load_snapshot",
     "proofreading.update_segment",
+    "proofreading.add_glossary_term",
     "proofreading.regenerate_outputs",
     "proofreading.retranslate_segment",
     "proofreading.retranslate_status",
@@ -292,7 +293,7 @@ def test_backend_registers_full_contract(router):
     # 1 added 2026-07-05 (model_profiles.duplicate) +
     # 1 added 2026-07-21 (epub_repair.preview).
     # 11 removed before 1.1.0 release (file organizer pulled from scope).
-    assert len(actual) == 201
+    assert len(actual) == 202
 
 
 # Test 2 — frontend bridge wraps every backend method
@@ -453,6 +454,11 @@ MIN_PAYLOADS: dict[str, dict[str, object]] = {
         "task_id": "translation-missing",
         "segment_id": "0:0",
         "dst": "x",
+    },
+    "proofreading.add_glossary_term": {
+        "task_id": "translation-missing",
+        "src": "x",
+        "dst": "y",
     },
     "proofreading.regenerate_outputs": {"task_id": "translation-missing"},
     "proofreading.retranslate_segment": {
