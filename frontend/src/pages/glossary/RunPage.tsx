@@ -27,6 +27,7 @@ import { ExtractionProgress } from "./ExtractionProgress";
 import styles from "./RunPage.module.css";
 
 const AUTO_REVIEW_POLL_MS = 2000;
+const REVIEW_ENDED_EARLY = new Set(["stopped", "failed"]);
 const REVIEW_IN_FLIGHT = new Set(["pending", "running", "pausing", "paused", "stopping"]);
 
 export function RunPage() {
@@ -100,12 +101,12 @@ export function RunPage() {
   const extractionCompleted = source === "extract" && snapshot.status === "completed";
   const awaitingAutoReview = extractionCompleted && reviewEnabled && !reviewStartError && !linked;
   const showReviewStage = source === "existing" || linked;
+  const linkedReviewEnded = linked && REVIEW_ENDED_EARLY.has(reviewSnapshot.status);
   const showStartReview =
     extractionCompleted &&
-    (!reviewEnabled || Boolean(reviewStartError)) &&
     hasReviewableArtifacts &&
-    !linked &&
-    !reviewInFlight;
+    !reviewInFlight &&
+    (linkedReviewEnded || (!linked && (!reviewEnabled || Boolean(reviewStartError))));
 
   // The backend starts review right after extraction completes; pick that task up without a reload.
   useEffect(() => {
@@ -136,7 +137,7 @@ export function RunPage() {
       await glossaryReviewBridge.startTask(`start-${Date.now().toString(36)}`, activeTaskId);
       await useRuntimeStore.getState().refreshActiveTask("glossary_review");
     } catch (error) {
-      reportError("glossary_review")(BridgeError.isBridgeError(error) ? error : null);
+      reportError("glossary")(BridgeError.isBridgeError(error) ? error : null);
     } finally {
       setStartingReview(false);
     }
@@ -199,8 +200,8 @@ export function RunPage() {
         }
       />
 
-      <RunErrorBanner kind="glossary" />
-      <RunErrorBanner kind="glossary_review" />
+      {source === "extract" ? <RunErrorBanner kind="glossary" /> : null}
+      {source === "existing" || linked ? <RunErrorBanner kind="glossary_review" /> : null}
 
       {source === "existing" ? (
         <ReviewInputs label={run.activeConfig} presetItem={presetItem} />

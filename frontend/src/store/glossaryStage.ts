@@ -5,8 +5,8 @@ export type GlossarySource = "extract" | "existing";
 
 const SOURCE_STORAGE_KEY = "transoria.glossary.source";
 
-// A review stays in charge of the controls until it finishes; after that Start begins a new extraction.
-const REVIEW_HOLDS_CONTROLS = new Set(["pending", "running", "pausing", "paused", "stopping", "stopped", "failed"]);
+// Only a live review takes the controls; once it ends, Start always means a new extraction.
+const REVIEW_HOLDS_CONTROLS = new Set(["pending", "running", "pausing", "paused", "stopping"]);
 
 function loadSource(): GlossarySource {
   try {
