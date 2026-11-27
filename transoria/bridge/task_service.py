@@ -4595,8 +4595,10 @@ class TaskService:
 
         input_dir = _require_directory(glossary.input_folder, field="input_folder")
         _require_input_with_supported_files(input_dir, field="input_folder")
-        output_dir = _ensure_output_dir(
-            glossary.output_folder, field="output_folder"
+        output_dir = (
+            _ensure_output_dir(glossary.output_folder, field="output_folder")
+            if glossary.output_folder.strip()
+            else input_dir
         )
         source_lang = _coerce_language(
             glossary.source_language, field="source_language"

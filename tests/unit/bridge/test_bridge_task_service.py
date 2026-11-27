@@ -1178,6 +1178,19 @@ def test_glossary_start_allows_input_equals_output(tmp_path: Path):
     assert "task_id" in response
 
 
+def test_glossary_writes_into_the_input_folder_when_output_is_blank(tmp_path: Path):
+    service = _service(tmp_path, transport=EchoTranslationTransport())
+    folder = tmp_path / "book"
+    folder.mkdir()
+    (folder / "novel.txt").write_text("source line\n", encoding="utf-8")
+    _seed_glossary_settings(service, input_dir=folder, output_dir=folder)
+    service.settings_store.save_partial("glossary", {"output_folder": ""})
+
+    config, _, _ = service._build_glossary_config()
+
+    assert config.output_dir == folder
+
+
 def test_translation_start_validates_missing_settings(tmp_path: Path):
     service = _service(tmp_path, transport=EchoTranslationTransport())
     with pytest.raises(BridgeError) as caught:

@@ -108,7 +108,8 @@ export function RunPage() {
     if (!activeTaskId) return;
     setStartingReview(true);
     try {
-      reviewSettings.update("input_folder", glossarySettings.draft?.output_folder.trim() ?? "");
+      const draft = glossarySettings.draft;
+      reviewSettings.update("input_folder", draft?.output_folder.trim() || draft?.input_folder.trim() || "");
       reviewSettings.update("selected_xlsx_path", reviewPrefill?.xlsx ?? "");
       reviewSettings.update("selected_reference_paths", reviewPrefill?.references ?? []);
       await reviewSettings.saveNow();
