@@ -1311,7 +1311,6 @@ export const zh: Messages = {
       sourceLabel: "来源",
       sourceExtract: "从小说提取",
       sourceExisting: "已有术语表",
-      reviewInputs: "术语表文件",
       stageSwitch: "阶段",
       extractStage: "提取",
       reviewStage: "审查",
@@ -1352,21 +1351,10 @@ export const zh: Messages = {
     settings: {
       inputFolder: "输入文件夹",
       glossaryFile: "术语表 XLSX",
-      glossaryFileHelp: "当文件夹内有多个 XLSX 时，请选择要审查的原始术语表。",
       glossaryFilePlaceholder: "请选择术语表",
       referenceFiles: "参考文本",
       referenceFilesHelp: "可多选。模型会把选中的文本合并为小说参考上下文。",
-      referenceFilesEmpty: "当前文件夹没有可用的参考文本。",
-      emptyState: {
-        label: "审查输入",
-        noFolderTitle: "选择术语提取的输出文件夹",
-        noFolderBody:
-          "请选择术语提取生成的目录。Transoria 会自动发现术语 XLSX 和参考文本。",
-        noCandidatesTitle: "没有找到可送审候选",
-        noCandidatesBody:
-          "当前文件夹没有术语 XLSX 或参考文本。可以从已完成的术语提取一键送审，或手动选择它的输出目录。",
-      },
-      inputScanLoading: "正在扫描输入文件夹…",
+      noGlossaryFile: "文件夹里没有术语表 XLSX",
       inputScanError: "扫描输入文件夹失败：{reason}",
       outputFilename: "最终文件名",
       outputFilenameHelp:

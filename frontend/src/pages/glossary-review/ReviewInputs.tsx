@@ -9,10 +9,9 @@ import { useModuleSettings } from "@/store/useSettingsStore";
 import { Panel } from "@/components/Panel";
 import { HelpTip } from "@/components/HelpTip";
 import { FolderPickerRow } from "@/components/FolderPickerRow";
-import { GuidedEmptyState } from "@/components/GuidedEmptyState";
 import styles from "../glossary/SettingsPage.module.css";
 
-export function ReviewInputs({ label }: { label: string }) {
+export function ReviewInputs() {
   const messages = useMessages();
   const { settings } = messages.glossaryReview;
   const moduleSettings = useModuleSettings("glossary_review");
@@ -71,17 +70,12 @@ export function ReviewInputs({ label }: { label: string }) {
 
   if (!draft) return null;
 
-  const hasInputFolder = draft.input_folder.trim().length > 0;
-  const hasCandidates =
-    (candidates?.xlsx_candidates.length ?? 0) > 0 ||
-    (candidates?.reference_candidates.length ?? 0) > 0;
-  const showCandidateEmpty =
-    !scanLoading &&
-    !scanError &&
-    (!hasInputFolder || (candidates !== null && !hasCandidates));
+  const xlsxOptions = candidates?.xlsx_candidates ?? [];
+  const referenceOptions = candidates?.reference_candidates ?? [];
+  const missingGlossary = !scanLoading && candidates !== null && xlsxOptions.length === 0;
 
   return (
-    <Panel label={label}>
+    <Panel>
       <div className={styles.fieldGrid}>
         <FolderPickerRow
           label={settings.inputFolder}
@@ -95,49 +89,30 @@ export function ReviewInputs({ label }: { label: string }) {
           historyKey="glossary_review:input_folder"
         />
       </div>
-      <div className={styles.fileSelectGrid}>
-        <FileSelect
-          label={settings.glossaryFile}
-          help={settings.glossaryFileHelp}
-          placeholder={settings.glossaryFilePlaceholder}
-          value={draft.selected_xlsx_path}
-          options={candidates?.xlsx_candidates ?? []}
-          disabled={scanLoading || !candidates}
-          onChange={(value) => moduleSettings.update("selected_xlsx_path", value)}
-        />
-        <ReferencePicker
-          label={settings.referenceFiles}
-          help={settings.referenceFilesHelp}
-          empty={settings.referenceFilesEmpty}
-          selected={draft.selected_reference_paths}
-          options={candidates?.reference_candidates ?? []}
-          disabled={scanLoading || !candidates}
-          onChange={(value) =>
-            moduleSettings.update("selected_reference_paths", value)
-          }
-        />
-      </div>
-      {scanLoading ? (
-        <div className={styles.scanHint}>{settings.inputScanLoading}</div>
-      ) : null}
-      {scanError ? <div className={styles.scanError}>{scanError}</div> : null}
-      {showCandidateEmpty ? (
-        <div className={styles.guidedEmptyWrap}>
-          <GuidedEmptyState
-            label={settings.emptyState.label}
-            title={
-              hasInputFolder
-                ? settings.emptyState.noCandidatesTitle
-                : settings.emptyState.noFolderTitle
-            }
-            body={
-              hasInputFolder
-                ? settings.emptyState.noCandidatesBody
-                : settings.emptyState.noFolderBody
-            }
+      {xlsxOptions.length > 0 ? (
+        <div className={styles.fileSelectGrid}>
+          <FileSelect
+            label={settings.glossaryFile}
+            placeholder={settings.glossaryFilePlaceholder}
+            value={draft.selected_xlsx_path}
+            options={xlsxOptions}
+            disabled={scanLoading}
+            onChange={(value) => moduleSettings.update("selected_xlsx_path", value)}
           />
+          {referenceOptions.length > 0 ? (
+            <ReferencePicker
+              label={settings.referenceFiles}
+              help={settings.referenceFilesHelp}
+              selected={draft.selected_reference_paths}
+              options={referenceOptions}
+              disabled={scanLoading}
+              onChange={(value) => moduleSettings.update("selected_reference_paths", value)}
+            />
+          ) : null}
         </div>
       ) : null}
+      {missingGlossary ? <div className={styles.scanError}>{settings.noGlossaryFile}</div> : null}
+      {scanError ? <div className={styles.scanError}>{scanError}</div> : null}
     </Panel>
   );
 }
@@ -149,7 +124,6 @@ interface FileOption {
 
 interface FileSelectProps {
   label: string;
-  help: string;
   placeholder: string;
   value: string;
   options: FileOption[];
@@ -159,7 +133,6 @@ interface FileSelectProps {
 
 function FileSelect({
   label,
-  help,
   placeholder,
   value,
   options,
@@ -171,7 +144,7 @@ function FileSelect({
     : "";
   return (
     <div className={styles.fileField}>
-      <div className={styles.rowLabel}>{label}<HelpTip>{help}</HelpTip></div>
+      <div className={styles.rowLabel}>{label}</div>
       <select
         className={styles.selectInput}
         value={normalizedValue}
@@ -192,7 +165,6 @@ function FileSelect({
 interface ReferencePickerProps {
   label: string;
   help: string;
-  empty: string;
   selected: string[];
   options: FileOption[];
   disabled: boolean;
@@ -202,7 +174,6 @@ interface ReferencePickerProps {
 function ReferencePicker({
   label,
   help,
-  empty,
   selected,
   options,
   disabled,
@@ -219,10 +190,7 @@ function ReferencePicker({
   return (
     <div className={styles.fileField}>
       <div className={styles.rowLabel}>{label}<HelpTip>{help}</HelpTip></div>
-      {options.length === 0 ? (
-        <div className={styles.referenceEmpty}>{empty}</div>
-      ) : (
-        <div className={styles.referenceList}>
+      <div className={styles.referenceList}>
           {options.map((option) => (
             <label key={option.path} className={styles.referenceItem}>
               <input
@@ -234,8 +202,7 @@ function ReferencePicker({
               <span>{option.name}</span>
             </label>
           ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -1348,7 +1348,6 @@ export const en: Messages = {
       sourceLabel: "Source",
       sourceExtract: "Extract from novels",
       sourceExisting: "Existing glossary",
-      reviewInputs: "Glossary files",
       stageSwitch: "Stage",
       extractStage: "Extraction",
       reviewStage: "Review",
@@ -1390,24 +1389,11 @@ export const en: Messages = {
     settings: {
       inputFolder: "Input folder",
       glossaryFile: "Glossary XLSX",
-      glossaryFileHelp:
-        "When the folder contains multiple XLSX files, choose the source glossary to review.",
       glossaryFilePlaceholder: "Choose a glossary",
       referenceFiles: "Reference text",
       referenceFilesHelp:
         "Multiple files can be selected. The selected files are merged as novel context for the model.",
-      referenceFilesEmpty:
-        "No reference text files are available in this folder.",
-      emptyState: {
-        label: "Review input",
-        noFolderTitle: "Choose the extraction output folder",
-        noFolderBody:
-          "Pick the folder produced by glossary extraction. Transoria will auto-detect the glossary XLSX and reference text files.",
-        noCandidatesTitle: "No review candidates found",
-        noCandidatesBody:
-          "This folder does not contain a glossary XLSX or reference text files. Send a completed extraction to review, or choose its output folder manually.",
-      },
-      inputScanLoading: "Scanning input folder...",
+      noGlossaryFile: "No glossary XLSX in this folder",
       inputScanError: "Failed to scan input folder: {reason}",
       outputFilename: "Final filename",
       outputFilenameHelp:

@@ -45,34 +45,11 @@
   white-space: nowrap;
 }
 
-.referenceEmpty,
-.scanHint,
-.scanError {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.referenceEmpty {
-  display: flex;
-  align-items: center;
-  min-height: var(--control-height);
-  border: 1px solid var(--hairline);
-  border-radius: var(--control-radius);
-  padding: 6px 10px;
-}
-
-.scanHint,
 .scanError {
   margin-top: 10px;
-}
-
-.guidedEmptyWrap {
-  margin-top: 12px;
-}
-
-.scanError {
   color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .rowLabel {

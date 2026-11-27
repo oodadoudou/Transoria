@@ -858,7 +858,6 @@ export interface Messages {
       sourceLabel: string;
       sourceExtract: string;
       sourceExisting: string;
-      reviewInputs: string;
       stageSwitch: string;
       extractStage: string;
       reviewStage: string;
@@ -897,19 +896,10 @@ export interface Messages {
     settings: {
       inputFolder: string;
       glossaryFile: string;
-      glossaryFileHelp: string;
       glossaryFilePlaceholder: string;
       referenceFiles: string;
       referenceFilesHelp: string;
-      referenceFilesEmpty: string;
-      emptyState: {
-        label: string;
-        noFolderTitle: string;
-        noFolderBody: string;
-        noCandidatesTitle: string;
-        noCandidatesBody: string;
-      };
-      inputScanLoading: string;
+      noGlossaryFile: string;
       inputScanError: string;
       outputFilename: string;
       outputFilenameHelp: string;

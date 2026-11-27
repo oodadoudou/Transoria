@@ -174,7 +174,7 @@ export function RunPage() {
       <RunErrorBanner kind="glossary" />
       <RunErrorBanner kind="glossary_review" />
 
-      {source === "existing" ? <ReviewInputs label={run.reviewInputs} /> : null}
+      {source === "existing" ? <ReviewInputs /> : null}
 
       <Panel label={run.activeConfig}>
         <RunConfigBar
