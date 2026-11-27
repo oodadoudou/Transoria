@@ -36,7 +36,7 @@ import {
   type ImportFinalGlossaryMode,
 } from "./importFinalGlossary";
 
-export function ReviewProgress({ label }: { label: string }) {
+export function ReviewProgress({ label }: { label?: string }) {
   const messages = useMessages();
   const { run } = messages.glossaryReview;
   const failedModalMessages = messages.failedSubtasksModal;
@@ -280,7 +280,7 @@ export function ReviewProgress({ label }: { label: string }) {
         />
       ) : null}
 
-      <Panel label={label} labelExtra={activeTaskId}>
+      <Panel label={label} labelExtra={label ? activeTaskId : undefined}>
         <div className={styles.progressCard}>
           <ProgressRing
             percent={percent}

@@ -29,6 +29,8 @@ export const en: Messages = {
     running: "Running",
     stopping: "Stopping",
     stopped: "Stopped",
+    pausing: "Pausing",
+    paused: "Paused",
     failed: "Failed",
     completed: "Completed",
     skipped: "Skipped",

@@ -21,7 +21,7 @@ import { CompletionWithFailuresDialog } from "@/components/CompletionWithFailure
 import { formatDuration, NUM, Stat } from "./RunStats";
 import styles from "./RunPage.module.css";
 
-export function ExtractionProgress({ label }: { label: string }) {
+export function ExtractionProgress({ label }: { label?: string }) {
   const messages = useMessages();
   const { run } = messages.glossary;
   const failedModalMessages = messages.failedSubtasksModal;
@@ -123,7 +123,7 @@ export function ExtractionProgress({ label }: { label: string }) {
         />
       ) : null}
 
-      <Panel label={label} labelExtra={activeTaskId}>
+      <Panel label={label} labelExtra={label ? activeTaskId : undefined}>
         <div className={styles.progressCard}>
           <ProgressRing percent={percent} completed={completed} total={total} />
           <div className={styles.statGrid}>

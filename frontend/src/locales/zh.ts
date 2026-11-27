@@ -29,6 +29,8 @@ export const zh: Messages = {
     running: "运行中",
     stopping: "正在停止",
     stopped: "已停止",
+    pausing: "正在暂停",
+    paused: "已暂停",
     failed: "已失败",
     completed: "已完成",
     skipped: "已跳过",

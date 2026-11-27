@@ -26,6 +26,8 @@ import { ReviewProgress } from "../glossary-review/ReviewProgress";
 import { ExtractionProgress } from "./ExtractionProgress";
 import styles from "./RunPage.module.css";
 
+type StageKind = "glossary" | "glossary_review";
+
 const AUTO_REVIEW_POLL_MS = 2000;
 const REVIEW_ENDED_EARLY = new Set(["stopped", "failed"]);
 const REVIEW_IN_FLIGHT = new Set(["pending", "running", "pausing", "paused", "stopping"]);
@@ -61,6 +63,9 @@ export function RunPage() {
   }, []);
 
   const [presetSwitchOpen, setPresetSwitchOpen] = useState(false);
+  const [pinnedStage, setPinnedStage] = useState<StageKind | null>(null);
+  // A newly chained review takes the view again even if the user had looked back at extraction.
+  useEffect(() => setPinnedStage(null), [reviewTaskId]);
   const [reviewPrefill, setReviewPrefill] = useState<{ xlsx: string; references: string[] } | null>(null);
   const [hasReviewableArtifacts, setHasReviewableArtifacts] = useState(false);
   const [startingReview, setStartingReview] = useState(false);
@@ -117,6 +122,11 @@ export function RunPage() {
     void useRuntimeStore.getState().refreshActiveTask("glossary_review");
     return () => window.clearInterval(timer);
   }, [awaitingAutoReview]);
+
+  const showStageTabs = source === "extract" && linked;
+  const shownStage: StageKind = showStageTabs ? pinnedStage ?? "glossary_review" : source === "existing" ? "glossary_review" : "glossary";
+  const statusLabel = (status: string) =>
+    (messages.status as unknown as Record<string, string>)[status] ?? status;
 
   const reportError = (kind: "glossary" | "glossary_review") => (error: BridgeError | null) =>
     useRuntimeStore.getState().setLastError(kind, error);
@@ -223,7 +233,26 @@ export function RunPage() {
         />
       ) : null}
 
-      {source === "extract" ? <ExtractionProgress label={run.extractStage} /> : null}
+      {showStageTabs ? (
+        <div className={styles.stageTabs}>
+          <Segmented<StageKind>
+            ariaLabel={run.stageSwitch}
+            options={[
+              { id: "glossary", label: `${run.extractStage} · ${statusLabel(snapshot.status)}` },
+              { id: "glossary_review", label: `${run.reviewStage} · ${statusLabel(reviewSnapshot.status)}` },
+            ]}
+            value={shownStage}
+            onChange={setPinnedStage}
+          />
+          <span className={styles.stageTaskId}>
+            {shownStage === "glossary" ? activeTaskId : reviewTaskId}
+          </span>
+        </div>
+      ) : null}
+
+      {source === "extract" && shownStage === "glossary" ? (
+        <ExtractionProgress label={showStageTabs ? undefined : run.extractStage} />
+      ) : null}
 
       {showStartReview ? (
         <div className={styles.followupActions}>
@@ -233,7 +262,9 @@ export function RunPage() {
         </div>
       ) : null}
 
-      {showReviewStage ? <ReviewProgress label={run.reviewStage} /> : null}
+      {showReviewStage && shownStage === "glossary_review" ? (
+        <ReviewProgress label={showStageTabs ? undefined : run.reviewStage} />
+      ) : null}
 
       <RunControls key={stageKind} kind={stageKind}>
         <RequestLogPanel

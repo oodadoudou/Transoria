@@ -25,6 +25,8 @@ export interface Messages {
     running: string;
     stopping: string;
     stopped: string;
+    pausing: string;
+    paused: string;
     failed: string;
     completed: string;
     skipped: string;

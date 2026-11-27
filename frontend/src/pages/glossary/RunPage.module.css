@@ -97,3 +97,15 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+.stageTabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stageTaskId {
+  color: var(--muted);
+  font-size: 12px;
+}
