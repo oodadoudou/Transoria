@@ -156,6 +156,7 @@ export const zh: Messages = {
     dismiss: "关闭",
     retry: "重试",
     bridgeMessages: {
+      "model.not_selected": "未选择模型。请在预设里选好模型后再开始。",
       "task.selection_incompatible":
         "新预设改变了当前任务的文件目录或语言，已保留原配置并继续运行。请停止当前任务后再应用此预设。",
       "translation.input_equals_output":
@@ -1317,7 +1318,7 @@ export const zh: Messages = {
       startReview: "开始审查",
       extractModel: "提取模型",
       extractPrompt: "提取提示词",
-      noReview: "不审查",
+      noReview: "手动审查",
       stats: {
         completed: "已完成",
         failed: "失败",
@@ -1591,8 +1592,8 @@ export const zh: Messages = {
     customConfig: "当前配置未匹配任何预设",
     missingSelection: "请先选择模型和 Prompt。",
     reviewLabel: "审查",
-    noReview: "不审查",
-    reviewAfterExtraction: "提取后审查",
+    noReview: "手动审查",
+    reviewAfterExtraction: "自动审查",
     reviewModelLabel: "审查模型",
     reviewPromptLabel: "审查提示词",
     advanced: "高级配置",

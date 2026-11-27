@@ -75,13 +75,17 @@ def _validate_references(
     source_language: str,
     target_language: str,
 ) -> None:
-    if profile_store.get(model_profile_id) is None:
+    # Glossary presets may leave a stage empty; starting that stage reports the gap instead.
+    optional = kind is PromptKind.GLOSSARY
+    if (model_profile_id or not optional) and profile_store.get(model_profile_id) is None:
         raise BridgeError.not_found(
             f"model profile {model_profile_id!r} does not exist.",
             details={"field": "model_profile_id", "id": model_profile_id},
         )
     prompt_store = _prompt_store_for(cache_root, kind)
-    if not any(preset.id == prompt_preset_id for preset in prompt_store.load()):
+    if (prompt_preset_id or not optional) and not any(
+        preset.id == prompt_preset_id for preset in prompt_store.load()
+    ):
         raise BridgeError.not_found(
             f"prompt preset {prompt_preset_id!r} does not exist.",
             details={"field": "prompt_preset_id", "id": prompt_preset_id},
@@ -226,14 +230,12 @@ def _coerce_review(
     if not isinstance(raw, Mapping):
         raise BridgeError.invalid_argument("review must be an object.", field="review")
     review = PresetReview.from_dict(raw)
-    if not review.enabled:
-        return review
-    if profile_store.get(review.model_profile_id) is None:
+    if review.model_profile_id and profile_store.get(review.model_profile_id) is None:
         raise BridgeError.not_found(
             f"model profile {review.model_profile_id!r} does not exist.",
             details={"field": "review.model_profile_id", "id": review.model_profile_id},
         )
-    if not any(
+    if review.prompt_preset_id and not any(
         prompt.id == review.prompt_preset_id
         for prompt in _prompt_store_for(cache_root, PromptKind.GLOSSARY_REVIEW).load()
     ):
@@ -247,11 +249,10 @@ def _coerce_review(
 def _review_matches(settings: AllSettings, review: PresetReview | None) -> bool:
     if review is None:
         return True
-    if settings.glossary.review_after_extraction != review.enabled:
-        return False
-    return not review.enabled or (
-        settings.app.active_glossary_review_model_id == review.model_profile_id
-        and settings.app.active_glossary_review_prompt_id == review.prompt_preset_id
+    return (
+        settings.glossary.review_after_extraction == review.enabled
+        and (settings.app.active_glossary_review_model_id or "") == review.model_profile_id
+        and (settings.app.active_glossary_review_prompt_id or "") == review.prompt_preset_id
     )
 
 
@@ -303,8 +304,8 @@ def _matched_id(
                 and selected.target_language == module_settings.target_language
             ):
                 return selected.id
-    model_id = getattr(settings.app, ACTIVE_MODEL_FIELD_BY_KIND[kind])
-    prompt_id = getattr(settings.app, ACTIVE_PROMPT_FIELD_BY_KIND[kind])
+    model_id = getattr(settings.app, ACTIVE_MODEL_FIELD_BY_KIND[kind]) or ""
+    prompt_id = getattr(settings.app, ACTIVE_PROMPT_FIELD_BY_KIND[kind]) or ""
     source_language = getattr(module_settings, "source_language", "")
     target_language = getattr(module_settings, "target_language", "")
     for preset in presets:
@@ -430,8 +431,8 @@ def _build_handlers(
             body=preset.to_dict(),
         )
         app_patch: dict[str, object] = {
-            ACTIVE_MODEL_FIELD_BY_KIND[kind]: preset.model_profile_id,
-            ACTIVE_PROMPT_FIELD_BY_KIND[kind]: preset.prompt_preset_id,
+            ACTIVE_MODEL_FIELD_BY_KIND[kind]: preset.model_profile_id or None,
+            ACTIVE_PROMPT_FIELD_BY_KIND[kind]: preset.prompt_preset_id or None,
         }
         if kind is PromptKind.TRANSLATION:
             app_patch["active_translation_workflow_preset_id"] = (
@@ -443,9 +444,8 @@ def _build_handlers(
         }
         if preset.review is not None:
             module_patch["review_after_extraction"] = preset.review.enabled
-            if preset.review.enabled:
-                app_patch["active_glossary_review_model_id"] = preset.review.model_profile_id
-                app_patch["active_glossary_review_prompt_id"] = preset.review.prompt_preset_id
+            app_patch["active_glossary_review_model_id"] = preset.review.model_profile_id or None
+            app_patch["active_glossary_review_prompt_id"] = preset.review.prompt_preset_id or None
         updated = save_selection(
             settings_store,
             SETTINGS_MODULE_BY_KIND[kind],

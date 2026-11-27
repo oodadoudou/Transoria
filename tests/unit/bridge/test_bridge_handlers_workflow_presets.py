@@ -428,3 +428,35 @@ def test_glossary_preset_carries_review_stage(env):
             **base, "id": "bad", "name": "Bad",
             "review": {"enabled": True, "model_profile_id": "missing", "prompt_preset_id": review_prompt},
         }})
+
+
+def test_glossary_preset_may_leave_a_stage_empty(env):
+    from transoria.prompts import PromptKind, default_preset
+
+    router, settings_store = env
+    router.call("workflow_presets.create", {"kind": "glossary", "preset": {
+        "id": "extract-only", "name": "Extract only",
+        "model_profile_id": "model-1",
+        "prompt_preset_id": default_preset(PromptKind.GLOSSARY).id,
+        "source_language": Language.KOREAN.value,
+        "target_language": Language.CHINESE_SIMPLIFIED.value,
+        "review": {"enabled": True, "model_profile_id": "", "prompt_preset_id": ""},
+    }})
+    router.call("workflow_presets.create", {"kind": "glossary", "preset": {
+        "id": "review-only", "name": "Review only",
+        "model_profile_id": "", "prompt_preset_id": "",
+        "source_language": Language.KOREAN.value,
+        "target_language": Language.CHINESE_SIMPLIFIED.value,
+        "review": {"enabled": False, "model_profile_id": "model-1", "prompt_preset_id": ""},
+    }})
+
+    router.call("workflow_presets.apply", {"kind": "glossary", "id": "extract-only"})
+    settings = settings_store.load_all()
+    assert settings.app.active_glossary_review_model_id is None
+    assert router.call("workflow_presets.list", {"kind": "glossary"})["matched_id"] == "extract-only"
+
+    router.call("workflow_presets.apply", {"kind": "glossary", "id": "review-only"})
+    settings = settings_store.load_all()
+    assert settings.app.active_glossary_model_id is None
+    assert settings.app.active_glossary_review_model_id == "model-1"
+    assert router.call("workflow_presets.list", {"kind": "glossary"})["matched_id"] == "review-only"

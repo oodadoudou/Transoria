@@ -26,6 +26,7 @@ import { ReviewProgress } from "../glossary-review/ReviewProgress";
 import { ExtractionProgress } from "./ExtractionProgress";
 import styles from "./RunPage.module.css";
 
+const AUTO_REVIEW_POLL_MS = 2000;
 const REVIEW_IN_FLIGHT = new Set(["pending", "running", "pausing", "paused", "stopping"]);
 
 export function RunPage() {
@@ -45,6 +46,10 @@ export function RunPage() {
   const setSource = useGlossarySource((state) => state.setSource);
   const stageKind = useGlossaryStageKind();
   const linked = useReviewLinkedToExtraction();
+  const reviewStartError = useRuntimeStore((state) => {
+    const value = state.glossary.snapshot?.metadata?.review_error;
+    return typeof value === "string" ? value : "";
+  });
   usePollRunSnapshot("glossary");
   usePollRunSnapshot("glossary_review");
 
@@ -92,14 +97,25 @@ export function RunPage() {
 
   const reviewEnabled = glossarySettings.draft?.review_after_extraction ?? true;
   const reviewInFlight = !reviewSnapshot.isIdle && REVIEW_IN_FLIGHT.has(reviewSnapshot.status);
-  const showReviewStage = source === "existing" || (reviewEnabled && linked);
+  const extractionCompleted = source === "extract" && snapshot.status === "completed";
+  const awaitingAutoReview = extractionCompleted && reviewEnabled && !reviewStartError && !linked;
+  const showReviewStage = source === "existing" || linked;
   const showStartReview =
-    source === "extract" &&
-    reviewEnabled &&
-    snapshot.status === "completed" &&
+    extractionCompleted &&
+    (!reviewEnabled || Boolean(reviewStartError)) &&
     hasReviewableArtifacts &&
     !linked &&
     !reviewInFlight;
+
+  // The backend starts review right after extraction completes; pick that task up without a reload.
+  useEffect(() => {
+    if (!awaitingAutoReview) return;
+    const timer = window.setInterval(() => {
+      void useRuntimeStore.getState().refreshActiveTask("glossary_review");
+    }, AUTO_REVIEW_POLL_MS);
+    void useRuntimeStore.getState().refreshActiveTask("glossary_review");
+    return () => window.clearInterval(timer);
+  }, [awaitingAutoReview]);
 
   const reportError = (kind: "glossary" | "glossary_review") => (error: BridgeError | null) =>
     useRuntimeStore.getState().setLastError(kind, error);
@@ -150,9 +166,8 @@ export function RunPage() {
     description: [
       `${messages.language.options[preset.source_language]} → ${messages.language.options[preset.target_language]}`,
       profiles.profiles.find((item) => item.id === preset.model_profile_id)?.display_name ?? preset.model_profile_id,
-      preset.review === null || preset.review.enabled
-        ? profiles.profiles.find((item) => item.id === preset.review?.model_profile_id)?.display_name ?? ""
-        : run.noReview,
+      profiles.profiles.find((item) => item.id === preset.review?.model_profile_id)?.display_name ?? "",
+      preset.review && !preset.review.enabled ? run.noReview : "",
     ]
       .filter(Boolean)
       .join(" · "),

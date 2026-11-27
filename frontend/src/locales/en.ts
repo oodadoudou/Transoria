@@ -120,6 +120,7 @@ export const en: Messages = {
     dismiss: "Dismiss",
     retry: "Retry",
     bridgeMessages: {
+      "model.not_selected": "No model selected. Pick one in the preset, then start again.",
       "task.selection_incompatible":
         "This preset changes the current task's files or languages. The original configuration is still in use. Stop the current task before applying this preset.",
       "translation.input_equals_output":
@@ -1354,7 +1355,7 @@ export const en: Messages = {
       startReview: "Start review",
       extractModel: "Extraction model",
       extractPrompt: "Extraction prompt",
-      noReview: "No review",
+      noReview: "Manual review",
       stats: {
         completed: "Completed",
         failed: "Failed",
@@ -1641,8 +1642,8 @@ export const en: Messages = {
     customConfig: "Current configuration does not match a preset",
     missingSelection: "Select a model and prompt first.",
     reviewLabel: "Review",
-    noReview: "No review",
-    reviewAfterExtraction: "Review after extraction",
+    noReview: "Manual review",
+    reviewAfterExtraction: "Auto review",
     reviewModelLabel: "Review model",
     reviewPromptLabel: "Review prompt",
     advanced: "Advanced configuration",

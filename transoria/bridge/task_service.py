@@ -4753,10 +4753,19 @@ class TaskService:
         # Several novels without a combined table: the user picks which one to review.
         if single is None:
             return
+        cache = self._cache_for_kind("glossary")
         try:
             self.start_glossary_review(f"{task_id}-review", source_task_id=task_id)
+            review_error = ""
         except BridgeError as exc:
             logger.warning("Glossary review did not start after %s: %s", task_id, exc)
+            review_error = exc.payload.message_key or exc.payload.message
+        record = cache.load_record(task_id)
+        metadata = {key: value for key, value in record.metadata.items() if key != "review_error"}
+        if review_error:
+            metadata["review_error"] = review_error
+        if metadata != record.metadata:
+            cache.save_task(replace(record, metadata=metadata))
 
     def _build_glossary_review_config(
         self,
@@ -6822,6 +6831,7 @@ class TaskService:
             raise BridgeError.invalid_argument(
                 f"{field} is not set; pick a model profile in App Settings.",
                 field=field,
+                message_key="model.not_selected",
             )
         profile = self.profile_store.get(profile_id)
         if profile is None:

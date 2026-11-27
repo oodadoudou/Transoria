@@ -21,7 +21,9 @@ export function RunErrorBanner({ kind }: RunErrorBannerProps) {
   const taskFailureReason =
     snapshot?.header.status === "failed"
       ? extractLastError(snapshot.metadata)
-      : null;
+      : snapshot?.header.status === "completed"
+        ? localizeKey(extractText(snapshot.metadata, "review_error"), messages.errors.bridgeMessages)
+        : null;
   const pauseReason =
     snapshot?.header.status === "paused" ? extractText(snapshot.metadata, "pause_reason") : null;
 
@@ -93,4 +95,8 @@ function extractText(
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function localizeKey(value: string | null, catalogue: Record<string, string>): string | null {
+  return value ? catalogue[value] ?? value : null;
 }

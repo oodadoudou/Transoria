@@ -4211,3 +4211,19 @@ def test_extraction_without_review_does_not_start_review(tmp_path: Path):
     _run_extraction_then_wait(service, tmp_path)
     time.sleep(0.2)
     assert service.list_recent_tasks(kind="glossary_review", limit=1)["tasks"] == []
+
+
+def test_auto_review_without_a_model_records_why_it_did_not_start(tmp_path: Path):
+    transport = CandidateEmittingTransport(candidates=(("강감찬", "姜邯赞", "Male Name"),))
+    service = _service(tmp_path, transport=transport)
+    input_dir = tmp_path / "in"
+    input_dir.mkdir()
+    (input_dir / "sample.txt").write_text("강감찬은 위대했다", encoding="utf-8")
+    _seed_glossary_settings(service, input_dir=input_dir, output_dir=tmp_path / "out")
+    _seed_glossary_review_settings(service, input_dir=tmp_path)
+    service.settings_store.save_partial("app", {"active_glossary_review_model_id": None})
+    task_id = service.start_glossary(request_id="req-1")["task_id"]
+
+    _wait_until(lambda: "review_error" in service.cache.load_record(task_id).metadata)
+    assert service.cache.load_record(task_id).metadata["review_error"] == "model.not_selected"
+    assert service.list_recent_tasks(kind="glossary_review", limit=1)["tasks"] == []

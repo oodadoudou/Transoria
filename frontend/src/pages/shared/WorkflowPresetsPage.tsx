@@ -112,9 +112,9 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
   const modelById = (id: string) =>
     models.profiles.find((profile) => profile.id === id);
   const reviewSummary = (review: { enabled: boolean; model_profile_id: string; prompt_preset_id: string }) =>
-    review.enabled
-      ? `${labels.reviewLabel}: ${modelById(review.model_profile_id)?.display_name ?? labels.missingSelection}`
-      : labels.noReview;
+    `${labels.reviewLabel}: ${modelById(review.model_profile_id)?.display_name ?? labels.missingSelection}${
+      review.enabled ? "" : ` · ${labels.noReview}`
+    }`;
   const promptById = (id: string) =>
     promptSlice.presets.find((preset) => preset.id === id);
 
@@ -224,13 +224,11 @@ export function WorkflowPresetsPage({ owner }: WorkflowPresetsPageProps) {
       retry_failed: owner === "translation" && form.advanced && form.retry_failed,
       review:
         owner === "glossary"
-          ? form.review_enabled
-            ? {
-                enabled: true,
-                model_profile_id: form.review_model_profile_id,
-                prompt_preset_id: form.review_prompt_preset_id,
-              }
-            : { enabled: false, model_profile_id: "", prompt_preset_id: "" }
+          ? {
+              enabled: form.review_enabled,
+              model_profile_id: form.review_model_profile_id,
+              prompt_preset_id: form.review_prompt_preset_id,
+            }
           : null,
     };
     let saved: WorkflowPreset | null;
@@ -484,11 +482,8 @@ function WorkflowPresetModal({
             form.fallback_route.prompt_preset_id &&
             form.fallback_route.rpm_limit !== null &&
             form.fallback_route.rpm_limit >= 0))
-      : form.model_profile_id.trim().length > 0 &&
-        form.prompt_preset_id.trim().length > 0) &&
-    (owner !== "glossary" ||
-      !form.review_enabled ||
-      (form.review_model_profile_id.length > 0 && form.review_prompt_preset_id.length > 0));
+      : owner === "glossary" ||
+        (form.model_profile_id.trim().length > 0 && form.prompt_preset_id.trim().length > 0));
   const routeModelIds = form.routes.map(
     (route) => modelOptions.find((model) => model.id === route.model_profile_id)?.modelId,
   );
@@ -811,28 +806,24 @@ function WorkflowPresetModal({
                   }
                 />
               </label>
-              {form.review_enabled ? (
-                <>
-                  <SelectField
-                    label={labels.reviewModelLabel}
-                    value={form.review_model_profile_id}
-                    options={modelOptions}
-                    emptyLabel={labels.missingSelection}
-                    onChange={(review_model_profile_id) =>
-                      setForm((current) => ({ ...current, review_model_profile_id }))
-                    }
-                  />
-                  <SelectField
-                    label={labels.reviewPromptLabel}
-                    value={form.review_prompt_preset_id}
-                    options={reviewPromptOptions}
-                    emptyLabel={labels.missingSelection}
-                    onChange={(review_prompt_preset_id) =>
-                      setForm((current) => ({ ...current, review_prompt_preset_id }))
-                    }
-                  />
-                </>
-              ) : null}
+              <SelectField
+                label={labels.reviewModelLabel}
+                value={form.review_model_profile_id}
+                options={modelOptions}
+                emptyLabel={labels.missingSelection}
+                onChange={(review_model_profile_id) =>
+                  setForm((current) => ({ ...current, review_model_profile_id }))
+                }
+              />
+              <SelectField
+                label={labels.reviewPromptLabel}
+                value={form.review_prompt_preset_id}
+                options={reviewPromptOptions}
+                emptyLabel={labels.missingSelection}
+                onChange={(review_prompt_preset_id) =>
+                  setForm((current) => ({ ...current, review_prompt_preset_id }))
+                }
+              />
             </>
           ) : null}
           <div className={styles.languageGrid}>
