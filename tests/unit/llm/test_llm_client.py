@@ -994,3 +994,24 @@ def test_chat_raises_on_length_finish_reason() -> None:
     assert exc_info.value.usage.input_tokens == 11
     assert exc_info.value.usage.output_tokens == 22
     assert exc_info.value.finish_reason == "length"
+
+
+@pytest.mark.parametrize("keys", [("only",), ("first", "second")])
+def test_chat_reports_rate_limit_code_when_every_key_is_limited(keys) -> None:
+    transport = FakeTransport(
+        responses=[TransportResult(429, {"error": "rate limited"}) for _ in keys]
+    )
+    client = LlmClient(transport=transport)
+
+    with pytest.raises(LlmRequestError) as caught:
+        asyncio.run(
+            client.chat(
+                ChatRequest(
+                    model=_model(api_keys=keys, rotate_keys=len(keys) > 1),
+                    system_prompt="sys",
+                    user_prompt="user",
+                )
+            )
+        )
+
+    assert caught.value.code == "llm.rate_limited"

@@ -150,6 +150,8 @@ export const zh: Messages = {
   errors: {
     notifications: "通知",
     runFailureTitle: "最近一次操作失败",
+    pausedTitle: "任务已暂停",
+    rateLimitedPause: "服务商限流或额度不足。恢复后点「继续」，未完成的分块会接着跑。",
     loadFailureTitle: "加载失败",
     dismiss: "关闭",
     retry: "重试",

@@ -558,7 +558,9 @@ def _zhipu_error_code(body: Mapping[str, object]) -> str:
     return str(error.get("code", "")) if isinstance(error, Mapping) else ""
 
 
-def _http_error_code(body: Mapping[str, object]) -> str:
+def _http_error_code(body: Mapping[str, object], status_code: int) -> str:
+    if status_code == 429:
+        return "llm.rate_limited"
     # Zhipu returns safety blocks as HTTP 400 with business code 1301.
     if _zhipu_error_code(body) == "1301":
         return "llm.content_filter"
@@ -1621,7 +1623,8 @@ class LlmClient:
                         response_text=_body_to_request_log_text(result.body),
                     )
                 last_error = LlmRequestError(
-                    f"HTTP {result.status_code}: {result.body!r}"
+                    f"HTTP {result.status_code}: {result.body!r}",
+                    code=_http_error_code(result.body, result.status_code),
                 )
                 continue
 
@@ -1634,7 +1637,7 @@ class LlmClient:
                     )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
-                    code=_http_error_code(result.body),
+                    code=_http_error_code(result.body, result.status_code),
                 )
 
             _record_request_response(
@@ -1647,7 +1650,12 @@ class LlmClient:
 
         raise LlmRequestError(
             f"All API keys failed for model {request.model.id!r}: {last_error}",
-            code="llm.all_keys_failed",
+            # Every key being rate limited is still a rate limit, not a credentials problem.
+            code=(
+                "llm.rate_limited"
+                if getattr(last_error, "code", "") == "llm.rate_limited"
+                else "llm.all_keys_failed"
+            ),
         )
 
     async def _send_with_pool(
@@ -1806,7 +1814,7 @@ class LlmClient:
                     )
                 raise LlmRequestError(
                     f"HTTP {result.status_code} from {_redact_url(url)}: {result.body!r}",
-                    code=_http_error_code(result.body),
+                    code=_http_error_code(result.body, result.status_code),
                 )
 
             _record_request_response(

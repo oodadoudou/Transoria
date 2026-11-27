@@ -110,6 +110,8 @@ export interface Messages {
   errors: {
     notifications: string;
     runFailureTitle: string;
+    pausedTitle: string;
+    rateLimitedPause: string;
     loadFailureTitle: string;
     dismiss: string;
     retry: string;

@@ -22,8 +22,10 @@ export function RunErrorBanner({ kind }: RunErrorBannerProps) {
     snapshot?.header.status === "failed"
       ? extractLastError(snapshot.metadata)
       : null;
+  const pauseReason =
+    snapshot?.header.status === "paused" ? extractText(snapshot.metadata, "pause_reason") : null;
 
-  if (!error && !taskFailureReason) return null;
+  if (!error && !taskFailureReason && !pauseReason) return null;
 
   // Prefer the locale catalogue's translated text indexed by the
   // backend's stable ``message_key``; fall back to the BridgeError's
@@ -39,8 +41,14 @@ export function RunErrorBanner({ kind }: RunErrorBannerProps) {
   return (
     <div className={styles.banner} role="alert">
       <div className={styles.body}>
-        <span className={styles.title}>{messages.errors.runFailureTitle}</span>
-        {error ? (
+        <span className={styles.title}>
+          {pauseReason && !error ? messages.errors.pausedTitle : messages.errors.runFailureTitle}
+        </span>
+        {pauseReason && !error ? (
+          <span className={styles.message} title={pauseReason}>
+            {pauseReason.includes("llm.rate_limited") ? messages.errors.rateLimitedPause : pauseReason}
+          </span>
+        ) : error ? (
           <>
             <span className={styles.message}>{localizedMessage}</span>
             <span className={styles.code}>{error.code}</span>
@@ -73,8 +81,15 @@ export function RunErrorBanner({ kind }: RunErrorBannerProps) {
 function extractLastError(
   metadata: Record<string, unknown> | null | undefined,
 ): string | null {
+  return extractText(metadata, "last_error");
+}
+
+function extractText(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
   if (!metadata) return null;
-  const raw = metadata["last_error"];
+  const raw = metadata[key];
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : null;

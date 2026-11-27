@@ -38,6 +38,8 @@ class SubtaskResult:
 
 # Model-setting errors repeat on every subtask, so the first one stops the task.
 _TASK_STOPPING_ERROR_CODES = frozenset({"llm.thinking_off_ignored", "llm.thinking_off_unsupported"})
+# Rate limits and spent quota recover later, so the task pauses and its chunks stay pending.
+_TASK_PAUSING_ERROR_CODES = frozenset({"llm.rate_limited"})
 
 
 class SubtaskFailedWithResult(RuntimeError):
@@ -115,6 +117,7 @@ class TaskExecutor:
     _active_runners: int = field(default=0, init=False, repr=False)
     _pause_observed: bool = field(default=False, init=False, repr=False)
     _stopping_error: str = field(default="", init=False, repr=False)
+    _pause_reason: str = field(default="", init=False, repr=False)
     _next_launch_at: float = field(default=0.0, init=False, repr=False)
     _launch_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _run_returned: bool = field(default=False, init=False, repr=False)
@@ -217,6 +220,7 @@ class TaskExecutor:
         self._active_runners = 0
         self._pause_observed = False
         self._stopping_error = ""
+        self._pause_reason = ""
         self._next_launch_at = 0.0
         self._launch_lock = asyncio.Lock()
         self._update_record_status(task_id, TaskStatus.RUNNING)
@@ -274,7 +278,8 @@ class TaskExecutor:
         limiter: RpmLimiter,
     ) -> None:
         while True:
-            if self._stop_event.is_set():
+            # A pause cancels workers waiting at the gate; they must not pick up the next chunk.
+            if self._stop_event.is_set() or self._pause_observed:
                 return
             try:
                 subtask = work_queue.get_nowait()
@@ -457,6 +462,22 @@ class TaskExecutor:
                 code = getattr(exc, "code", None)
                 if isinstance(code, str) and code:
                     code_prefix = f"[{code}] "
+                if code in _TASK_PAUSING_ERROR_CODES:
+                    reason = f"{code_prefix}{type(exc).__name__}: {exc}"
+                    self.cache.save_subtask(
+                        replace(
+                            running,
+                            status=SubtaskStatus.PENDING,
+                            last_error=reason,
+                            last_error_at=self.clock(),
+                            started_at="",
+                        )
+                    )
+                    self._fire_progress(task_id, running.id)
+                    if not self._pause_reason:
+                        self._pause_reason = reason
+                        self.request_pause()
+                    return
                 failed = replace(
                     running,
                     status=SubtaskStatus.FAILED,
@@ -536,9 +557,20 @@ class TaskExecutor:
                 record,
                 status=status,
                 updated_at=now,
-                metadata=runtime_metadata_for_status(record, status, now),
+                metadata=self._with_pause_reason(
+                    runtime_metadata_for_status(record, status, now), status
+                ),
             )
         )
+
+    def _with_pause_reason(
+        self, metadata: dict[str, object], status: TaskStatus
+    ) -> dict[str, object]:
+        if status is TaskStatus.PAUSED and self._pause_reason:
+            metadata["pause_reason"] = self._pause_reason
+        elif status is not TaskStatus.PAUSED:
+            metadata.pop("pause_reason", None)
+        return metadata
 
     def _finalize(
         self, task_id: str, *, stopped: bool, paused: bool
@@ -578,7 +610,9 @@ class TaskExecutor:
             # Mixed terminal/non-terminal — keep current status.
             return snapshot
         now = self.clock()
-        metadata = runtime_metadata_for_status(snapshot.record, final, now)
+        metadata = self._with_pause_reason(
+            runtime_metadata_for_status(snapshot.record, final, now), final
+        )
         if self._stopping_error:
             metadata["last_error"] = self._stopping_error
         self.cache.save_task(

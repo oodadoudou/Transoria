@@ -114,6 +114,8 @@ export const en: Messages = {
   errors: {
     notifications: "Notifications",
     runFailureTitle: "Last action failed",
+    pausedTitle: "Task paused",
+    rateLimitedPause: "The provider is rate limiting or the quota is used up. Press Continue once it recovers; unfinished chunks pick up from there.",
     loadFailureTitle: "Failed to load",
     dismiss: "Dismiss",
     retry: "Retry",

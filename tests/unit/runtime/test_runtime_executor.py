@@ -680,3 +680,27 @@ def test_thinking_off_error_stops_task_at_first_occurrence(tmp_path: Path) -> No
         TaskExecutor(cache=cache, runner=_FakeRunner(), concurrency_limit=1, rpm_limit=0).run("t1")
     )
     assert sum(s.status is SubtaskStatus.COMPLETED for s in resumed.subtasks) == 5
+
+
+def test_rate_limit_pauses_task_and_keeps_chunks_pending(tmp_path: Path) -> None:
+    from transoria.llm import LlmRequestError
+
+    cache = TaskCache(root=tmp_path)
+    _seed(cache, "t1", count=5)
+    runner = _FakeRunner(
+        raise_exception=lambda subtask: LlmRequestError("HTTP 429 from provider", code="llm.rate_limited")
+    )
+    executor = TaskExecutor(cache=cache, runner=runner, concurrency_limit=1, rpm_limit=0)
+
+    snapshot = asyncio.run(executor.run("t1"))
+
+    assert runner.started == ["s0"]
+    assert snapshot.record.status is TaskStatus.PAUSED
+    assert "llm.rate_limited" in str(snapshot.record.metadata["pause_reason"])
+    assert all(s.status is SubtaskStatus.PENDING for s in snapshot.subtasks)
+
+    resumed = asyncio.run(
+        TaskExecutor(cache=cache, runner=_FakeRunner(), concurrency_limit=1, rpm_limit=0).run("t1")
+    )
+    assert resumed.record.status is TaskStatus.COMPLETED
+    assert "pause_reason" not in resumed.record.metadata
