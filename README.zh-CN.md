@@ -12,7 +12,7 @@
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-![Transoria 执行翻译](assets/readme/screenshots/zh-translation-run.webp)
+![Transoria 执行翻译](assets/readme/screenshots/zh-translation-run-v2.webp)
 
 ---
 
@@ -24,7 +24,7 @@
 - **自选模型**：兼容主流服务商与 OpenAI 兼容接口，支持预设、多线路并发、速率控制与自动兜底。
 - **完整的 EPUB 工具链**：内容编辑、批量替换、压缩、合并、格式转换、修复与元数据编辑。
 
-![Transoria EPUB 工具](assets/readme/screenshots/zh-epub-tools.webp)
+![Transoria EPUB 工具](assets/readme/screenshots/zh-epub-tools-v2.webp)
 
 ### 为什么选择 Transoria
 

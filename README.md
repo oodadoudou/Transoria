@@ -12,7 +12,7 @@
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-![Transoria translation run](assets/readme/screenshots/en-translation-run.webp)
+![Transoria translation run](assets/readme/screenshots/en-translation-run-v2.webp)
 
 ---
 
@@ -24,7 +24,7 @@
 - **Bring your own model** — major providers and OpenAI-compatible endpoints, with presets, multi-route concurrency, rate limits and automatic fallback.
 - **Complete EPUB toolkit** — edit content, batch-replace, compress, merge, convert, repair and update metadata.
 
-![Transoria EPUB tools](assets/readme/screenshots/en-epub-tools.webp)
+![Transoria EPUB tools](assets/readme/screenshots/en-epub-tools-v2.webp)
 
 ### Why Transoria
 
